@@ -228,6 +228,7 @@ export default function ResearchAssistantApp() {
     setNodes,
     appendChatMessage: chatFlow.appendChatMessage,
 	identity: chatFlow.requestIdentity,
+	refreshPlanState: chatFlow.refreshActivePlan,
   });
   const { resetRuntimeState } = runtime;
 

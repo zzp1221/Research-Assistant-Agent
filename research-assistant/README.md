@@ -17,8 +17,10 @@
 ### Docker Compose
 
 ```bash
+cp .env.example .env
+# 编辑 .env，设置随机 SANDBOX_API_TOKEN / RESEARCH_OPTIMIZER_API_TOKEN
 cp backend.env.example backend.env
-# 编辑 backend.env，至少填写 OPENAI_API_KEY
+# 编辑 backend.env，至少填写 OPENAI_API_KEY；SANDBOX_API_TOKEN 必须与 .env 一致
 docker compose up --build -d
 ```
 
@@ -59,6 +61,7 @@ research-assistant/
 ├── test/                    Golden test 数据与运行器
 ├── scripts/                 Unix / Windows 启动脚本
 ├── backend.env.example      后端环境变量模板
+├── .env.example             Compose 内部服务 Token 模板
 ├── docker-compose.yml       本地编排
 └── Makefile                 开发命令入口
 ```

@@ -98,14 +98,17 @@ Research Assistant Agent/
 - Docker Engine 20.10+ 与 Docker Compose v2
 - Git
 - 一个 OpenAI-compatible LLM API Key
-- 本地开发需要 Go 1.25+（后端建议使用 Linux 目标或 Docker 构建）与 Node.js 20+
+- 本地开发需要 Go 1.26.1（backend/docker-sandbox）与 Node.js 22+
+- 后端依赖 Linux 进程组与 `Statfs`，Windows 原生后端不受支持；Windows 请使用 Docker Compose
 
 ### 使用 Docker Compose
 
 ```bash
 cd research-assistant
+cp .env.example .env
+# 编辑 .env，设置随机 SANDBOX_API_TOKEN 与 RESEARCH_OPTIMIZER_API_TOKEN
 cp backend.env.example backend.env
-# 编辑 backend.env，至少填写 OPENAI_API_KEY
+# 编辑 backend.env，至少填写 OPENAI_API_KEY，并保持 SANDBOX_API_TOKEN 与上面的 .env 一致
 
 docker compose up --build -d
 ```
@@ -143,7 +146,7 @@ make run-backend     # 终端 2
 make run-frontend    # 终端 3
 ```
 
-Windows 用户可使用 `scripts/windows/` 下的 PowerShell 脚本，详见 [scripts/README.md](research-assistant/scripts/README.md)。
+Windows 用户请使用 Docker Compose；`scripts/windows/start-backend.ps1` 仍会尝试原生 `go run`，但后端并不支持 Windows 原生编译。详见 [scripts/README.md](research-assistant/scripts/README.md)。
 
 ## 配置
 
@@ -161,7 +164,8 @@ Windows 用户可使用 `scripts/windows/` 下的 PowerShell 脚本，详见 [sc
 | `RESEARCH_OPTIMIZER_API_TOKEN` | 否 | Backend 与 Optimizer 之间的 Bearer Token |
 | `PLAN_MAX_TASK_ATTEMPTS` / `PLAN_MAX_DURATION_SECONDS` | 否 | 计划尝试次数与时长预算 |
 | `REQUIRE_PLAN_APPROVAL` | 否 | 执行前强制人工审批 |
-| `API_AUTH_TOKEN` / `SANDBOX_API_TOKEN` | 否 | API 与内部沙箱的静态 Bearer 保护 |
+| `API_AUTH_TOKEN` / `REQUIRE_API_AUTH` | 否 | API 静态 Bearer 保护；`REQUIRE_API_AUTH=true` 且 token 为空时 fail-closed |
+| `SANDBOX_API_TOKEN` | 是 | Compose 必须通过 `.env` 设置；不再使用可预测默认值 |
 | `CORS_ALLOWED_ORIGINS` | 否 | 允许访问后端的前端 Origin 列表 |
 
 后端镜像构建还支持 `DEBIAN_MIRROR` 与 `DEBIAN_SECURITY_MIRROR`，由执行 `docker compose` 的 shell 或项目 `.env` 读取。GPU 透传需要宿主机安装 NVIDIA Container Toolkit，并设置 `SANDBOX_DOCKER_GPUS=all`。
@@ -178,9 +182,10 @@ Windows 用户可使用 `scripts/windows/` 下的 PowerShell 脚本，详见 [sc
 | `POST` | `/api/plans/:id/cancel` | 取消计划与未完成节点 |
 | `POST` | `/api/plans/:id/tasks/:taskId/retry` | 重试失败、阻塞或取消节点 |
 | `POST` | `/api/plans/:id/tasks/:taskId/reassign` | 重分配节点并使旧执行租约失效 |
+| `POST` | `/api/plans/:id/tasks/:taskId/execute` | 仅执行计划内节点；输入来自 PlanGraph/Artifact，不接收客户端路径 |
 | `GET` | `/api/plans/:id/events` | 获取计划事件历史 |
 | `GET` | `/api/plans/:id/stream` | 订阅计划级 SSE 事件流 |
-| `POST` | `/api/execute` | 直接执行单个 Agent 任务并流式返回结果 |
+| `POST` | `/api/execute` | 已禁用（410）；旧直接执行入口不再接受任意 `Inputs` |
 | `POST` | `/api/uploads` | 上传论文、配置或小型 Benchmark 数据 |
 | `GET` | `/api/uploads/:id/content` | 按用户所有权读取上传内容 |
 | `POST` | `/api/chat` | 通用对话接口 |

@@ -16,13 +16,15 @@
 
 | 脚本 | 说明 |
 |---|---|
-| `windows/start-backend.ps1` / `.cmd` | 启动 Go API |
+| `windows/start-backend.ps1` / `.cmd` | 明确提示使用 Docker Compose（Windows 原生后端不受支持） |
 | `windows/start-sandbox.ps1` / `.cmd` | 启动 Go 沙箱服务 |
 | `windows/start-frontend.ps1` / `.cmd` | 启动 Vite |
 | `windows/docker-up.ps1` / `.cmd` | Docker Compose 启动 |
 | `windows/docker-down.ps1` / `.cmd` | Docker Compose 停止 |
 
 PowerShell 脚本会清理代理环境变量、创建 `.gocache` 并读取 `backend.env`。如果 `OPENAI_API_KEY` 未配置，启动脚本会给出明确错误。
+
+> Windows 原生后端不受支持：后端依赖 Linux 进程组、`syscall.Kill` 与 `Statfs`。Windows 上请使用 `docker compose up --build -d`；`start-backend.ps1` 现在会直接提示该方式。
 
 ## 使用
 

@@ -3,6 +3,7 @@ import type {
   ChatResponse,
   ExecutePlanResponse,
   PlanEvent,
+  PlanGraph,
   PlanResponse,
 	UploadedFile,
 } from '../../contracts/api';
@@ -22,6 +23,13 @@ const buildIdentityHeaders = (identity: RequestIdentity) => ({
 export const createPlan = async (intent: string, identity: RequestIdentity, attachments: string[] = []): Promise<PlanResponse> => {
   const response = await httpClient.post<PlanResponse>('/api/plan', { intent, attachments }, { headers: buildIdentityHeaders(identity) });
   return response.data;
+};
+
+export const getPlan = async (planId: string, identity: RequestIdentity): Promise<PlanGraph> => {
+  const response = await httpClient.get<{ plan_graph: PlanGraph }>(`/api/plans/${planId}`, {
+    headers: buildIdentityHeaders(identity),
+  });
+  return response.data.plan_graph;
 };
 
 export const uploadFile = async (file: File, identity: RequestIdentity): Promise<UploadedFile> => {

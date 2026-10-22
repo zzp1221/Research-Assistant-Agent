@@ -86,9 +86,10 @@ backend/
 | `POST` | `/api/plans/:id/cancel` | 取消计划 |
 | `POST` | `/api/plans/:id/tasks/:taskId/retry` | 重试节点 |
 | `POST` | `/api/plans/:id/tasks/:taskId/reassign` | 重分配节点 |
+| `POST` | `/api/plans/:id/tasks/:taskId/execute` | 执行计划内单个节点；忽略客户端 `inputs` |
 | `GET` | `/api/plans/:id/events` | 事件历史 |
 | `GET` | `/api/plans/:id/stream` | SSE 事件流 |
-| `POST` | `/api/execute` | 直接执行单个任务 |
+| `POST` | `/api/execute` | 已禁用（410）；请使用上面的计划内节点执行接口 |
 | `POST` | `/api/uploads` | 上传附件 |
 | `GET` | `/api/uploads/:id/content` | 读取附件 |
 | `POST` | `/api/chat` | 对话 |
@@ -108,6 +109,7 @@ backend/
 | `BENCHMARK_PRIVATE_ROOT` | 隐藏标签与 evaluator 目录，不应挂载进沙箱 |
 | `RESEARCH_OPTIMIZER_URL` / `RESEARCH_OPTIMIZER_API_TOKEN` | Python 优化器 |
 | `API_AUTH_TOKEN` | API 静态 Token |
+| `REQUIRE_API_AUTH` | `true` 时 token 为空将 fail-closed |
 | `CORS_ALLOWED_ORIGINS` | 允许的前端 Origin |
 | `PLAN_MAX_TASK_ATTEMPTS` / `PLAN_MAX_DURATION_SECONDS` | 任务与时长预算 |
 | `REQUIRE_PLAN_APPROVAL` | 是否强制人工审批 |
@@ -124,7 +126,7 @@ go test ./...
 go test -v ./evals
 ```
 
-后端包含 Linux 专用的进程组、`syscall.Kill` 和 `Statfs` 调用。在 Windows 上直接 `go build` 会报 `SysProcAttr.Setpgid` 等错误，应在 Docker 中构建，或使用：
+后端包含 Linux 专用的进程组、`syscall.Kill` 和 `Statfs` 调用。**Windows 原生后端不受支持**；Windows 请使用 Docker Compose。在 Linux 上可交叉构建：
 
 ```bash
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -buildvcs=false ./...

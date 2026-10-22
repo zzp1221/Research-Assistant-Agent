@@ -103,5 +103,5 @@ $env:NO_PROXY = "localhost,127.0.0.1,::1"
 $env:no_proxy = "localhost,127.0.0.1,::1"
 $env:GOCACHE = $gocache
 
-Set-Location (Join-Path $root "backend")
-go run cmd/api/main.go
+Set-Location $root
+throw "The backend requires Linux process-group and Statfs support. Use Docker Compose instead: docker compose up --build -d"

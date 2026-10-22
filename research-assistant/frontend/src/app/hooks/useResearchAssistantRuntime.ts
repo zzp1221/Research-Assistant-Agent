@@ -188,10 +188,11 @@ interface UseResearchAssistantRuntimeOptions {
   setNodes: Dispatch<SetStateAction<Node[]>>;
   appendChatMessage: (message: ChatMessage) => void;
 	identity: RequestIdentity;
+	refreshPlanState?: () => void | Promise<void>;
 }
 
 export function useResearchAssistantRuntime(options: UseResearchAssistantRuntimeOptions) {
-	const { nodes, setNodes, appendChatMessage, identity } = options;
+	const { nodes, setNodes, appendChatMessage, identity, refreshPlanState } = options;
   const planEventSourceRef = useRef<EventSource | null>(null);
   const [executionState, dispatchExecution] = useReducer(executionReducer, {
     selectedTask: null,
@@ -303,6 +304,7 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
                   ? '整张拓扑图已经执行完成。'
                   : `计划执行失败：${String(event.payload?.error || event.payload?.reason || '未知错误')}`,
             });
+            void refreshPlanState?.();
           }
         },
         onError: () => {
@@ -320,7 +322,7 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
 
       planEventSourceRef.current = source;
     },
-	[appendChatMessage, appendNodeLog, patchNodeState, setNodes, updateNodeVisualState],
+	[appendChatMessage, appendNodeLog, patchNodeState, refreshPlanState, setNodes, updateNodeVisualState],
   );
 
   const handleExecuteTask = useCallback(

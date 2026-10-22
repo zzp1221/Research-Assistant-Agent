@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChatMessage, IntentContext, PlanClarification, PlanGraph, UploadedFile } from '../../contracts/api';
-import { chat, createPlan, uploadFile } from '../../services/api/researchAssistantApi';
+import { chat, createPlan, getPlan, uploadFile } from '../../services/api/researchAssistantApi';
 import { uiText } from '../constants/uiText';
 
 const isTaskIntent = (input: string) => {
@@ -352,6 +352,34 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     [],
   );
 
+  const refreshActivePlan = useCallback(async () => {
+    const session = activeSession;
+    const planId = session?.activePlanId;
+    const sessionId = persistedState.activeSessionId;
+    if (!planId || !sessionId) return;
+    try {
+      const planGraph = await getPlan(planId, {
+        userId: persistedState.userId ?? guestUserId,
+        sessionId,
+      });
+      updateSessionPlanState(sessionId, {
+        activePlanId: planGraph.id,
+        intentContext: session.intentContext ?? null,
+        planGraph,
+      });
+    } catch (error) {
+      console.warn('[chat] failed to refresh plan state', error);
+    }
+  }, [activeSession, guestUserId, persistedState.activeSessionId, persistedState.userId, updateSessionPlanState]);
+
+  useEffect(() => {
+    if (activeSession?.activePlanId) {
+      void refreshActivePlan();
+    }
+    // Refresh once per session switch, not on every planGraph update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSession?.id]);
+
   const handleSendMessage = useCallback(async () => {
 	if (loading || (!prompt.trim() && pendingAttachments.length === 0) || !persistedState.activeSessionId || uploadingAttachments) return;
 
@@ -441,5 +469,6 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     handleSendMessage,
 	handleAttachFiles,
 	handleRemoveAttachment,
+	refreshActivePlan,
   };
 }
