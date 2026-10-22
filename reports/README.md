@@ -36,6 +36,19 @@ published the backend on `127.0.0.1:18080` and the frontend on
 - `autoresearch-rank-bm25.json` — complete rank_bm25 AutoResearch plan graph and
   trial ledgers.
 
+## Phase 1 (PDF + document assist + readable results)
+
+The phase 1 acceptance run is documented in [phase1-README.md](phase1-README.md).
+It covers local pdfjs assets, PDF text extraction, real DeepSeek translation and
+explanation, background full-document translation, a 10/10 Apriori reproduction,
+a 13/13 benchmark plan with `benchmark.validation/v1`, rank_bm25 AutoResearch
+with hidden holdout 3/3, and browser UI evidence in `ui/`.
+
+Note: the DeepSeek account balance was exhausted during the final translation
+run (`HTTP 402 Insufficient Balance`). Completed evidence above was captured
+before that point; failed pages are reported as `failed`/`partial` instead of
+being shown as translated.
+
 ## Notes
 
 The initial Attention Is All You Need smoke attempt was canceled after it began
