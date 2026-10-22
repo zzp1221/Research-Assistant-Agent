@@ -209,11 +209,15 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (persistedState.userId) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(persistedState));
-      return;
+    try {
+      if (persistedState.userId) {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(persistedState));
+        return;
+      }
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch (error) {
+      console.warn('[chat] failed to persist sessions; local storage quota or privacy mode blocked it', error);
     }
-    window.localStorage.removeItem(STORAGE_KEY);
   }, [persistedState]);
 
   useEffect(() => {
@@ -349,7 +353,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
   );
 
   const handleSendMessage = useCallback(async () => {
-	if ((!prompt.trim() && pendingAttachments.length === 0) || !persistedState.activeSessionId || uploadingAttachments) return;
+	if (loading || (!prompt.trim() && pendingAttachments.length === 0) || !persistedState.activeSessionId || uploadingAttachments) return;
 
 	const userPrompt = prompt.trim() || '请分析上传的材料，并设计预算受限的轻量消融实验。';
 	const attachmentNames = pendingAttachments.map((attachment) => attachment.name);
@@ -387,13 +391,12 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
             role: 'system',
             text: clarificationText,
 		});
-		setPendingAttachments([]);
-		setAttachmentError('');
         }
+        setPendingAttachments([]);
+        setAttachmentError('');
         appendMessageToSession(requestSessionId, {
           role: 'system',
           text: uiText.planGenerated,
-          actions: ['open_pdf', 'translate_full', 'close_pdf'],
         });
       } else {
         const response = await chat(userPrompt, {
@@ -408,7 +411,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     } finally {
       setLoading(false);
     }
-	}, [appendMessageToSession, guestUserId, pendingAttachments, persistedState.activeSessionId, persistedState.userId, prompt, updateSessionPlanState, uploadingAttachments]);
+	}, [appendMessageToSession, guestUserId, loading, pendingAttachments, persistedState.activeSessionId, persistedState.userId, prompt, updateSessionPlanState, uploadingAttachments]);
 
   return {
     prompt,

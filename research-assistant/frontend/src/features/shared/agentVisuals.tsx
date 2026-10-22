@@ -43,6 +43,12 @@ export const getTaskStyleByStatus = (status?: string) => {
       return { borderColor: '#ef4444', backgroundColor: '#fef2f2' };
     case 'blocked':
       return { borderColor: '#6b7280', backgroundColor: '#f3f4f6' };
+    case 'canceled':
+      return { borderColor: '#94a3b8', backgroundColor: '#f8fafc' };
+    case 'skipped':
+      return { borderColor: '#94a3b8', backgroundColor: '#f8fafc' };
+    case 'awaiting_approval':
+      return { borderColor: '#8b5cf6', backgroundColor: '#f5f3ff' };
     default:
       return { borderColor: '#e5e7eb', backgroundColor: '#ffffff' };
   }

@@ -13,3 +13,12 @@ func TestDockerGPURequest(t *testing.T) {
 		t.Fatalf("dockerGPURequest() = %q, want empty", got)
 	}
 }
+
+func TestExtractContainerIDRejectsNonHexLines(t *testing.T) {
+	if got := extractContainerIDFromDockerRunOutput("pull progress\nnot-a-container-id\n"); got != "" {
+		t.Fatalf("unexpected container id: %q", got)
+	}
+	if got := extractContainerIDFromDockerRunOutput("pull progress\n0123456789ab\n"); got != "0123456789ab" {
+		t.Fatalf("unexpected container id: %q", got)
+	}
+}

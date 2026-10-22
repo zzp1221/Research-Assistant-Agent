@@ -95,7 +95,9 @@ export function ChatComposer(props: ChatComposerProps) {
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
-              onSendMessage();
+              if (!loading && !e.nativeEvent.isComposing) {
+                onSendMessage();
+              }
             }
           }}
           placeholder={

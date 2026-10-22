@@ -23,18 +23,18 @@ export function PdfPanel(props: PdfPanelProps) {
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
       <div className="bg-gray-100 p-2 text-xs text-gray-500 text-center border-b border-gray-200 flex justify-between items-center px-4">
-        <span className="font-medium">正在阅读: Attention Is All You Need.pdf</span>
+        <span className="font-medium">PDF 阅读器</span>
         <div className="flex items-center gap-2">
           <button
             onClick={onFullTranslation}
             disabled={isFullTranslating}
-            className="flex items-center gap-1 text-blue-600 hover:text-blue-700 bg-white px-2 py-1 rounded border border-blue-200 shadow-sm transition-all active:scale-95"
+            className="flex items-center gap-1 text-slate-600 hover:text-slate-800 bg-white px-2 py-1 rounded border border-slate-200 shadow-sm transition-all active:scale-95"
           >
             <Languages className={`w-3 h-3 ${isFullTranslating ? 'animate-spin' : ''}`} />
-            {isFullTranslating ? '翻译中...' : '全文翻译'}
+            {isFullTranslating ? '处理中...' : '全文翻译（未接入）'}
           </button>
           <span className="flex items-center gap-1 text-gray-400">
-            <FileUp className="w-3 h-3" /> 切换文档
+            <FileUp className="w-3 h-3" /> 文档
           </span>
         </div>
       </div>

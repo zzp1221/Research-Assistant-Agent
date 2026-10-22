@@ -337,3 +337,62 @@ func TestPlanRuntimeRoutesUploadedDatasetToCustomBenchmarkHarness(t *testing.T) 
 		t.Fatalf("benchmark dataset excerpt leaked into plan response: %#v", uploadedFiles[0])
 	}
 }
+
+type closeNotifierRecorder struct {
+	*httptest.ResponseRecorder
+	closed chan bool
+}
+
+func (r *closeNotifierRecorder) CloseNotify() <-chan bool { return r.closed }
+
+func TestPlanRuntimeExecutesTaskFromStoredPlanAndIgnoresClientInputs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	planStore := store.NewMemoryPlanStore()
+	eventBus := events.NewBus()
+	agentRunner := &completingAgentRunner{}
+	executor := scheduler.NewRoutedTaskExecutor(agentRunner, agentRunner, agentRunner)
+	planScheduler := scheduler.NewScheduler(planStore, executor, eventBus, 1)
+	runtime := newPlanRuntime(planner.NewPlanner(), planStore, planScheduler, eventBus)
+
+	router := gin.New()
+	runtime.register(router.Group("/api"))
+
+	createRequest := httptest.NewRequest(http.MethodPost, "/api/plan", bytes.NewBufferString(`{"intent":"运行一段 Python 代码并分析结果"}`))
+	createRequest.Header.Set("Content-Type", "application/json")
+	createRequest.Header.Set(userIDHeaderName, "task-execution-user")
+	createResponse := httptest.NewRecorder()
+	router.ServeHTTP(createResponse, createRequest)
+	if createResponse.Code != http.StatusOK {
+		t.Fatalf("create status=%d body=%s", createResponse.Code, createResponse.Body.String())
+	}
+	var created struct {
+		PlanGraph models.PlanGraph `json:"plan_graph"`
+	}
+	if err := json.Unmarshal(createResponse.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if len(created.PlanGraph.Nodes) == 0 {
+		t.Fatal("expected at least one node")
+	}
+	taskID := created.PlanGraph.Nodes[0].ID
+
+	executeRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/plans/"+created.PlanGraph.ID+"/tasks/"+taskID+"/execute",
+		bytes.NewBufferString(`{"inputs":{"workspace_path":"/etc"}}`),
+	)
+	executeRequest.Header.Set("Content-Type", "application/json")
+	executeRequest.Header.Set(userIDHeaderName, "task-execution-user")
+	executeResponse := &closeNotifierRecorder{ResponseRecorder: httptest.NewRecorder(), closed: make(chan bool)}
+	router.ServeHTTP(executeResponse, executeRequest)
+	if executeResponse.Code != http.StatusOK {
+		t.Fatalf("execute status=%d body=%s", executeResponse.Code, executeResponse.Body.String())
+	}
+	body := executeResponse.Body.String()
+	if !strings.Contains(body, "event:result") {
+		t.Fatalf("expected result event, body=%s", body)
+	}
+	if strings.Contains(body, "/etc") {
+		t.Fatalf("client-controlled inputs leaked into task execution: %s", body)
+	}
+}

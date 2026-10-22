@@ -2,7 +2,6 @@ import { API_BASE_URL } from '../../config/env';
 import type {
   ChatResponse,
   ExecutePlanResponse,
-  ExecuteTaskPayload,
   PlanEvent,
   PlanResponse,
 	UploadedFile,
@@ -99,20 +98,25 @@ const parseSseChunk = (chunk: string): { type: string; data: string }[] => {
   });
 };
 
-export const executeTaskStream = async (
-  payload: ExecuteTaskPayload,
+export const executePlanTaskStream = async (
+  planId: string,
+  taskId: string,
+  identity: RequestIdentity,
   handlers: {
     onLog: (line: string) => void;
     onResult: (rawData: string) => void;
     onError: (errorMessage: string) => void;
   },
 ): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/api/execute`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  const response = await fetch(
+    `${API_BASE_URL}/api/plans/${encodeURIComponent(planId)}/tasks/${encodeURIComponent(taskId)}/execute`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...buildIdentityHeaders(identity) },
+      body: '{}',
+    },
+  );
 
   if (!response.ok) {
     throw new Error(`[HTTP ${response.status}] 哎呀，服务器好像开小差了，请稍后再试一次吧～`);
@@ -125,6 +129,7 @@ export const executeTaskStream = async (
   const reader = response.body.getReader();
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
+  let receivedResult = false;
 
   while (true) {
     let readResult: ReadableStreamReadResult<Uint8Array>;
@@ -149,10 +154,15 @@ export const executeTaskStream = async (
       if (event.type === DIRECT_EXECUTION_EVENTS.LOG) {
         handlers.onLog(event.data);
       } else if (event.type === DIRECT_EXECUTION_EVENTS.RESULT) {
+        receivedResult = true;
         handlers.onResult(event.data);
       } else if (event.type === DIRECT_EXECUTION_EVENTS.ERROR) {
         handlers.onError(event.data);
+        return;
       }
     }
+  }
+  if (!receivedResult) {
+    throw new Error('任务流已结束，但没有收到结果事件；请检查后端日志后重试。');
   }
 };

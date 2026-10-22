@@ -31,11 +31,7 @@ func (e *DefaultTaskExecutor) ExecuteTask(ctx context.Context, plan *models.Plan
 		return nil, fmt.Errorf("task is nil")
 	}
 
-	return &models.TaskExecutionResult{
-		Status:    models.StatusCompleted,
-		Result:    fmt.Sprintf("task %s executed by placeholder executor", task.Name),
-		Artifacts: buildArtifacts(task, &models.Task{Result: fmt.Sprintf("task %s executed by placeholder executor", task.Name)}),
-	}, nil
+	return nil, fmt.Errorf("no task executor configured for task %s", task.Name)
 }
 
 // RoutedTaskExecutor dispatches plan nodes to the existing specialized agents.
@@ -141,7 +137,7 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 	}
 	if err := runner.ExecuteTask(ctx, runtimeTask, sharedContext); err != nil {
 		status := runtimeTask.Status
-		if status == "" {
+		if status != models.StatusCanceled {
 			status = models.StatusFailed
 		}
 		return &models.TaskExecutionResult{
@@ -154,7 +150,8 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 	}
 
 	status := runtimeTask.Status
-	if status == "" || status == models.StatusPending {
+	switch status {
+	case "", models.StatusPending, models.StatusReady, models.StatusInProgress, models.StatusCompleted:
 		status = models.StatusCompleted
 	}
 
@@ -380,5 +377,6 @@ func truncateArtifactValue(value string) string {
 }
 
 func nodeArtifactFallback(key string) string {
-	return fmt.Sprintf("artifact generated for %s", key)
+	_ = key
+	return ""
 }

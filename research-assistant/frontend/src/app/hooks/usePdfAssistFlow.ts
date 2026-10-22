@@ -28,16 +28,11 @@ export function usePdfAssistFlow(options: UsePdfAssistFlowOptions) {
 
   const handleFullTranslation = useCallback(async () => {
     setIsFullTranslating(true);
-    appendChatMessage({ role: 'system', text: '正在调起 Research Assistant Agent 进行全文翻译，请稍候...' });
-
-    setTimeout(() => {
-      setIsFullTranslating(false);
-      appendChatMessage({
-        role: 'system',
-        text: '全文翻译已完成！您可以直接在 PDF 阅读器中看到翻译后的中文文本。',
-        actions: ['open_pdf'],
-      });
-    }, 2000);
+    appendChatMessage({
+      role: 'system',
+      text: '全文翻译服务尚未接入后端；当前只能使用划词追问。请勿将本功能视为可用的翻译结果。',
+    });
+    setIsFullTranslating(false);
   }, [appendChatMessage]);
 
   return {

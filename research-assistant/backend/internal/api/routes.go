@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"research-assistant-backend/internal/agent"
 	"research-assistant-backend/internal/models"
@@ -218,153 +216,14 @@ func SetupRoutes(r *gin.Engine) {
 		})
 
 		apiGroup.POST("/execute", func(c *gin.Context) {
-			var payload ExecutePayload
-			if err := c.ShouldBindJSON(&payload); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-
-			// Disable proxy buffering for SSE
-			c.Header("X-Accel-Buffering", "no")
-			c.Header("Cache-Control", "no-cache")
-			c.Header("Connection", "keep-alive")
-
-			// Create a channel for logs
-			logChannel := make(chan string, 100)
-			done := make(chan error, 1)
-
-			// Create a context with the log channel
-			ctx := context.WithValue(c.Request.Context(), "logChannel", logChannel)
-
-			// Create a mock task to pass to the agent
-			task := &models.Task{
-				ID:          payload.TaskID,
-				Name:        payload.TaskName,
-				Type:        payload.TaskType,
-				Description: payload.TaskDescription,
-				AssignedTo:  payload.AssignedTo,
-				Status:      models.StatusPending,
-				Inputs:      payload.Inputs,
-			}
-
-			if task.ID == "" {
-				task.ID = "exec-1"
-			}
-			if task.Name == "" {
-				task.Name = "Direct Execution Task"
-			}
-
-			// Add taskID to context
-			ctx = context.WithValue(ctx, "taskID", task.ID)
-
-			// Create a workspace directory for the task
-			workspacePath := filepath.Join("/tmp", "research-assistant_workspace_"+task.ID)
-			_ = os.MkdirAll(workspacePath, 0777)
-
-			// Initialize persistent sandbox for this task
-			// 先同步创建沙箱，再将 containerID 注入 context，避免 goroutine 内竞态
-			var containerID string
-			if sb != nil && shouldAllocateDirectSandbox(task) {
-				logChannel <- "[System] 正在通过 OpenSandbox 服务分配持久化沙箱环境..."
-				var sandboxErr error
-				containerID, sandboxErr = sb.CreatePersistentSandbox(ctx, task.ID, "python:3.9-bullseye", workspacePath)
-				if sandboxErr != nil {
-					logChannel <- fmt.Sprintf("[Warning] 创建沙箱失败，将降级为临时沙箱模式: %v", sandboxErr)
-				} else {
-					typeStr := "OpenSandbox"
-					if len(containerID) > 3 && containerID[:3] == "dk-" {
-						typeStr = "原生 Docker (已启动兜底方案)"
-					}
-					logChannel <- fmt.Sprintf("[System] %s 沙箱创建成功 (ID: %s)", typeStr, containerID)
-					ctx = context.WithValue(ctx, "containerID", containerID)
-					if task.Inputs == nil {
-						task.Inputs = map[string]any{}
-					}
-					task.Inputs["runtime_session"] = containerID
-					task.Inputs["prepared_runtime"] = containerID
-				}
-			}
-			logChannel <- formatExecuteParamsLog("[Params] 后端实际传入参数", task.Inputs)
-
-			go func() {
-				var err error
-				switch task.AssignedTo {
-				case "librarian_agent":
-					err = librarianAgent.ExecuteTask(ctx, task, nil)
-				case "data_agent":
-					err = dataAgent.ExecuteTask(ctx, task, nil)
-				case "coder_agent", "sandbox_agent":
-					err = coderAgent.ExecuteTask(ctx, task, nil)
-				case "research_coding_agent":
-					err = researchCodingAgent.ExecuteTask(ctx, task, nil)
-				case "benchmark_agent":
-					err = benchmarkAgent.ExecuteTask(ctx, task, nil)
-				default:
-					err = coderAgent.ExecuteTask(ctx, task, nil)
-				}
-
-				// Check if an image was generated in the workspace
-				if containerID != "" {
-					plotPath := filepath.Join("/tmp/research-assistant_workspace_"+task.ID, "output_plot.png")
-					if _, err := os.Stat(plotPath); err == nil {
-						logChannel <- "[System] 检测到生成的图表，正在处理图像数据..."
-						imgData, readErr := os.ReadFile(plotPath)
-						if readErr == nil {
-							task.ImageBase64 = base64.StdEncoding.EncodeToString(imgData)
-							logChannel <- "[System] 图表处理完成"
-						}
-					}
-				}
-				if err == nil {
-					logChannel <- formatExecuteParamsLog("[Params] 后端产出并传递给下游的参数", buildExecuteOutputs(task))
-				}
-
-				if sb != nil && containerID != "" {
-					logChannel <- "[System] 任务执行完毕，正在清理沙箱环境..."
-					_ = sb.CleanupSandbox(context.Background(), containerID)
-					logChannel <- "[System] 沙箱环境清理完成"
-				}
-				done <- err
-			}()
-
-			// Use Gin's Stream for robust SSE
-			c.Stream(func(w io.Writer) bool {
-				ticker := time.NewTicker(5 * time.Second)
-				defer ticker.Stop()
-
-				for {
-					select {
-					case logMsg := <-logChannel:
-						c.SSEvent("log", logMsg)
-						return true
-					case <-ticker.C:
-						c.SSEvent("heartbeat", "keep-alive")
-						return true
-					case err := <-done:
-						for len(logChannel) > 0 {
-							c.SSEvent("log", <-logChannel)
-						}
-						if err != nil {
-							c.SSEvent("error", err.Error())
-						} else {
-							if len(task.Result) > 50000 {
-								c.SSEvent("log", "[Warning] Result is very large, truncating...")
-								task.Result = task.Result[:50000] + "\n...[Truncated]..."
-							}
-							c.SSEvent("result", gin.H{
-								"result":          task.Result,
-								"code":            task.Code,
-								"structured_data": task.StructuredData,
-								"image_base_64":   task.ImageBase64,
-								"outputs":         buildExecuteOutputs(task),
-							})
-						}
-						return false // Close stream
-					case <-c.Request.Context().Done():
-						return false
-					}
-				}
+			// Direct execution used to accept arbitrary client-provided inputs,
+			// including workspace_path/storage_path values. Keep the old endpoint
+			// as an explicit tombstone so older clients fail closed; owner-scoped
+			// execution now lives at /api/plans/:id/tasks/:taskId/execute.
+			c.JSON(http.StatusGone, gin.H{
+				"error": "direct execution is disabled; use /api/plans/:id/tasks/:taskId/execute",
 			})
+			return
 		})
 	}
 }

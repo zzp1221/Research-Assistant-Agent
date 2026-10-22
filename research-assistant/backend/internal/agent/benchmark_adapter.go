@@ -14,6 +14,7 @@ import (
 
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
+	"research-assistant-backend/internal/workspace"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -355,23 +356,15 @@ func benchmarkContextFilePriority(relative string) (int, bool) {
 }
 
 func benchmarkWorkspace(task *models.Task) (string, error) {
-	workspacePath := filepath.Clean(strings.TrimSpace(extractTaskInputLike(task, "workspace_path")))
+	workspacePath := strings.TrimSpace(extractTaskInputLike(task, "workspace_path"))
 	if workspacePath == "" || workspacePath == "." {
 		return "", fmt.Errorf("workspace_path input is required")
 	}
-	workspacePath, err := filepath.Abs(workspacePath)
+	validated, err := workspace.ValidateWorkspacePath(workspacePath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("workspace_path is outside the allowed workspace roots: %w", err)
 	}
-	workspacePath, err = filepath.EvalSymlinks(workspacePath)
-	if err != nil {
-		return "", fmt.Errorf("workspace_path is unavailable")
-	}
-	info, err := os.Stat(workspacePath)
-	if err != nil || !info.IsDir() {
-		return "", fmt.Errorf("workspace_path is unavailable")
-	}
-	return workspacePath, nil
+	return validated, nil
 }
 
 func benchmarkPathInWorkspace(workspacePath, relative string) (string, error) {

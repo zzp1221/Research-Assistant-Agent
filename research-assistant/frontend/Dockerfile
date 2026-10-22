@@ -1,9 +1,9 @@
-# 使用官方 Node 镜像作为基础
-FROM node:20-bullseye AS builder
+# Node 22 is required by the frontend test runner and supports Vite 8.
+FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm ci --no-audit --no-fund
 COPY . .
 RUN npm run build
 

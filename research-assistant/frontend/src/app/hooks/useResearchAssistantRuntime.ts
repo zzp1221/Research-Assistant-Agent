@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { Node } from '@xyflow/react';
 import type { ChatMessage, ExecuteTaskResultEvent, NodeExecutionState, Task } from '../../contracts/api';
 import { PLAN_EVENTS, isPlanTerminalEvent, pickImageBase64 } from '../../contracts/events';
-import { approvePlan, cancelPlan, createPlanEventSource, executePlan, executeTaskStream, retryTask } from '../../services/api/researchAssistantApi';
+import { approvePlan, cancelPlan, createPlanEventSource, executePlan, executePlanTaskStream, retryTask } from '../../services/api/researchAssistantApi';
 import type { RequestIdentity } from '../../services/api/researchAssistantApi';
 import { getTaskStyleByStatus } from '../../features/shared/agentVisuals';
 import { createTaskNodeLabel } from '../../features/plan-graph/nodeLabelFactory';
@@ -44,6 +44,8 @@ const initialNodeExecutionState: NodeExecutionState = { logs: '', result: '', co
 const reportAgents = new Set(['librarian_agent', 'data_agent', 'benchmark_agent', 'research_coding_agent']);
 const isReportAgent = (assignedTo: string) => reportAgents.has(assignedTo);
 
+const terminalNodeStatuses = new Set(['completed', 'failed', 'skipped', 'canceled']);
+
 const updateNodeStatus = (node: Node, status: string, taskPatch: Partial<Task> = {}): Node => {
 	const task = node.data.task as Task;
 	if (!task) return node;
@@ -69,6 +71,11 @@ const updateNodeStatus = (node: Node, status: string, taskPatch: Partial<Task> =
 	};
 };
 
+const updateNodeStatusIfActive = (node: Node, status: string): Node => {
+	if (terminalNodeStatuses.has(String(node.data.status))) return node;
+	return updateNodeStatus(node, status);
+};
+
 const detectBestDisplayMode = (task: Task, state: NodeExecutionState): ExecutionDisplayMode => {
   if (task.Type === 'claim_evidence_build' && state.structuredData) return 'evidence';
   if ((task.Type === 'autoresearch_run' || task.Type === 'autoresearch_validate' || task.Type === 'experiment_run' || task.Type === 'experiment_validate') && (state.structuredData || state.result)) return 'trials';
@@ -86,12 +93,6 @@ const executionStateFromTask = (task: Task): NodeExecutionState => ({
   structuredData: task.StructuredData || '',
   imageBase64: task.ImageBase64 || '',
 });
-
-const looksLikePythonCode = (value: string): boolean => {
-  const text = value.trim();
-  if (!text) return false;
-  return /\b(import|from|def|class|print|if __name__)\b/.test(text);
-};
 
 const PARAM_PREVIEW_LIMIT = 1200;
 
@@ -209,34 +210,6 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
     dispatchExecution({ type: 'patch-task-state', taskId, updater });
   }, []);
 
-  const buildDirectExecutionInputs = useCallback(
-    (task: Task): Record<string, unknown> => {
-      const inputs: Record<string, unknown> = { ...(task.Inputs ?? {}) };
-      for (const dependencyId of task.Dependencies || []) {
-        const upstream = executionState.nodeStates[dependencyId];
-        if (!upstream) continue;
-
-        if (upstream.code && !inputs.generated_code) inputs.generated_code = upstream.code;
-        if (upstream.result) {
-          inputs[`dependency_${dependencyId}_result`] = upstream.result;
-          if (!inputs.generated_code && looksLikePythonCode(upstream.result)) inputs.generated_code = upstream.result;
-        }
-        if (upstream.imageBase64) inputs[`dependency_${dependencyId}_image_base64`] = upstream.imageBase64;
-        if (upstream.structuredData) {
-          inputs[`dependency_${dependencyId}_structured_data`] = upstream.structuredData;
-          const upstreamTask = nodes.find((node) => node.id === dependencyId)?.data.task as Task | undefined;
-          for (const artifactKey of upstreamTask?.OutputArtifacts || []) {
-            if (artifactKey === 'claim_rubric' || artifactKey === 'claim_evidence_graph') {
-              inputs[artifactKey] = upstream.structuredData;
-            }
-          }
-        }
-      }
-      return inputs;
-    },
-    [executionState.nodeStates, nodes],
-  );
-
   const appendNodeLog = useCallback(
     (taskId: string, line: string) => {
       patchNodeState(taskId, (prev) => ({
@@ -318,7 +291,7 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
 
           if (isPlanTerminalEvent(event)) {
 			if (event.event_type === PLAN_EVENTS.PLAN_CANCELED) {
-				setNodes((current) => current.map((node) => updateNodeStatus(node, 'canceled')));
+				setNodes((current) => current.map((node) => updateNodeStatusIfActive(node, 'canceled')));
 			}
             source.close();
             planEventSourceRef.current = null;
@@ -337,6 +310,11 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
           if (planEventSourceRef.current === source) {
             planEventSourceRef.current = null;
           }
+          dispatchExecution({ type: 'set-executing', value: false });
+          appendChatMessage({
+            role: 'system',
+            text: '计划事件流已中断；请刷新计划状态后重试。',
+          });
         },
       });
 
@@ -346,7 +324,11 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
   );
 
   const handleExecuteTask = useCallback(
-    async (task: Task) => {
+    async (task: Task, planId: string | null) => {
+      if (!planId) {
+        appendChatMessage({ role: 'system', text: '无法执行节点：当前会话没有关联的计划。' });
+        return;
+      }
       dispatchExecution({ type: 'set-executing', value: true });
       dispatchExecution({
         type: 'select-task',
@@ -355,26 +337,17 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
       });
       dispatchExecution({ type: 'set-display-mode', mode: 'logs' });
 
-      const directInputs = buildDirectExecutionInputs(task);
+      const nodeInputs = task.Inputs ?? {};
       const initLog = `[System] 正在唤醒 ${task.AssignedTo}...\n[System] 正在通过 Eino 框架调用 DeepSeek 模型${
         isReportAgent(task.AssignedTo) ? '生成结构化结果' : '生成代码'
-      }...\n\n${formatParameterObject('[Params] 本次传入参数', directInputs)}\n`;
+      }...\n\n${formatParameterObject('[Params] 计划内任务输入', nodeInputs)}\n`;
       patchNodeState(task.ID, () => ({ logs: initLog, result: '', code: '', structuredData: '', imageBase64: '' }));
 
       try {
-        await executeTaskStream(
-          {
-            task_id: task.ID,
-            task_name: task.Name,
-            task_type: task.Type,
-            assigned_to: task.AssignedTo,
-            inputs: directInputs,
-            task_description:
-              task.Description +
-              (task.AssignedTo === 'coder_agent' || task.AssignedTo === 'sandbox_agent'
-                ? '\n\n(提示: 请务必输出一段可执行的完整 Python 代码，完成上述任务目标)'
-                : ''),
-          },
+        await executePlanTaskStream(
+          planId,
+          task.ID,
+          identity,
           {
             onLog: (line) => {
               patchNodeState(task.ID, (prev) => ({
@@ -473,7 +446,7 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
         dispatchExecution({ type: 'set-executing', value: false });
       }
     },
-    [appendChatMessage, buildDirectExecutionInputs, executionState.nodeStates, patchNodeState, setNodes, updateNodeVisualState],
+    [appendChatMessage, executionState.nodeStates, identity, patchNodeState, setNodes, updateNodeVisualState],
   );
 
   const handleRunAllTasks = useCallback(
@@ -525,7 +498,7 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
 				await cancelPlan(activePlanId, identity);
 				planEventSourceRef.current?.close();
 				planEventSourceRef.current = null;
-				setNodes((current) => current.map((node) => updateNodeStatus(node, 'canceled')));
+				setNodes((current) => current.map((node) => updateNodeStatusIfActive(node, 'canceled')));
 				dispatchExecution({ type: 'set-executing', value: false });
 				appendChatMessage({ role: 'system', text: '计划已取消，未完成任务已停止。' });
 			} catch (error) {
@@ -539,11 +512,13 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
 	const handleRetryFailedPlan = useCallback(
 		async (activePlanId: string | null) => {
 			if (!activePlanId || executionState.isExecuting) return;
-			const failedNode = nodes.find((node) => node.data.status === 'failed');
-			if (!failedNode) return;
+			const failedNodes = nodes.filter((node) => node.data.status === 'failed');
+			if (failedNodes.length === 0) return;
 			dispatchExecution({ type: 'set-executing', value: true });
 			try {
-				await retryTask(activePlanId, failedNode.id, identity);
+				for (const failedNode of failedNodes) {
+					await retryTask(activePlanId, failedNode.id, identity);
+				}
 				setNodes((current) =>
 					current.map((node) =>
 						['failed', 'blocked', 'canceled'].includes(String(node.data.status))

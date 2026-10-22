@@ -18,6 +18,11 @@ import (
 
 var containerIDPattern = regexp.MustCompile(`^[a-f0-9]{12,64}$`)
 
+const (
+	sandboxLabelKey   = "research-assistant.sandbox"
+	sandboxLabelValue = "true"
+)
+
 type NativeDockerEngine struct {
 	mu         sync.RWMutex
 	mountPaths map[string]string // 记录容器 ID 到宿主机挂载路径的映射
@@ -122,7 +127,7 @@ func (e *NativeDockerEngine) Create(ctx context.Context, image string, mountPath
 		}
 		args = append(args, "-v", fmt.Sprintf("%s:/workspace", normalizedMountPath))
 	}
-	args = append(args, image, "sleep", "infinity")
+	args = append(args, "--", image, "sleep", "infinity")
 	fmt.Printf("[NativeDocker] Executing: docker %s\n", strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, dockerCommand(), args...)
 	output, err := cmd.CombinedOutput()
@@ -165,14 +170,39 @@ func normalizeDockerMountPath(mountPath string) (string, error) {
 	return normalizeAndAuthorizeMountPath(mountPath)
 }
 
+func (e *NativeDockerEngine) validateSandboxContainer(ctx context.Context, id string) error {
+	id = strings.TrimSpace(id)
+	if !containerIDPattern.MatchString(id) {
+		return fmt.Errorf("invalid sandbox container id")
+	}
+	output, err := exec.CommandContext(ctx, dockerCommand(),
+		"inspect", "--format", `{{ index .Config.Labels "`+sandboxLabelKey+`" }}`, id).Output()
+	if err != nil {
+		return fmt.Errorf("inspect sandbox container: %w", err)
+	}
+	if strings.TrimSpace(string(output)) != sandboxLabelValue {
+		return fmt.Errorf("container %s is not managed by this sandbox service", id)
+	}
+	return nil
+}
+
 func (e *NativeDockerEngine) Delete(ctx context.Context, id string) error {
+	if err := e.validateSandboxContainer(ctx, id); err != nil {
+		return err
+	}
+	if err := exec.CommandContext(ctx, dockerCommand(), "rm", "-f", id).Run(); err != nil {
+		return err
+	}
 	e.mu.Lock()
 	delete(e.mountPaths, id)
 	e.mu.Unlock()
-	return exec.CommandContext(ctx, dockerCommand(), "rm", "-f", id).Run()
+	return nil
 }
 
 func (e *NativeDockerEngine) ExecutePython(ctx context.Context, id string, code string) (*ExecutionResponse, error) {
+	if err := e.validateSandboxContainer(ctx, id); err != nil {
+		return nil, err
+	}
 	cmd := exec.CommandContext(ctx, dockerCommand(), "exec", id, "python3", "-c", code)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -214,6 +244,9 @@ func (e *NativeDockerEngine) ExecutePython(ctx context.Context, id string, code 
 }
 
 func (e *NativeDockerEngine) ExecutePythonStream(ctx context.Context, id string, code string, emit func(ExecutionStreamEvent) error) (*ExecutionResponse, error) {
+	if err := e.validateSandboxContainer(ctx, id); err != nil {
+		return nil, err
+	}
 	cmd := exec.CommandContext(ctx, dockerCommand(), "exec", id, "python3", "-c", code)
 	response, err := e.runStreamingCommand(ctx, cmd, emit)
 	if err != nil {
@@ -241,6 +274,9 @@ func (e *NativeDockerEngine) ExecutePythonStream(ctx context.Context, id string,
 }
 
 func (e *NativeDockerEngine) ExecuteCommand(ctx context.Context, id string, cmdArr []string) (*ExecutionResponse, error) {
+	if err := e.validateSandboxContainer(ctx, id); err != nil {
+		return nil, err
+	}
 	args := append([]string{"exec", id}, cmdArr...)
 	fmt.Printf("[NativeDocker] Executing: docker %s\n", strings.Join(args, " "))
 	dockerCmd := exec.CommandContext(ctx, dockerCommand(), args...)
@@ -266,6 +302,9 @@ func (e *NativeDockerEngine) ExecuteCommand(ctx context.Context, id string, cmdA
 }
 
 func (e *NativeDockerEngine) ExecuteCommandStream(ctx context.Context, id string, cmdArr []string, emit func(ExecutionStreamEvent) error) (*ExecutionResponse, error) {
+	if err := e.validateSandboxContainer(ctx, id); err != nil {
+		return nil, err
+	}
 	args := append([]string{"exec", id}, cmdArr...)
 	fmt.Printf("[NativeDocker] Executing: docker %s\n", strings.Join(args, " "))
 	dockerCmd := exec.CommandContext(ctx, dockerCommand(), args...)

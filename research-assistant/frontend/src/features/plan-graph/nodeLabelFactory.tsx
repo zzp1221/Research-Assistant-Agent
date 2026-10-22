@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, CircleAlert, Clock3, LoaderCircle, ShieldAlert } from 'lucide-react';
+import { CheckCircle2, Circle, CircleAlert, Clock3, LoaderCircle, ShieldAlert, XCircle } from 'lucide-react';
 import type { Task } from '../../contracts/api';
 import { getAgentIcon } from '../shared/agentVisuals';
 import { ExperimentSearchNodeLabel } from './ExperimentSearchNodeLabel';
@@ -28,6 +28,9 @@ const statusMeta: Record<string, { label: string; className: string; icon: typeo
   completed: { label: '已完成', className: 'text-emerald-600', icon: CheckCircle2 },
   failed: { label: '失败', className: 'text-red-600', icon: CircleAlert },
   blocked: { label: '已阻塞', className: 'text-slate-600', icon: ShieldAlert },
+  canceled: { label: '已取消', className: 'text-slate-500', icon: XCircle },
+  skipped: { label: '已跳过', className: 'text-slate-500', icon: XCircle },
+  awaiting_approval: { label: '待审批', className: 'text-violet-600', icon: ShieldAlert },
 };
 
 const getPrimaryTaskName = (taskName: string) => taskName.split(/\s+\/\s+/)[0]?.trim() || taskName;

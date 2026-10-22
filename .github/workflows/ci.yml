@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: research-assistant/backend/go.mod
+          cache: true
+      - name: Backend tests
+        working-directory: research-assistant/backend
+        run: |
+          go test ./...
+          go vet ./...
+      - name: Backend race tests
+        working-directory: research-assistant/backend
+        run: go test -race ./internal/scheduler ./internal/api ./internal/store
+      - name: Docker sandbox tests
+        working-directory: research-assistant/docker-sandbox
+        run: go test ./...
+      - name: Docker core tests
+        working-directory: docker-core
+        run: go test ./...
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: research-assistant/frontend/package-lock.json
+      - name: Install
+        working-directory: research-assistant/frontend
+        run: npm ci --no-audit --no-fund
+      - name: Build
+        working-directory: research-assistant/frontend
+        run: npm run build
+      - name: Lint
+        working-directory: research-assistant/frontend
+        run: npm run lint
+      - name: Test
+        working-directory: research-assistant/frontend
+        run: npm test
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Research optimizer tests
+        working-directory: research-assistant/research-optimizer
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m unittest discover -s tests -p 'test_*.py'
+      - name: Paper example tests
+        working-directory: research-assistant
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m unittest discover -s examples/paper-reproduction -p 'test_*.py'
+      - name: AutoResearch example tests
+        working-directory: research-assistant
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m unittest discover -s examples/autoresearch/intent_router -p 'test_*.py'

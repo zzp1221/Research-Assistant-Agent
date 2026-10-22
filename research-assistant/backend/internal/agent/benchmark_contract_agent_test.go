@@ -16,7 +16,20 @@ func TestBenchmarkAgentBuildsLeakageSafeContractAndRecomputesHiddenMetrics(t *te
 	isolationRoot := t.TempDir()
 	t.Setenv("BENCHMARK_PRIVATE_ROOT", filepath.Join(isolationRoot, "backend-private"))
 	t.Setenv("SANDBOX_WORKSPACE_ROOTS", filepath.Join(isolationRoot, "sandbox-workspaces"))
-	datasetPath := filepath.Join("..", "..", "..", "examples", "benchmark-agent", "classification", "reviews.csv")
+	uploadRoot := filepath.Join(isolationRoot, "uploads")
+	if err := os.MkdirAll(uploadRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("UPLOAD_ROOT", uploadRoot)
+	sourceDataset := filepath.Join("..", "..", "..", "examples", "benchmark-agent", "classification", "reviews.csv")
+	datasetBytes, err := os.ReadFile(sourceDataset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	datasetPath := filepath.Join(uploadRoot, "reviews.csv")
+	if err := os.WriteFile(datasetPath, datasetBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	checksum, err := sha256File(datasetPath)
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +53,14 @@ func TestBenchmarkAgentBuildsLeakageSafeContractAndRecomputesHiddenMetrics(t *te
 		t.Fatalf("unexpected audit: %#v", audit)
 	}
 
-	workspace := t.TempDir()
+	sandboxWorkspaceRoot := filepath.Join(isolationRoot, "sandbox-workspaces")
+	if err := os.MkdirAll(sandboxWorkspaceRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	workspace := filepath.Join(sandboxWorkspaceRoot, "workspace")
+	if err := os.MkdirAll(workspace, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(workspace, "README.md"), []byte("fixture repository"), 0o600); err != nil {
 		t.Fatal(err)
 	}

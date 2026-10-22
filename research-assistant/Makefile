@@ -26,7 +26,7 @@ help:
 	@echo "  make clean         - Remove repo-local build artifacts"
 
 install: tidy
-	cd frontend && npm install
+	cd frontend && npm ci
 
 install-ai:
 	cd ai-services/intent_recognition && pip install -r requirements.txt

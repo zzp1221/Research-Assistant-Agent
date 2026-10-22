@@ -1,0 +1,8 @@
+go 1.26.1
+
+use (
+	./research-assistant/backend
+	./research-assistant/docker-sandbox
+	./docker-core
+	./tool
+)

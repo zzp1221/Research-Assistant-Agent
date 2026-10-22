@@ -11,12 +11,19 @@ services:
       - /tmp:/tmp
     environment:
       - SANDBOX_DOCKER_GPUS=${SANDBOX_DOCKER_GPUS:-}
-      - SANDBOX_API_TOKEN=${SANDBOX_API_TOKEN:-local-sandbox-token}
+      - SANDBOX_API_TOKEN=${SANDBOX_API_TOKEN:?SANDBOX_API_TOKEN must be set in research-assistant/.env}
       - SANDBOX_CPU_LIMIT=${SANDBOX_CPU_LIMIT:-2}
       - SANDBOX_MEMORY_LIMIT=${SANDBOX_MEMORY_LIMIT:-4g}
       - SANDBOX_PIDS_LIMIT=${SANDBOX_PIDS_LIMIT:-256}
       - SANDBOX_NETWORK_MODE=${SANDBOX_NETWORK_MODE:-bridge}
       - SANDBOX_WORKSPACE_ROOTS=/tmp
+      - SANDBOX_IMAGE_ALLOWLIST=${SANDBOX_IMAGE_ALLOWLIST:-python:3.9-bullseye}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    mem_limit: 2g
     networks:
       - research-assistant-network
 
@@ -28,7 +35,7 @@ services:
     volumes:
       - research-assistant-experience-data:/data
     environment:
-      - RESEARCH_OPTIMIZER_API_TOKEN=${RESEARCH_OPTIMIZER_API_TOKEN:-local-optimizer-token}
+      - RESEARCH_OPTIMIZER_API_TOKEN=${RESEARCH_OPTIMIZER_API_TOKEN:?RESEARCH_OPTIMIZER_API_TOKEN must be set in research-assistant/.env}
       - RESEARCH_OPTIMIZER_DB_PATH=/data/experiences.sqlite3
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=2)"]
@@ -46,7 +53,7 @@ services:
         DEBIAN_MIRROR: ${DEBIAN_MIRROR:-http://deb.debian.org/debian}
         DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-http://deb.debian.org/debian-security}
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - /tmp:/tmp
       - ../docker-core/config:/app/config:ro
@@ -57,13 +64,19 @@ services:
       - ./backend.env
     environment:
       - SANDBOX_URL=http://docker-sandbox:8082
-      - SANDBOX_API_TOKEN=${SANDBOX_API_TOKEN:-local-sandbox-token}
+      - SANDBOX_API_TOKEN=${SANDBOX_API_TOKEN:?SANDBOX_API_TOKEN must be set in research-assistant/.env}
       - PLAN_STORE_PATH=/app/data/plans.json
       - UPLOAD_ROOT=/app/uploads
       - UPLOAD_MAX_MB=${UPLOAD_MAX_MB:-32}
       - BENCHMARK_PRIVATE_ROOT=/app/private-benchmarks
       - RESEARCH_OPTIMIZER_URL=http://research-optimizer:8090
-      - RESEARCH_OPTIMIZER_API_TOKEN=${RESEARCH_OPTIMIZER_API_TOKEN:-local-optimizer-token}
+      - RESEARCH_OPTIMIZER_API_TOKEN=${RESEARCH_OPTIMIZER_API_TOKEN:?RESEARCH_OPTIMIZER_API_TOKEN must be set in research-assistant/.env}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 1024
+    mem_limit: 4g
     depends_on:
       docker-sandbox:
         condition: service_started
@@ -76,7 +89,7 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "5173:80" # 将容器内的 Nginx 80 端口映射到宿主机 5173
+      - "127.0.0.1:5173:80" # 将容器内的 Nginx 80 端口映射到宿主机 5173
     depends_on:
       - backend
     networks:

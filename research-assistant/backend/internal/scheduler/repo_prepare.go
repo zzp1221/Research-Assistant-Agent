@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/workspace"
 )
 
 type repoPrepareManifest struct {
@@ -229,8 +230,11 @@ func materializeUploadedFiles(workspacePath string, task *models.Task) ([]string
 	}
 	materialized := make([]string, 0, len(uploaded))
 	for index, file := range uploaded {
-		sourcePath := filepath.Clean(strings.TrimSpace(file.StoragePath))
-		info, err := os.Lstat(sourcePath)
+		sourcePath, err := workspace.ValidateUploadedFilePath(file.StoragePath)
+		if err != nil {
+			return nil, fmt.Errorf("uploaded file %q is outside the allowed upload roots: %w", file.Name, err)
+		}
+		info, err := os.Stat(sourcePath)
 		if err != nil || !info.Mode().IsRegular() {
 			return nil, fmt.Errorf("uploaded file %q is unavailable", file.Name)
 		}

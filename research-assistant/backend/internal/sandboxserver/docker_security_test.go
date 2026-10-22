@@ -24,6 +24,7 @@ func TestSecureDockerRunArgsApplyResourceAndPrivilegeLimits(t *testing.T) {
 		"--cpus 1.5", "--memory 2g", "--pids-limit 128",
 		"--security-opt no-new-privileges:true", "--cap-drop ALL",
 		"--network none", "--user 65534:65534", "--read-only",
+		"--label research-assistant.sandbox=true",
 	} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("expected %q in docker args: %s", expected, joined)

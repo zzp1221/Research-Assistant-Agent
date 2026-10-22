@@ -193,9 +193,18 @@ func (s *sandboxService) DeleteSandbox(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "opensandbox fallback is disabled"})
 			return
 		}
-		_ = s.osEngine.Delete(ctx, strings.TrimPrefix(id, "os-"))
+		if err := s.osEngine.Delete(ctx, strings.TrimPrefix(id, "os-")); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
 	case strings.HasPrefix(id, "dk-"):
-		_ = s.dkEngine.Delete(ctx, strings.TrimPrefix(id, "dk-"))
+		if err := s.dkEngine.Delete(ctx, strings.TrimPrefix(id, "dk-")); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown sandbox id prefix"})
+		return
 	}
 	c.Status(http.StatusOK)
 }

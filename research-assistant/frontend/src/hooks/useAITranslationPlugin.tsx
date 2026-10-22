@@ -23,16 +23,7 @@ export const useAITranslationPlugin = (onAskAI?: (text: string) => void) => {
     setTranslatedText('');
     
     try {
-      // 在这个演示版本中，我们模拟 AI 翻译逻辑。
-      // 实际应用中，这里应该调用后端的翻译接口
-      const mockResult = `【AI 译文】：在真实的实现中，这里将调用 DeepSeek 返回关于 "${text.substring(0, 30)}..." 的高质量中文学术翻译。系统已自动识别上下文专业术语。`;
-      
-      for (let i = 0; i < mockResult.length; i++) {
-        await new Promise(r => setTimeout(r, 20));
-        setTranslatedText(prev => prev + mockResult[i]);
-      }
-    } catch {
-      setTranslatedText('请求 AI 翻译时发生网络错误，请重试。');
+      setTranslatedText('划词翻译服务尚未接入后端；请使用下方按钮把选中的原文发给 Research Assistant Agent 追问。');
     } finally {
       setIsTranslating(false);
     }

@@ -19,6 +19,7 @@ func secureDockerRunArgs(image string) ([]string, error) {
 
 	args := []string{
 		"run", "-d", "--rm",
+		"--label", sandboxLabelKey + "=" + sandboxLabelValue,
 		"--cpus", envOrDefault("SANDBOX_CPU_LIMIT", "2"),
 		"--memory", envOrDefault("SANDBOX_MEMORY_LIMIT", "4g"),
 		"--pids-limit", envOrDefault("SANDBOX_PIDS_LIMIT", "256"),

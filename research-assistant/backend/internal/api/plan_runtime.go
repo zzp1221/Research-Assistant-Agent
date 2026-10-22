@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -84,6 +85,7 @@ func (r *planRuntime) register(apiGroup *gin.RouterGroup) {
 	apiGroup.POST("/plans/:id/approve", r.approvePlan)
 	apiGroup.POST("/plans/:id/tasks/:taskId/retry", r.retryTask)
 	apiGroup.POST("/plans/:id/tasks/:taskId/reassign", r.reassignTask)
+	apiGroup.POST("/plans/:id/tasks/:taskId/execute", r.executeTask)
 	apiGroup.GET("/plans/:id/stream", r.streamPlanEvents)
 }
 
@@ -225,8 +227,14 @@ func (r *planRuntime) approvePlan(c *gin.Context) {
 	now := time.Now()
 	userID := resolveUserID(c)
 	if err := r.store.UpdatePlan(plan.ID, func(current *models.PlanGraph) error {
+		if current.Status != models.StatusAwaitingApproval {
+			return fmt.Errorf("plan cannot be approved from status %s", current.Status)
+		}
 		if !current.Approval.Required {
 			return fmt.Errorf("plan does not require approval")
+		}
+		if current.Approval.Status == "approved" {
+			return fmt.Errorf("plan is already approved")
 		}
 		current.Approval.Status = "approved"
 		current.Approval.ApprovedBy = userID
@@ -246,6 +254,14 @@ func (r *planRuntime) retryTask(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if task := findPlanTask(plan, c.Param("taskId")); task != nil && task.Status == models.StatusInProgress {
+		c.JSON(http.StatusConflict, gin.H{"error": "task is currently running; wait for termination before retrying"})
+		return
+	}
+	if plan.Status == models.StatusInProgress {
+		c.JSON(http.StatusConflict, gin.H{"error": "plan is currently running; use a background retry after it terminates"})
+		return
+	}
 	if err := r.scheduler.RetryTask(plan.ID, c.Param("taskId")); err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
@@ -256,6 +272,14 @@ func (r *planRuntime) retryTask(c *gin.Context) {
 func (r *planRuntime) reassignTask(c *gin.Context) {
 	plan, ok := r.authorizedPlan(c)
 	if !ok {
+		return
+	}
+	if task := findPlanTask(plan, c.Param("taskId")); task != nil && task.Status == models.StatusInProgress {
+		c.JSON(http.StatusConflict, gin.H{"error": "task is currently running; reassignment is disabled"})
+		return
+	}
+	if plan.Status == models.StatusInProgress {
+		c.JSON(http.StatusConflict, gin.H{"error": "plan is currently running; reassignment is disabled"})
 		return
 	}
 	var payload struct {
@@ -270,6 +294,135 @@ func (r *planRuntime) reassignTask(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Task reassigned", "plan_id": plan.ID, "task_id": c.Param("taskId"), "assigned_to": payload.AssignedTo})
+}
+
+type planTaskOutcome struct {
+	result *models.TaskExecutionResult
+	err    error
+}
+
+// executeTask runs one task belonging to a stored plan. The request body is
+// intentionally ignored: task inputs and artifacts are loaded from the plan
+// store so callers cannot inject host paths or bypass plan governance.
+func (r *planRuntime) executeTask(c *gin.Context) {
+	plan, ok := r.authorizedPlan(c)
+	if !ok {
+		return
+	}
+	task := findPlanTask(plan, c.Param("taskId"))
+	if task == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "task not found"})
+		return
+	}
+	if plan.Status == models.StatusCanceled {
+		c.JSON(http.StatusConflict, gin.H{"error": "plan is canceled"})
+		return
+	}
+	if plan.Status == models.StatusInProgress {
+		c.JSON(http.StatusConflict, gin.H{"error": "plan is already running"})
+		return
+	}
+	if plan.Approval.Required && plan.Approval.Status != "approved" {
+		c.JSON(http.StatusConflict, gin.H{"error": "plan requires approval before task execution"})
+		return
+	}
+	if task.Status == models.StatusInProgress {
+		c.JSON(http.StatusConflict, gin.H{"error": "task is already running"})
+		return
+	}
+	if plan.Budget.MaxTaskAttempts > 0 && plan.Usage.TaskAttempts >= plan.Budget.MaxTaskAttempts {
+		c.JSON(http.StatusConflict, gin.H{"error": "task attempt budget exceeded"})
+		return
+	}
+	if plan.Budget.MaxDurationSec > 0 && plan.Usage.StartedAt != nil &&
+		time.Since(*plan.Usage.StartedAt) > time.Duration(plan.Budget.MaxDurationSec)*time.Second {
+		c.JSON(http.StatusConflict, gin.H{"error": "plan duration budget exceeded"})
+		return
+	}
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+
+	logChannel := make(chan string, 128)
+	outcomeChannel := make(chan planTaskOutcome, 1)
+	ctx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
+	ctx = context.WithValue(ctx, "logChannel", logChannel)
+
+	go func() {
+		result, err := r.scheduler.ExecuteTask(ctx, plan.ID, task.ID)
+		outcomeChannel <- planTaskOutcome{result: result, err: err}
+	}()
+
+	c.Stream(func(_ io.Writer) bool {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case line := <-logChannel:
+				c.SSEvent("log", line)
+				return true
+			case <-ticker.C:
+				c.SSEvent("heartbeat", "keep-alive")
+				return true
+			case outcome := <-outcomeChannel:
+				for len(logChannel) > 0 {
+					c.SSEvent("log", <-logChannel)
+				}
+				if outcome.err != nil {
+					c.SSEvent("error", outcome.err.Error())
+					return false
+				}
+				if outcome.result == nil {
+					c.SSEvent("error", "task execution returned no result")
+					return false
+				}
+				if outcome.result.Status == models.StatusFailed {
+					c.SSEvent("error", chooseNonEmptyString(outcome.result.Error, "task failed"))
+					return false
+				}
+				c.SSEvent("result", gin.H{
+					"result":          outcome.result.Result,
+					"code":            outcome.result.Code,
+					"structured_data": outcome.result.StructuredData,
+					"image_base64":    outcome.result.ImageBase64,
+					"outputs": buildExecuteOutputs(&models.Task{
+						Result:         outcome.result.Result,
+						Code:           outcome.result.Code,
+						StructuredData: outcome.result.StructuredData,
+						ImageBase64:    outcome.result.ImageBase64,
+					}),
+				})
+				return false
+			case <-c.Request.Context().Done():
+				cancel()
+				return false
+			}
+		}
+	})
+}
+
+func findPlanTask(plan *models.PlanGraph, taskID string) *models.TaskNode {
+	if plan == nil {
+		return nil
+	}
+	for _, task := range plan.Nodes {
+		if task != nil && task.ID == taskID {
+			return task
+		}
+	}
+	return nil
+}
+
+func chooseNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (r *planRuntime) streamPlanEvents(c *gin.Context) {
@@ -363,7 +516,8 @@ func configurePlanGovernance(plan *models.PlanGraph, intent models.IntentContext
 	plan.Budget.MaxTaskAttempts = positiveEnvInt("PLAN_MAX_TASK_ATTEMPTS", plan.Budget.MaxTaskAttempts)
 	plan.Budget.MaxDurationSec = positiveEnvInt("PLAN_MAX_DURATION_SECONDS", plan.Budget.MaxDurationSec)
 	requiresApproval := strings.EqualFold(strings.TrimSpace(os.Getenv("REQUIRE_PLAN_APPROVAL")), "true") ||
-		strings.EqualFold(strings.TrimSpace(fmt.Sprint(intent.Constraints["reproduction_mode"])), "full")
+		strings.EqualFold(strings.TrimSpace(fmt.Sprint(intent.Constraints["reproduction_mode"])), "full") ||
+		planRequestsFullReproduction(plan)
 	plan.Approval.Required = requiresApproval
 	if requiresApproval {
 		plan.Approval.Status = "pending"
@@ -380,6 +534,25 @@ func positiveEnvInt(key string, fallback int) int {
 		return fallback
 	}
 	return value
+}
+
+func planRequestsFullReproduction(plan *models.PlanGraph) bool {
+	if plan == nil {
+		return false
+	}
+	for _, node := range plan.Nodes {
+		if node == nil || node.Inputs == nil {
+			continue
+		}
+		if mode, ok := node.Inputs["requested_reproduction_mode"]; ok &&
+			strings.EqualFold(strings.TrimSpace(fmt.Sprint(mode)), "full") {
+			return true
+		}
+		if requested, ok := node.Inputs["full_reproduction_requested"].(bool); ok && requested {
+			return true
+		}
+	}
+	return false
 }
 
 func planTimeout(plan *models.PlanGraph) time.Duration {

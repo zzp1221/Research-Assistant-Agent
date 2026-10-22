@@ -17,7 +17,15 @@ import (
 func APIAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		expected := strings.TrimSpace(os.Getenv("API_AUTH_TOKEN"))
-		if expected == "" || c.Request.URL.Path == "/api/health" {
+		if c.Request.URL.Path == "/api/health" {
+			c.Next()
+			return
+		}
+		if expected == "" {
+			if strings.EqualFold(strings.TrimSpace(os.Getenv("REQUIRE_API_AUTH")), "true") {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "API_AUTH_TOKEN is required but not configured"})
+				return
+			}
 			c.Next()
 			return
 		}

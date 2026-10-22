@@ -1,7 +1,7 @@
-# 使用 Go 构建镜像；GOTOOLCHAIN 会按 go.mod 自动选择项目要求的版本
-FROM golang:1.22-bullseye AS builder
+# Keep the builder version aligned with docker-sandbox/go.mod (go 1.26.1).
+FROM golang:1.26.1-bookworm AS builder
 
-ENV GOTOOLCHAIN=auto \
+ENV GOTOOLCHAIN=local \
     GOPROXY=https://goproxy.cn,direct
 WORKDIR /app
 COPY go.mod go.sum ./

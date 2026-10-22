@@ -82,6 +82,20 @@ func TestAPIAuthMiddlewareRequiresConfiguredBearerToken(t *testing.T) {
 	}
 }
 
+func TestAPIAuthMiddlewareFailsClosedWhenRequiredButUnconfigured(t *testing.T) {
+	t.Setenv("API_AUTH_TOKEN", "")
+	t.Setenv("REQUIRE_API_AUTH", "true")
+	router := gin.New()
+	router.Use(APIAuthMiddleware())
+	router.GET("/api/private", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/private", nil))
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestValidateRemotePDFURLBlocksPrivateNetworks(t *testing.T) {
 	for _, raw := range []string{
 		"http://127.0.0.1/paper.pdf",

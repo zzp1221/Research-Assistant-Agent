@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/workspace"
 )
 
 const benchmarkDatasetSampleLimit = 1000
@@ -140,6 +141,13 @@ func benchmarkUploadsFromTask(task *models.Task) ([]benchmarkUploadedFile, error
 	var files []benchmarkUploadedFile
 	if err := json.Unmarshal(raw, &files); err != nil {
 		return nil, err
+	}
+	for index := range files {
+		validated, validateErr := workspace.ValidateUploadedFilePath(files[index].StoragePath)
+		if validateErr != nil {
+			return nil, fmt.Errorf("uploaded file %q is outside the allowed upload roots: %w", files[index].Name, validateErr)
+		}
+		files[index].StoragePath = validated
 	}
 	return files, nil
 }

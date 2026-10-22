@@ -24,10 +24,15 @@ interface GraphPanelProps {
 
 const intentLabels: Record<string, string> = {
   Paper_Reproduction: '论文复现',
+  Framework_Evaluation: '框架对比',
   Framework_Comparison: '框架对比',
   Code_Execution: '代码执行',
+  AutoResearch: '自动研究',
+  Custom_Benchmark: '数据评测',
   General: '通用任务',
 };
+
+const terminalNodeStatuses = new Set(['completed', 'failed', 'skipped', 'canceled']);
 
 export function GraphPanel(props: GraphPanelProps) {
   const {
@@ -50,7 +55,7 @@ export function GraphPanel(props: GraphPanelProps) {
   const completedCount = nodes.filter((node) => node.data.status === 'completed').length;
   const runningCount = nodes.filter((node) => node.data.status === 'in_progress').length;
 	const failedCount = nodes.filter((node) => node.data.status === 'failed').length;
-  const pendingCount = nodes.filter((node) => node.data.task && node.data.status !== 'completed').length;
+  const pendingCount = nodes.filter((node) => node.data.task && !terminalNodeStatuses.has(String(node.data.status))).length;
   const intentLabel = intentContext ? intentLabels[intentContext.intent_type] ?? intentContext.intent_type : null;
   const subtitle = intentContext?.raw_intent || graphHint;
   const experimentSearchTask = nodes.map((node) => node.data.task as Task | undefined).find((task) => task?.Type === 'experiment_run');
@@ -133,6 +138,16 @@ export function GraphPanel(props: GraphPanelProps) {
       </div>
 
       <div className="relative min-h-0 flex-1">
+        {nodes.length === 0 && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-8">
+            <div className="max-w-sm rounded-xl border border-dashed border-slate-300 bg-white/90 p-6 text-center shadow-sm">
+              <p className="text-sm font-semibold text-slate-700">还没有执行图</p>
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                在左侧描述你的研究目标，系统会生成可执行的 DAG，并在右侧展示节点与实时状态。
+              </p>
+            </div>
+          </div>
+        )}
         <ReactFlow
           nodes={nodes}
           edges={edges}
