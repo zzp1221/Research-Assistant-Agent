@@ -2,17 +2,33 @@ package api
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
+
+const streamTicketTTL = 60 * time.Second
+
+var streamTicketSecret = func() []byte {
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return []byte("research-assistant-stream-ticket-fallback")
+	}
+	return secret
+}()
 
 func APIAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -29,6 +45,13 @@ func APIAuthMiddleware() gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		if c.Request.Method == http.MethodGet && strings.HasSuffix(c.Request.URL.Path, "/stream") {
+			if planID := planIDFromStreamPath(c.Request.URL.Path); planID != "" &&
+				validateStreamTicket(c.Query("ticket"), planID, time.Now()) {
+				c.Next()
+				return
+			}
+		}
 		provided := strings.TrimSpace(strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer "))
 		if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid bearer token"})
@@ -36,6 +59,48 @@ func APIAuthMiddleware() gin.HandlerFunc {
 		}
 		c.Next()
 	}
+}
+
+func planIDFromStreamPath(path string) string {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) == 4 && parts[0] == "api" && parts[1] == "plans" && parts[3] == "stream" {
+		return parts[2]
+	}
+	return ""
+}
+
+func streamTicketPayload(planID string, expiry int64) string {
+	return planID + "|" + strconv.FormatInt(expiry, 10)
+}
+
+func streamTicketMAC(payload string) string {
+	mac := hmac.New(sha256.New, streamTicketSecret)
+	mac.Write([]byte(payload))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func issueStreamTicket(planID string, now time.Time) (string, time.Time) {
+	expiry := now.Add(streamTicketTTL).Unix()
+	payload := streamTicketPayload(planID, expiry)
+	raw := payload + "|" + streamTicketMAC(payload)
+	return base64.RawURLEncoding.EncodeToString([]byte(raw)), time.Unix(expiry, 0).UTC()
+}
+
+func validateStreamTicket(ticket, planID string, now time.Time) bool {
+	decoded, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(ticket))
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(string(decoded), "|")
+	if len(parts) != 3 || parts[0] != planID {
+		return false
+	}
+	expiry, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || now.After(time.Unix(expiry, 0)) {
+		return false
+	}
+	payload := streamTicketPayload(parts[0], expiry)
+	return subtle.ConstantTimeCompare([]byte(parts[2]), []byte(streamTicketMAC(payload))) == 1
 }
 
 func validateRemotePDFURL(ctx context.Context, raw string) (*url.URL, error) {

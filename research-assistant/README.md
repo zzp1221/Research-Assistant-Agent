@@ -77,7 +77,9 @@ research-assistant/
 | `PLAN_STORE_PATH` | 计划与事件持久化文件 |
 | `UPLOAD_ROOT` / `UPLOAD_MAX_MB` | 上传目录与单文件大小限制 |
 | `RESEARCH_OPTIMIZER_URL` / `RESEARCH_OPTIMIZER_API_TOKEN` | Python 优化器地址与内部 Token |
-| `API_AUTH_TOKEN` | API 静态 Bearer Token，留空仅适合可信本地环境 |
+| `API_AUTH_TOKEN` | API 静态 Bearer Token；启用后 SSE 通过 60 秒 HMAC ticket 鉴权 |
+| `VITE_API_AUTH_TOKEN` | 前端构建时注入的同一 Token；设置在 `.env`，需重建 frontend 镜像 |
+| `REQUIRE_API_AUTH` | `true` 且 Token 为空时 API fail-closed |
 | `CORS_ALLOWED_ORIGINS` | 允许的前端 Origin 列表 |
 | `SANDBOX_API_TOKEN` | 后端与沙箱之间的 Bearer Token |
 

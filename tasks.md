@@ -26,7 +26,7 @@
 - [x] Compose 端口绑定 loopback
 - [x] Compose backend/sandbox 基础加固
 - [x] `REQUIRE_API_AUTH` fail-closed
-- [ ] 前端 `VITE_API_AUTH_TOKEN` + SSE ticket（未启用；当前容器默认 loopback + token 为空）
+- [x] 前端 `VITE_API_AUTH_TOKEN` + 60s HMAC SSE ticket
 - [x] `approvePlan` 状态校验
 - [x] full reproduction 审批派生
 - [x] 安全回归测试（路径、容器 ID、计划内执行、fail-closed）
@@ -60,7 +60,7 @@
 - [x] Nginx client_max_body_size
 - [x] intentLabels 补全
 - [x] GraphPanel 空状态
-- [ ] Tailwind typography 插件
+- [x] Tailwind typography 插件
 - [ ] 前端 API/SSE 组件测试（当前只有解析器测试）
 
 ## Phase 4 — 工程化
@@ -73,7 +73,7 @@
 - [x] `npm ci`
 - [x] CI workflow
 - [x] Windows 支持声明（Docker-only）
-- [ ] 清理死代码（`internal/Intent`、旧 `App.tsx`、legacy plan 路由）
+- [x] 清理死代码（已删除 `internal/Intent`、旧 `App.tsx`/`App.css`；legacy plan 路由保留兼容）
 
 ## Phase 5 — DeepSeek
 

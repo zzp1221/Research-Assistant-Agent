@@ -88,7 +88,8 @@ backend/
 | `POST` | `/api/plans/:id/tasks/:taskId/reassign` | 重分配节点 |
 | `POST` | `/api/plans/:id/tasks/:taskId/execute` | 执行计划内单个节点；忽略客户端 `inputs` |
 | `GET` | `/api/plans/:id/events` | 事件历史 |
-| `GET` | `/api/plans/:id/stream` | SSE 事件流 |
+| `GET` | `/api/plans/:id/stream-ticket` | 60 秒 HMAC SSE ticket |
+| `GET` | `/api/plans/:id/stream` | SSE 事件流（支持 `?ticket=`） |
 | `POST` | `/api/execute` | 已禁用（410）；请使用上面的计划内节点执行接口 |
 | `POST` | `/api/uploads` | 上传附件 |
 | `GET` | `/api/uploads/:id/content` | 读取附件 |
@@ -154,7 +155,6 @@ REAL_PAPER_REPRO_TEST=1 SANDBOX_URL=http://localhost:8082 \
 
 ## 子模块说明
 
-- [Intent](internal/Intent/README.md)
 - [agent](internal/agent/README.md)
 - [planner](internal/planner/README.md)
 - [scheduler](internal/scheduler/README.md)

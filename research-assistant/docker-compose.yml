@@ -87,7 +87,10 @@ services:
 
   # 4. React 前端界面
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_API_AUTH_TOKEN: ${VITE_API_AUTH_TOKEN:-}
     ports:
       - "127.0.0.1:${FRONTEND_HOST_PORT:-5173}:80" # 将容器内的 Nginx 80 端口映射到宿主机 5173
     depends_on:

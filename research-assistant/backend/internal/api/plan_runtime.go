@@ -86,6 +86,7 @@ func (r *planRuntime) register(apiGroup *gin.RouterGroup) {
 	apiGroup.POST("/plans/:id/tasks/:taskId/retry", r.retryTask)
 	apiGroup.POST("/plans/:id/tasks/:taskId/reassign", r.reassignTask)
 	apiGroup.POST("/plans/:id/tasks/:taskId/execute", r.executeTask)
+	apiGroup.GET("/plans/:id/stream-ticket", r.streamTicket)
 	apiGroup.GET("/plans/:id/stream", r.streamPlanEvents)
 }
 
@@ -166,6 +167,19 @@ func (r *planRuntime) getPlanEvents(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"events": events})
+}
+
+func (r *planRuntime) streamTicket(c *gin.Context) {
+	plan, ok := r.authorizedPlan(c)
+	if !ok {
+		return
+	}
+	ticket, expiresAt := issueStreamTicket(plan.ID, time.Now())
+	c.JSON(http.StatusOK, gin.H{
+		"ticket":     ticket,
+		"expires_at": expiresAt,
+		"expires_in": int(streamTicketTTL.Seconds()),
+	})
 }
 
 func (r *planRuntime) executePlan(c *gin.Context) {

@@ -2,6 +2,8 @@
 FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
+ARG VITE_API_AUTH_TOKEN=
+ENV VITE_API_AUTH_TOKEN=${VITE_API_AUTH_TOKEN}
 COPY package*.json ./
 RUN npm ci --no-audit --no-fund
 COPY . .

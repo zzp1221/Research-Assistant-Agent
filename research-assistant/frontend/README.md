@@ -39,7 +39,7 @@ frontend/
 └── package.json
 ```
 
-`src/App.tsx` 是早期单文件页面实现，保留用于对照和局部功能参考；当前 `main.tsx` 挂载的是 `app/ResearchAssistantApp.tsx`。
+早期单文件 `src/App.tsx` 已删除；当前 `main.tsx` 挂载的是 `app/ResearchAssistantApp.tsx`，避免两套 UI 行为继续分叉。
 
 ## 开发
 

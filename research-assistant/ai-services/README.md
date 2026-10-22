@@ -10,7 +10,7 @@
 
 ## 定位
 
-主后端的 `internal/Intent` 已提供 LLM 意图分类器；`ai-services/intent_recognition` 用于实验性本地模型、离线评测和训练流程验证。生产请求默认不依赖该服务。
+主后端当前使用确定性的规则意图路由；`ai-services/intent_recognition` 保留用于实验性本地模型、离线评测和训练流程验证，生产请求默认不依赖该服务。
 
 ## 快速开始
 

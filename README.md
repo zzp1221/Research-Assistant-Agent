@@ -165,6 +165,7 @@ Windows 用户请使用 Docker Compose；`scripts/windows/start-backend.ps1` 仍
 | `PLAN_MAX_TASK_ATTEMPTS` / `PLAN_MAX_DURATION_SECONDS` | 否 | 计划尝试次数与时长预算 |
 | `REQUIRE_PLAN_APPROVAL` | 否 | 执行前强制人工审批 |
 | `API_AUTH_TOKEN` / `REQUIRE_API_AUTH` | 否 | API 静态 Bearer 保护；`REQUIRE_API_AUTH=true` 且 token 为空时 fail-closed |
+| `VITE_API_AUTH_TOKEN` | 否 | 前端构建时注入的 Bearer Token；必须与 `API_AUTH_TOKEN` 一致，仅用于可信静态部署 |
 | `SANDBOX_API_TOKEN` | 是 | Compose 必须通过 `.env` 设置；不再使用可预测默认值 |
 | `CORS_ALLOWED_ORIGINS` | 否 | 允许访问后端的前端 Origin 列表 |
 
@@ -184,7 +185,8 @@ Windows 用户请使用 Docker Compose；`scripts/windows/start-backend.ps1` 仍
 | `POST` | `/api/plans/:id/tasks/:taskId/reassign` | 重分配节点并使旧执行租约失效 |
 | `POST` | `/api/plans/:id/tasks/:taskId/execute` | 仅执行计划内节点；输入来自 PlanGraph/Artifact，不接收客户端路径 |
 | `GET` | `/api/plans/:id/events` | 获取计划事件历史 |
-| `GET` | `/api/plans/:id/stream` | 订阅计划级 SSE 事件流 |
+| `GET` | `/api/plans/:id/stream-ticket` | 获取 60 秒 HMAC SSE ticket；启用 API_AUTH_TOKEN 时前端使用 |
+| `GET` | `/api/plans/:id/stream` | 订阅计划级 SSE 事件流；可携带 `?ticket=` |
 | `POST` | `/api/execute` | 已禁用（410）；旧直接执行入口不再接受任意 `Inputs` |
 | `POST` | `/api/uploads` | 上传论文、配置或小型 Benchmark 数据 |
 | `GET` | `/api/uploads/:id/content` | 按用户所有权读取上传内容 |

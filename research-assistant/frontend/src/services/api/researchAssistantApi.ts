@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../../config/env';
+import { API_AUTH_TOKEN, API_BASE_URL } from '../../config/env';
 import type {
   ChatResponse,
   ExecutePlanResponse,
@@ -74,14 +74,27 @@ export const retryTask = async (planId: string, taskId: string, identity: Reques
 export const getPdfProxyUrl = (url: string): string =>
   `${API_BASE_URL}/api/pdf-proxy?url=${encodeURIComponent(url)}`;
 
-export const createPlanEventSource = (
+export const getPlanStreamTicket = async (planId: string, identity: RequestIdentity): Promise<string> => {
+	const response = await httpClient.get<{ ticket: string }>(`/api/plans/${planId}/stream-ticket`, {
+		headers: buildIdentityHeaders(identity),
+	});
+	return response.data.ticket;
+};
+
+export const createPlanEventSource = async (
   planId: string,
+  identity: RequestIdentity,
   handlers: {
     onPlanEvent: (event: PlanEvent) => void;
     onError?: () => void;
   },
-): EventSource => {
-	const source = new EventSource(`${API_BASE_URL}/api/plans/${planId}/stream`, { withCredentials: true });
+): Promise<EventSource> => {
+	let url = `${API_BASE_URL}/api/plans/${planId}/stream`;
+	if (API_AUTH_TOKEN) {
+		const ticket = await getPlanStreamTicket(planId, identity);
+		url += `?ticket=${encodeURIComponent(ticket)}`;
+	}
+	const source = new EventSource(url, { withCredentials: true });
   source.addEventListener(PLAN_STREAM_EVENT_NAME, (evt) => {
     const parsed = JSON.parse((evt as MessageEvent).data) as PlanEvent;
     handlers.onPlanEvent(parsed);
@@ -121,7 +134,11 @@ export const executePlanTaskStream = async (
     {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...buildIdentityHeaders(identity) },
+      headers: {
+        'Content-Type': 'application/json',
+        ...buildIdentityHeaders(identity),
+        ...(API_AUTH_TOKEN ? { Authorization: `Bearer ${API_AUTH_TOKEN}` } : {}),
+      },
       body: '{}',
     },
   );

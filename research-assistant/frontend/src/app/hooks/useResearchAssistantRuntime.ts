@@ -231,12 +231,12 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
   );
 
   const connectPlanStream = useCallback(
-    (planId: string) => {
+    async (planId: string) => {
       if (planEventSourceRef.current) {
         planEventSourceRef.current.close();
       }
 
-      const source = createPlanEventSource(planId, {
+      const source = await createPlanEventSource(planId, identity, {
         onPlanEvent: (event) => {
           if (event.task_id && event.task_status) {
             updateNodeVisualState(event.task_id, event.task_status);
@@ -322,7 +322,7 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
 
       planEventSourceRef.current = source;
     },
-	[appendChatMessage, appendNodeLog, patchNodeState, refreshPlanState, setNodes, updateNodeVisualState],
+	[appendChatMessage, appendNodeLog, identity, patchNodeState, refreshPlanState, setNodes, updateNodeVisualState],
   );
 
   const handleExecuteTask = useCallback(
@@ -464,7 +464,7 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
 
       try {
 		await executePlan(activePlanId, identity);
-        connectPlanStream(activePlanId);
+        await connectPlanStream(activePlanId);
       } catch (error) {
         console.error(error);
         dispatchExecution({ type: 'set-executing', value: false });
@@ -483,7 +483,7 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
 				dispatchExecution({ type: 'set-approval-resolved', value: true });
 				await executePlan(activePlanId, identity);
 				appendChatMessage({ role: 'system', text: '计划已审批，开始执行。' });
-				connectPlanStream(activePlanId);
+				await connectPlanStream(activePlanId);
 			} catch (error) {
 				console.error(error);
 				dispatchExecution({ type: 'set-executing', value: false });
@@ -530,7 +530,7 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
 				);
 				await executePlan(activePlanId, identity);
 				appendChatMessage({ role: 'system', text: '失败节点已重置，计划开始重试。' });
-				connectPlanStream(activePlanId);
+				await connectPlanStream(activePlanId);
 			} catch (error) {
 				console.error(error);
 				dispatchExecution({ type: 'set-executing', value: false });

@@ -21,3 +21,6 @@ const resolveDefaultApiBaseUrl = () => {
 };
 
 export const API_BASE_URL = resolveDefaultApiBaseUrl();
+
+// Optional static deployment token. Keep empty for loopback/local development.
+export const API_AUTH_TOKEN = (import.meta.env.VITE_API_AUTH_TOKEN as string | undefined)?.trim() ?? '';

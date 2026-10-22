@@ -19,6 +19,7 @@ published the backend on `127.0.0.1:18080` and the frontend on
 | Sandbox control-container name attack | rejected (500, `invalid sandbox container id`) |
 | Compose health from backend network | all `backend`, `repository`, `sandbox`, `research_optimizer` = ok |
 | Frontend Nginx + API proxy | HTTP 200 for `/` and `/api/health` |
+| API auth + SSE ticket | no token → 401; ticket endpoint with bearer → 200; stream without ticket → 401; stream with ticket → 200 (`plan_event`) |
 | Apriori paper reproduction | 10/10 nodes completed; 15 frequent itemsets, 5 association rules |
 | rank_bm25 AutoResearch | 8/8 nodes completed; baseline 0.5556 → best 1.0; hidden holdout mean 1.0, 3/3 runs |
 | Go backend/docker-core/docker-sandbox tests | pass (including `-race` for scheduler/api/store) |
