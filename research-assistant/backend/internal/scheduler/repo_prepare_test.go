@@ -15,6 +15,30 @@ import (
 	"research-assistant-backend/internal/models"
 )
 
+func TestMaybeCreateReproductionSmokeRunnerForAprioriRepo(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "apriori.py"), []byte("print('ok')\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "INTEGRATED-DATASET.csv"), []byte("a,b\n1,2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runner, kind, err := maybeCreateReproductionSmokeRunner(workspace, &models.Task{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kind != "apriori_frequent_itemsets" {
+		t.Fatalf("unexpected runner kind: %s", kind)
+	}
+	content, err := os.ReadFile(runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "paper_smoke_metrics") || !strings.Contains(string(content), "INTEGRATED-DATASET.csv") {
+		t.Fatalf("unexpected runner content: %s", content)
+	}
+}
+
 func TestRepoPrepareCandidateURLs_NormalizesAndAddsFallbacks(t *testing.T) {
 	candidates, _ := json.Marshal([]repoCandidate{
 		{

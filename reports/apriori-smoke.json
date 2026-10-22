@@ -1,0 +1,174 @@
+{
+  "plan_id": "86423b7b-8f06-43ce-b39e-08c86e50507e",
+  "status": "completed",
+  "intent_type": "Paper_Reproduction",
+  "nodes": [
+    {
+      "id": "cf9dc72e-315d-4a96-b839-902307efe1ae",
+      "name": "解析 Paper 并提取方法 / Parse Paper & Extract Method",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "ed72e905-e92b-4edb-a625-7756f40f4fe1",
+      "name": "冻结分层主张验收标准 / Freeze Hierarchical Claim Rubric",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "0407f0f8-a649-4d42-b045-aeb3c89ae604",
+      "name": "Retrieve Paper Repositories",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "5a644326-9168-4cdb-badc-47878d52ed89",
+      "name": "准备工作区 / Prepare Workspace",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "e194beb0-8bc4-4707-b9ed-79ded513c954",
+      "name": "解析 Paper 依赖 / Resolve Paper Dependencies",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "8bfb8745-8f90-4461-b87a-2db2b4598ca3",
+      "name": "搭建运行环境 / Setup Runtime Environment",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "4e8cb921-d057-42d3-a265-0d70a4c85000",
+      "name": "安装 Paper 依赖 / Install Paper Dependencies",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "1e5280ce-cf90-44aa-9a1f-dc3f6390cb41",
+      "name": "执行并调试基线实验 / Execute And Debug Baseline",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "0f53b266-e574-400c-b245-bd049ed40735",
+      "name": "对比论文声明结果 / Compare With Paper Claims",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "5bba0eee-c0a8-4144-93a3-9b0333488590",
+      "name": "构建主张证据图 / Build Claim-to-Evidence Graph",
+      "status": "completed",
+      "error": null
+    }
+  ],
+  "artifacts": {
+    "candidate_repositories": {
+      "type": "text",
+      "value_preview": "[{\"title\":\"User-preferred repository\",\"repo_name\":\"asaini/Apriori\",\"description\":\"Repository explicitly requested by the user; cloneability is verified by repo_prepare.\",\"repo_urls\":[\"https://github.com/asaini/Apriori\"],\"source\":\"user_preference\",\"score_hint\":1000000}]",
+      "location": null
+    },
+    "claim_evidence_graph": {
+      "type": "json",
+      "value_preview": "{\"version\":\"claim.evidence/v1\",\"status\":\"assessed\",\"status_reason\":\"all criterion verdicts were produced and validated against the bounded evidence inventory\",\"rubric_sha256\":\"c31f12d39c5a504f22a1e9ba1331fe33194bbe054495bb1c3411f924834a3a17\",\"evidence\":[{\"id\":\"evidence-parsed-paper\",\"artifact_key\":\"parsed_paper\",\"evidence_type\":\"paper\",\"sha256\":\"42ae80fb11d2a2c4c1c9fb945ab96f5129c4e8b3e1c17e03ce6cbbabb8186646\",\"available\":true,\"summary\":\"# 论文复现分析报告：Fast Algorithms for Mining Association Rules ## 1. 论文目标 - **论文**：Rakesh Agrawal, Ramakrishnan Srikant, *Fast Algorithms for Mining Association Rules*, VLDB 1994。 - **问题**：从交易数据库中发现满足最小支持度和最小置信度的关联规则。 - **形式化目标**：给定事务数据库 \\\\(D\\\\)、最小支持度 `minsup`、最小置信度 `minconf`，找出所有规则 \\\\(X \\\\Rightarrow Y\\\\)，满足： - \\\\(support(X \\\\cup Y)...[truncated]\"},{\"id\":\"evidence-repo-manifest\",\"artifact_key\":\"repo_manifest\",\"evidence_type\":\"repository\",\"sha256\":\"f2d861a5554bb20a78f15189a99e9e8ab95b4985a79054db6fe2e05fd212613b\",\"available\":true,\"summary\":\"{\\\"repo_url\\\":\\\"https://github.com/asaini/Apriori\\\",\\\"repository_commit\\\":\\\"cd2a2963d0aa2f3feb82e851d2597f91a5d195a4\\\",\\\"acquisition_method\\\":\\\"git_local_cache_clone\\\",\\\"workspace_path\\\":\\\"/tmp/research-assistant_repo_workspace_305551616\\\",\\\"selected_code_file\\\":\\\"/tmp/research-assistant_repo_workspace_305551616/research-assistant_repro_...[truncated]\"},{\"id\":\"evidence-reproduction-mode-report\",\"artifact_key\":\"reproduction_mode_report\",\"evidence_type\":\"environment\",\"sha256\":\"03f282044cc21f580f00fc599cc3dda5a4b562f6eab35ebf710a1d5671fec793\",\"available\":true,\"summary\":\"{ \\\"requested_mode\\\": \\\"smoke\\\", \\\"effective_mode\\\": \\\"smoke\\\", \\\"full_eligible\\\": false, \\\"reasons\\\": [ \\\"smoke mode explicitly requested\\\", \\\"memory_gb=15.3 \\\\u003c required=64.0\\\", \\\"disk_free_gb=1.5 \\\\u003c required=100.0\\\", \\\"cuda_gpu_count=0 \\\\u003c required=1\\\" ], \\\"probe\\\": { \\\"cpu_count\\\": 24, \\\"memory_gb\\\": 15.3, \\\"disk_free_gb\\\": 1.5, \\\"gp...[truncated]\"},{\"id\":\"evidence-dependency-install-report\",\"artifact_key\":\"dependency_instal",
+      "location": null
+    },
+    "claim_rubric": {
+      "type": "json",
+      "value_preview": "{\"version\":\"claim.rubric/v1\",\"paper_title\":\"Fast Algorithms for Mining Association Rules\",\"source_artifact\":\"parsed_paper\",\"sha256\":\"c31f12d39c5a504f22a1e9ba1331fe33194bbe054495bb1c3411f924834a3a17\",\"claims\":[{\"id\":\"claim-001\",\"title\":\"Smoke-test scope for basic Apriori on built-in CSV\",\"statement\":\"The reproduction is scoped as a smoke test or partial reproduction of the paper's basic Apriori using asaini/Apriori and the repository's INTEGRATED-DATASET.csv; it must not claim full reproduction of AprioriTid, AprioriHybrid, or paper-scale experiments.\",\"source_locator\":\"§10.2 复现等级; §9 复现难点; §5.2 本任务 smoke 评测协议\",\"claim_type\":\"qualitative\",\"importance\":0.95,\"criteria\":[{\"id\":\"claim-001.criterion-01\",\"description\":\"Report explicitly labels the work as a smoke test or partial reproduction of basic Apriori.\",\"metric_name\":\"scope_label\",\"required_evidence\":[\"paper\",\"run\"]},{\"id\":\"claim-001.criterion-02\",\"description\":\"Report does not claim full reproduction of AprioriTid, AprioriHybrid, or paper-level scale-up experiments.\",\"metric_name\":\"unsupported_scope_claim_absent\",\"required_evidence\":[\"paper\",\"run\"]},{\"id\":\"claim-001.criterion-03\",\"description\":\"Run uses repository-provided INTEGRATED-DATASET.csv rather than external or synthetic paper-scale data.\",\"metric_name\":\"dataset_source\",\"required_evidence\":[\"repository\",\"run\"]},{\"id\":\"claim-001.criterion-04\",\"description\":\"No model training step is performed; execution is deterministic association-rule mining.\",\"metric_name\":\"training_step_present\",\"required_evidence\":[\"run\",\"repository\"]}]},{\"id\":\"claim-002\",\"title\":\"Frequent itemset output satisfies minimum support\",\"statement\":\"The reproduction must output frequent itemsets from the built-in CSV such that every reported frequent itemset has support at least the configured minsup.\",\"source_locator\":\"§2.2 Apriori 逐层搜索; §5.2 本任务 smoke 评测协议; §7.2 本任务可记录指标\",\"claim_type\":\"quantitative\",\"importance\":0.9,\"criteria\":[{\"id\":\"claim-002.criterion-01\",\"description\":\"At least one frequ",
+      "location": null
+    },
+    "claim_rubric_report": {
+      "type": "report",
+      "value_preview": "# Frozen Claim Rubric\n\n- Paper: Fast Algorithms for Mining Association Rules\n- Version: `claim.rubric/v1`\n- SHA-256: `c31f12d39c5a504f22a1e9ba1331fe33194bbe054495bb1c3411f924834a3a17`\n- Claims: 11\n\n| ID | Claim | Type | Source | Criteria |\n|---|---|---|---|---:|\n| `claim-001` | Smoke-test scope for basic Apriori on built-in CSV | qualitative | §10.2 复现等级; §9 复现难点; §5.2 本任务 smoke 评测协议 | 4 |\n| `claim-002` | Frequent itemset output satisfies minimum support | quantitative | §2.2 Apriori 逐层搜索; §5.2 本任务 smoke 评测协议; §7.2 本任务可记录指标 | 4 |\n| `claim-003` | Association rules satisfy minimum support and confidence | quantitative | §2.5 规则生成; §5.2 本任务 smoke 评测协议 | 4 |\n| `claim-004` | Candidate generation and pruning follow Apriori | qualitative | §2.3 候选生成 apriori-gen; §2.2 Apriori 逐层搜索 | 3 |\n| `claim-005` | Smoke thresholds control output scale | efficiency | §5.2 本任务 smoke 评测协议; §6 关键超参数 | 3 |\n| `claim-006` | Recorded smoke metrics | quantitative | §7.2 本任务可记录指标; §5.2 本任务 smoke 评测协议 | 4 |\n| `claim-007` | Manual verification of sample outputs | quantitative | §5.2 本任务 smoke 评测协议; §2.5 规则生成 | 3 |\n| `claim-008` | No large dependencies or external datasets | efficiency | §4.2 本任务数据集; §5.2 本任务 smoke 评测协议; §9 复现难点 | 3 |\n| `claim-009` | Repository corresponds to basic Apriori, not paper variants | qualitative | §2.6 论文中的算法变体; §3 模型 / 算法结构; §9 复现难点 | 3 |\n| `claim-010` | Built-in CSV used as transaction database | qualitative | §4.2 本任务数据集; §3 模型 / 算法结构 | 3 |\n| `claim-011` | Runtime recorded without paper-level performance claims | efficiency | §7.2 本任务可记录指标; §10.2 复现等级 | 3 |\n\nThe rubric is frozen before repository execution. Later result nodes may reference it but cannot rewrite its IDs or SHA-256.\n",
+      "location": null
+    },
+    "claim_verification_report": {
+      "type": "report",
+      "value_preview": "# Claim Verification Report\n\n- Graph status: `assessed`\n- Rubric SHA-256: `c31f12d39c5a504f22a1e9ba1331fe33194bbe054495bb1c3411f924834a3a17`\n- Evidence coverage: 100.0%\n- Claims: 4 verified, 5 partial, 2 contradicted, 0 unverifiable, 0 blocked\n\n| Claim | Status | Confidence | Execution-derived evidence |\n|---|---|---:|---|\n| `claim-001` Smoke-test scope for basic Apriori on built-in CSV | `verified` | 0.95 | evidence-comparison-report, evidence-paper-debug-report, evidence-parsed-paper, evidence-repo-manifest |\n| `claim-002` Frequent itemset output satisfies minimum support | `partially_reproduced` | 0.92 | evidence-comparison-report, evidence-paper-debug-report, evidence-run-metrics |\n| `claim-003` Association rules satisfy minimum support and confidence | `verified` | 0.98 | evidence-comparison-report, evidence-paper-debug-report, evidence-run-metrics |\n| `claim-004` Candidate generation and pruning follow Apriori | `partially_reproduced` | 0.83 | evidence-comparison-report, evidence-repo-manifest, evidence-run-metrics |\n| `claim-005` Smoke thresholds control output scale | `partially_reproduced` | 0.90 | evidence-comparison-report, evidence-paper-debug-report, evidence-run-metrics |\n| `claim-006` Recorded smoke metrics | `contradicted` | 0.95 | evidence-comparison-report, evidence-paper-debug-report, evidence-run-metrics |\n| `claim-007` Manual verification of sample outputs | `partially_reproduced` | 0.87 | evidence-comparison-report, evidence-repo-manifest, evidence-run-metrics |\n| `claim-008` No large dependencies or external datasets | `verified` | 0.95 | evidence-comparison-report, evidence-dependency-install-report, evidence-paper-debug-report, evidence-repo-manifest |\n| `claim-009` Repository corresponds to basic Apriori, not paper variants | `verified` | 0.97 | evidence-comparison-report, evidence-parsed-paper |\n| `claim-010` Built-in CSV used as transaction database | `partially_reproduced` | 0.89 | evidence-comparison-report, evidence-paper-debug-report,",
+      "location": null
+    },
+    "code_file_path": {
+      "type": "code",
+      "value_preview": "/tmp/research-assistant_repo_workspace_305551616/research-assistant_repro_smoke.py",
+      "location": null
+    },
+    "comparison_report": {
+      "type": "report",
+      "value_preview": "# 评估报告：`asaini/Apriori` Smoke 复现与论文声明对比\n\n## 1. 实验目标与背景\n\n- **论文**：Rakesh Agrawal, Ramakrishnan Srikant, *Fast Algorithms for Mining Association Rules*, VLDB 1994。\n- **论文核心内容**：提出 Apriori 频繁项集挖掘与关联规则生成算法，并讨论候选生成、Apriori 剪枝、hash tree 支持度计数，以及 AprioriTid、AprioriHybrid 等变体。\n- **本任务目标**：使用社区实现 `https://github.com/asaini/Apriori`，在仓库自带 `INTEGRATED-DATASET.csv` 上以 **smoke 模式**运行 Apriori，做小规模频繁项集与关联规则演示，不训练模型、不下载大型依赖。\n- **复现定位**：本次运行属于 **基础 Apriori 的 smoke test / 小规模算法演示**，不是论文完整复现。论文中的 AprioriTid、AprioriHybrid、hash tree 性能优化、合成数据 scale-up 实验均未在本次运行中验证。\n- **对比结论先行**：本次 smoke 运行成功，输出 15 个频繁项集和 5 条关联规则，规则置信度与支持度定义一致；但无法与论文中的运行时间、候选集数量、scale-up 曲线做数值对比，因为本次没有运行论文级实验，也没有记录运行耗时和候选集统计。\n\n---\n\n## 2. 执行过程与输入材料概述\n\n### 2.1 仓库与环境\n\n| 项目 | 内容 |\n|---|---|\n| 仓库 | `https://github.com/asaini/Apriori` |\n| Commit | `cd2a2963d0aa2f3feb82e851d2597f91a5d195a4` |\n| 获取方式 | `git_local_cache_clone` |\n| 工作区 | `/tmp/research-assistant_repo_workspace_305551616` |\n| 入口文件 | `research-assistant_repro_smoke.py` |\n| 依赖文件 | `pyproject.toml`、`requirements.txt` |\n| 候选代码 | `research-assistant_repro_smoke.py`、`apriori.py`、`streamlit_app.py`、`test_apriori.py` |\n| 数据集 | 仓库自带 `INTEGRATED-DATASET.csv` |\n| 模型权重 | 不适用；Apriori 为确定性频繁项集/规则挖掘算法，无训练权重 |\n| 大型依赖下载 | 输入材料未显示大型依赖下载 |\n\n### 2.2 运行模式与环境探测\n\n| 项目 | 结果 |\n|---|---|\n| 请求模式 | `smoke` |\n| 实际模式 | `smoke` |\n| 是否满足 full 复现条件 | 否，`full_eligible=false` |\n| 原因 | 显式请求 smoke；`memory_gb=15.3 < 64.0`；`disk_free_gb=1.5 < 100.0`；`cuda_gpu_count=0 < 1` |\n| CPU | 24 核 |\n| 内存 | 15.3 GB |\n| 磁盘可用 | 1.5 GB |\n| GPU | 0 |\n\n> 说明：Apriori 是 CPU 型算法，GPU 不是其必要条件；上述 full 门槛为通用环境阈值。当前磁盘仅 1.5 GB，不适合论文级大规模合成数据实验。\n\n### 2.3 实际执行记录\n\n| 项目 | 结果 |\n|---|---|\n| 运行次数 | 1 次 |\n| 退出码 | `0` |\n| 状态 | `passed` |\n| 修复/补丁 | 0 次 bounded repair，`patches=[]` |\n| 源码指纹 | 运行前后一致，未发现源码修改 |\n| 参数 | `minSupport=0.15`，`minConfidence=0.6` |\n| stderr 摘要 | `INFO: Running Apriori with minSupport=0.15, minConfidence=0.6` |\n| 输出指标 | `frequent_itemsets=15`，`association_rules=5`，`exit_code=0` |\n\n输入材料未显式记录完整 shell 命令和运行耗时；这是后续复现报告需要补录的",
+      "location": null
+    },
+    "dependency_install_report": {
+      "type": "report",
+      "value_preview": "no external dependencies detected",
+      "location": null
+    },
+    "dependency_spec": {
+      "type": "dependency_spec",
+      "value_preview": "[]",
+      "location": null
+    },
+    "generated_code": {
+      "type": "code",
+      "value_preview": "import json\nimport subprocess\nimport sys\n\ncommand = [\n    sys.executable,\n    \"apriori.py\",\n    \"-f\",\n    \"INTEGRATED-DATASET.csv\",\n    \"-s\",\n    \"0.15\",\n    \"-c\",\n    \"0.6\",\n]\ncompleted = subprocess.run(command, capture_output=True, text=True, timeout=120)\nif completed.stdout:\n    sys.stdout.write(completed.stdout)\nif completed.stderr:\n    sys.stderr.write(completed.stderr)\nmetrics = {\n    \"exit_code\": completed.returncode,\n    \"frequent_itemsets\": completed.stdout.count(\"item: \"),\n    \"association_rules\": completed.stdout.count(\"Rule: \"),\n}\nprint(json.dumps({\"paper_smoke_metrics\": metrics}, sort_keys=True))\nraise SystemExit(completed.returncode)\n",
+      "location": null
+    },
+    "paper_debug_report": {
+      "type": "report",
+      "value_preview": "{\"version\":\"research.coding.debug/v1\",\"mode\":\"baseline_runtime_debug\",\"status\":\"passed\",\"entry_file\":\"research-assistant_repro_smoke.py\",\"runs\":[{\"run\":1,\"exit_code\":0,\"stdout_preview\":\"item: ('Brooklyn',) , 0.152\\nitem: ('HISPANIC',) , 0.164\\nitem: ('MBE', 'HISPANIC') , 0.164\\nitem: ('WBE', 'MBE') , 0.169\\nitem: ('MBE', 'New York') , 0.170\\nitem: ('WBE', 'New York') , 0.175\\nitem: ('ASIAN', 'MBE') , 0.200\\nitem: ('ASIAN',) , 0.202\\nitem: ('New York',) , 0.295\\nitem: ('NON-MINORITY',) , 0.300\\nitem: ('NON-MINORITY', 'WBE') , 0.300\\nitem: ('BLACK',) , 0.301\\nitem: ('MBE', 'BLACK') , 0.301\\nitem: ('WBE',) , 0.477\\nitem: ('MBE',) , 0.671\\n\\n------------------------ RULES:\\nRule: ('WBE',) ==\\u003e ('NON-MINORITY',) , 0.628\\nRule: ('ASIAN',) ==\\u003e ('MBE',) , 0.990\\nRule: ('BLACK',) ==\\u003e ('MBE',) , 1.000\\nRule: ('HISPANIC',) ==\\u003e ('MBE',) , 1.000\\nRule: ('NON-MINORITY',) ==\\u003e ('WBE',) , 1.000\\n{\\\"paper_smoke_metrics\\\": {\\\"association_rules\\\": 5, \\\"exit_code\\\": 0, \\\"frequent_itemsets\\\": 15}}\",\"stderr_preview\":\"INFO: Running Apriori with minSupport=0.15, minConfidence=0.6\",\"source_fingerprint_before\":\"2b5103919e895ee08370eaa8b87437e76b7813f16814abc568e7012c70c8b9c6\",\"source_fingerprint_after\":\"2b5103919e895ee08370eaa8b87437e76b7813f16814abc568e7012c70c8b9c6\"}],\"patches\":[],\"final_source_fingerprint\":\"2b5103919e895ee08370eaa8b87437e76b7813f16814abc568e7012c70c8b9c6\",\"restored_originals\":false,\"summary\":\"paper entry completed after 1 run(s) and 0 bounded repair(s)\"}",
+      "location": null
+    },
+    "paper_patch_manifest": {
+      "type": "text",
+      "value_preview": "[]",
+      "location": null
+    },
+    "parsed_paper": {
+      "type": "text",
+      "value_preview": "# 论文复现分析报告：Fast Algorithms for Mining Association Rules\n\n## 1. 论文目标\n\n- **论文**：Rakesh Agrawal, Ramakrishnan Srikant, *Fast Algorithms for Mining Association Rules*, VLDB 1994。\n- **问题**：从交易数据库中发现满足最小支持度和最小置信度的关联规则。\n- **形式化目标**：给定事务数据库 \\(D\\)、最小支持度 `minsup`、最小置信度 `minconf`，找出所有规则 \\(X \\Rightarrow Y\\)，满足：\n  - \\(support(X \\cup Y) \\ge minsup\\)\n  - \\(confidence(X \\Rightarrow Y)=support(X \\cup Y)/support(X) \\ge minconf\\)\n- **核心贡献**：\n  1. 提出 **Apriori** 逐层搜索频繁项集算法；\n  2. 利用频繁项集的 **Apriori 性质** 剪枝：频繁项集的所有子集必须频繁，非频繁项集的所有超集必须非频繁；\n  3. 提出 **AprioriTid** 和 **AprioriHybrid** 变体，用于降低候选集计数成本。\n- **任务定位**：本任务使用 `asaini/Apriori` 对论文中的 Apriori 频繁项集与关联规则流程做 **smoke test / 小规模算法演示**，不是完整复现论文全部实验。\n\n## 2. 核心方法\n\n### 2.1 关联规则挖掘的两个阶段\n\n1. **频繁项集挖掘**：找出所有支持度不低于 `minsup` 的项集。\n2. **规则生成**：对每个频繁项集生成非空子集规则，并保留置信度不低于 `minconf` 的规则。\n\n### 2.2 Apriori 逐层搜索\n\n- 第一层：扫描数据库，统计 1-项集支持度，得到频繁 1-项集 \\(L_1\\)。\n- 第 \\(k\\) 层：\n  - 由 \\(L_{k-1}\\) 生成候选 \\(k\\)-项集 \\(C_k\\)；\n  - 扫描数据库统计 \\(C_k\\) 支持度；\n  - 保留支持度不低于 `minsup` 的候选项集，得到 \\(L_k\\)；\n  - 当无法生成新的候选项集或没有频繁项集时停止。\n\n### 2.3 候选生成 `apriori-gen`\n\n论文中的候选生成包含两步：\n\n- **连接步**：对 \\(L_{k-1}\\) 中前 \\(k-2\\) 项相同的项集进行连接，生成候选 \\(k\\)-项集。\n- **剪枝步**：若候选 \\(k\\)-项集的任意 \\((k-1)\\)-子集不在 \\(L_{k-1}\\) 中，则删除该候选。\n\n### 2.4 支持度计数\n\n- 论文使用 **hash tree** 组织候选项集，减少每个事务与候选集的比较次数。\n- 对每个事务，枚举其 \\(k\\)-项子集，在 hash tree 中查找并增加计数。\n- `asaini/Apriori` 是简化 Python 实现，通常使用列表/字典进行候选扫描，未必实现论文中的 hash tree 优化。\n\n### 2.5 规则生成\n\n- 对每个频繁项集 \\(l\\)，生成所有非空真子集 \\(a\\)。\n- 若 \\(support(l)/support(a) \\ge minconf\\)，则输出规则 \\(a \\Rightarrow l-a\\)。\n- 论文利用类似 Apriori 的剪枝：若某条规则不满足置信度，则其相应扩展规则可被剪枝。\n\n### 2.6 论文中的算法变体\n\n- **Apriori**：每一层都扫描原数据库统计候选支持度。\n- **AprioriTid**：第一遍后不再直接扫描原数据库，而是使用事务中包含的候选项集编码进行计数；当事务较短或候选集较小时可能更快。\n- **AprioriHybrid**：先运行 Apriori，在估计 AprioriTid 更快的阶段切换到 AprioriTid。\n- **注意**：`asaini/Apriori` 主要对应基础 Apriori，不保证实现 AprioriTid 和 AprioriHybrid。\n\n## 3. 模型 / 算法结构\n\n| 组件 | 论文内容 | `asaini/Apriori` 预期情况 |\n|---|---|---|\n| 输入 | 事务数据库、`minsup`、`minconf` | 内置 CSV、支持度阈值、置信度阈值 |\n| 频繁项集 | 逐层生成 \\(L_1, L_2, \\dots\\) | 简化 Apriori 实现 |\n| 候选生成 | 连接 + 子集剪枝 | 通常实现连接与剪",
+      "location": null
+    },
+    "prepared_runtime": {
+      "type": "text",
+      "value_preview": "dk-b75ce85510ef1a5b0ec33b371add1ed61d8d156b34c770778d1f8d66f8e61ddd",
+      "location": null
+    },
+    "repo_manifest": {
+      "type": "text",
+      "value_preview": "{\"repo_url\":\"https://github.com/asaini/Apriori\",\"repository_commit\":\"cd2a2963d0aa2f3feb82e851d2597f91a5d195a4\",\"acquisition_method\":\"git_local_cache_clone\",\"workspace_path\":\"/tmp/research-assistant_repo_workspace_305551616\",\"selected_code_file\":\"/tmp/research-assistant_repo_workspace_305551616/research-assistant_repro_smoke.py\",\"dependency_files\":[\"pyproject.toml\",\"requirements.txt\"],\"code_file_candidates\":[\"research-assistant_repro_smoke.py\",\"apriori.py\",\"streamlit_app.py\",\"test_apriori.py\"],\"clone_attempts\":[\"https://github.com/asaini/Apriori: immutable Git cache clone from /tmp/research-assistant_repo_workspace_3841244816\"],\"repro_entry_kind\":\"apriori_frequent_itemsets\",\"reproduction_mode\":\"smoke\",\"full_reproduction_switch\":false,\"mode_decision\":{\"requested_mode\":\"smoke\",\"effective_mode\":\"smoke\",\"full_eligible\":false,\"reasons\":[\"smoke mode explicitly requested\",\"memory_gb=15.3 \\u003c required=64.0\",\"disk_free_gb=1.5 \\u003c required=100.0\",\"cuda_gpu_count=0 \\u003c required=1\"],\"probe\":{\"cpu_count\":24,\"memory_gb\":15.3,\"disk_free_gb\":1.5,\"gpu_count\":0,\"thresholds\":{\"min_cpu_count\":16,\"min_cuda_gpu\":1,\"min_disk_free_gb\":100,\"min_memory_gb\":64}}},\"hardware_probe\":{\"cpu_count\":24,\"memory_gb\":15.3,\"disk_free_gb\":1.5,\"gpu_count\":0,\"thresholds\":{\"min_cpu_count\":16,\"min_cuda_gpu\":1,\"min_disk_free_gb\":100,\"min_memory_gb\":64}}}",
+      "location": null
+    },
+    "repo_url": {
+      "type": "url",
+      "value_preview": "https://github.com/asaini/Apriori",
+      "location": null
+    },
+    "repo_validation_report": {
+      "type": "report",
+      "value_preview": "仓库检索报告 / Repository Discovery Report\nQuery: 任务目标: 检索并定位论文对应的高可信公开仓库 / Retrieve and validate the most relevant public repository for the target paper 具体要求: 1\nSource: Papers with Code (via HuggingFace Papers API)\nCandidates: 1\nSelected repo_url: https://github.com/asaini/Apriori\n",
+      "location": null
+    },
+    "reproduction_mode_report": {
+      "type": "report",
+      "value_preview": "{\n  \"requested_mode\": \"smoke\",\n  \"effective_mode\": \"smoke\",\n  \"full_eligible\": false,\n  \"reasons\": [\n    \"smoke mode explicitly requested\",\n    \"memory_gb=15.3 \\u003c required=64.0\",\n    \"disk_free_gb=1.5 \\u003c required=100.0\",\n    \"cuda_gpu_count=0 \\u003c required=1\"\n  ],\n  \"probe\": {\n    \"cpu_count\": 24,\n    \"memory_gb\": 15.3,\n    \"disk_free_gb\": 1.5,\n    \"gpu_count\": 0,\n    \"thresholds\": {\n      \"min_cpu_count\": 16,\n      \"min_cuda_gpu\": 1,\n      \"min_disk_free_gb\": 100,\n      \"min_memory_gb\": 64\n    }\n  }\n}",
+      "location": null
+    },
+    "run_metrics": {
+      "type": "metrics",
+      "value_preview": "item: ('Brooklyn',) , 0.152\nitem: ('HISPANIC',) , 0.164\nitem: ('MBE', 'HISPANIC') , 0.164\nitem: ('WBE', 'MBE') , 0.169\nitem: ('MBE', 'New York') , 0.170\nitem: ('WBE', 'New York') , 0.175\nitem: ('ASIAN', 'MBE') , 0.200\nitem: ('ASIAN',) , 0.202\nitem: ('New York',) , 0.295\nitem: ('NON-MINORITY',) , 0.300\nitem: ('NON-MINORITY', 'WBE') , 0.300\nitem: ('BLACK',) , 0.301\nitem: ('MBE', 'BLACK') , 0.301\nitem: ('WBE',) , 0.477\nitem: ('MBE',) , 0.671\n\n------------------------ RULES:\nRule: ('WBE',) ==> ('NON-MINORITY',) , 0.628\nRule: ('ASIAN',) ==> ('MBE',) , 0.990\nRule: ('BLACK',) ==> ('MBE',) , 1.000\nRule: ('HISPANIC',) ==> ('MBE',) , 1.000\nRule: ('NON-MINORITY',) ==> ('WBE',) , 1.000\n{\"paper_smoke_metrics\": {\"association_rules\": 5, \"exit_code\": 0, \"frequent_itemsets\": 15}}",
+      "location": null
+    },
+    "runtime_session": {
+      "type": "text",
+      "value_preview": "dk-b75ce85510ef1a5b0ec33b371add1ed61d8d156b34c770778d1f8d66f8e61ddd",
+      "location": null
+    },
+    "workspace_path": {
+      "type": "text",
+      "value_preview": "/tmp/research-assistant_repo_workspace_305551616",
+      "location": null
+    }
+  }
+}

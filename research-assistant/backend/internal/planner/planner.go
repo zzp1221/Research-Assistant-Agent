@@ -458,6 +458,9 @@ func isDatasetExperimentIntent(intent models.IntentContext) bool {
 	if intent.Entities == nil || intent.Entities["uploaded_files"] == nil {
 		return false
 	}
+	if boolEntity(intent.Entities, "autoresearch_config_only") {
+		return false
+	}
 	if boolEntity(intent.Entities, "needs_dataset_research") {
 		return true
 	}

@@ -338,6 +338,17 @@ func TestPlanRuntimeRoutesUploadedDatasetToCustomBenchmarkHarness(t *testing.T) 
 	}
 }
 
+func TestHasOnlyAutoResearchConfigAttachments(t *testing.T) {
+	config := []map[string]any{{"name": "autoresearch.json"}, {"name": "evaluator.py"}, {"name": "holdout_evaluator.py"}}
+	if !hasOnlyAutoResearchConfigAttachments(config) {
+		t.Fatal("expected AutoResearch config uploads to be recognized")
+	}
+	withData := append(append([]map[string]any{}, config...), map[string]any{"name": "corpus.jsonl"})
+	if hasOnlyAutoResearchConfigAttachments(withData) {
+		t.Fatal("data uploads must keep dataset AutoResearch routing")
+	}
+}
+
 type closeNotifierRecorder struct {
 	*httptest.ResponseRecorder
 	closed chan bool

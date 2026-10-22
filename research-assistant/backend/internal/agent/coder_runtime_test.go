@@ -3,6 +3,7 @@ package agent
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -50,6 +51,15 @@ func TestSandboxImageForWorkspaceIgnoresInvalidMetadata(t *testing.T) {
 	image, reason := sandboxImageForWorkspace("python:3.9-bullseye", workspace)
 	if image != "python:3.9-bullseye" || reason != "" {
 		t.Fatalf("invalid metadata changed runtime: image=%q reason=%q", image, reason)
+	}
+}
+
+func TestPipInstallArgsUsesConfiguredIndex(t *testing.T) {
+	t.Setenv("PIP_INDEX_URL", "https://mirrors.example/simple/")
+	args := pipInstallArgs("numpy==2.1.3")
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "--index-url https://mirrors.example/simple/") || !strings.HasSuffix(joined, "numpy==2.1.3") {
+		t.Fatalf("unexpected pip args: %s", joined)
 	}
 }
 

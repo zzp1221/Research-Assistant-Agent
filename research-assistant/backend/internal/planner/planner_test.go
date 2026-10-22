@@ -204,6 +204,31 @@ func TestAutoResearchBuildsDeterministicBoundedHarness(t *testing.T) {
 	}
 }
 
+func TestConfigOnlyAutoResearchUploadsStayOnRepositoryPath(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	intent := models.IntentContext{
+		RawIntent:  "用 https://github.com/dorianbrown/rank_bm25 做 AutoResearch，使用上传的 autoresearch.json",
+		IntentType: "AutoResearch",
+		Entities: map[string]any{
+			"needs_autoresearch":     true,
+			"needs_dataset_research": true,
+			"autoresearch_config_only": true,
+			"uploaded_files": []map[string]any{
+				{"name": "autoresearch.json"},
+				{"name": "evaluator.py"},
+				{"name": "holdout_evaluator.py"},
+			},
+		},
+	}
+	plan, err := NewPlanner().BuildPlan(t.Context(), intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Nodes) != 8 || plan.Nodes[2].Type != "autoresearch_spec" {
+		t.Fatalf("config-only uploads must stay on repo AutoResearch path: %#v", plan.Nodes)
+	}
+}
+
 func TestDatasetAutoResearchBuildsGenericExperimentHarness(t *testing.T) {
 	intent := models.IntentContext{
 		RawIntent:  "上传工业语料和评测问题，自动研究 RAG 策略与超参数，最多 14 次实验，并发 3 路，总时长 20 分钟，目标分数 0.82，top_k=8",

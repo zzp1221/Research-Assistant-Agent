@@ -113,6 +113,12 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		}
 		intentContext.Entities["uploaded_files"] = attachments
 		intentContext.Metadata["attachment_count"] = len(attachments)
+		if intentContext.IntentType == "AutoResearch" && hasOnlyAutoResearchConfigAttachments(attachments) {
+			intentContext.Entities["autoresearch_config_only"] = true
+			delete(intentContext.Entities, "needs_dataset_research")
+			delete(intentContext.Entities, "research_domain")
+			delete(intentContext.Entities, "experiment_adapter")
+		}
 	}
 	plan, err := r.planner.BuildPlan(c.Request.Context(), intentContext)
 	if err != nil {
@@ -621,6 +627,21 @@ func shouldRouteUploadedCustomBenchmark(intentType, rawIntent string, attachment
 	return intentType != "AutoResearch" &&
 		hasBenchmarkDatasetAttachment(attachments) &&
 		containsAny(rawIntent, []string{"benchmark", "基准测试", "评测", "测评", "跑分"})
+}
+
+func hasOnlyAutoResearchConfigAttachments(attachments []map[string]any) bool {
+	if len(attachments) == 0 {
+		return false
+	}
+	for _, attachment := range attachments {
+		name := strings.ToLower(strings.TrimSpace(fmt.Sprint(attachment["name"])))
+		switch name {
+		case "autoresearch.json", "evaluator.py", "holdout_evaluator.py":
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func hasBenchmarkDatasetAttachment(attachments []map[string]any) bool {

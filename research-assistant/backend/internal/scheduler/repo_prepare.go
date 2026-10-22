@@ -305,6 +305,16 @@ func maybeCreateReproductionSmokeRunner(workspacePath string, task *models.Task)
 		return "", "", nil
 	}
 
+	if _, err := os.Stat(filepath.Join(workspacePath, "apriori.py")); err == nil {
+		if _, datasetErr := os.Stat(filepath.Join(workspacePath, "INTEGRATED-DATASET.csv")); datasetErr == nil {
+			runnerPath := filepath.Join(workspacePath, reproductionSmokeRunnerName)
+			if err := os.WriteFile(runnerPath, []byte(buildAprioriSmokeRunner()), 0o644); err != nil {
+				return "", "", fmt.Errorf("create Apriori smoke runner: %w", err)
+			}
+			return runnerPath, "apriori_frequent_itemsets", nil
+		}
+	}
+
 	transformerPath := filepath.Join(workspacePath, "src", "architectures", "machine_translation_transformer.py")
 	hasRepoTransformer := false
 	if _, err := os.Stat(transformerPath); err == nil {
@@ -325,6 +335,36 @@ func maybeCreateReproductionSmokeRunner(workspacePath string, task *models.Task)
 		return "", "", fmt.Errorf("create reproduction smoke runner: %w", err)
 	}
 	return runnerPath, runnerKind, nil
+}
+
+func buildAprioriSmokeRunner() string {
+	return `import json
+import subprocess
+import sys
+
+command = [
+    sys.executable,
+    "apriori.py",
+    "-f",
+    "INTEGRATED-DATASET.csv",
+    "-s",
+    "0.15",
+    "-c",
+    "0.6",
+]
+completed = subprocess.run(command, capture_output=True, text=True, timeout=120)
+if completed.stdout:
+    sys.stdout.write(completed.stdout)
+if completed.stderr:
+    sys.stderr.write(completed.stderr)
+metrics = {
+    "exit_code": completed.returncode,
+    "frequent_itemsets": completed.stdout.count("item: "),
+    "association_rules": completed.stdout.count("Rule: "),
+}
+print(json.dumps({"paper_smoke_metrics": metrics}, sort_keys=True))
+raise SystemExit(completed.returncode)
+`
 }
 
 func shouldCreateAttentionAblationRunner(task *models.Task) bool {

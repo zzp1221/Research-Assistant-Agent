@@ -746,7 +746,7 @@ func (a *CoderAgent) installDependencies(ctx context.Context, task *models.Task)
 	maxAttempts := 3
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		logToContext(ctx, "[%s] Installing dependencies in sandbox %s (attempt %d/%d): %s", a.Name, runtimeSession, attempt, maxAttempts, strings.Join(dependencies, ", "))
-		cmd := append([]string{"python3", "-m", "pip", "install", "--default-timeout", defaultPipTimeoutSec}, dependencies...)
+		cmd := pipInstallArgs(dependencies...)
 		res, err := a.Sandbox.ExecCommandStream(ctx, runtimeSession, cmd, func(stream string, line string) {
 			logToContext(ctx, "[%s] pip %s: %s", a.Name, stream, line)
 		})
@@ -1280,7 +1280,7 @@ func (a *CoderAgent) installMissingPythonModule(ctx context.Context, sandboxID s
 
 	// 运行期兜底：依赖识别漏掉模块时，在当前 prepared_runtime 内最小补装一次。
 	logToContext(ctx, "[%s] Missing module detected at runtime: %s -> %s, retrying with pip install", a.Name, missingModule, pkg)
-	res, err := a.Sandbox.ExecCommandStream(ctx, sandboxID, []string{"python3", "-m", "pip", "install", "--default-timeout", defaultPipTimeoutSec, pkg}, func(stream string, line string) {
+	res, err := a.Sandbox.ExecCommandStream(ctx, sandboxID, pipInstallArgs(pkg), func(stream string, line string) {
 		logToContext(ctx, "[%s] pip %s: %s", a.Name, stream, line)
 	})
 	if err != nil {
@@ -1900,6 +1900,14 @@ func filterStandardLibraryDependencies(items []string) []string {
 		filtered = append(filtered, item)
 	}
 	return filtered
+}
+
+func pipInstallArgs(packages ...string) []string {
+	args := []string{"python3", "-m", "pip", "install", "--default-timeout", defaultPipTimeoutSec}
+	if indexURL := strings.TrimSpace(os.Getenv("PIP_INDEX_URL")); indexURL != "" {
+		args = append(args, "--index-url", indexURL)
+	}
+	return append(args, packages...)
 }
 
 func configuredSandboxImage() string {

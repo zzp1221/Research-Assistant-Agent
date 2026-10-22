@@ -17,7 +17,7 @@ services:
       - SANDBOX_PIDS_LIMIT=${SANDBOX_PIDS_LIMIT:-256}
       - SANDBOX_NETWORK_MODE=${SANDBOX_NETWORK_MODE:-bridge}
       - SANDBOX_WORKSPACE_ROOTS=/tmp
-      - SANDBOX_IMAGE_ALLOWLIST=${SANDBOX_IMAGE_ALLOWLIST:-python:3.9-bullseye}
+      - SANDBOX_IMAGE_ALLOWLIST=${SANDBOX_IMAGE_ALLOWLIST:-python:3.9-bullseye,python:3.11-bullseye}
     security_opt:
       - no-new-privileges:true
     cap_drop:

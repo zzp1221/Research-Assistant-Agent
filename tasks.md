@@ -80,24 +80,24 @@
 - [x] `backend.env`（gitignored）
 - [x] `.env`（gitignored）
 - [x] DeepSeek API 连通性探测（200）
-- [ ] `docker compose build`
-- [ ] `docker compose up -d`
-- [ ] health check
-- [ ] `/api/chat` real DeepSeek
-- [ ] `/api/plan` real DeepSeek
+- [x] `docker compose build`
+- [x] `docker compose up -d`（宿主机 18080/15173，避开已占用的 8080）
+- [x] health check
+- [x] `/api/chat` real DeepSeek
+- [x] `/api/plan` real DeepSeek
 
 ## Phase 6 — 论文 E2E
 
-- [ ] 选择论文与仓库（候选：Attention Is All You Need / annotated-transformer smoke）
-- [ ] 容器内创建计划
-- [ ] 容器内执行计划
-- [ ] 验证事件/Artifact
-- [ ] 运行 Benchmark 示例
-- [ ] 运行 AutoResearch 示例
-- [ ] 生成报告 `reports/`
+- [x] 选择论文与仓库：Apriori / `asaini/Apriori`（纯 Python，轻量）
+- [x] 容器内创建计划
+- [x] 容器内执行计划（10/10 节点）
+- [x] 验证事件/Artifact（15 个频繁项集、5 条关联规则、claim-evidence 图）
+- [x] 运行 Benchmark 示例（Go harness 回归通过）
+- [x] 运行 AutoResearch 示例（rank_bm25 8/8，hidden holdout 3/3）
+- [x] 生成报告 `reports/`
 
 ## Phase 7 — 收尾
 
-- [ ] 全部容器测试通过
+- [x] 全部容器测试通过
 - [ ] `git status` clean
 - [ ] 最终提交
