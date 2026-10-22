@@ -22,6 +22,10 @@ EXPECTED_REPOSITORY = "https://github.com/harvardnlp/annotated-transformer"
 EXPECTED_ARTIFACTS = {"repo_url", "run_metrics", "comparison_report"}
 EXPECTED_EVENTS = {"plan_started", "artifact_created", "plan_completed"}
 TERMINAL_STATUSES = {"completed", "failed", "blocked", "cancelled", "canceled"}
+IDENTITY_HEADERS = {
+    "X-User-Id": os.environ.get("RESEARCH_ASSISTANT_USER_ID", "paper-reproduction-runner"),
+    "X-Session-Id": os.environ.get("RESEARCH_ASSISTANT_SESSION_ID", "paper-reproduction-smoke"),
+}
 
 
 def request_json(
@@ -36,7 +40,7 @@ def request_json(
         base_url.rstrip("/") + path,
         data=data,
         method=method,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", **IDENTITY_HEADERS},
     )
     try:
         with urlopen(request, timeout=timeout) as response:

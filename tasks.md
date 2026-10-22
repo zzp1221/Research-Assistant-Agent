@@ -18,7 +18,7 @@
 - [x] 校验 `workspace_path` 位于 `SANDBOX_WORKSPACE_ROOTS`
 - [x] 拒绝符号链接/路径穿越
 - [x] 工作区权限由旧接口移除
-- [ ] JSON/API 请求体大小限制
+- [x] JSON/API 请求体大小限制（plan 2 MiB / chat 1 MiB）
 - [x] 沙箱容器 ID 正则校验
 - [x] 沙箱容器标签校验
 - [x] `DeleteSandbox` 返回真实错误

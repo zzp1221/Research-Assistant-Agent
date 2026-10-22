@@ -125,6 +125,7 @@ func SetupRoutes(r *gin.Engine) {
 		})
 
 		apiGroup.POST("/chat", func(c *gin.Context) {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
 			var payload ChatPayload
 			if err := c.ShouldBindJSON(&payload); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

@@ -90,6 +90,7 @@ func (r *planRuntime) register(apiGroup *gin.RouterGroup) {
 }
 
 func (r *planRuntime) createPlan(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<20)
 	var payload RequestPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

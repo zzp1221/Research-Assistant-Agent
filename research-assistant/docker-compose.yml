@@ -3,7 +3,7 @@ services:
   docker-sandbox:
     build: ./docker-sandbox
     ports:
-      - "127.0.0.1:8082:8082"
+      - "127.0.0.1:${SANDBOX_HOST_PORT:-8082}:8082"
     volumes:
       # 极其重要：挂载 Docker Socket，允许容器内的 Go 程序操作宿主机的 Docker
       - /var/run/docker.sock:/var/run/docker.sock
@@ -31,7 +31,7 @@ services:
   research-optimizer:
     build: ./research-optimizer
     ports:
-      - "127.0.0.1:8090:8090"
+      - "127.0.0.1:${OPTIMIZER_HOST_PORT:-8090}:8090"
     volumes:
       - research-assistant-experience-data:/data
     environment:
@@ -53,7 +53,7 @@ services:
         DEBIAN_MIRROR: ${DEBIAN_MIRROR:-http://deb.debian.org/debian}
         DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-http://deb.debian.org/debian-security}
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${BACKEND_HOST_PORT:-8080}:8080"
     volumes:
       - /tmp:/tmp
       - ../docker-core/config:/app/config:ro
@@ -89,7 +89,7 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "127.0.0.1:5173:80" # 将容器内的 Nginx 80 端口映射到宿主机 5173
+      - "127.0.0.1:${FRONTEND_HOST_PORT:-5173}:80" # 将容器内的 Nginx 80 端口映射到宿主机 5173
     depends_on:
       - backend
     networks:
