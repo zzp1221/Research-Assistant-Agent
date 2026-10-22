@@ -1,0 +1,159 @@
+# backend
+
+Go 后端是 Research Assistant Agent 的业务核心，负责 HTTP API、意图识别、任务规划、DAG 调度、Agent 编排、沙箱调用、上传管理与 SSE 事件推送。
+
+模块路径：`research-assistant-backend`
+
+## 入口
+
+| 入口 | 说明 |
+|---|---|
+| `cmd/api/main.go` | 纯 API 服务，监听 `:8080`，适合与独立沙箱服务配合 |
+| `cmd/app/main.go` | 单文件应用，内嵌前端静态资源，并在未配置 `SANDBOX_URL` 时自动拉起本地沙箱 |
+
+## 目录结构
+
+```text
+backend/
+├── cmd/
+│   ├── api/                 纯 API 入口
+│   └── app/                 单文件应用入口
+├── internal/
+│   ├── api/                 HTTP 路由、认证、上传、计划运行时
+│   ├── planner/             意图到 DAG 的规划器
+│   ├── scheduler/           DAG 执行、租约、仓库发现与准备
+│   ├── agent/               Chat/Librarian/Benchmark/Coder/Research Coding/Data
+│   ├── models/              计划、任务、Artifact、AutoResearch 契约
+│   ├── prompts/             各 Agent 的系统提示词
+│   ├── store/               计划与事件存储（文件/内存）
+│   ├── sandbox/             沙箱服务 HTTP 客户端
+│   ├── sandboxserver/       单文件模式内嵌沙箱服务
+│   ├── Intent/              LLM 意图分类器
+│   ├── appconfig/           LLM 配置加载
+│   ├── events/              事件总线
+│   └── tools/               工具实现（ask_user_question）
+├── evals/                   规划评测数据集与测试
+├── tests/                   跨模块集成测试
+└── webui/                   前端嵌入入口
+```
+
+## 主要包职责
+
+### planner
+
+把用户意图、附件和上下文转换为 `PlanGraph`。规划器负责节点类型、依赖关系、输入输出契约和基础校验，确保 Scheduler 只接收合法 DAG。
+
+### scheduler
+
+按入度执行 DAG，维护任务租约、重试、取消、预算和事件。仓库相关任务还包含仓库发现（`repo_discovery.go`）、仓库准备（`repo_prepare.go`）与复现模式控制。
+
+### agent
+
+| Agent | 文件 | 职责 |
+|---|---|---|
+| Chat | `chat.go` | 通用问答与轻量任务入口 |
+| Librarian | `librarian.go` | 论文解析、资料检索、方法/声明提取、Rubric 冻结 |
+| Benchmark | `benchmark_agent.go` 等 | 数据审计、split、泄漏检查、Metric/Reward 契约 |
+| Coder | `coder.go` | 仓库发现、代码准备、依赖分析与修复 |
+| Research Coding | `research_coding_agent.go` | 论文仓库调试、Benchmark 适配、代码补丁 AutoResearch |
+| Data | `data.go` | 指标汇总、论文声明对比、证据图判定、报告生成 |
+| AutoResearch | `autoresearch.go` | ResearchSpec 冻结、候选执行、Keep/Reject、回滚、Holdout |
+| Experiment Research | `experiment_research.go` | `experiment.spec/v1` 配置搜索与 Domain Adapter |
+| Ablation ToT | `ablation_tot.go` | 受限 Tree-of-Thoughts 消融设计 |
+
+### models
+
+定义 `PlanGraph`、`Task`、`Artifact`、`ResearchSpec`、`TrialLedger`、`BenchmarkContract` 等共享契约。修改这些结构时要同步检查前端 `src/contracts/`。
+
+### store
+
+`PlanStore` 接口有两个实现：内存存储与文件存储。文件存储使用原子写入，服务重启后可恢复计划和事件。
+
+### sandbox / sandboxserver
+
+`sandbox` 是访问独立沙箱服务的客户端；`sandboxserver` 是单文件模式内嵌的沙箱 HTTP 服务，接口与 `docker-sandbox` 保持一致。
+
+## API
+
+| Method | Endpoint | 说明 |
+|---|---|---|
+| `GET` | `/ping` | 轻量存活检查 |
+| `GET` | `/api/health` | 后端、仓库、沙箱与 Optimizer 健康状态 |
+| `POST` | `/api/plan` | 创建计划 |
+| `GET` | `/api/plans/:id` | 查询计划 |
+| `POST` | `/api/plans/:id/execute` | 执行计划 |
+| `POST` | `/api/plans/:id/approve` | 批准计划 |
+| `POST` | `/api/plans/:id/cancel` | 取消计划 |
+| `POST` | `/api/plans/:id/tasks/:taskId/retry` | 重试节点 |
+| `POST` | `/api/plans/:id/tasks/:taskId/reassign` | 重分配节点 |
+| `GET` | `/api/plans/:id/events` | 事件历史 |
+| `GET` | `/api/plans/:id/stream` | SSE 事件流 |
+| `POST` | `/api/execute` | 直接执行单个任务 |
+| `POST` | `/api/uploads` | 上传附件 |
+| `GET` | `/api/uploads/:id/content` | 读取附件 |
+| `POST` | `/api/chat` | 对话 |
+| `GET` | `/api/pdf-proxy` | PDF 代理 |
+
+## 环境变量
+
+| 变量 | 说明 |
+|---|---|
+| `OPENAI_API_KEY` | 必填，OpenAI-compatible API Key |
+| `OPENAI_BASE_URL` | API Base URL |
+| `OPENAI_MODEL_NAME` | 模型名称 |
+| `SANDBOX_URL` | 沙箱服务地址 |
+| `SANDBOX_API_TOKEN` | 沙箱 Bearer Token |
+| `PLAN_STORE_PATH` | 计划存储文件 |
+| `UPLOAD_ROOT` / `UPLOAD_MAX_MB` | 上传目录与大小限制 |
+| `BENCHMARK_PRIVATE_ROOT` | 隐藏标签与 evaluator 目录，不应挂载进沙箱 |
+| `RESEARCH_OPTIMIZER_URL` / `RESEARCH_OPTIMIZER_API_TOKEN` | Python 优化器 |
+| `API_AUTH_TOKEN` | API 静态 Token |
+| `CORS_ALLOWED_ORIGINS` | 允许的前端 Origin |
+| `PLAN_MAX_TASK_ATTEMPTS` / `PLAN_MAX_DURATION_SECONDS` | 任务与时长预算 |
+| `REQUIRE_PLAN_APPROVAL` | 是否强制人工审批 |
+| `LOG_MODEL_OUTPUT` | 是否把模型输出写入进程日志 |
+
+## 构建与测试
+
+```bash
+go mod tidy
+go build -o bin/api ./cmd/api
+go build -o bin/research-assistant ./cmd/app
+
+go test ./...
+go test -v ./evals
+```
+
+后端包含 Linux 专用的进程组、`syscall.Kill` 和 `Statfs` 调用。在 Windows 上直接 `go build` 会报 `SysProcAttr.Setpgid` 等错误，应在 Docker 中构建，或使用：
+
+```bash
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -buildvcs=false ./...
+```
+
+测试同样依赖 Linux 进程组语义，建议在 Docker 容器内运行 `go test ./...`。
+
+单文件构建需要前端产物：
+
+```bash
+cd ../frontend && npm run build
+cd ../backend && go build -o bin/research-assistant ./cmd/app
+```
+
+`webui/embed.go` 使用 `//go:embed dist`。仓库中保留 `webui/dist/placeholder.txt` 以便未构建前端时也能通过编译；实际发布前应把前端 `dist` 同步到该目录。
+
+## 集成测试
+
+`tests/` 与部分 `internal/agent` 测试需要真实 LLM、网络或 Docker，默认会跳过。按测试文件中的环境变量开启，例如：
+
+```bash
+REAL_PAPER_REPRO_TEST=1 SANDBOX_URL=http://localhost:8082 \
+  go test ./tests -run TestRealPaperReproductionFlow -v -count=1
+```
+
+## 子模块说明
+
+- [Intent](internal/Intent/README.md)
+- [agent](internal/agent/README.md)
+- [planner](internal/planner/README.md)
+- [scheduler](internal/scheduler/README.md)
+- [ask_user_question](internal/tools/ask_user_question/README.md)

@@ -1,0 +1,2103 @@
+package planner
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"regexp"
+	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/prompts"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// Planner generates DAGs based on user intent
+type Planner struct {
+	agent *plannerAgent
+}
+
+func NewPlanner() *Planner {
+	return &Planner{
+		agent: newPlannerAgent(),
+	}
+}
+
+// BuildPlan creates the new graph-based plan structure described in the refactor docs.
+func (p *Planner) BuildPlan(ctx context.Context, intent models.IntentContext) (*models.PlanGraph, error) {
+	_ = ctx
+
+	plan := &models.PlanGraph{
+		ID:         uuid.New().String(),
+		TraceID:    "trace_" + strings.ReplaceAll(uuid.New().String(), "-", ""),
+		UserIntent: intent.RawIntent,
+		IntentType: intent.IntentType,
+		Status:     models.StatusPending,
+		Nodes:      []*models.TaskNode{},
+		Edges:      []*models.TaskEdge{},
+		Artifacts:  map[string]models.Artifact{},
+		Budget: models.RunBudget{
+			MaxTaskAttempts: 100,
+			MaxDurationSec:  2100,
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	var nodes []*models.TaskNode
+	var err error
+	if isDatasetExperimentIntent(intent) {
+		nodes = buildDatasetExperimentNodes(intent)
+	} else if isCustomDatasetBenchmarkIntent(intent) {
+		nodes = buildCustomDatasetBenchmarkNodes(intent)
+	} else if isAutoResearchIntent(intent) {
+		nodes = buildAutoResearchNodes(intent)
+	} else if p.agent != nil {
+		nodes, err = p.agent.BuildNodes(ctx, intent)
+		if err != nil {
+			logPlannerFallback(intent, err)
+		} else if validationErr := validateAgentPlannedNodes(intent, nodes); validationErr != nil {
+			logPlannerFallback(intent, validationErr)
+			nodes = nil
+		}
+	}
+	if len(nodes) == 0 {
+		switch intent.IntentType {
+		case "Framework_Evaluation":
+			nodes = buildFrameworkEvaluationNodesV2(intent)
+		case "Paper_Reproduction":
+			nodes = buildPaperReproductionNodesV2(intent)
+		case "Code_Execution":
+			nodes = buildCodeExecutionNodesV2(intent)
+		case "Custom_Benchmark":
+			nodes = buildCustomDatasetBenchmarkNodes(intent)
+		case "AutoResearch":
+			if isDatasetExperimentIntent(intent) {
+				nodes = buildDatasetExperimentNodes(intent)
+			} else {
+				nodes = buildAutoResearchNodes(intent)
+			}
+		default:
+			nodes = buildGeneralNodesV2(intent)
+		}
+	}
+
+	edges := buildEdgesFromNodes(nodes)
+	fillInitialStatuses(nodes)
+	plan.Nodes = nodes
+	plan.Edges = edges
+	if isDatasetExperimentIntent(intent) {
+		inputs := buildDatasetExperimentInputs(intent)
+		if wallSeconds, ok := inputs["experiment_max_wall_seconds"].(int); ok {
+			plan.Budget.MaxDurationSec = wallSeconds + 900
+		}
+	} else if isAutoResearchIntent(intent) {
+		inputs := buildAutoResearchInputs(intent)
+		if wallSeconds, ok := inputs["autoresearch_max_wall_seconds"].(int); ok {
+			plan.Budget.MaxDurationSec = wallSeconds + 900
+		}
+	}
+	fillGraphMeta(plan)
+
+	return plan, validatePlanGraph(plan)
+}
+
+// GeneratePlan creates a mock DAG for a given intent (for demonstration)
+func (p *Planner) GeneratePlan(intent string, intentType string) (*models.Plan, error) {
+	planID := uuid.New().String()
+
+	plan := &models.Plan{
+		ID:         planID,
+		UserIntent: intent,
+		Status:     models.StatusPending,
+		Tasks:      make(map[string]*models.Task),
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+
+	// Legacy plan shape used by older API/tests. The graph planner above is the
+	// production path; this remains small and deterministic for compatibility.
+	if intentType == "Framework_Evaluation" {
+		frameworks := frameworkLabels(strings.ToLower(intent))
+		left := frameworkDisplayName(frameworks, 0, "Framework A")
+		right := frameworkDisplayName(frameworks, 1, "Framework B")
+		useCase := "RAG 问答"
+		if hasAny(strings.ToLower(intent), "agent", "智能体") {
+			useCase = "Agent 构建"
+		}
+
+		t1 := createMockTaskWithDescription(
+			"Retrieve Documentation & Best Practices for Target Frameworks",
+			"librarian_agent",
+			nil,
+			fmt.Sprintf("请调研 %s 与 %s 在 %s 场景下的核心架构、典型代码模式、依赖和适用边界。\n原始需求：%s", left, right, useCase, intent),
+		)
+		t2 := createMockTaskWithDescription(
+			"Design Shared RAG Benchmark Protocol",
+			"data_agent",
+			[]string{t1.ID},
+			fmt.Sprintf("请设计一个对 %s 与 %s 都公平的 %s 性能评测协议，固定输入样例、检索语料、指标口径和 JSON 输出字段。\n原始需求：%s", left, right, useCase, intent),
+		)
+		t3 := createMockTaskWithDescription("Generate "+left+" RAG Benchmark Code", "coder_agent", []string{t1.ID, t2.ID}, frameworkTaskDescription(left, useCase, intent))
+		t4 := createMockTaskWithDescription("Generate "+right+" RAG Benchmark Code", "coder_agent", []string{t1.ID, t2.ID}, frameworkTaskDescription(right, useCase, intent))
+		t5 := createMockTaskWithDescription("Run "+left+" Benchmark in Sandbox", "sandbox_agent", []string{t3.ID}, frameworkRunTaskDescription(left, intent))
+		t6 := createMockTaskWithDescription("Run "+right+" Benchmark in Sandbox", "sandbox_agent", []string{t4.ID}, frameworkRunTaskDescription(right, intent))
+		t7 := createMockTaskWithDescription(
+			"Compare RAG Benchmark Results",
+			"data_agent",
+			[]string{t5.ID, t6.ID},
+			fmt.Sprintf("请根据 %s 与 %s 的沙箱执行输出生成客观性能对比报告，覆盖实验配置、延迟、成功率、输出质量、依赖复杂度、适用场景和选型建议。\n原始需求：%s", left, right, intent),
+		)
+
+		plan.Tasks[t1.ID] = t1
+		plan.Tasks[t2.ID] = t2
+		plan.Tasks[t3.ID] = t3
+		plan.Tasks[t4.ID] = t4
+		plan.Tasks[t5.ID] = t5
+		plan.Tasks[t6.ID] = t6
+		plan.Tasks[t7.ID] = t7
+	} else if intentType == "Paper_Reproduction" {
+		t1 := createMockTask("Parse Paper & Extract Algorithm Details", "librarian_agent", nil, intent)
+		tRubric := createMockTask("Freeze Hierarchical Claim Rubric", "librarian_agent", []string{t1.ID}, intent)
+		t2 := createMockTask("Find/Clone Open Source Repository", "coder_agent", []string{t1.ID}, intent)
+		t3 := createMockTask("Setup Sandbox Environment (Install Dependencies)", "sandbox_agent", []string{t2.ID}, intent)
+		t4 := createMockTask("Execute Baseline Code", "sandbox_agent", []string{t3.ID}, intent)
+		t5 := createMockTask("Compare Results with Paper", "data_agent", []string{t4.ID}, intent)
+		t6 := createMockTask("Debug/Refine Code if Results Mismatch", "research_coding_agent", []string{t5.ID}, intent)
+		tEvidence := createMockTask("Build Claim-to-Evidence Graph", "data_agent", []string{tRubric.ID, t6.ID}, intent)
+
+		plan.Tasks[t1.ID] = t1
+		plan.Tasks[tRubric.ID] = tRubric
+		plan.Tasks[t2.ID] = t2
+		plan.Tasks[t3.ID] = t3
+		plan.Tasks[t4.ID] = t4
+		plan.Tasks[t5.ID] = t5
+		plan.Tasks[t6.ID] = t6
+		plan.Tasks[tEvidence.ID] = tEvidence
+	} else if intentType == "Code_Execution" {
+		t1 := createMockTask("Generate & Run Code", "coder_agent", nil, intent)
+		t2 := createMockTask("Verify Results", "data_agent", []string{t1.ID}, intent)
+
+		plan.Tasks[t1.ID] = t1
+		plan.Tasks[t2.ID] = t2
+	} else {
+		// Default simple plan
+		t1 := createMockTask("Process Request", "general_agent", nil, intent)
+		plan.Tasks[t1.ID] = t1
+	}
+
+	return plan, nil
+}
+
+// createMockTask 创建一个包含基础信息的模拟任务
+func createMockTask(name, agent string, deps []string, context string) *models.Task {
+	if deps == nil {
+		deps = []string{}
+	}
+	displayName := bilingualTaskName(name)
+	return &models.Task{
+		ID:           uuid.New().String(),
+		Name:         displayName,
+		Description:  prompts.TaskDescription(displayName, context),
+		AssignedTo:   agent,
+		Status:       models.StatusPending,
+		Dependencies: deps,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+}
+
+func createMockTaskWithDescription(name, agent string, deps []string, description string) *models.Task {
+	if deps == nil {
+		deps = []string{}
+	}
+	displayName := bilingualTaskName(name)
+	return &models.Task{
+		ID:           uuid.New().String(),
+		Name:         displayName,
+		Description:  description,
+		AssignedTo:   agent,
+		Status:       models.StatusPending,
+		Dependencies: deps,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+}
+
+var legacyFrameworkPackageMap = map[string][]string{
+	"langchain":   {"langchain"},
+	"llamaindex":  {"llama-index"},
+	"llama-index": {"llama-index"},
+	"haystack":    {"haystack-ai"},
+	"autogen":     {"pyautogen"},
+	"crewai":      {"crewai"},
+	"langgraph":   {"langgraph"},
+}
+
+func frameworkTaskDescription(name, useCase, intent string) string {
+	packages := legacyFrameworkPackages(name)
+	packageList := strings.Join(packages, " ")
+	primaryPackage := packages[0]
+
+	return fmt.Sprintf(`请编写一个完整的 Python 脚本，在 Docker 沙箱（python:3.9-bullseye）中演示使用该目标框架实现 "%s" 功能。
+
+目标框架：%s
+建议安装包：%s
+
+关键要求：
+1. 使用该目标框架实现核心流程，依赖声明应围绕目标框架，不要混入另一个被比较框架
+2. 使用 Dummy 数据或本地构造样例，不依赖外部数据集、私有密钥或远程 API
+3. 运行结束后打印关键指标（如耗时、输出摘要、是否成功）
+4. 将结果以 JSON 格式打印到最后一行，格式：{"framework": "%s", "latency_ms": 数字, "output_preview": "字符串"}
+5. 脚本逻辑必须自洽，可解释，不能为通过测试而硬编码结果
+
+例如 %s
+原始需求：%s`, useCase, name, packageList, name, primaryPackage, intent)
+}
+
+func frameworkRunTaskDescription(name, intent string) string {
+	return fmt.Sprintf(`请在沙箱中运行 %s 的 RAG 基准测试脚本，并保留完整 stdout/stderr。
+
+运行要求：
+1. 安装脚本声明的最小依赖，不引入另一个被比较框架
+2. 运行同一份基准协议输入，避免临时改动测试数据
+3. 记录安装是否成功、脚本是否成功、端到端耗时、最后一行 JSON 指标和关键错误
+4. 如果运行失败，输出可复现的失败原因，供最终报告公平对比
+
+原始需求：%s`, name, intent)
+}
+
+func legacyFrameworkPackages(name string) []string {
+	key := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(name), "_", "-"))
+	if packages, ok := legacyFrameworkPackageMap[key]; ok && len(packages) > 0 {
+		return packages
+	}
+	return []string{strings.ToLower(strings.TrimSpace(name))}
+}
+
+func newNode(name, taskType, agent string, deps, requiredArtifacts, outputArtifacts []string, parallelizable bool, context string) *models.TaskNode {
+	if deps == nil {
+		deps = []string{}
+	}
+	if requiredArtifacts == nil {
+		requiredArtifacts = []string{}
+	}
+	if outputArtifacts == nil {
+		outputArtifacts = []string{}
+	}
+
+	now := time.Now()
+	displayName := bilingualTaskName(name)
+	return &models.TaskNode{
+		ID:                uuid.New().String(),
+		Name:              displayName,
+		Type:              taskType,
+		Description:       prompts.TaskDescription(displayName, context),
+		AssignedTo:        agent,
+		Status:            models.StatusPending,
+		Dependencies:      deps,
+		RequiredArtifacts: requiredArtifacts,
+		OutputArtifacts:   outputArtifacts,
+		Parallelizable:    parallelizable,
+		Priority:          0,
+		RetryLimit:        1,
+		RunCount:          0,
+		TimeoutSeconds:    600,
+		Contract: models.TaskContract{
+			Version:         models.TaskContractVersion,
+			InputArtifacts:  append([]string(nil), requiredArtifacts...),
+			OutputArtifacts: append([]string(nil), outputArtifacts...),
+			AllowedTools:    allowedToolsForAgent(agent),
+		},
+		Inputs:    map[string]any{},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+}
+
+func allowedToolsForAgent(agent string) []string {
+	switch agent {
+	case "coder_agent":
+		return []string{"repository.read", "workspace.write", "code.generate"}
+	case "sandbox_agent":
+		return []string{"sandbox.create", "sandbox.command", "sandbox.python", "sandbox.delete"}
+	case "librarian_agent":
+		return []string{"paper.search", "paper.read", "repository.discover"}
+	case "data_agent":
+		return []string{"artifact.read", "metrics.analyze", "report.write"}
+	case "research_coding_agent":
+		return []string{"repository.read", "repository.patch_scoped", "dataset.profile", "workspace.write_scoped", "sandbox.command", "metrics.validate", "research.trial_ledger"}
+	case "benchmark_agent":
+		return []string{"dataset.audit", "dataset.split_scoped", "dataset.leakage_check", "metrics.contract", "reward.contract", "metrics.recompute_hidden"}
+	default:
+		return []string{"conversation.respond"}
+	}
+}
+
+func buildDatasetExperimentNodes(intent models.IntentContext) []*models.TaskNode {
+	context := intent.RawIntent
+	inputs := buildDatasetExperimentInputs(intent)
+	prepareData := newNode(
+		"Adapt Research Dataset",
+		"experiment_dataset_prepare",
+		"research_coding_agent",
+		nil,
+		nil,
+		[]string{"workspace_path", "experiment_dataset_manifest", "experiment_dataset_report"},
+		false,
+		context,
+	)
+	prepareData.Inputs = copyBenchmarkInputs(inputs)
+	prepareData.Inputs["uploaded_files"] = intent.Entities["uploaded_files"]
+
+	freeze := newNode(
+		"Freeze Experiment Search Contract",
+		"experiment_spec",
+		"research_coding_agent",
+		[]string{prepareData.ID},
+		[]string{"workspace_path", "experiment_dataset_manifest"},
+		[]string{"experiment_spec", "experiment_spec_report", "dependency_spec"},
+		false,
+		context,
+	)
+	freeze.Inputs = copyBenchmarkInputs(inputs)
+
+	design := newNode(
+		"Design Bounded ToT Strategy Tree",
+		"ablation_design",
+		"data_agent",
+		[]string{freeze.ID},
+		[]string{"experiment_spec"},
+		[]string{"ablation_plan", "selected_ablation_configs", "ablation_selection_report"},
+		true,
+		context,
+	)
+	design.Description = "基于冻结的方法、参数、数据与预算契约，使用两层受限 ToT 展开、评分并剪枝实验方向；输出只负责候选设计，真实 Keep/Reject 仍由 evaluator 与 Harness 决定。\n用户原始意图: " + context
+	design.Inputs = copyBenchmarkInputs(inputs)
+	design.Inputs["ablation_max_experiments"] = min(maxTrialsFromExperimentInputs(inputs), 6)
+	design.Inputs["ablation_max_wall_minutes"] = max(5, experimentWallMinutes(inputs))
+	design.Inputs["ablation_max_gpu_minutes"] = 0
+	design.Inputs["ablation_estimated_minutes_per_experiment"] = max(1, experimentWallMinutes(inputs)/maxTrialsFromExperimentInputs(inputs))
+
+	prepareRuntime := newNode(
+		"Prepare Experiment Runtime",
+		"prepare_runtime",
+		"sandbox_agent",
+		[]string{freeze.ID},
+		[]string{"workspace_path", "dependency_spec"},
+		[]string{"runtime_session"},
+		true,
+		context,
+	)
+	install := newNode(
+		"Install Experiment Dependencies",
+		"install_dependencies",
+		"sandbox_agent",
+		[]string{prepareRuntime.ID},
+		[]string{"workspace_path", "runtime_session", "dependency_spec"},
+		[]string{"prepared_runtime", "dependency_install_report"},
+		false,
+		context,
+	)
+	run := newNode(
+		"Run Bounded Experiment Search",
+		"experiment_run",
+		"research_coding_agent",
+		[]string{install.ID, design.ID},
+		[]string{"workspace_path", "prepared_runtime", "experiment_spec", "ablation_plan"},
+		[]string{"experiment_trial_ledger", "experiment_best_candidate", "experiment_run_report"},
+		false,
+		context,
+	)
+	run.Inputs = copyBenchmarkInputs(inputs)
+	if wallSeconds, ok := inputs["experiment_max_wall_seconds"].(int); ok {
+		run.TimeoutSeconds = wallSeconds + 30
+	}
+	validate := newNode(
+		"Validate Best Experiment On Holdout",
+		"experiment_validate",
+		"research_coding_agent",
+		[]string{run.ID},
+		[]string{"workspace_path", "prepared_runtime", "experiment_spec", "experiment_trial_ledger", "experiment_best_candidate"},
+		[]string{"experiment_validation_report", "experiment_best_metrics"},
+		false,
+		context,
+	)
+	validate.RetryLimit = 0
+	report := newNode(
+		"Summarize Scientific Research Evidence",
+		"verify_result",
+		"data_agent",
+		[]string{validate.ID},
+		[]string{"experiment_dataset_report", "experiment_spec_report", "experiment_run_report", "experiment_trial_ledger", "experiment_validation_report", "experiment_best_metrics"},
+		[]string{"evaluation_report"},
+		false,
+		context,
+	)
+	return []*models.TaskNode{prepareData, freeze, design, prepareRuntime, install, run, validate, report}
+}
+
+func maxTrialsFromExperimentInputs(inputs map[string]any) int {
+	if value, ok := inputs["experiment_max_trials"].(int); ok && value > 0 {
+		return value
+	}
+	return 12
+}
+
+func experimentWallMinutes(inputs map[string]any) int {
+	if value, ok := inputs["experiment_max_wall_seconds"].(int); ok && value > 0 {
+		return (value + 59) / 60
+	}
+	return 15
+}
+
+func isDatasetExperimentIntent(intent models.IntentContext) bool {
+	if intent.Entities == nil || intent.Entities["uploaded_files"] == nil {
+		return false
+	}
+	if boolEntity(intent.Entities, "needs_dataset_research") {
+		return true
+	}
+	if !isAutoResearchIntent(intent) {
+		return false
+	}
+	normalized := strings.ToLower(intent.RawIntent)
+	return hasAny(normalized,
+		"策略", "超参数", "参数搜索", "方法选择", "最优方法", "最优配置", "自动调优",
+		"strategy", "hyperparameter", "parameter search", "method selection", "best config",
+		"rag", "retrieval", "bm25", "graphrag", "检索",
+	)
+}
+
+func buildDatasetExperimentInputs(intent models.IntentContext) map[string]any {
+	maxTrials := boundedIntentNumber(intent.RawIntent, []string{
+		`(?i)(?:最多|最大|max(?:imum)?)\s*(\d+)\s*(?:次|轮|个)?\s*(?:试验|实验|trials?|experiments?|候选)`,
+	}, 12, 1, 40)
+	maxWallMinutes := boundedIntentNumber(intent.RawIntent, []string{
+		`(?i)(?:总耗时|总时长|wall(?:[- ]?time)?|时间预算|预算)\s*(?:不超过|最多|[:：]?)?\s*(\d+)\s*(?:minutes?|分钟)`,
+	}, 15, 1, 60)
+	validationRuns := boundedIntentNumber(intent.RawIntent, []string{
+		`(?i)(?:重复验证|独立复验|重复复验|validation\s+runs?)\s*(?:最多|不超过|[:：=]?)?\s*(\d+)\s*(?:次|轮|runs?)?`,
+	}, 3, 1, 5)
+	parallelTrials := boundedIntentNumber(intent.RawIntent, []string{
+		`(?i)(?:并发|并行|parallel(?:ism)?|workers?)\s*(?:为|是|[:：=])?\s*(\d+)\s*(?:个|路|组|workers?|trials?)?`,
+	}, 4, 1, 4)
+	inputs := map[string]any{
+		"experiment_max_trials":          maxTrials,
+		"experiment_max_parallel_trials": parallelTrials,
+		"experiment_max_wall_seconds":    maxWallMinutes * 60,
+		"experiment_validation_runs":     validationRuns,
+	}
+	if domain := strings.TrimSpace(stringEntity(intent.Entities, "research_domain", "")); domain != "" {
+		inputs["research_domain"] = domain
+	}
+	if adapter := strings.TrimSpace(stringEntity(intent.Entities, "experiment_adapter", "")); adapter != "" {
+		inputs["experiment_adapter"] = adapter
+	}
+	if value, ok := optionalIntentFloat(intent.RawIntent, []string{
+		`(?i)(?:目标(?:分数|指标)?|target(?:\s+score)?|bench(?:mark)?(?:\s+score)?)\s*(?:达到|为|是|[:：=]|>=)?\s*([-+]?(?:\d+(?:\.\d+)?|\.\d+))`,
+	}); ok {
+		inputs["experiment_target_score"] = value
+	}
+	if value, ok := optionalIntentFloat(intent.RawIntent, []string{
+		`(?i)(?:holdout|隐藏集|留出集)(?:\s*目标|\s*target)?\s*(?:达到|为|是|[:：=]|>=)?\s*([-+]?(?:\d+(?:\.\d+)?|\.\d+))`,
+	}); ok {
+		inputs["experiment_holdout_target_score"] = value
+	}
+	if value, ok := optionalBoundedIntentNumber(intent.RawIntent, []string{
+		`(?i)(?:top[_ -]?k|cutoff|召回深度|检索条数)\s*(?:为|是|[:：=])?\s*(\d+)`,
+	}, 1, 100); ok {
+		inputs["experiment_cutoff"] = value
+	}
+	normalized := strings.ToLower(intent.RawIntent)
+	if matches := regexp.MustCompile(`(?i)\b(ndcg|recall|mrr)\s*@\s*(\d+)`).FindStringSubmatch(intent.RawIntent); len(matches) == 3 {
+		metric := strings.ToLower(matches[1])
+		if metric == "ndcg" || metric == "recall" {
+			metric += "_at_k"
+		}
+		inputs["experiment_metric"] = metric
+		if _, exists := inputs["experiment_cutoff"]; !exists {
+			if cutoff, err := strconv.Atoi(matches[2]); err == nil && cutoff >= 1 && cutoff <= 100 {
+				inputs["experiment_cutoff"] = cutoff
+			}
+		}
+	}
+	for _, metric := range []string{"ndcg_at_k", "recall_at_k", "mrr"} {
+		if _, exists := inputs["experiment_metric"]; !exists && strings.Contains(normalized, metric) {
+			inputs["experiment_metric"] = metric
+			break
+		}
+	}
+	return inputs
+}
+
+func optionalIntentFloat(value string, patterns []string) (float64, bool) {
+	for _, pattern := range patterns {
+		matches := regexp.MustCompile(pattern).FindStringSubmatch(value)
+		if len(matches) < 2 {
+			continue
+		}
+		parsed, err := strconv.ParseFloat(matches[1], 64)
+		if err == nil {
+			return parsed, true
+		}
+	}
+	return 0, false
+}
+
+func buildAutoResearchNodes(intent models.IntentContext) []*models.TaskNode {
+	context := intent.RawIntent
+	inputs := buildAutoResearchInputs(intent)
+	uploadedFiles := intent.Entities["uploaded_files"]
+
+	discover := newNode(
+		"Retrieve AutoResearch Repository",
+		"repo_discovery",
+		"coder_agent",
+		nil,
+		nil,
+		[]string{"candidate_repositories", "repo_validation_report", "repo_url"},
+		false,
+		context,
+	)
+	discover.Description = "任务目标: 定位用户指定的 AutoResearch 目标仓库 / Retrieve the repository to optimize\n具体要求: 优先采用用户明确提供的 GitHub URL，并输出 candidate_repositories、repo_validation_report、repo_url。\n用户原始意图: " + context
+	discover.Inputs = buildRepoDiscoveryInputs(intent)
+
+	prepare := newNode(
+		"Prepare AutoResearch Workspace",
+		"repo_prepare",
+		"coder_agent",
+		[]string{discover.ID},
+		[]string{"repo_url", "candidate_repositories", "repo_validation_report"},
+		[]string{"workspace_path", "code_file_path", "generated_code", "repo_manifest", "reproduction_mode_report"},
+		false,
+		context,
+	)
+	prepare.Inputs = map[string]any{
+		"requested_reproduction_mode":    "auto",
+		"full_reproduction_requested":    false,
+		"skip_reproduction_smoke_runner": true,
+	}
+	if revision := strings.TrimSpace(stringEntity(intent.Entities, "repository_revision", "")); revision != "" {
+		prepare.Inputs["repository_revision"] = revision
+	}
+	if uploadedFiles != nil {
+		prepare.Inputs["uploaded_files"] = workspaceUploadReferences(uploadedFiles)
+	}
+
+	freeze := newNode(
+		"Freeze AutoResearch Contract",
+		"autoresearch_spec",
+		"research_coding_agent",
+		[]string{prepare.ID},
+		[]string{"workspace_path", "repo_manifest"},
+		[]string{"research_spec", "research_spec_report", "dependency_spec"},
+		false,
+		context,
+	)
+	freeze.Inputs = copyBenchmarkInputs(inputs)
+
+	prepareRuntime := newNode(
+		"Prepare AutoResearch Runtime",
+		"prepare_runtime",
+		"sandbox_agent",
+		[]string{freeze.ID},
+		[]string{"workspace_path", "dependency_spec"},
+		[]string{"runtime_session"},
+		false,
+		context,
+	)
+	install := newNode(
+		"Install AutoResearch Dependencies",
+		"install_dependencies",
+		"sandbox_agent",
+		[]string{prepareRuntime.ID},
+		[]string{"workspace_path", "runtime_session", "dependency_spec"},
+		[]string{"prepared_runtime", "dependency_install_report"},
+		false,
+		context,
+	)
+	run := newNode(
+		"Run Bounded AutoResearch Loop",
+		"autoresearch_run",
+		"research_coding_agent",
+		[]string{install.ID},
+		[]string{"workspace_path", "prepared_runtime", "research_spec"},
+		[]string{"research_trial_ledger", "research_best_candidate", "research_run_report"},
+		false,
+		context,
+	)
+	run.Inputs = copyBenchmarkInputs(inputs)
+	if wallSeconds, ok := inputs["autoresearch_max_wall_seconds"].(int); ok {
+		run.TimeoutSeconds = wallSeconds + 30
+	}
+	validate := newNode(
+		"Validate AutoResearch Candidate",
+		"autoresearch_validate",
+		"research_coding_agent",
+		[]string{run.ID},
+		[]string{"workspace_path", "prepared_runtime", "research_spec", "research_trial_ledger", "research_best_candidate"},
+		[]string{"research_validation_report", "research_best_metrics"},
+		false,
+		context,
+	)
+	validate.RetryLimit = 0
+	report := newNode(
+		"Summarize AutoResearch Evidence",
+		"verify_result",
+		"data_agent",
+		[]string{validate.ID},
+		[]string{"research_spec_report", "research_run_report", "research_trial_ledger", "research_validation_report", "research_best_metrics"},
+		[]string{"evaluation_report"},
+		false,
+		context,
+	)
+	return []*models.TaskNode{discover, prepare, freeze, prepareRuntime, install, run, validate, report}
+}
+
+func isAutoResearchIntent(intent models.IntentContext) bool {
+	if intent.IntentType == "AutoResearch" || boolEntity(intent.Entities, "needs_autoresearch") {
+		return true
+	}
+	normalized := strings.ToLower(intent.RawIntent)
+	if hasAny(normalized, "autoresearch", "auto research", "自主研究", "自动研究", "自动实验", "持续实验", "实验循环") {
+		return true
+	}
+	return strings.Contains(normalized, "自动优化") &&
+		hasAny(normalized, "实验", "试验", "指标", "评测", "仓库", "模型", "repo", "trial", "metric", "benchmark")
+}
+
+func buildAutoResearchInputs(intent models.IntentContext) map[string]any {
+	maxTrials := boundedIntentNumber(intent.RawIntent, []string{
+		`(?i)(?:最多|最大|max(?:imum)?)\s*(\d+)\s*(?:次|轮|个)?\s*(?:试验|实验|trials?|experiments?)`,
+		`(?i)(\d+)\s*(?:次|轮)\s*(?:autoresearch|自动实验|实验循环)`,
+	}, autoResearchPlannerDefaultTrials, 1, autoResearchPlannerMaxTrials)
+	maxWallMinutes := boundedIntentNumber(intent.RawIntent, []string{
+		`(?i)(?:总耗时|总时长|wall(?:[- ]?time)?|预算)\s*(?:不超过|最多|[:：]?)?\s*(\d+)\s*(?:minutes?|分钟)`,
+	}, 15, 1, 60)
+	inputs := map[string]any{
+		"autoresearch_max_trials":       maxTrials,
+		"autoresearch_max_wall_seconds": maxWallMinutes * 60,
+	}
+	if validationRuns, ok := optionalBoundedIntentNumber(intent.RawIntent, []string{
+		`(?i)(?:重复验证|独立复验|重复复验|validation\s+runs?)\s*(?:最多|不超过|[:：=]?)?\s*(\d+)\s*(?:次|轮|runs?)?`,
+		`(?i)(\d+)\s*(?:次|轮|runs?)\s*(?:重复验证|独立复验|重复复验|validation)`,
+	}, 1, 5); ok {
+		inputs["autoresearch_validation_runs"] = validationRuns
+	}
+	if path := autoResearchSpecPath(intent); path != "" {
+		inputs["autoresearch_spec_path"] = path
+	}
+	return inputs
+}
+
+const (
+	autoResearchPlannerDefaultTrials = 3
+	autoResearchPlannerMaxTrials     = 8
+)
+
+func autoResearchSpecPath(intent models.IntentContext) string {
+	if path := strings.TrimSpace(stringEntity(intent.Entities, "autoresearch_spec_path", "")); path != "" {
+		return path
+	}
+	pattern := regexp.MustCompile(`(?i)([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+\.json|autoresearch\.json)`)
+	if match := pattern.FindStringSubmatch(intent.RawIntent); len(match) > 1 {
+		return match[1]
+	}
+	return ""
+}
+
+func buildCustomDatasetBenchmarkNodes(intent models.IntentContext) []*models.TaskNode {
+	context := intent.RawIntent
+	uploadedFiles := intent.Entities["uploaded_files"]
+	benchmarkInputs := buildCustomBenchmarkInputs(intent)
+
+	audit := newNode(
+		"Audit Benchmark Dataset",
+		"benchmark_dataset_audit",
+		"benchmark_agent",
+		nil,
+		nil,
+		[]string{"dataset_manifest", "benchmark_dataset_audit"},
+		true,
+		context,
+	)
+	audit.Inputs = copyBenchmarkInputs(benchmarkInputs)
+	audit.Inputs["uploaded_files"] = uploadedFiles
+
+	discover := newNode(
+		"Retrieve Benchmark Repository",
+		"repo_discovery",
+		"coder_agent",
+		nil,
+		nil,
+		[]string{"candidate_repositories", "repo_validation_report", "repo_url"},
+		true,
+		context,
+	)
+	discover.Description = buildRepoDiscoveryDescription(context)
+	discover.Inputs = buildRepoDiscoveryInputs(intent)
+
+	prepare := newNode(
+		"Prepare Benchmark Workspace",
+		"repo_prepare",
+		"coder_agent",
+		[]string{discover.ID},
+		[]string{"repo_url", "candidate_repositories", "repo_validation_report"},
+		[]string{"workspace_path", "code_file_path", "generated_code", "repo_manifest", "reproduction_mode_report"},
+		false,
+		context,
+	)
+	prepare.Inputs = map[string]any{
+		"requested_reproduction_mode": "smoke",
+		"full_reproduction_requested": false,
+		"uploaded_files":              workspaceUploadReferences(uploadedFiles),
+	}
+	split := newNode(
+		"Materialize Leakage-Safe Splits",
+		"benchmark_split_materialize",
+		"benchmark_agent",
+		[]string{audit.ID, prepare.ID},
+		[]string{"dataset_manifest", "benchmark_dataset_audit", "workspace_path"},
+		[]string{
+			"benchmark_split_manifest", "benchmark_leakage_report", "benchmark_validation_dataset_manifest",
+			"benchmark_public_test_manifest", "benchmark_input_only_preflight_manifest",
+			"benchmark_train_path", "benchmark_validation_path", "benchmark_test_features_path",
+		},
+		false,
+		context,
+	)
+	split.Inputs = copyBenchmarkInputs(benchmarkInputs)
+	split.Inputs["uploaded_files"] = uploadedFiles
+
+	freeze := newNode(
+		"Freeze Metric And Reward Contract",
+		"benchmark_contract_freeze",
+		"benchmark_agent",
+		[]string{split.ID},
+		[]string{"workspace_path", "benchmark_dataset_audit", "benchmark_split_manifest"},
+		[]string{
+			"benchmark_contract", "benchmark_metric_contract", "benchmark_reward_contract",
+			"benchmark_public_evaluator_path", "benchmark_evaluator_manifest", "benchmark_contract_report",
+		},
+		false,
+		context,
+	)
+	freeze.Inputs = copyBenchmarkInputs(benchmarkInputs)
+
+	generate := newNode(
+		"Generate Repository Benchmark Adapter",
+		"benchmark_adapter_generate",
+		"research_coding_agent",
+		[]string{freeze.ID},
+		[]string{"benchmark_validation_dataset_manifest", "workspace_path", "repo_manifest", "benchmark_contract"},
+		[]string{"benchmark_adapter_plan", "benchmark_adapter_spec", "benchmark_generated_code", "benchmark_code_file_path", "benchmark_adapter_report"},
+		false,
+		context,
+	)
+	generate.Inputs = copyBenchmarkInputs(benchmarkInputs)
+
+	resolve := newNode(
+		"Resolve Benchmark Dependencies",
+		"resolve_dependencies",
+		"coder_agent",
+		[]string{generate.ID},
+		[]string{"workspace_path", "repo_manifest", "benchmark_generated_code", "benchmark_code_file_path"},
+		[]string{"dependency_spec"},
+		false,
+		context,
+	)
+	prepareRuntime := newNode(
+		"Prepare Benchmark Runtime",
+		"prepare_runtime",
+		"sandbox_agent",
+		[]string{resolve.ID},
+		[]string{"workspace_path", "dependency_spec"},
+		[]string{"runtime_session"},
+		false,
+		context,
+	)
+	install := newNode(
+		"Install Benchmark Dependencies",
+		"install_dependencies",
+		"sandbox_agent",
+		[]string{prepareRuntime.ID},
+		[]string{"workspace_path", "runtime_session", "dependency_spec"},
+		[]string{"prepared_runtime", "dependency_install_report"},
+		false,
+		context,
+	)
+	preflight := newNode(
+		"Preflight And Repair Benchmark Adapter",
+		"benchmark_adapter_preflight",
+		"research_coding_agent",
+		[]string{install.ID},
+		[]string{"workspace_path", "benchmark_validation_dataset_manifest", "benchmark_input_only_preflight_manifest", "benchmark_contract", "benchmark_adapter_spec", "benchmark_generated_code", "benchmark_code_file_path", "prepared_runtime"},
+		[]string{"validated_benchmark_adapter_spec", "validated_benchmark_generated_code", "validated_benchmark_code_file_path", "benchmark_preflight_report"},
+		false,
+		context,
+	)
+	preflight.Inputs = copyBenchmarkInputs(benchmarkInputs)
+	execute := newNode(
+		"Execute Custom Dataset Benchmark",
+		"benchmark_execute",
+		"research_coding_agent",
+		[]string{preflight.ID},
+		[]string{
+			"workspace_path", "benchmark_validation_dataset_manifest", "benchmark_public_test_manifest", "benchmark_contract",
+			"validated_benchmark_adapter_spec", "validated_benchmark_generated_code", "validated_benchmark_code_file_path", "prepared_runtime",
+		},
+		[]string{
+			"benchmark_run_metrics", "benchmark_run_manifest", "benchmark_predictions_path",
+			"benchmark_hidden_predictions_path", "benchmark_hidden_run_manifest", "benchmark_execution_report",
+		},
+		false,
+		context,
+	)
+	execute.Inputs = copyBenchmarkInputs(benchmarkInputs)
+	validate := newNode(
+		"Validate Hidden Benchmark Evidence",
+		"benchmark_validate",
+		"benchmark_agent",
+		[]string{execute.ID},
+		[]string{
+			"workspace_path", "benchmark_contract", "benchmark_split_manifest", "benchmark_run_metrics",
+			"benchmark_hidden_predictions_path", "benchmark_hidden_run_manifest",
+		},
+		[]string{"benchmark_metrics", "benchmark_validation_report"},
+		false,
+		context,
+	)
+	report := newNode(
+		"Generate Trusted Benchmark Report",
+		"framework_report",
+		"data_agent",
+		[]string{validate.ID},
+		[]string{"benchmark_metrics", "benchmark_validation_report", "benchmark_contract", "benchmark_leakage_report", "validated_benchmark_adapter_spec"},
+		[]string{"evaluation_report"},
+		false,
+		context,
+	)
+	return []*models.TaskNode{audit, discover, prepare, split, freeze, generate, resolve, prepareRuntime, install, preflight, execute, validate, report}
+}
+
+func isCustomDatasetBenchmarkIntent(intent models.IntentContext) bool {
+	if intent.IntentType == "Custom_Benchmark" || boolEntity(intent.Entities, "needs_custom_benchmark") {
+		return true
+	}
+	if intent.Entities == nil || intent.Entities["uploaded_files"] == nil {
+		return false
+	}
+	normalized := strings.ToLower(intent.RawIntent)
+	return hasAny(normalized, "benchmark", "基准测试", "评测", "测评", "跑分")
+}
+
+func buildCustomBenchmarkInputs(intent models.IntentContext) map[string]any {
+	inputs := map[string]any{
+		"benchmark_max_preflight_attempts": 3,
+		"benchmark_max_samples": boundedIntentNumber(intent.RawIntent, []string{
+			`(?i)(?:最多|最大|max(?:imum)?)\s*(\d+)\s*(?:条|个|rows?|samples?|样本)`,
+		}, 1000, 1, 100000),
+	}
+	for key, patterns := range map[string][]string{
+		"benchmark_input_column": {
+			`(?i)(?:输入列|input(?:\s+column)?)\s*(?:是|为|[:：=])?\s*["']?([A-Za-z_][A-Za-z0-9_.-]*)`,
+		},
+		"benchmark_target_column": {
+			`(?i)(?:标签列|目标列|label(?:\s+column)?|target(?:\s+column)?)\s*(?:是|为|[:：=])?\s*["']?([A-Za-z_][A-Za-z0-9_.-]*)`,
+		},
+		"benchmark_group_column": {
+			`(?i)(?:分组列|group(?:\s+column)?)\s*(?:是|为|[:：=])?\s*["']?([A-Za-z_][A-Za-z0-9_.-]*)`,
+		},
+		"benchmark_time_column": {
+			`(?i)(?:时间列|time(?:\s+column)?|timestamp(?:\s+column)?)\s*(?:是|为|[:：=])?\s*["']?([A-Za-z_][A-Za-z0-9_.-]*)`,
+		},
+		"benchmark_primary_metric": {
+			`(?i)(?:主指标|primary\s+metric|指标)\s*(?:是|为|[:：=])?\s*["']?([A-Za-z_][A-Za-z0-9_@.-]*)`,
+		},
+	} {
+		for _, pattern := range patterns {
+			matches := regexp.MustCompile(pattern).FindStringSubmatch(intent.RawIntent)
+			if len(matches) > 1 {
+				inputs[key] = matches[1]
+				break
+			}
+		}
+	}
+	normalized := strings.ToLower(intent.RawIntent)
+	for taskType, keywords := range map[string][]string{
+		"classification": {"classification", "分类任务", "文本分类"},
+		"regression":     {"regression", "回归任务"},
+		"generation":     {"generation", "生成任务", "文本生成"},
+		"retrieval":      {"retrieval", "检索任务", "rag评测", "rag 评测"},
+	} {
+		if hasAny(normalized, keywords...) {
+			inputs["benchmark_task_type"] = taskType
+			break
+		}
+	}
+	if target, ok := optionalIntentFloat(intent.RawIntent, []string{
+		`(?i)(?:目标分数|target(?:\s+score)?)\s*(?:达到|不低于|不高于|[:：=])?\s*(-?\d+(?:\.\d+)?)`,
+	}); ok && target >= -1e12 && target <= 1e12 {
+		inputs["benchmark_target_score"] = target
+	}
+	if hasAny(strings.ToLower(intent.RawIntent), "latency", "throughput", "推理", "延迟", "吞吐") {
+		inputs["benchmark_mode"] = "inference_performance"
+		inputs["benchmark_task_type"] = "inference"
+	}
+	return inputs
+}
+
+func copyBenchmarkInputs(source map[string]any) map[string]any {
+	copyValues := make(map[string]any, len(source))
+	for key, value := range source {
+		copyValues[key] = value
+	}
+	return copyValues
+}
+
+func buildFrameworkEvaluationNodes(context string) []*models.TaskNode {
+	normalized := strings.ToLower(context)
+	frameworks := frameworkLabels(normalized)
+	left := frameworkDisplayName(frameworks, 0, "Framework A")
+	right := frameworkDisplayName(frameworks, 1, "Framework B")
+	needsBenchmark := hasAny(normalized, "benchmark", "性能", "评测", "latency", "吞吐", "run", "运行", "实验")
+
+	t1 := newNode("Research Candidate Frameworks", "framework_research", "librarian_agent", nil, nil, []string{"framework_research_report"}, true, context)
+	if !needsBenchmark {
+		t2 := newNode("Analyze "+left+" Fit", "framework_fit_left", "librarian_agent", []string{t1.ID}, []string{"framework_research_report"}, []string{"left_fit_report"}, true, context)
+		t3 := newNode("Analyze "+right+" Fit", "framework_fit_right", "librarian_agent", []string{t1.ID}, []string{"framework_research_report"}, []string{"right_fit_report"}, true, context)
+		t4 := newNode("Generate Selection Recommendation", "framework_recommendation", "data_agent", []string{t2.ID, t3.ID}, []string{"left_fit_report", "right_fit_report"}, []string{"evaluation_report"}, false, context)
+		return []*models.TaskNode{t1, t2, t3, t4}
+	}
+
+	t2 := newNode("Prepare "+left+" Environment", "framework_prepare_left", "coder_agent", []string{t1.ID}, []string{"framework_research_report"}, []string{"left_env"}, true, context)
+	t3 := newNode("Prepare "+right+" Environment", "framework_prepare_right", "coder_agent", []string{t1.ID}, []string{"framework_research_report"}, []string{"right_env"}, true, context)
+	t4 := newNode("Run "+left+" Benchmark", "framework_run_left", "sandbox_agent", []string{t2.ID}, []string{"left_env"}, []string{"left_metrics"}, true, context)
+	t5 := newNode("Run "+right+" Benchmark", "framework_run_right", "sandbox_agent", []string{t3.ID}, []string{"right_env"}, []string{"right_metrics"}, true, context)
+	t6 := newNode("Generate Benchmark Report", "framework_report", "data_agent", []string{t4.ID, t5.ID}, []string{"left_metrics", "right_metrics"}, []string{"evaluation_report"}, false, context)
+	return []*models.TaskNode{t1, t2, t3, t4, t5, t6}
+}
+
+func buildPaperReproductionNodes(context string) []*models.TaskNode {
+	return buildPaperReproductionNodesV2(models.IntentContext{
+		RawIntent:  context,
+		IntentType: "Paper_Reproduction",
+		Entities:   map[string]any{},
+	})
+}
+
+func buildCodeExecutionNodes(context string) []*models.TaskNode {
+	normalized := strings.ToLower(context)
+	needsPlot := hasAny(normalized, "plot", "matplotlib", "画图", "图表", "曲线")
+	needsAnalysis := hasAny(normalized, "analyze", "analysis", "分析", "解释", "report", "报告")
+
+	t1 := newNode("Generate Code", "generate_code", "coder_agent", nil, nil, []string{"generated_code"}, true, context)
+	t2 := newNode("Prepare Runtime", "prepare_runtime", "sandbox_agent", []string{t1.ID}, []string{"generated_code"}, []string{"runtime_env"}, false, context)
+	t3 := newNode("Execute Code", "execute_code", "sandbox_agent", []string{t2.ID}, []string{"generated_code", "runtime_env"}, []string{"execution_result"}, false, context)
+
+	nodes := []*models.TaskNode{t1, t2, t3}
+	lastID := t3.ID
+	lastArtifact := "execution_result"
+
+	if needsPlot {
+		t4 := newNode("Render Output Plot", "render_plot", "data_agent", []string{lastID}, []string{lastArtifact}, []string{"plot_image"}, true, context)
+		nodes = append(nodes, t4)
+		lastID = t4.ID
+		lastArtifact = "plot_image"
+	}
+	if needsAnalysis || !needsPlot {
+		t5 := newNode("Verify And Summarize Result", "verify_result", "data_agent", []string{lastID}, []string{lastArtifact}, []string{"verification_report"}, true, context)
+		nodes = append(nodes, t5)
+	}
+	return nodes
+}
+
+func buildGeneralNodes(context string) []*models.TaskNode {
+	normalized := strings.ToLower(context)
+	if hasAny(normalized, "论文", "paper", "总结", "summary", "综述", "report", "报告") {
+		t1 := newNode("Collect Background Context", "general_research", "librarian_agent", nil, nil, []string{"background_context"}, true, context)
+		t2 := newNode("Synthesize Response", "general_synthesis", "data_agent", []string{t1.ID}, []string{"background_context"}, []string{"general_response"}, false, context)
+		return []*models.TaskNode{t1, t2}
+	}
+
+	t1 := newNode("Process Request", "general_process", "general_agent", nil, nil, []string{"general_response"}, true, context)
+	return []*models.TaskNode{t1}
+}
+
+func buildEdgesFromNodes(nodes []*models.TaskNode) []*models.TaskEdge {
+	edges := []*models.TaskEdge{}
+	for _, node := range nodes {
+		for _, dep := range node.Dependencies {
+			edges = append(edges, &models.TaskEdge{
+				ID:   uuid.New().String(),
+				From: dep,
+				To:   node.ID,
+				Type: "control",
+			})
+		}
+	}
+
+	producers := map[string]string{}
+	for _, node := range nodes {
+		for _, key := range node.OutputArtifacts {
+			producers[key] = node.ID
+		}
+	}
+
+	for _, node := range nodes {
+		for _, key := range node.RequiredArtifacts {
+			if producerID, ok := producers[key]; ok && producerID != node.ID {
+				edges = append(edges, &models.TaskEdge{
+					ID:   uuid.New().String(),
+					From: producerID,
+					To:   node.ID,
+					Type: "data",
+				})
+			}
+		}
+	}
+
+	return edges
+}
+
+func fillInitialStatuses(nodes []*models.TaskNode) {
+	for _, node := range nodes {
+		if len(node.Dependencies) == 0 && len(node.RequiredArtifacts) == 0 {
+			node.Status = models.StatusReady
+		} else {
+			node.Status = models.StatusPending
+		}
+	}
+}
+
+func fillGraphMeta(plan *models.PlanGraph) {
+	meta := models.GraphMeta{
+		TotalNodes: len(plan.Nodes),
+	}
+
+	for _, node := range plan.Nodes {
+		switch node.Status {
+		case models.StatusCompleted:
+			meta.CompletedNodes++
+		case models.StatusFailed:
+			meta.FailedNodes++
+		case models.StatusBlocked:
+			meta.BlockedNodes++
+		case models.StatusInProgress:
+			meta.InProgressNodes++
+		case models.StatusReady:
+			meta.ReadyNodes++
+		}
+	}
+
+	plan.Meta = meta
+}
+
+func validatePlanGraph(plan *models.PlanGraph) error {
+	if plan == nil {
+		return fmt.Errorf("plan graph is nil")
+	}
+
+	nodeMap := make(map[string]*models.TaskNode, len(plan.Nodes))
+	inDegree := make(map[string]int, len(plan.Nodes))
+	for _, node := range plan.Nodes {
+		if node == nil {
+			return fmt.Errorf("plan graph contains nil node")
+		}
+		if _, exists := nodeMap[node.ID]; exists {
+			return fmt.Errorf("duplicate node id: %s", node.ID)
+		}
+		nodeMap[node.ID] = node
+		inDegree[node.ID] = 0
+	}
+
+	artifactProducers := map[string]string{}
+	for _, node := range plan.Nodes {
+		for _, key := range node.OutputArtifacts {
+			artifactProducers[key] = node.ID
+		}
+	}
+
+	adj := map[string][]string{}
+	for _, edge := range plan.Edges {
+		if edge == nil {
+			return fmt.Errorf("plan graph contains nil edge")
+		}
+		if _, ok := nodeMap[edge.From]; !ok {
+			return fmt.Errorf("edge source not found: %s", edge.From)
+		}
+		if _, ok := nodeMap[edge.To]; !ok {
+			return fmt.Errorf("edge target not found: %s", edge.To)
+		}
+		if edge.Type == "control" {
+			inDegree[edge.To]++
+			adj[edge.From] = append(adj[edge.From], edge.To)
+		}
+	}
+
+	for _, node := range plan.Nodes {
+		for _, dep := range node.Dependencies {
+			if _, ok := nodeMap[dep]; !ok {
+				return fmt.Errorf("dependency not found for node %s: %s", node.ID, dep)
+			}
+		}
+		for _, key := range node.RequiredArtifacts {
+			if _, ok := artifactProducers[key]; !ok {
+				return fmt.Errorf("required artifact has no producer for node %s: %s", node.ID, key)
+			}
+		}
+	}
+
+	queue := make([]string, 0, len(inDegree))
+	for id, degree := range inDegree {
+		if degree == 0 {
+			queue = append(queue, id)
+		}
+	}
+
+	visited := 0
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		visited++
+
+		for _, next := range adj[id] {
+			inDegree[next]--
+			if inDegree[next] == 0 {
+				queue = append(queue, next)
+			}
+		}
+	}
+
+	if visited != len(plan.Nodes) {
+		return fmt.Errorf("cycle detected in control edges")
+	}
+
+	return nil
+}
+
+func buildFrameworkEvaluationNodesV2(intent models.IntentContext) []*models.TaskNode {
+	context := intent.RawIntent
+	normalized := strings.ToLower(context)
+	frameworks := frameworkNamesFromIntent(intent, normalized)
+	needsBenchmark := boolEntity(intent.Entities, "needs_benchmark") || hasAny(normalized,
+		"benchmark",
+		"\u6027\u80fd",
+		"\u8bc4\u6d4b",
+		"latency",
+		"\u541e\u5410",
+		"run",
+		"\u8fd0\u884c",
+		"\u5b9e\u9a8c",
+	)
+
+	t1 := newNode("Research Candidate Frameworks", "framework_research", "librarian_agent", nil, nil, []string{"framework_research_report"}, true, context)
+	if !needsBenchmark {
+		nodes := []*models.TaskNode{t1}
+		dependencies := make([]string, 0, len(frameworks))
+		requiredArtifacts := make([]string, 0, len(frameworks))
+		for idx, framework := range frameworks {
+			artifact := fmt.Sprintf("framework_fit_report_%d", idx+1)
+			node := newNode("Analyze "+framework+" Fit", fmt.Sprintf("framework_fit_%d", idx+1), "librarian_agent", []string{t1.ID}, []string{"framework_research_report"}, []string{artifact}, true, context)
+			nodes = append(nodes, node)
+			dependencies = append(dependencies, node.ID)
+			requiredArtifacts = append(requiredArtifacts, artifact)
+		}
+		report := newNode("Generate Selection Recommendation", "framework_recommendation", "data_agent", dependencies, requiredArtifacts, []string{"evaluation_report"}, false, context)
+		nodes = append(nodes, report)
+		return nodes
+	}
+
+	nodes := []*models.TaskNode{t1}
+	runDependencies := make([]string, 0, len(frameworks))
+	runArtifacts := make([]string, 0, len(frameworks))
+	for idx, framework := range frameworks {
+		prefix := frameworkArtifactPrefix(framework, idx)
+		codeArtifact := fmt.Sprintf("%s_generated_code", prefix)
+		dependencyArtifact := fmt.Sprintf("%s_dependency_spec", prefix)
+		runtimeArtifact := fmt.Sprintf("%s_runtime_session", prefix)
+		preparedArtifact := fmt.Sprintf("%s_prepared_runtime", prefix)
+		metricsArtifact := fmt.Sprintf("framework_metrics_%d", idx+1)
+		generate := newNode("Generate "+framework+" Benchmark Code", "generate_code", "coder_agent", []string{t1.ID}, []string{"framework_research_report"}, []string{codeArtifact}, true, context)
+		resolve := newNode("Resolve "+framework+" Dependencies", "resolve_dependencies", "coder_agent", []string{generate.ID}, []string{codeArtifact}, []string{dependencyArtifact}, true, context)
+		prepare := newNode("Prepare "+framework+" Runtime", "prepare_runtime", "sandbox_agent", []string{resolve.ID}, []string{dependencyArtifact}, []string{runtimeArtifact}, true, context)
+		install := newNode("Install "+framework+" Dependencies", "install_dependencies", "sandbox_agent", []string{prepare.ID}, []string{runtimeArtifact, dependencyArtifact}, []string{preparedArtifact, prefix + "_dependency_install_report"}, true, context)
+		run := newNode("Run "+framework+" Benchmark", "execute_code", "sandbox_agent", []string{install.ID}, []string{codeArtifact, preparedArtifact}, []string{metricsArtifact}, true, context)
+		nodes = append(nodes, generate, resolve, prepare, install, run)
+		runDependencies = append(runDependencies, run.ID)
+		runArtifacts = append(runArtifacts, metricsArtifact)
+	}
+	report := newNode("Generate Benchmark Report", "framework_report", "data_agent", runDependencies, runArtifacts, []string{"evaluation_report"}, false, context)
+	nodes = append(nodes, report)
+	return nodes
+}
+
+func buildPaperReproductionNodesV2(intent models.IntentContext) []*models.TaskNode {
+	context := intent.RawIntent
+	normalized := strings.ToLower(context)
+	needsAblation := boolEntity(intent.Entities, "needs_ablation") || hasAny(normalized,
+		"ablation", "消融", "参数敏感性", "模块移除", "随机种子", "seed stability", "运行成本对照",
+	)
+	needsPlot := boolEntity(intent.Entities, "needs_plot") || hasAny(normalized,
+		"plot",
+		"\u753b\u56fe",
+		"\u56fe\u8868",
+		"\u66f2\u7ebf",
+		"\u53ef\u89c6\u5316",
+	)
+	needsFix := boolEntity(intent.Entities, "needs_fix") || hasAny(normalized,
+		"debug",
+		"fix",
+		"\u4fee\u590d",
+		"\u6392\u67e5",
+		"\u4e0d\u4e00\u81f4",
+		"\u91cd\u8dd1",
+	)
+	paperTitle := stringEntity(intent.Entities, "paper_title", "Paper")
+
+	t1 := newNode("Parse "+paperTitle+" & Extract Method", "paper_parse", "librarian_agent", nil, nil, []string{"parsed_paper"}, true, context)
+	if uploadedFiles, ok := intent.Entities["uploaded_files"]; ok {
+		t1.Inputs["uploaded_files"] = uploadedFiles
+	}
+	claimRubric := newNode(
+		"Freeze Hierarchical Claim Rubric",
+		"claim_rubric_extract",
+		"librarian_agent",
+		[]string{t1.ID},
+		[]string{"parsed_paper"},
+		[]string{"claim_rubric", "claim_rubric_report"},
+		true,
+		context,
+	)
+	t2 := newRepoDiscoveryNode([]string{t1.ID}, context, intent)
+	repoPrepareDependencies := []string{t2.ID}
+	repoPrepareArtifacts := []string{"repo_url", "candidate_repositories", "repo_validation_report"}
+	var ablationDesign *models.TaskNode
+	if needsAblation {
+		ablationDesign = newNode(
+			"Design Bounded Ablation Study",
+			"ablation_design",
+			"data_agent",
+			[]string{t1.ID},
+			[]string{"parsed_paper"},
+			[]string{"ablation_plan", "selected_ablation_configs", "ablation_selection_report"},
+			true,
+			context,
+		)
+		ablationDesign.Inputs = buildAblationDesignInputs(intent)
+		repoPrepareDependencies = append(repoPrepareDependencies, ablationDesign.ID)
+		repoPrepareArtifacts = append(repoPrepareArtifacts, "ablation_plan", "selected_ablation_configs")
+	}
+	t3 := newNode("Prepare Workspace", "repo_prepare", "coder_agent", repoPrepareDependencies, repoPrepareArtifacts, []string{"workspace_path", "code_file_path", "generated_code", "repo_manifest", "reproduction_mode_report"}, false, context)
+	t3.Inputs = buildPaperReproductionInputs(intent)
+	t4 := newNode("Resolve "+paperTitle+" Dependencies", "resolve_dependencies", "coder_agent", []string{t3.ID}, []string{"workspace_path", "code_file_path", "generated_code", "repo_manifest"}, []string{"dependency_spec"}, false, context)
+	t5 := newNode("Setup Runtime Environment", "prepare_runtime", "sandbox_agent", []string{t4.ID}, []string{"workspace_path", "dependency_spec"}, []string{"runtime_session"}, false, context)
+	t6 := newNode("Install "+paperTitle+" Dependencies", "install_dependencies", "sandbox_agent", []string{t5.ID}, []string{"runtime_session", "dependency_spec"}, []string{"prepared_runtime", "dependency_install_report"}, false, context)
+	t7 := newNode("Execute And Debug Baseline", "paper_code_execute", "research_coding_agent", []string{t6.ID}, []string{"workspace_path", "code_file_path", "generated_code", "prepared_runtime", "repo_manifest"}, []string{"run_metrics", "paper_debug_report", "paper_patch_manifest"}, false, context)
+	t8 := newNode("Compare With Paper Claims", "paper_compare", "data_agent", []string{t7.ID}, []string{"run_metrics", "paper_debug_report", "parsed_paper", "repo_manifest", "reproduction_mode_report"}, []string{"comparison_report"}, false, context)
+
+	nodes := []*models.TaskNode{t1, claimRubric, t2}
+	if ablationDesign != nil {
+		nodes = append(nodes, ablationDesign)
+	}
+	nodes = append(nodes, t3, t4, t5, t6, t7, t8)
+	lastID := t8.ID
+	lastArtifact := "comparison_report"
+
+	if needsFix {
+		fix := newNode(
+			"Debug Result Gap And Rerun",
+			"fix_and_rerun",
+			"research_coding_agent",
+			[]string{t7.ID, t8.ID},
+			[]string{"workspace_path", "code_file_path", "generated_code", "prepared_runtime", "repo_manifest", "run_metrics", "paper_debug_report", "comparison_report"},
+			[]string{"rerun_metrics", "rerun_report", "gap_debug_report", "gap_patch_manifest"},
+			false,
+			context,
+		)
+		nodes = append(nodes, fix)
+		lastID = fix.ID
+		lastArtifact = "rerun_metrics"
+	}
+	if needsPlot {
+		visualize := newNode("Visualize Reproduction Results", "result_visualization", "data_agent", []string{lastID}, []string{lastArtifact}, []string{"result_plot"}, true, context)
+		nodes = append(nodes, visualize)
+		lastID = visualize.ID
+	}
+	evidenceArtifacts := []string{
+		"claim_rubric",
+		"parsed_paper",
+		"repo_manifest",
+		"reproduction_mode_report",
+		"dependency_install_report",
+		"run_metrics",
+		"paper_debug_report",
+		"paper_patch_manifest",
+		"comparison_report",
+	}
+	if needsFix {
+		evidenceArtifacts = append(evidenceArtifacts, "rerun_metrics", "rerun_report", "gap_debug_report", "gap_patch_manifest")
+	}
+	if needsPlot {
+		evidenceArtifacts = append(evidenceArtifacts, "result_plot")
+	}
+	claimEvidence := newNode(
+		"Build Claim-to-Evidence Graph",
+		"claim_evidence_build",
+		"data_agent",
+		[]string{claimRubric.ID, lastID},
+		evidenceArtifacts,
+		[]string{"claim_evidence_graph", "claim_verification_report"},
+		false,
+		context,
+	)
+	nodes = append(nodes, claimEvidence)
+	return nodes
+}
+
+func buildAblationDesignInputs(intent models.IntentContext) map[string]any {
+	maxExperiments := boundedIntentNumber(intent.RawIntent, []string{
+		`(?i)(?:最多|max(?:imum)?)\s*(\d+)\s*(?:组|个|项|次)?\s*(?:轻量|小型|bounded)?\s*(?:消融|实验|ablations?|experiments?)`,
+	}, 3, 1, 6)
+	maxGPUMinutes := boundedIntentNumber(intent.RawIntent, []string{
+		`(?i)gpu(?:\s*时间|\s*time)?\s*(?:不超过|最多|[:：]?)?\s*(\d+)\s*(?:minutes?|分钟)`,
+		`(?i)(\d+)\s*(?:gpu[- ]?minutes?|gpu\s*分钟|分钟\s*gpu)`,
+	}, 30, 0, 1440)
+	maxWallMinutes := boundedIntentNumber(intent.RawIntent, []string{
+		`(?i)(?:总耗时|总时长|wall(?:[- ]?time)?)\s*(?:不超过|最多|[:：]?)?\s*(\d+)\s*(?:minutes?|分钟)`,
+	}, 60, 5, 1440)
+	inputs := map[string]any{
+		"ablation_max_experiments":  maxExperiments,
+		"ablation_max_gpu_minutes":  maxGPUMinutes,
+		"ablation_max_wall_minutes": maxWallMinutes,
+		"ablation_strategy":         "bounded_tree_of_thoughts",
+	}
+	return inputs
+}
+
+func boundedIntentNumber(raw string, patterns []string, fallback, minimum, maximum int) int {
+	if value, ok := optionalBoundedIntentNumber(raw, patterns, minimum, maximum); ok {
+		return value
+	}
+	return fallback
+}
+
+func optionalBoundedIntentNumber(raw string, patterns []string, minimum, maximum int) (int, bool) {
+	for _, pattern := range patterns {
+		matches := regexp.MustCompile(pattern).FindStringSubmatch(raw)
+		if len(matches) < 2 {
+			continue
+		}
+		value, err := strconv.Atoi(matches[1])
+		if err != nil {
+			continue
+		}
+		if value < minimum {
+			return minimum, true
+		}
+		if value > maximum {
+			return maximum, true
+		}
+		return value, true
+	}
+	return 0, false
+}
+
+func buildPaperReproductionInputs(intent models.IntentContext) map[string]any {
+	raw := strings.ToLower(strings.Join([]string{intent.RawIntent, intent.RewrittenIntent}, " "))
+	requestedMode := "auto"
+	smokeRequested := boolEntity(intent.Entities, "smoke_reproduction") ||
+		boolEntity(intent.Constraints, "smoke_reproduction") ||
+		hasAny(raw, "smoke", "最小实验", "最小验证", "快速验证")
+	explicitFullRequested := hasAny(raw,
+		"full reproduction", "full run", "enable full", "run wmt",
+		"完整复现", "全量复现", "完整实验", "全量实验", "开启全量", "采用 full",
+	)
+	fullRequested := boolEntity(intent.Entities, "full_reproduction") ||
+		boolEntity(intent.Constraints, "full_reproduction") ||
+		hasAny(raw, "full reproduction", "full run", "bleu", "wmt14", "完整复现", "全量复现", "完整实验", "全量实验")
+	if smokeRequested && !explicitFullRequested {
+		fullRequested = false
+	}
+	if smokeRequested {
+		requestedMode = "smoke"
+	}
+	if fullRequested {
+		requestedMode = "full"
+	}
+	if rawMode := strings.TrimSpace(stringEntity(intent.Constraints, "reproduction_mode", "")); rawMode != "" {
+		requestedMode = rawMode
+	}
+	inputs := map[string]any{
+		"requested_reproduction_mode": requestedMode,
+		"full_reproduction_requested": fullRequested,
+	}
+	if uploadedFiles, ok := intent.Entities["uploaded_files"]; ok {
+		inputs["uploaded_files"] = workspaceUploadReferences(uploadedFiles)
+	}
+	return inputs
+}
+
+func workspaceUploadReferences(value any) any {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return value
+	}
+	var files []map[string]any
+	if err := json.Unmarshal(raw, &files); err != nil {
+		return value
+	}
+	for _, file := range files {
+		delete(file, "text_excerpt")
+	}
+	return files
+}
+
+func buildCodeExecutionNodesV2(intent models.IntentContext) []*models.TaskNode {
+	context := intent.RawIntent
+	normalized := strings.ToLower(context)
+	needsPlot := boolEntity(intent.Entities, "needs_plot") || hasAny(normalized,
+		"plot",
+		"matplotlib",
+		"\u753b\u56fe",
+		"\u56fe\u8868",
+		"\u66f2\u7ebf",
+	)
+	needsAnalysis := boolEntity(intent.Entities, "needs_report") || hasAny(normalized,
+		"analyze",
+		"analysis",
+		"\u5206\u6790",
+		"\u89e3\u91ca",
+		"report",
+		"\u62a5\u544a",
+		"\u590d\u6742\u5ea6",
+	)
+
+	t1 := newNode("Generate Code", "generate_code", "coder_agent", nil, nil, []string{"generated_code"}, true, context)
+	t2 := newNode("Resolve Dependencies", "resolve_dependencies", "coder_agent", []string{t1.ID}, []string{"generated_code"}, []string{"dependency_spec"}, true, context)
+	t3 := newNode("Prepare Runtime", "prepare_runtime", "sandbox_agent", []string{t2.ID}, []string{"dependency_spec"}, []string{"runtime_session"}, false, context)
+	t4 := newNode("Install Dependencies", "install_dependencies", "sandbox_agent", []string{t3.ID}, []string{"runtime_session", "dependency_spec"}, []string{"prepared_runtime", "dependency_install_report"}, false, context)
+	t5 := newNode("Execute Code", "execute_code", "sandbox_agent", []string{t4.ID}, []string{"generated_code", "prepared_runtime"}, []string{"execution_result"}, false, context)
+
+	nodes := []*models.TaskNode{t1, t2, t3, t4, t5}
+	lastID := t5.ID
+	lastArtifact := "execution_result"
+
+	if needsPlot {
+		t6 := newNode("Render Output Plot", "render_plot", "data_agent", []string{lastID}, []string{lastArtifact}, []string{"plot_image"}, true, context)
+		nodes = append(nodes, t6)
+		lastID = t6.ID
+		lastArtifact = "plot_image"
+	}
+	if needsAnalysis || !needsPlot {
+		t7 := newNode("Verify And Summarize Result", "verify_result", "data_agent", []string{lastID}, []string{lastArtifact}, []string{"verification_report"}, true, context)
+		nodes = append(nodes, t7)
+	}
+	return nodes
+}
+
+func buildGeneralNodesV2(intent models.IntentContext) []*models.TaskNode {
+	context := intent.RawIntent
+	normalized := strings.ToLower(context)
+	if stringEntity(intent.Entities, "paper_task", "") == "summary" {
+		title := stringEntity(intent.Entities, "paper_title", "Paper")
+		t1 := newNode("Read "+title+" Context", "paper_context", "librarian_agent", nil, nil, []string{"paper_context"}, true, context)
+		t2 := newNode("Summarize Contributions", "paper_contributions", "data_agent", []string{t1.ID}, []string{"paper_context"}, []string{"paper_contributions"}, true, context)
+		t3 := newNode("List Limitations And Risks", "paper_limitations", "data_agent", []string{t1.ID}, []string{"paper_context"}, []string{"paper_limitations"}, true, context)
+		t4 := newNode("Compose Paper Summary", "paper_summary", "data_agent", []string{t2.ID, t3.ID}, []string{"paper_contributions", "paper_limitations"}, []string{"general_response"}, false, context)
+		return []*models.TaskNode{t1, t2, t3, t4}
+	}
+	if hasAny(normalized,
+		"\u8bba\u6587",
+		"paper",
+		"\u603b\u7ed3",
+		"summary",
+		"\u7efc\u8ff0",
+		"report",
+		"\u62a5\u544a",
+		"\u8d21\u732e",
+		"\u5c40\u9650",
+		"rag",
+		"query rewrite",
+	) {
+		t1 := newNode("Collect Background Context", "general_research", "librarian_agent", nil, nil, []string{"background_context"}, true, context)
+		t2 := newNode("Synthesize Response", "general_synthesis", "data_agent", []string{t1.ID}, []string{"background_context"}, []string{"general_response"}, false, context)
+		return []*models.TaskNode{t1, t2}
+	}
+
+	t1 := newNode("Process Request", "general_process", "general_agent", nil, nil, []string{"general_response"}, true, context)
+	return []*models.TaskNode{t1}
+}
+
+func hasAny(s string, keywords ...string) bool {
+	for _, keyword := range keywords {
+		if strings.Contains(s, strings.ToLower(keyword)) {
+			return true
+		}
+	}
+	return false
+}
+
+func frameworkLabels(normalized string) []string {
+	candidates := []string{"langchain", "llamaindex", "haystack", "autogen", "crewai", "langgraph"}
+	labels := make([]string, 0, 2)
+	for _, candidate := range candidates {
+		if strings.Contains(normalized, candidate) {
+			labels = append(labels, strings.ToUpper(candidate[:1])+candidate[1:])
+		}
+	}
+	return labels
+}
+
+func frameworkNamesFromIntent(intent models.IntentContext, normalized string) []string {
+	if raw, ok := intent.Entities["frameworks"].([]string); ok && len(raw) > 0 {
+		names := make([]string, 0, len(raw))
+		for _, item := range raw {
+			names = append(names, prettifyFrameworkName(item))
+		}
+		return names
+	}
+	return fallbackFrameworkNames(frameworkLabels(normalized))
+}
+
+func fallbackFrameworkNames(frameworks []string) []string {
+	if len(frameworks) == 0 {
+		return []string{"Framework A", "Framework B"}
+	}
+	return frameworks
+}
+
+func prettifyFrameworkName(name string) string {
+	switch strings.ToLower(name) {
+	case "langchain":
+		return "LangChain"
+	case "llamaindex":
+		return "LlamaIndex"
+	case "langgraph":
+		return "LangGraph"
+	default:
+		return name
+	}
+}
+
+func boolEntity(entities map[string]any, key string) bool {
+	value, ok := entities[key].(bool)
+	return ok && value
+}
+
+func stringEntity(entities map[string]any, key string, fallback string) string {
+	value, ok := entities[key].(string)
+	if !ok || value == "" {
+		return fallback
+	}
+	return value
+}
+
+func frameworkDisplayName(frameworks []string, index int, fallback string) string {
+	if index < len(frameworks) {
+		return frameworks[index]
+	}
+	return fallback
+}
+
+func frameworkArtifactPrefix(framework string, index int) string {
+	normalized := strings.ToLower(strings.TrimSpace(framework))
+	replacer := strings.NewReplacer(" ", "_", "-", "_", "/", "_")
+	normalized = replacer.Replace(normalized)
+	if normalized == "" {
+		return fmt.Sprintf("framework_%d", index+1)
+	}
+	return normalized
+}
+
+func newRepoDiscoveryNode(deps []string, context string, intent models.IntentContext) *models.TaskNode {
+	node := newNode(
+		"Retrieve Paper Repositories",
+		"repo_discovery",
+		"coder_agent",
+		deps,
+		[]string{"parsed_paper"},
+		[]string{"candidate_repositories", "repo_validation_report", "repo_url"},
+		true,
+		context,
+	)
+	// 这里用固定流程覆盖默认描述，确保仓库检索节点不再只是“让 LLM 猜一个链接”。
+	node.Description = buildRepoDiscoveryDescription(context)
+	node.Inputs = buildRepoDiscoveryInputs(intent)
+	return node
+}
+
+func buildRepoDiscoveryInputs(intent models.IntentContext) map[string]any {
+	inputs := map[string]any{}
+	if repoURL := stringEntity(intent.Entities, "preferred_repo_url", ""); repoURL != "" {
+		inputs["preferred_repo_url"] = repoURL
+	}
+	if arxivID := stringEntity(intent.Entities, "paper_arxiv_id", ""); arxivID != "" {
+		inputs["paper_arxiv_id"] = arxivID
+	}
+	if title := stringEntity(intent.Entities, "paper_title", ""); title != "" {
+		inputs["paper_title"] = title
+	}
+	if query := stringEntity(intent.Entities, "paper_search_query", ""); query != "" {
+		inputs["paper_search_query"] = query
+	}
+	if method := stringEntity(intent.Entities, "paper_method_name", ""); method != "" {
+		inputs["paper_method_name"] = method
+	}
+	return inputs
+}
+
+func buildRepoDiscoveryDescription(rawIntent string) string {
+	return prompts.RepoDiscoveryDescription(rawIntent)
+}
+
+func bilingualTaskName(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return name
+	}
+	if strings.Contains(trimmed, " / ") {
+		return trimmed
+	}
+
+	if zh, ok := exactTaskNameTranslations()[trimmed]; ok {
+		return zh + " / " + trimmed
+	}
+
+	switch {
+	case strings.HasPrefix(trimmed, "Analyze ") && strings.HasSuffix(trimmed, " Fit"):
+		target := strings.TrimSuffix(strings.TrimPrefix(trimmed, "Analyze "), " Fit")
+		return fmt.Sprintf("分析 %s 适配性 / %s", target, trimmed)
+	case strings.HasPrefix(trimmed, "Prepare ") && strings.HasSuffix(trimmed, " Environment"):
+		target := strings.TrimSuffix(strings.TrimPrefix(trimmed, "Prepare "), " Environment")
+		return fmt.Sprintf("准备 %s 环境 / %s", target, trimmed)
+	case strings.HasPrefix(trimmed, "Prepare ") && strings.HasSuffix(trimmed, " Runtime"):
+		target := strings.TrimSuffix(strings.TrimPrefix(trimmed, "Prepare "), " Runtime")
+		return fmt.Sprintf("准备 %s 运行环境 / %s", target, trimmed)
+	case strings.HasPrefix(trimmed, "Generate ") && strings.HasSuffix(trimmed, " Benchmark Code"):
+		target := strings.TrimSuffix(strings.TrimPrefix(trimmed, "Generate "), " Benchmark Code")
+		return fmt.Sprintf("生成 %s 基准测试代码 / %s", target, trimmed)
+	case strings.HasPrefix(trimmed, "Resolve ") && strings.HasSuffix(trimmed, " Dependencies"):
+		target := strings.TrimSuffix(strings.TrimPrefix(trimmed, "Resolve "), " Dependencies")
+		return fmt.Sprintf("解析 %s 依赖 / %s", target, trimmed)
+	case strings.HasPrefix(trimmed, "Install ") && strings.HasSuffix(trimmed, " Dependencies"):
+		target := strings.TrimSuffix(strings.TrimPrefix(trimmed, "Install "), " Dependencies")
+		return fmt.Sprintf("安装 %s 依赖 / %s", target, trimmed)
+	case strings.HasPrefix(trimmed, "Run ") && strings.HasSuffix(trimmed, " Benchmark"):
+		target := strings.TrimSuffix(strings.TrimPrefix(trimmed, "Run "), " Benchmark")
+		return fmt.Sprintf("运行 %s 基准测试 / %s", target, trimmed)
+	case strings.HasPrefix(trimmed, "Run ") && strings.HasSuffix(trimmed, " Benchmark in Sandbox"):
+		target := strings.TrimSuffix(strings.TrimPrefix(trimmed, "Run "), " Benchmark in Sandbox")
+		return fmt.Sprintf("在沙箱中运行 %s 基准测试 / %s", target, trimmed)
+	case strings.HasPrefix(trimmed, "Parse ") && strings.HasSuffix(trimmed, " & Extract Method"):
+		target := strings.TrimSuffix(strings.TrimPrefix(trimmed, "Parse "), " & Extract Method")
+		return fmt.Sprintf("解析 %s 并提取方法 / %s", target, trimmed)
+	case strings.HasPrefix(trimmed, "Read ") && strings.HasSuffix(trimmed, " Context"):
+		target := strings.TrimSuffix(strings.TrimPrefix(trimmed, "Read "), " Context")
+		return fmt.Sprintf("阅读 %s 背景 / %s", target, trimmed)
+	}
+
+	return trimmed
+}
+
+func exactTaskNameTranslations() map[string]string {
+	return map[string]string{
+		"Adapt Research Dataset":                                        "适配研究数据集",
+		"Freeze Experiment Search Contract":                             "冻结实验搜索契约",
+		"Prepare Experiment Runtime":                                    "准备实验运行环境",
+		"Install Experiment Dependencies":                               "安装实验依赖",
+		"Run Bounded Experiment Search":                                 "运行受限实验搜索",
+		"Validate Best Experiment On Holdout":                           "在留出集验收最佳实验",
+		"Summarize Scientific Research Evidence":                        "汇总自动研究证据",
+		"Profile Uploaded Dataset":                                      "分析上传数据集",
+		"Retrieve Benchmark Repository":                                 "获取评测目标仓库",
+		"Prepare Benchmark Workspace":                                   "准备评测工作区",
+		"Generate Repository Benchmark Adapter":                         "生成仓库评测适配器",
+		"Resolve Benchmark Dependencies":                                "解析评测依赖",
+		"Prepare Benchmark Runtime":                                     "准备评测运行环境",
+		"Install Benchmark Dependencies":                                "安装评测依赖",
+		"Preflight And Repair Benchmark Adapter":                        "预检并修复评测适配器",
+		"Execute Custom Dataset Benchmark":                              "执行自定义数据评测",
+		"Validate Benchmark Evidence":                                   "校验评测证据",
+		"Generate Trusted Benchmark Report":                             "生成可信评测报告",
+		"Retrieve AutoResearch Repository":                              "获取 AutoResearch 目标仓库",
+		"Prepare AutoResearch Workspace":                                "准备 AutoResearch 工作区",
+		"Freeze AutoResearch Contract":                                  "冻结 AutoResearch 研究契约",
+		"Prepare AutoResearch Runtime":                                  "准备 AutoResearch 运行环境",
+		"Install AutoResearch Dependencies":                             "安装 AutoResearch 依赖",
+		"Run Bounded AutoResearch Loop":                                 "运行受限 AutoResearch 循环",
+		"Validate AutoResearch Candidate":                               "验收 AutoResearch 候选",
+		"Summarize AutoResearch Evidence":                               "汇总 AutoResearch 证据",
+		"Research Candidate Frameworks":                                 "调研候选框架",
+		"Generate Selection Recommendation":                             "生成选型建议",
+		"Generate Benchmark Report":                                     "生成基准测试报告",
+		"Design Shared RAG Benchmark Protocol":                          "设计共享 RAG 评测协议",
+		"Compare RAG Benchmark Results":                                 "对比 RAG 基准测试结果",
+		"Locate Reference Repository":                                   "定位参考仓库",
+		"Prepare Workspace":                                             "准备工作区",
+		"Setup Runtime Environment":                                     "搭建运行环境",
+		"Design Bounded Ablation Study":                                 "设计受限消融实验",
+		"Execute Baseline":                                              "执行基线实验",
+		"Execute And Debug Baseline":                                    "执行并调试基线实验",
+		"Compare With Paper Claims":                                     "对比论文声明结果",
+		"Freeze Hierarchical Claim Rubric":                              "冻结分层主张验收标准",
+		"Build Claim-to-Evidence Graph":                                 "构建主张证据图",
+		"Visualize Reproduction Results":                                "可视化复现实验结果",
+		"Fix Gaps And Rerun":                                            "修复问题并重新运行",
+		"Debug Result Gap And Rerun":                                    "调试结果差异并重新运行",
+		"Generate Code":                                                 "生成代码",
+		"Resolve Dependencies":                                          "解析依赖",
+		"Prepare Runtime":                                               "准备运行环境",
+		"Install Dependencies":                                          "安装依赖",
+		"Execute Code":                                                  "执行代码",
+		"Render Output Plot":                                            "渲染输出图表",
+		"Verify And Summarize Result":                                   "校验并总结结果",
+		"Collect Background Context":                                    "收集背景信息",
+		"Synthesize Response":                                           "综合生成回答",
+		"Process Request":                                               "处理请求",
+		"Retrieve Documentation & Best Practices for Target Frameworks": "获取目标框架文档与最佳实践",
+		"Generate Environment Setup & Integration Code for Framework A": "为框架 A 生成环境配置与集成代码",
+		"Generate Environment Setup & Integration Code for Framework B": "为框架 B 生成环境配置与集成代码",
+		"Execute A/B Tests with User Data in Sandbox":                   "在沙箱中执行 A/B 测试",
+		"Analyze Metrics & Generate Evaluation Report":                  "分析指标并生成评估报告",
+		"Parse Paper & Extract Algorithm Details":                       "解析论文并提取算法细节",
+		"Find/Clone Open Source Repository":                             "查找或克隆开源仓库",
+		"Setup Sandbox Environment (Install Dependencies)":              "搭建沙箱环境并安装依赖",
+		"Compare Results with Paper":                                    "将结果与论文进行对比",
+		"Debug/Refine Code if Results Mismatch":                         "结果不一致时调试并优化代码",
+		"Summarize Contributions":                                       "总结核心贡献",
+		"List Limitations And Risks":                                    "列出局限与风险",
+		"Compose Paper Summary":                                         "整理论文总结",
+	}
+}
+
+func validateAgentPlannedNodes(intent models.IntentContext, nodes []*models.TaskNode) error {
+	if len(nodes) == 0 {
+		return fmt.Errorf("planner agent returned no executable nodes")
+	}
+	if err := validateCriticalNodeContracts(intent, nodes); err != nil {
+		return err
+	}
+	if intent.IntentType != "Framework_Evaluation" {
+		return nil
+	}
+
+	normalized := strings.ToLower(intent.RawIntent)
+	needsBenchmark := boolEntity(intent.Entities, "needs_benchmark") || hasAny(normalized,
+		"benchmark",
+		"\u6027\u80fd",
+		"\u8bc4\u6d4b",
+		"latency",
+		"\u541e\u5410",
+		"run",
+		"\u8fd0\u884c",
+		"\u5b9e\u9a8c",
+	)
+	if !needsBenchmark {
+		return nil
+	}
+
+	expectedFrameworks := frameworkNamesFromIntent(intent, normalized)
+	executePrefixes := map[string]struct{}{}
+	prepareCount := 0
+
+	for _, node := range nodes {
+		if node == nil || node.AssignedTo != "sandbox_agent" {
+			continue
+		}
+		switch node.Type {
+		case "prepare_runtime":
+			prepareCount++
+		case "execute_code":
+			codePrefix := ""
+			runtimePrefix := ""
+			for _, artifact := range node.RequiredArtifacts {
+				switch {
+				case strings.HasSuffix(artifact, "_generated_code"):
+					codePrefix = strings.TrimSuffix(artifact, "_generated_code")
+				case strings.HasSuffix(artifact, "_prepared_runtime"):
+					runtimePrefix = strings.TrimSuffix(artifact, "_prepared_runtime")
+				}
+			}
+			if codePrefix == "" || runtimePrefix == "" || codePrefix != runtimePrefix {
+				return fmt.Errorf("framework execute node %q is missing isolated code/runtime artifacts", node.Name)
+			}
+			executePrefixes[codePrefix] = struct{}{}
+		}
+	}
+
+	if len(executePrefixes) < len(expectedFrameworks) {
+		return fmt.Errorf("framework benchmark plan does not contain one isolated execute branch per framework")
+	}
+	if prepareCount < len(expectedFrameworks) {
+		return fmt.Errorf("framework benchmark plan does not contain one runtime branch per framework")
+	}
+	return nil
+}
+
+func validateCriticalNodeContracts(intent models.IntentContext, nodes []*models.TaskNode) error {
+	if intent.IntentType != "Code_Execution" && intent.IntentType != "Framework_Evaluation" && intent.IntentType != "Paper_Reproduction" && intent.IntentType != "AutoResearch" && intent.IntentType != "Custom_Benchmark" {
+		return nil
+	}
+
+	hasGeneratedCode := false
+	hasResolveDependencies := false
+	hasPrepareRuntime := false
+	hasInstallDependencies := false
+	hasExecuteCode := false
+	hasPaperParse := false
+	hasClaimRubric := false
+	hasClaimEvidence := false
+	hasRepoDiscovery := false
+	hasRepoPrepare := false
+	hasAutoResearchSpec := false
+	hasAutoResearchRun := false
+	hasAutoResearchValidation := false
+	hasExperimentDataset := false
+	hasExperimentSpec := false
+	hasExperimentRun := false
+	hasExperimentValidation := false
+	hasBenchmarkAudit := false
+	hasBenchmarkSplit := false
+	hasBenchmarkContract := false
+	hasBenchmarkExecute := false
+	hasBenchmarkValidation := false
+
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+
+		switch node.Type {
+		case "benchmark_dataset_audit":
+			hasBenchmarkAudit = true
+			if node.AssignedTo != "benchmark_agent" || !containsArtifact(node.OutputArtifacts, "dataset_manifest") || !containsArtifact(node.OutputArtifacts, "benchmark_dataset_audit") {
+				return fmt.Errorf("benchmark_dataset_audit node %q has an incomplete audit contract", node.Name)
+			}
+		case "benchmark_split_materialize":
+			hasBenchmarkSplit = true
+			if node.AssignedTo != "benchmark_agent" || !containsArtifact(node.RequiredArtifacts, "benchmark_dataset_audit") || !containsArtifact(node.OutputArtifacts, "benchmark_split_manifest") || !containsArtifact(node.OutputArtifacts, "benchmark_public_test_manifest") || !containsArtifact(node.OutputArtifacts, "benchmark_input_only_preflight_manifest") {
+				return fmt.Errorf("benchmark_split_materialize node %q has an incomplete split contract", node.Name)
+			}
+		case "benchmark_contract_freeze":
+			hasBenchmarkContract = true
+			if node.AssignedTo != "benchmark_agent" || !containsArtifact(node.RequiredArtifacts, "benchmark_split_manifest") || !containsArtifact(node.OutputArtifacts, "benchmark_metric_contract") || !containsArtifact(node.OutputArtifacts, "benchmark_reward_contract") {
+				return fmt.Errorf("benchmark_contract_freeze node %q has an incomplete metric/reward contract", node.Name)
+			}
+		case "benchmark_execute":
+			hasBenchmarkExecute = true
+			if node.AssignedTo != "research_coding_agent" || !containsArtifact(node.RequiredArtifacts, "benchmark_contract") || !containsArtifact(node.OutputArtifacts, "benchmark_hidden_predictions_path") {
+				return fmt.Errorf("benchmark_execute node %q has an incomplete hidden execution contract", node.Name)
+			}
+		case "benchmark_validate":
+			hasBenchmarkValidation = true
+			if intent.IntentType == "Custom_Benchmark" && (node.AssignedTo != "benchmark_agent" || !containsArtifact(node.RequiredArtifacts, "benchmark_hidden_predictions_path") || !containsArtifact(node.OutputArtifacts, "benchmark_validation_report")) {
+				return fmt.Errorf("benchmark_validate node %q has an incomplete hidden validation contract", node.Name)
+			}
+		case "experiment_dataset_prepare":
+			hasExperimentDataset = true
+			if node.AssignedTo != "research_coding_agent" || !containsArtifact(node.OutputArtifacts, "workspace_path") || !containsArtifact(node.OutputArtifacts, "experiment_dataset_manifest") {
+				return fmt.Errorf("experiment_dataset_prepare node %q must output a workspace and dataset manifest", node.Name)
+			}
+		case "experiment_spec":
+			hasExperimentSpec = true
+			if node.AssignedTo != "research_coding_agent" || !containsArtifact(node.RequiredArtifacts, "experiment_dataset_manifest") || !containsArtifact(node.OutputArtifacts, "experiment_spec") || !containsArtifact(node.OutputArtifacts, "dependency_spec") {
+				return fmt.Errorf("experiment_spec node %q has an incomplete frozen contract", node.Name)
+			}
+		case "experiment_run":
+			hasExperimentRun = true
+			if node.AssignedTo != "research_coding_agent" || !containsArtifact(node.RequiredArtifacts, "prepared_runtime") || !containsArtifact(node.RequiredArtifacts, "experiment_spec") || !containsArtifact(node.RequiredArtifacts, "ablation_plan") || !containsArtifact(node.OutputArtifacts, "experiment_trial_ledger") {
+				return fmt.Errorf("experiment_run node %q has an incomplete execution contract", node.Name)
+			}
+		case "experiment_validate":
+			hasExperimentValidation = true
+			if node.AssignedTo != "research_coding_agent" || !containsArtifact(node.RequiredArtifacts, "experiment_trial_ledger") || !containsArtifact(node.RequiredArtifacts, "experiment_best_candidate") || !containsArtifact(node.OutputArtifacts, "experiment_validation_report") {
+				return fmt.Errorf("experiment_validate node %q has an incomplete validation contract", node.Name)
+			}
+		case "generate_code":
+			hasGeneratedCode = true
+			if node.AssignedTo != "coder_agent" {
+				return fmt.Errorf("generate_code node %q must be assigned to coder_agent", node.Name)
+			}
+		case "paper_parse":
+			hasPaperParse = true
+			if node.AssignedTo != "librarian_agent" {
+				return fmt.Errorf("paper_parse node %q must be assigned to librarian_agent", node.Name)
+			}
+			if !containsArtifact(node.OutputArtifacts, "parsed_paper") {
+				return fmt.Errorf("paper_parse node %q must output parsed_paper", node.Name)
+			}
+		case "claim_rubric_extract":
+			hasClaimRubric = true
+			if node.AssignedTo != "librarian_agent" {
+				return fmt.Errorf("claim_rubric_extract node %q must be assigned to librarian_agent", node.Name)
+			}
+			if !containsArtifact(node.RequiredArtifacts, "parsed_paper") || !containsArtifact(node.OutputArtifacts, "claim_rubric") {
+				return fmt.Errorf("claim_rubric_extract node %q must consume parsed_paper and output claim_rubric", node.Name)
+			}
+		case "claim_evidence_build":
+			hasClaimEvidence = true
+			if node.AssignedTo != "data_agent" {
+				return fmt.Errorf("claim_evidence_build node %q must be assigned to data_agent", node.Name)
+			}
+			if !containsArtifact(node.RequiredArtifacts, "claim_rubric") || !containsArtifact(node.RequiredArtifacts, "run_metrics") || !containsArtifact(node.RequiredArtifacts, "comparison_report") {
+				return fmt.Errorf("claim_evidence_build node %q must consume claim_rubric, run_metrics, and comparison_report", node.Name)
+			}
+			if !containsArtifact(node.OutputArtifacts, "claim_evidence_graph") || !containsArtifact(node.OutputArtifacts, "claim_verification_report") {
+				return fmt.Errorf("claim_evidence_build node %q must output claim_evidence_graph and claim_verification_report", node.Name)
+			}
+		case "ablation_design":
+			if node.AssignedTo != "data_agent" {
+				return fmt.Errorf("ablation_design node %q must be assigned to data_agent", node.Name)
+			}
+			if (!containsArtifact(node.RequiredArtifacts, "parsed_paper") && !containsArtifact(node.RequiredArtifacts, "experiment_spec")) || !containsArtifact(node.OutputArtifacts, "ablation_plan") {
+				return fmt.Errorf("ablation_design node %q must consume parsed_paper or experiment_spec and output ablation_plan", node.Name)
+			}
+		case "repo_discovery":
+			hasRepoDiscovery = true
+			if node.AssignedTo != "coder_agent" {
+				return fmt.Errorf("repo_discovery node %q must be assigned to coder_agent", node.Name)
+			}
+			if intent.IntentType != "AutoResearch" && intent.IntentType != "Custom_Benchmark" && !containsArtifact(node.RequiredArtifacts, "parsed_paper") {
+				return fmt.Errorf("repo_discovery node %q must require parsed_paper", node.Name)
+			}
+			if !containsArtifact(node.OutputArtifacts, "candidate_repositories") {
+				return fmt.Errorf("repo_discovery node %q must output candidate_repositories", node.Name)
+			}
+			if !containsArtifact(node.OutputArtifacts, "repo_validation_report") {
+				return fmt.Errorf("repo_discovery node %q must output repo_validation_report", node.Name)
+			}
+			if !containsArtifact(node.OutputArtifacts, "repo_url") {
+				return fmt.Errorf("repo_discovery node %q must output repo_url", node.Name)
+			}
+		case "repo_prepare":
+			hasRepoPrepare = true
+			if node.AssignedTo != "coder_agent" {
+				return fmt.Errorf("repo_prepare node %q must be assigned to coder_agent", node.Name)
+			}
+			if !containsArtifact(node.RequiredArtifacts, "repo_url") {
+				return fmt.Errorf("repo_prepare node %q must require repo_url", node.Name)
+			}
+			if !containsArtifact(node.OutputArtifacts, "generated_code") && !containsArtifact(node.OutputArtifacts, "workspace_path") {
+				return fmt.Errorf("repo_prepare node %q must output generated_code or workspace_path", node.Name)
+			}
+		case "resolve_dependencies":
+			hasResolveDependencies = true
+			if node.AssignedTo != "coder_agent" {
+				return fmt.Errorf("resolve_dependencies node %q must be assigned to coder_agent", node.Name)
+			}
+			if !containsArtifact(node.OutputArtifacts, "dependency_spec") {
+				return fmt.Errorf("resolve_dependencies node %q must output dependency_spec", node.Name)
+			}
+		case "prepare_runtime":
+			hasPrepareRuntime = true
+			if node.AssignedTo != "sandbox_agent" {
+				return fmt.Errorf("prepare_runtime node %q must be assigned to sandbox_agent", node.Name)
+			}
+			if !containsArtifact(node.OutputArtifacts, "runtime_session") && !containsArtifact(node.OutputArtifacts, "runtime_env") {
+				return fmt.Errorf("prepare_runtime node %q must output runtime_session or runtime_env", node.Name)
+			}
+		case "install_dependencies":
+			hasInstallDependencies = true
+			if node.AssignedTo != "sandbox_agent" {
+				return fmt.Errorf("install_dependencies node %q must be assigned to sandbox_agent", node.Name)
+			}
+			if !containsArtifact(node.RequiredArtifacts, "dependency_spec") {
+				return fmt.Errorf("install_dependencies node %q must require dependency_spec", node.Name)
+			}
+			if !containsArtifact(node.OutputArtifacts, "prepared_runtime") {
+				return fmt.Errorf("install_dependencies node %q must output prepared_runtime", node.Name)
+			}
+		case "execute_code", "baseline_run":
+			hasExecuteCode = true
+			if node.AssignedTo != "sandbox_agent" {
+				return fmt.Errorf("execute_code node %q must be assigned to sandbox_agent", node.Name)
+			}
+			if !containsArtifact(node.RequiredArtifacts, "generated_code") && !containsArtifact(node.RequiredArtifacts, "code_file_path") {
+				return fmt.Errorf("execute_code node %q must require generated code input", node.Name)
+			}
+		case "paper_code_execute":
+			hasExecuteCode = true
+			if node.AssignedTo != "research_coding_agent" {
+				return fmt.Errorf("paper_code_execute node %q must be assigned to research_coding_agent", node.Name)
+			}
+			if !containsArtifact(node.RequiredArtifacts, "code_file_path") || !containsArtifact(node.RequiredArtifacts, "prepared_runtime") {
+				return fmt.Errorf("paper_code_execute node %q must require code_file_path and prepared_runtime", node.Name)
+			}
+			if !containsArtifact(node.OutputArtifacts, "run_metrics") || !containsArtifact(node.OutputArtifacts, "paper_debug_report") {
+				return fmt.Errorf("paper_code_execute node %q must output run_metrics and paper_debug_report", node.Name)
+			}
+		case "autoresearch_spec":
+			hasAutoResearchSpec = true
+			if node.AssignedTo != "research_coding_agent" {
+				return fmt.Errorf("autoresearch_spec node %q must be assigned to research_coding_agent", node.Name)
+			}
+			if !containsArtifact(node.RequiredArtifacts, "workspace_path") || !containsArtifact(node.OutputArtifacts, "research_spec") || !containsArtifact(node.OutputArtifacts, "dependency_spec") {
+				return fmt.Errorf("autoresearch_spec node %q must consume workspace_path and output research_spec plus dependency_spec", node.Name)
+			}
+		case "autoresearch_run":
+			hasAutoResearchRun = true
+			if node.AssignedTo != "research_coding_agent" {
+				return fmt.Errorf("autoresearch_run node %q must be assigned to research_coding_agent", node.Name)
+			}
+			if !containsArtifact(node.RequiredArtifacts, "workspace_path") || !containsArtifact(node.RequiredArtifacts, "prepared_runtime") || !containsArtifact(node.RequiredArtifacts, "research_spec") {
+				return fmt.Errorf("autoresearch_run node %q is missing frozen workspace/runtime/spec inputs", node.Name)
+			}
+			if !containsArtifact(node.OutputArtifacts, "research_trial_ledger") || !containsArtifact(node.OutputArtifacts, "research_best_candidate") {
+				return fmt.Errorf("autoresearch_run node %q must output a trial ledger and best candidate", node.Name)
+			}
+		case "autoresearch_validate":
+			hasAutoResearchValidation = true
+			if node.AssignedTo != "research_coding_agent" {
+				return fmt.Errorf("autoresearch_validate node %q must be assigned to research_coding_agent", node.Name)
+			}
+			if !containsArtifact(node.RequiredArtifacts, "research_spec") || !containsArtifact(node.RequiredArtifacts, "research_trial_ledger") || !containsArtifact(node.OutputArtifacts, "research_validation_report") {
+				return fmt.Errorf("autoresearch_validate node %q must consume frozen evidence and output validation", node.Name)
+			}
+		}
+	}
+
+	if intent.IntentType == "Code_Execution" {
+		if !hasGeneratedCode || !hasResolveDependencies || !hasPrepareRuntime || !hasInstallDependencies || !hasExecuteCode {
+			return fmt.Errorf("code execution plan is missing one or more required canonical nodes")
+		}
+	}
+	if intent.IntentType == "Paper_Reproduction" {
+		if !hasPaperParse || !hasClaimRubric || !hasClaimEvidence || !hasRepoDiscovery || !hasRepoPrepare || !hasResolveDependencies || !hasPrepareRuntime || !hasInstallDependencies || !hasExecuteCode {
+			return fmt.Errorf("paper reproduction plan is missing one or more required canonical nodes")
+		}
+	}
+	if intent.IntentType == "AutoResearch" {
+		if isDatasetExperimentIntent(intent) {
+			if !hasExperimentDataset || !hasExperimentSpec || !hasPrepareRuntime || !hasInstallDependencies || !hasExperimentRun || !hasExperimentValidation {
+				return fmt.Errorf("dataset AutoResearch plan is missing one or more required canonical nodes")
+			}
+		} else if !hasRepoDiscovery || !hasRepoPrepare || !hasAutoResearchSpec || !hasPrepareRuntime || !hasInstallDependencies || !hasAutoResearchRun || !hasAutoResearchValidation {
+			return fmt.Errorf("repository AutoResearch plan is missing one or more required canonical nodes")
+		}
+	}
+	if intent.IntentType == "Custom_Benchmark" {
+		if !hasBenchmarkAudit || !hasBenchmarkSplit || !hasBenchmarkContract || !hasRepoDiscovery || !hasRepoPrepare || !hasPrepareRuntime || !hasInstallDependencies || !hasBenchmarkExecute || !hasBenchmarkValidation {
+			return fmt.Errorf("custom benchmark plan is missing one or more trusted benchmark nodes")
+		}
+	}
+
+	return nil
+}
+
+func containsArtifact(values []string, artifact string) bool {
+	for _, value := range values {
+		if value == artifact || strings.HasSuffix(value, "_"+artifact) {
+			return true
+		}
+	}
+	return false
+}
+
+func logPlannerFallback(intent models.IntentContext, err error) {
+	log.Printf("[PlannerAgent] fallback to template planner intent_type=%s raw_intent=%q err=%v", intent.IntentType, intent.RawIntent, err)
+}

@@ -1,0 +1,351 @@
+package planner
+
+import (
+	"testing"
+
+	"research-assistant-backend/internal/models"
+)
+
+func TestBuildPaperReproductionInputsExplicitSmokeOverridesNegatedBLEU(t *testing.T) {
+	inputs := buildPaperReproductionInputs(models.IntentContext{
+		RawIntent:   "明确采用 smoke，不训练 WMT14，不做论文 BLEU 复现",
+		Entities:    map[string]any{"smoke_reproduction": true},
+		Constraints: map[string]any{"reproduction_mode": "smoke"},
+	})
+	if got := inputs["requested_reproduction_mode"]; got != "smoke" {
+		t.Fatalf("requested_reproduction_mode=%v", got)
+	}
+	if got := inputs["full_reproduction_requested"]; got != false {
+		t.Fatalf("full_reproduction_requested=%v", got)
+	}
+}
+
+func TestBuildRepoDiscoveryInputsIncludesPreferredRepository(t *testing.T) {
+	inputs := buildRepoDiscoveryInputs(models.IntentContext{
+		Entities: map[string]any{
+			"paper_title":        "Attention Is All You Need",
+			"preferred_repo_url": "https://github.com/harvardnlp/annotated-transformer",
+		},
+	})
+	if got := inputs["preferred_repo_url"]; got != "https://github.com/harvardnlp/annotated-transformer" {
+		t.Fatalf("preferred_repo_url=%v", got)
+	}
+}
+
+func TestPaperReproductionAddsBoundedAblationDesignWhenRequested(t *testing.T) {
+	intent := models.IntentContext{
+		RawIntent:  "复现 Transformer 并做最多 2 组轻量消融，总耗时 30 分钟，GPU 时间不超过 10 分钟",
+		IntentType: "Paper_Reproduction",
+		Entities:   map[string]any{"needs_ablation": true, "paper_title": "Transformer"},
+		Constraints: map[string]any{
+			"reproduction_mode": "smoke",
+		},
+	}
+	plan, err := NewPlanner().BuildPlan(t.Context(), intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var design, prepare *models.TaskNode
+	for _, node := range plan.Nodes {
+		switch node.Type {
+		case "ablation_design":
+			design = node
+		case "repo_prepare":
+			prepare = node
+		}
+	}
+	if design == nil || prepare == nil {
+		t.Fatalf("missing ablation design or repo prepare node")
+	}
+	if got := design.Inputs["ablation_max_experiments"]; got != 2 {
+		t.Fatalf("max experiments=%v", got)
+	}
+	if got := design.Inputs["ablation_max_wall_minutes"]; got != 30 {
+		t.Fatalf("max wall minutes=%v", got)
+	}
+	if got := design.Inputs["ablation_max_gpu_minutes"]; got != 10 {
+		t.Fatalf("max GPU minutes=%v", got)
+	}
+	if !containsArtifact(prepare.RequiredArtifacts, "ablation_plan") {
+		t.Fatalf("repo_prepare does not consume ablation_plan: %#v", prepare.RequiredArtifacts)
+	}
+}
+
+func TestCustomDatasetBenchmarkBuildsBoundedAdapterHarness(t *testing.T) {
+	uploaded := []map[string]any{{
+		"id": "upload-1", "name": "reviews.csv", "storage_path": "/tmp/reviews.csv", "text_excerpt": "review,label",
+	}}
+	intent := models.IntentContext{
+		RawIntent:  "用 https://github.com/example/research-repo 跑 benchmark，输入列是 review，标签列是 label，最多 64 条样本",
+		IntentType: "Custom_Benchmark",
+		Entities: map[string]any{
+			"needs_custom_benchmark": true,
+			"preferred_repo_url":     "https://github.com/example/research-repo",
+			"uploaded_files":         uploaded,
+		},
+	}
+	plan, err := NewPlanner().BuildPlan(t.Context(), intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.IntentType != "Custom_Benchmark" || len(plan.Nodes) != 13 {
+		t.Fatalf("unexpected custom benchmark graph: intent=%s nodes=%d", plan.IntentType, len(plan.Nodes))
+	}
+	wantedTypes := []string{
+		"benchmark_dataset_audit", "repo_discovery", "repo_prepare", "benchmark_split_materialize", "benchmark_contract_freeze",
+		"benchmark_adapter_generate", "resolve_dependencies", "prepare_runtime", "install_dependencies", "benchmark_adapter_preflight",
+		"benchmark_execute", "benchmark_validate", "framework_report",
+	}
+	for index, taskType := range wantedTypes {
+		if plan.Nodes[index].Type != taskType {
+			t.Fatalf("node %d type=%s, want %s", index, plan.Nodes[index].Type, taskType)
+		}
+	}
+	audit := plan.Nodes[0]
+	if audit.AssignedTo != "benchmark_agent" || audit.Inputs["benchmark_input_column"] != "review" || audit.Inputs["benchmark_target_column"] != "label" {
+		t.Fatalf("unexpected dataset audit node: %#v", audit)
+	}
+	discovery := plan.Nodes[1]
+	if len(discovery.RequiredArtifacts) != 0 || discovery.Inputs["preferred_repo_url"] != "https://github.com/example/research-repo" {
+		t.Fatalf("custom repository discovery incorrectly depends on a paper: %#v", discovery)
+	}
+	prepare := plan.Nodes[2]
+	preparedUploads := prepare.Inputs["uploaded_files"].([]map[string]any)
+	if _, leaked := preparedUploads[0]["text_excerpt"]; leaked {
+		t.Fatalf("workspace upload reference retained text excerpt: %#v", preparedUploads)
+	}
+	split := plan.Nodes[3]
+	if split.AssignedTo != "benchmark_agent" || !containsArtifact(split.OutputArtifacts, "benchmark_leakage_report") || !containsArtifact(split.OutputArtifacts, "benchmark_public_test_manifest") || !containsArtifact(split.OutputArtifacts, "benchmark_input_only_preflight_manifest") {
+		t.Fatalf("benchmark split contract is incomplete: %#v", split)
+	}
+	freeze := plan.Nodes[4]
+	if freeze.AssignedTo != "benchmark_agent" || !containsArtifact(freeze.OutputArtifacts, "benchmark_metric_contract") || !containsArtifact(freeze.OutputArtifacts, "benchmark_reward_contract") {
+		t.Fatalf("benchmark metric/reward contract is incomplete: %#v", freeze)
+	}
+	execute := plan.Nodes[10]
+	if execute.Inputs["benchmark_max_samples"] != 64 {
+		t.Fatalf("benchmark sample budget=%v", execute.Inputs["benchmark_max_samples"])
+	}
+	if !containsArtifact(execute.RequiredArtifacts, "validated_benchmark_adapter_spec") || !containsArtifact(execute.OutputArtifacts, "benchmark_hidden_predictions_path") || !containsArtifact(plan.Nodes[11].OutputArtifacts, "benchmark_validation_report") {
+		t.Fatalf("benchmark evidence contracts are incomplete")
+	}
+	if !containsArtifact(plan.Nodes[9].RequiredArtifacts, "benchmark_input_only_preflight_manifest") {
+		t.Fatalf("benchmark adapter preflight is missing the unlabeled feature contract")
+	}
+	if plan.Nodes[11].AssignedTo != "benchmark_agent" {
+		t.Fatalf("hidden validation routed to %s", plan.Nodes[11].AssignedTo)
+	}
+	if err := validateCriticalNodeContracts(intent, plan.Nodes); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAutoResearchBuildsDeterministicBoundedHarness(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	revision := "47aa3ddf8dc1ebeb7ef4e65f2b4536af44594099"
+	intent := models.IntentContext{
+		RawIntent:  "用 https://github.com/example/research-repo 做 AutoResearch，使用 examples/autoresearch/intent_router/autoresearch.json，最多 4 次实验，总时长 20 分钟，独立复验 3 次",
+		IntentType: "AutoResearch",
+		Entities: map[string]any{
+			"needs_autoresearch":     true,
+			"preferred_repo_url":     "https://github.com/example/research-repo",
+			"repository_revision":    revision,
+			"autoresearch_spec_path": "examples/autoresearch/intent_router/autoresearch.json",
+		},
+	}
+	plan, err := NewPlanner().BuildPlan(t.Context(), intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantedTypes := []string{
+		"repo_discovery", "repo_prepare", "autoresearch_spec", "prepare_runtime",
+		"install_dependencies", "autoresearch_run", "autoresearch_validate", "verify_result",
+	}
+	if plan.IntentType != "AutoResearch" || len(plan.Nodes) != len(wantedTypes) {
+		t.Fatalf("unexpected AutoResearch graph: intent=%s nodes=%d", plan.IntentType, len(plan.Nodes))
+	}
+	for index, taskType := range wantedTypes {
+		if plan.Nodes[index].Type != taskType {
+			t.Fatalf("node %d type=%s, want %s", index, plan.Nodes[index].Type, taskType)
+		}
+	}
+	if err := validateCriticalNodeContracts(intent, plan.Nodes); err != nil {
+		t.Fatal(err)
+	}
+	freeze := plan.Nodes[2]
+	if plan.Nodes[1].Inputs["skip_reproduction_smoke_runner"] != true {
+		t.Fatalf("AutoResearch workspace must not generate a paper smoke runner: %#v", plan.Nodes[1].Inputs)
+	}
+	if plan.Nodes[1].Inputs["repository_revision"] != revision {
+		t.Fatalf("repository revision was not propagated: %#v", plan.Nodes[1].Inputs)
+	}
+	if freeze.Inputs["autoresearch_max_trials"] != 4 || freeze.Inputs["autoresearch_max_wall_seconds"] != 1200 {
+		t.Fatalf("unexpected AutoResearch budget: %#v", freeze.Inputs)
+	}
+	if freeze.Inputs["autoresearch_validation_runs"] != 3 {
+		t.Fatalf("unexpected AutoResearch validation runs: %#v", freeze.Inputs)
+	}
+	if freeze.Inputs["autoresearch_spec_path"] != "examples/autoresearch/intent_router/autoresearch.json" {
+		t.Fatalf("spec path not propagated: %#v", freeze.Inputs)
+	}
+	run := plan.Nodes[5]
+	if run.AssignedTo != "research_coding_agent" || run.TimeoutSeconds != 1230 {
+		t.Fatalf("unexpected AutoResearch runner: %#v", run)
+	}
+	if !containsArtifact(run.RequiredArtifacts, "research_spec") || !containsArtifact(run.OutputArtifacts, "research_trial_ledger") {
+		t.Fatalf("AutoResearch evidence contract is incomplete: %#v", run)
+	}
+	validate := plan.Nodes[6]
+	if validate.RetryLimit != 0 {
+		t.Fatalf("deterministic AutoResearch validation must not be retried unchanged: %#v", validate)
+	}
+	if plan.Budget.MaxDurationSec != 2100 {
+		t.Fatalf("plan duration budget=%d, want wall budget plus setup allowance", plan.Budget.MaxDurationSec)
+	}
+}
+
+func TestDatasetAutoResearchBuildsGenericExperimentHarness(t *testing.T) {
+	intent := models.IntentContext{
+		RawIntent:  "上传工业语料和评测问题，自动研究 RAG 策略与超参数，最多 14 次实验，并发 3 路，总时长 20 分钟，目标分数 0.82，top_k=8",
+		IntentType: "AutoResearch",
+		Entities: map[string]any{
+			"needs_autoresearch": true, "needs_dataset_research": true,
+			"research_domain": "retrieval", "experiment_adapter": "retrieval.v1",
+			"uploaded_files": []map[string]any{{"name": "corpus.jsonl"}, {"name": "queries.jsonl"}},
+		},
+	}
+	plan, err := NewPlanner().BuildPlan(t.Context(), intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wanted := []string{"experiment_dataset_prepare", "experiment_spec", "ablation_design", "prepare_runtime", "install_dependencies", "experiment_run", "experiment_validate", "verify_result"}
+	if len(plan.Nodes) != len(wanted) {
+		t.Fatalf("unexpected experiment plan length: %d", len(plan.Nodes))
+	}
+	for index, taskType := range wanted {
+		if plan.Nodes[index].Type != taskType {
+			t.Fatalf("node %d type=%s, want %s", index, plan.Nodes[index].Type, taskType)
+		}
+	}
+	if plan.Nodes[0].Inputs["research_domain"] != "retrieval" || plan.Nodes[1].Inputs["experiment_max_trials"] != 14 || plan.Nodes[1].Inputs["experiment_cutoff"] != 8 || plan.Nodes[1].Inputs["experiment_max_parallel_trials"] != 3 {
+		t.Fatalf("experiment inputs were not frozen: %#v", plan.Nodes[1].Inputs)
+	}
+	if got := plan.Nodes[1].Inputs["experiment_target_score"]; got != 0.82 {
+		t.Fatalf("target score=%v", got)
+	}
+	if !plan.Nodes[2].Parallelizable || !plan.Nodes[3].Parallelizable || plan.Nodes[5].TimeoutSeconds != 1230 || plan.Budget.MaxDurationSec != 2100 || plan.Nodes[6].RetryLimit != 0 {
+		t.Fatalf("experiment budgets or parallel branches are inconsistent: plan=%#v design=%#v runtime=%#v run=%#v validate=%#v", plan.Budget, plan.Nodes[2], plan.Nodes[3], plan.Nodes[5], plan.Nodes[6])
+	}
+}
+
+func TestDatasetExperimentDefaultsToFourSearchAgents(t *testing.T) {
+	inputs := buildDatasetExperimentInputs(models.IntentContext{
+		RawIntent: "上传数据自动比较方法和参数",
+		Entities:  map[string]any{"research_domain": "retrieval"},
+	})
+	if got := inputs["experiment_max_parallel_trials"]; got != 4 {
+		t.Fatalf("default Search Agent count=%v, want 4", got)
+	}
+}
+
+func TestDatasetAutoResearchRequiresAnUploadedContractOrDataset(t *testing.T) {
+	intent := models.IntentContext{
+		RawIntent:  "对论文仓库做 AutoResearch，并比较方法和超参数",
+		IntentType: "AutoResearch",
+		Entities: map[string]any{
+			"needs_autoresearch": true, "needs_dataset_research": true,
+			"preferred_repo_url": "https://github.com/example/research-repo",
+		},
+	}
+	plan, err := NewPlanner().BuildPlan(t.Context(), intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Nodes) != 8 || plan.Nodes[0].Type != "repo_discovery" || plan.Nodes[5].Type != "autoresearch_run" {
+		t.Fatalf("request without uploads must stay on repository AutoResearch path: %#v", plan.Nodes)
+	}
+}
+
+func TestDatasetExperimentParsesDomainSpecificTargetScale(t *testing.T) {
+	inputs := buildDatasetExperimentInputs(models.IntentContext{
+		RawIntent: "上传实验契约，最小化 latency，目标指标达到 125.5，Holdout 目标 130",
+		Entities:  map[string]any{"uploaded_files": []map[string]any{{"name": "experiment.json"}}},
+	})
+	if inputs["experiment_target_score"] != 125.5 || inputs["experiment_holdout_target_score"] != 130.0 {
+		t.Fatalf("generic metric targets must not be clamped to [0,1]: %#v", inputs)
+	}
+}
+
+func TestDatasetExperimentParsesMetricAtCutoff(t *testing.T) {
+	inputs := buildDatasetExperimentInputs(models.IntentContext{
+		RawIntent: "固定 NDCG@1，最多 6 次实验，目标分数 0.60",
+		Entities:  map[string]any{"uploaded_files": []map[string]any{{"name": "queries.jsonl"}}},
+	})
+	if inputs["experiment_metric"] != "ndcg_at_k" || inputs["experiment_cutoff"] != 1 {
+		t.Fatalf("metric@k notation was not frozen correctly: %#v", inputs)
+	}
+}
+
+func TestPaperReproductionRoutesRepositoryDebugToResearchCodingAgent(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	intent := models.IntentContext{
+		RawIntent:  "复现 Transformer，遇到论文代码错误时调试，并画出重跑结果",
+		IntentType: "Paper_Reproduction",
+		Entities: map[string]any{
+			"paper_title": "Transformer",
+			"needs_fix":   true,
+			"needs_plot":  true,
+		},
+		Constraints: map[string]any{"reproduction_mode": "smoke"},
+	}
+	plan, err := NewPlanner().BuildPlan(t.Context(), intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rubric, baseline, gapDebug, compare, visualize, evidence *models.TaskNode
+	for _, node := range plan.Nodes {
+		switch node.Type {
+		case "claim_rubric_extract":
+			rubric = node
+		case "paper_code_execute":
+			baseline = node
+		case "fix_and_rerun":
+			gapDebug = node
+		case "paper_compare":
+			compare = node
+		case "result_visualization":
+			visualize = node
+		case "claim_evidence_build":
+			evidence = node
+		}
+	}
+	if rubric == nil || baseline == nil || gapDebug == nil || compare == nil || visualize == nil || evidence == nil {
+		t.Fatalf("missing claim-aware repository debug flow: rubric=%v baseline=%v gap=%v compare=%v visualize=%v evidence=%v", rubric != nil, baseline != nil, gapDebug != nil, compare != nil, visualize != nil, evidence != nil)
+	}
+	if baseline.AssignedTo != "research_coding_agent" || gapDebug.AssignedTo != "research_coding_agent" {
+		t.Fatalf("paper debugging was not routed to research coding agent")
+	}
+	if !containsArtifact(baseline.OutputArtifacts, "paper_debug_report") || !containsArtifact(compare.RequiredArtifacts, "paper_debug_report") {
+		t.Fatalf("baseline debug evidence is not propagated")
+	}
+	if !containsArtifact(gapDebug.RequiredArtifacts, "comparison_report") || !containsArtifact(gapDebug.OutputArtifacts, "rerun_metrics") {
+		t.Fatalf("result-gap debug contracts are incomplete: %#v", gapDebug)
+	}
+	if len(visualize.Dependencies) != 1 || visualize.Dependencies[0] != gapDebug.ID || !containsArtifact(visualize.RequiredArtifacts, "rerun_metrics") {
+		t.Fatalf("visualization does not consume rerun evidence: %#v", visualize)
+	}
+	if !containsArtifact(rubric.RequiredArtifacts, "parsed_paper") || !containsArtifact(rubric.OutputArtifacts, "claim_rubric") {
+		t.Fatalf("claim rubric contract is incomplete: %#v", rubric)
+	}
+	if len(evidence.Dependencies) != 2 || evidence.Dependencies[0] != rubric.ID || evidence.Dependencies[1] != visualize.ID {
+		t.Fatalf("claim graph is not the final evidence join: %#v", evidence.Dependencies)
+	}
+	for _, artifact := range []string{"claim_rubric", "run_metrics", "comparison_report", "rerun_metrics", "result_plot"} {
+		if !containsArtifact(evidence.RequiredArtifacts, artifact) {
+			t.Fatalf("claim graph is missing required evidence %s: %#v", artifact, evidence.RequiredArtifacts)
+		}
+	}
+	if !containsArtifact(evidence.OutputArtifacts, "claim_evidence_graph") || !containsArtifact(evidence.OutputArtifacts, "claim_verification_report") {
+		t.Fatalf("claim graph outputs are incomplete: %#v", evidence.OutputArtifacts)
+	}
+}

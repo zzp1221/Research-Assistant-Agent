@@ -1,0 +1,93 @@
+services:
+  # 1. Docker 沙箱服务
+  docker-sandbox:
+    build: ./docker-sandbox
+    ports:
+      - "127.0.0.1:8082:8082"
+    volumes:
+      # 极其重要：挂载 Docker Socket，允许容器内的 Go 程序操作宿主机的 Docker
+      - /var/run/docker.sock:/var/run/docker.sock
+      # 挂载临时工作区
+      - /tmp:/tmp
+    environment:
+      - SANDBOX_DOCKER_GPUS=${SANDBOX_DOCKER_GPUS:-}
+      - SANDBOX_API_TOKEN=${SANDBOX_API_TOKEN:-local-sandbox-token}
+      - SANDBOX_CPU_LIMIT=${SANDBOX_CPU_LIMIT:-2}
+      - SANDBOX_MEMORY_LIMIT=${SANDBOX_MEMORY_LIMIT:-4g}
+      - SANDBOX_PIDS_LIMIT=${SANDBOX_PIDS_LIMIT:-256}
+      - SANDBOX_NETWORK_MODE=${SANDBOX_NETWORK_MODE:-bridge}
+      - SANDBOX_WORKSPACE_ROOTS=/tmp
+    networks:
+      - research-assistant-network
+
+  # 2. Python 科研优化服务：数据特征、候选选择和跨任务经验
+  research-optimizer:
+    build: ./research-optimizer
+    ports:
+      - "127.0.0.1:8090:8090"
+    volumes:
+      - research-assistant-experience-data:/data
+    environment:
+      - RESEARCH_OPTIMIZER_API_TOKEN=${RESEARCH_OPTIMIZER_API_TOKEN:-local-optimizer-token}
+      - RESEARCH_OPTIMIZER_DB_PATH=/data/experiences.sqlite3
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - research-assistant-network
+
+  # 3. Go 后端调度引擎
+  backend:
+    build:
+      context: ./backend
+      args:
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-http://deb.debian.org/debian}
+        DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-http://deb.debian.org/debian-security}
+    ports:
+      - "8080:8080"
+    volumes:
+      - /tmp:/tmp
+      - ../docker-core/config:/app/config:ro
+      - research-assistant-plan-data:/app/data
+      - research-assistant-upload-data:/app/uploads
+      - research-assistant-benchmark-private-data:/app/private-benchmarks
+    env_file:
+      - ./backend.env
+    environment:
+      - SANDBOX_URL=http://docker-sandbox:8082
+      - SANDBOX_API_TOKEN=${SANDBOX_API_TOKEN:-local-sandbox-token}
+      - PLAN_STORE_PATH=/app/data/plans.json
+      - UPLOAD_ROOT=/app/uploads
+      - UPLOAD_MAX_MB=${UPLOAD_MAX_MB:-32}
+      - BENCHMARK_PRIVATE_ROOT=/app/private-benchmarks
+      - RESEARCH_OPTIMIZER_URL=http://research-optimizer:8090
+      - RESEARCH_OPTIMIZER_API_TOKEN=${RESEARCH_OPTIMIZER_API_TOKEN:-local-optimizer-token}
+    depends_on:
+      docker-sandbox:
+        condition: service_started
+      research-optimizer:
+        condition: service_healthy
+    networks:
+      - research-assistant-network
+
+  # 4. React 前端界面
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:80" # 将容器内的 Nginx 80 端口映射到宿主机 5173
+    depends_on:
+      - backend
+    networks:
+      - research-assistant-network
+
+networks:
+  research-assistant-network:
+    driver: bridge
+
+volumes:
+  research-assistant-plan-data:
+  research-assistant-upload-data:
+  research-assistant-experience-data:
+  research-assistant-benchmark-private-data:

@@ -1,0 +1,136 @@
+@import "tailwindcss";
+
+body {
+  margin: 0;
+  background: #f1f5f9;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.research-assistant-task-node {
+  text-align: initial;
+}
+
+.research-assistant-task-node .react-flow__handle {
+  width: 7px;
+  height: 7px;
+  border: 2px solid #94a3b8;
+  background: #ffffff;
+}
+
+.react-flow__controls {
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(15 23 42 / 0.08);
+}
+
+.research-assistant-mobile-tabbar {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .research-assistant-app-shell {
+    position: relative;
+    flex-direction: column;
+  }
+
+  .research-assistant-mobile-tabbar {
+    display: flex;
+    flex: 0 0 48px;
+    align-items: center;
+    gap: 4px;
+    padding: 6px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #ffffff;
+  }
+
+  .research-assistant-mobile-tabbar button {
+    display: flex;
+    height: 36px;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .research-assistant-mobile-tabbar button.is-active {
+    background: #eff6ff;
+    color: #2563eb;
+  }
+
+  .research-assistant-left-workspace {
+    width: 100% !important;
+    height: calc(100vh - 48px);
+    min-height: 0;
+    border-right: 0;
+    box-shadow: none;
+  }
+
+  .research-assistant-left-resize-handle {
+    display: none;
+  }
+
+  .research-assistant-graph-workspace {
+    width: 100%;
+    height: calc(100vh - 48px);
+    min-height: 0;
+  }
+
+  .research-assistant-app-shell[data-mobile-pane='chat'] .research-assistant-graph-workspace,
+  .research-assistant-app-shell[data-mobile-pane='graph'] .research-assistant-left-workspace {
+    position: absolute;
+    top: 48px;
+    bottom: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .research-assistant-app-shell[data-mobile-pane='chat'] .research-assistant-graph-workspace {
+    left: 100%;
+  }
+
+  .research-assistant-app-shell[data-mobile-pane='graph'] .research-assistant-left-workspace {
+    left: -100%;
+  }
+
+  .research-assistant-execution-sidebar {
+    position: absolute !important;
+    inset: 0;
+    width: 100% !important;
+  }
+}
