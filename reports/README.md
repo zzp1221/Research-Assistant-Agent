@@ -14,6 +14,7 @@ published the backend on `127.0.0.1:18080` and the frontend on
 | Backend `/api/chat` with real DeepSeek | `DEEPSEEK_CHAT_OK` |
 | Backend `/api/plan` with real DeepSeek | HTTP 200, `Code_Execution`, 6 nodes |
 | Legacy `/api/execute` | HTTP 410 tombstone |
+| Plan-scoped task execution | HTTP 200 SSE `result`; generated code; client-supplied `/etc` paths ignored |
 | Sandbox create / Python execute / delete | 200 / `SANDBOX_OK` / 200 |
 | Sandbox control-container name attack | rejected (500, `invalid sandbox container id`) |
 | Compose health from backend network | all `backend`, `repository`, `sandbox`, `research_optimizer` = ok |

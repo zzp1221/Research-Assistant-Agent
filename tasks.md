@@ -99,5 +99,5 @@
 ## Phase 7 — 收尾
 
 - [x] 全部容器测试通过
-- [ ] `git status` clean
-- [ ] 最终提交
+- [x] `git status` clean
+- [x] 最终提交
