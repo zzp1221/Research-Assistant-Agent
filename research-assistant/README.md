@@ -74,14 +74,14 @@ research-assistant/
 |---|---|
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL_NAME` | LLM 接入配置 |
 | `SANDBOX_URL` | 沙箱服务地址，Compose 中为 `http://docker-sandbox:8082` |
-| `PLAN_STORE_PATH` | 计划与事件持久化文件 |
+| `PLAN_STORE_PATH` | append-only JSONL 计划/事件日志；旧 JSON 快照自动迁移 |
 | `UPLOAD_ROOT` / `UPLOAD_MAX_MB` | 上传目录与单文件大小限制 |
 | `RESEARCH_OPTIMIZER_URL` / `RESEARCH_OPTIMIZER_API_TOKEN` | Python 优化器地址与内部 Token |
-| `API_AUTH_TOKEN` | API 静态 Bearer Token；启用后 SSE 通过 60 秒 HMAC ticket 鉴权 |
-| `VITE_API_AUTH_TOKEN` | 前端构建时注入的同一 Token；设置在 `.env`，需重建 frontend 镜像 |
-| `REQUIRE_API_AUTH` | `true` 且 Token 为空时 API fail-closed |
+| `API_AUTH_TOKEN` | API 静态 Bearer Token；SSE 通过 60 秒 HMAC ticket 鉴权 |
+| `VITE_API_AUTH_TOKEN` | 由 Compose 使用 `API_AUTH_TOKEN` 自动注入前端构建 |
+| `REQUIRE_API_AUTH` | Compose 强制 `true`；Token 为空时 API fail-closed |
 | `CORS_ALLOWED_ORIGINS` | 允许的前端 Origin 列表 |
-| `SANDBOX_API_TOKEN` | 后端与沙箱之间的 Bearer Token |
+| `SANDBOX_API_TOKEN` | 后端与沙箱之间的 Bearer Token；gateway/executor 均 fail-closed |
 
 ## 常用命令
 
@@ -102,14 +102,14 @@ make docker-down      # Docker Compose 停止
 1. 用户在工作台提交目标，前端调用 `POST /api/plan`。
 2. Backend 的 Intent Router 与 Planner 生成经过校验的 DAG，并写入 Plan Store。
 3. Scheduler 按依赖关系调度节点，通过类型化 Artifact 路由给专业 Agent。
-4. Agent 通过 `internal/sandbox` 客户端调用独立沙箱服务；沙箱在 Docker 中执行代码并回传日志、指标和文件。
+4. Agent 通过 `internal/sandbox` 客户端调用 `docker-sandbox` gateway；gateway 只做鉴权与转发，不持有 Docker socket。内部 executor 才持有 socket 和 `/tmp`，在 Docker 中执行代码并回传日志、指标和文件。
 5. 事件与 Artifact 通过 SSE 推送到前端；前端展示 DAG、节点日志、代码、报告和证据图。
 6. AutoResearch 场景下，Go Harness 负责候选合法性、预算、Keep/Reject、回滚与 Holdout 验收，Python Optimizer 只提供候选排序建议。
 
 ## 运行边界
 
 - 默认是单机研究原型，不是多租户生产服务。
-- Compose 只在本机暴露沙箱端口，但沙箱容器挂载 Docker socket，权限较高。
+- Compose 只在本机暴露 gateway 端口；gateway 不挂载 Docker socket 或宿主工作区，只有不发布端口的内部 executor 持有 socket，权限仍高但边界更小。
 - 默认镜像为 CPU/通用 Python 镜像；GPU 透传需要 NVIDIA Container Toolkit。
 - 论文复现示例是轻量 smoke，不包含完整数据集训练。
 

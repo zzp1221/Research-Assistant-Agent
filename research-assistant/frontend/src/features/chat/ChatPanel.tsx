@@ -34,6 +34,7 @@ interface ChatActions {
   onSwitchSession: (sessionId: string) => void;
 	onAttachFiles: (files: File[]) => void;
 	onRemoveAttachment: (uploadId: string) => void;
+	onOpenAttachment: (attachment: UploadedFile) => void;
 }
 
 interface PdfActions {
@@ -94,6 +95,7 @@ export function ChatPanel(props: ChatPanelProps) {
         onSendMessage={chatActions.onSendMessage}
 		onAttachFiles={chatActions.onAttachFiles}
 		onRemoveAttachment={chatActions.onRemoveAttachment}
+		onOpenAttachment={chatActions.onOpenAttachment}
       />
     </div>
   );

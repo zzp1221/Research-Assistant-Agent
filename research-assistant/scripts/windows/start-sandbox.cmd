@@ -29,7 +29,7 @@ set "NO_PROXY=localhost,127.0.0.1,::1"
 set "no_proxy=localhost,127.0.0.1,::1"
 
 cd /d "%ROOT%\docker-sandbox"
-go run main.go
+go run .
 exit /b %errorlevel%
 
 :load_env

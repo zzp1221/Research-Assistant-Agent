@@ -178,7 +178,10 @@ func repoPrepareRepositoryRevision(task *models.Task) (string, error) {
 		if !strings.EqualFold(filepath.Ext(strings.TrimSpace(file.Name)), ".json") {
 			continue
 		}
-		path := filepath.Clean(strings.TrimSpace(file.StoragePath))
+		path, validateErr := workspace.ValidateUploadedFilePath(file.StoragePath)
+		if validateErr != nil {
+			continue
+		}
 		info, statErr := os.Lstat(path)
 		if statErr != nil || !info.Mode().IsRegular() || info.Size() > maxRepositoryRevisionSpecBytes {
 			continue
@@ -910,7 +913,7 @@ func cloneRepositoryWithRetry(ctx context.Context, repoURL, workspacePath, revis
 	for idx, args := range cloneCommands {
 		if idx > 0 {
 			_ = os.RemoveAll(workspacePath)
-			if err := os.MkdirAll(workspacePath, 0o755); err != nil {
+			if err := os.MkdirAll(workspacePath, 0o700); err != nil {
 				return fmt.Errorf("recreate repo workspace: %w", err)
 			}
 		}
@@ -954,7 +957,7 @@ func cloneRepositoryWithRetry(ctx context.Context, repoURL, workspacePath, revis
 	if err := os.RemoveAll(workspacePath); err != nil {
 		return fmt.Errorf("reset repository workspace for archive fallback: %w", err)
 	}
-	if err := os.MkdirAll(workspacePath, 0o755); err != nil {
+	if err := os.MkdirAll(workspacePath, 0o700); err != nil {
 		return fmt.Errorf("recreate repository workspace for archive fallback: %w", err)
 	}
 	if err := downloadGitHubRepositoryArchive(ctx, repoURL, workspacePath, ""); err == nil {
@@ -1057,7 +1060,7 @@ func resetRepositoryWorkspace(workspacePath string) error {
 	if err := os.RemoveAll(workspacePath); err != nil {
 		return fmt.Errorf("reset repository workspace: %w", err)
 	}
-	if err := os.MkdirAll(workspacePath, 0o755); err != nil {
+	if err := os.MkdirAll(workspacePath, 0o700); err != nil {
 		return fmt.Errorf("recreate repository workspace: %w", err)
 	}
 	return nil
@@ -1258,7 +1261,7 @@ func extractRepositoryArchive(compressed io.Reader, workspacePath string) error 
 
 		switch header.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(targetPath, 0o755); err != nil {
+			if err := os.MkdirAll(targetPath, 0o700); err != nil {
 				return fmt.Errorf("create repository archive directory: %w", err)
 			}
 		case tar.TypeSymlink:
@@ -1269,7 +1272,7 @@ func extractRepositoryArchive(compressed io.Reader, workspacePath string) error 
 			if !safeRepositorySymlinkTarget(relativePath, header.Linkname) {
 				return fmt.Errorf("repository archive contains an unsafe symlink %q -> %q", header.Name, header.Linkname)
 			}
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0o700); err != nil {
 				return fmt.Errorf("create repository symlink parent: %w", err)
 			}
 			if err := os.Symlink(filepath.FromSlash(header.Linkname), targetPath); err != nil {
@@ -1283,7 +1286,7 @@ func extractRepositoryArchive(compressed io.Reader, workspacePath string) error 
 			if header.Size < 0 || header.Size > maxRepositoryFileBytes || extractedBytes+header.Size > maxRepositoryExtractedBytes {
 				return fmt.Errorf("repository archive exceeds extraction limits")
 			}
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0o700); err != nil {
 				return fmt.Errorf("create repository archive parent: %w", err)
 			}
 			mode := os.FileMode(0o644)

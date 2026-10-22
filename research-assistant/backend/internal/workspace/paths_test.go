@@ -31,6 +31,28 @@ func TestValidateUploadedFilePathRejectsOutsideRoot(t *testing.T) {
 	}
 }
 
+func TestValidateWorkspaceFilePathRejectsOutsideRoot(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("SANDBOX_WORKSPACE_ROOTS", root)
+	inside := filepath.Join(root, "run.py")
+	if err := os.WriteFile(inside, []byte("print(1)\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ValidateWorkspaceFilePath(inside); err != nil {
+		t.Fatalf("expected inside workspace file to be accepted: %v", err)
+	}
+	outside := filepath.Join(t.TempDir(), "run.py")
+	if err := os.WriteFile(outside, []byte("print(1)\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ValidateWorkspaceFilePath(outside); err == nil {
+		t.Fatal("expected file outside workspace root to be rejected")
+	}
+	if _, err := ValidateWorkspaceFilePath(root); err == nil {
+		t.Fatal("expected directory to be rejected as a workspace file")
+	}
+}
+
 func TestValidateWorkspacePathRejectsOutsideRoot(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("SANDBOX_WORKSPACE_ROOTS", root)

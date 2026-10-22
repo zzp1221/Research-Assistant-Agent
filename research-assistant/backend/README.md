@@ -26,9 +26,7 @@ backend/
 │   ├── models/              计划、任务、Artifact、AutoResearch 契约
 │   ├── prompts/             各 Agent 的系统提示词
 │   ├── store/               计划与事件存储（文件/内存）
-│   ├── sandbox/             沙箱服务 HTTP 客户端
-│   ├── sandboxserver/       单文件模式内嵌沙箱服务
-│   ├── Intent/              LLM 意图分类器
+│   ├── sandbox/             沙箱 gateway HTTP 客户端
 │   ├── appconfig/           LLM 配置加载
 │   ├── events/              事件总线
 │   └── tools/               工具实现（ask_user_question）
@@ -67,11 +65,11 @@ backend/
 
 ### store
 
-`PlanStore` 接口有两个实现：内存存储与文件存储。文件存储使用原子写入，服务重启后可恢复计划和事件。
+`PlanStore` 接口有两个实现：内存存储与文件存储。文件存储是 append-only JSONL 日志，每行记录一次 plan 快照或一个事件；启动时回放，崩溃最多留下被忽略的截断尾行，旧 JSON 快照会自动轮转为 `.legacy-*`。
 
-### sandbox / sandboxserver
+### sandbox
 
-`sandbox` 是访问独立沙箱服务的客户端；`sandboxserver` 是单文件模式内嵌的沙箱 HTTP 服务，接口与 `docker-sandbox` 保持一致。
+`sandbox` 是访问独立沙箱 gateway 的客户端；嵌入式 `sandboxserver` 已移除，单文件模式也必须通过 `SANDBOX_URL` 连接外部沙箱服务。
 
 ## API
 
@@ -105,12 +103,12 @@ backend/
 | `OPENAI_MODEL_NAME` | 模型名称 |
 | `SANDBOX_URL` | 沙箱服务地址 |
 | `SANDBOX_API_TOKEN` | 沙箱 Bearer Token |
-| `PLAN_STORE_PATH` | 计划存储文件 |
+| `PLAN_STORE_PATH` | append-only JSONL 计划/事件日志路径 |
 | `UPLOAD_ROOT` / `UPLOAD_MAX_MB` | 上传目录与大小限制 |
 | `BENCHMARK_PRIVATE_ROOT` | 隐藏标签与 evaluator 目录，不应挂载进沙箱 |
 | `RESEARCH_OPTIMIZER_URL` / `RESEARCH_OPTIMIZER_API_TOKEN` | Python 优化器 |
-| `API_AUTH_TOKEN` | API 静态 Token |
-| `REQUIRE_API_AUTH` | `true` 时 token 为空将 fail-closed |
+| `API_AUTH_TOKEN` | API 静态 Token；Compose 必填 |
+| `REQUIRE_API_AUTH` | `true` 时 token 为空将 fail-closed；Compose 强制为 `true` |
 | `CORS_ALLOWED_ORIGINS` | 允许的前端 Origin |
 | `PLAN_MAX_TASK_ATTEMPTS` / `PLAN_MAX_DURATION_SECONDS` | 任务与时长预算 |
 | `REQUIRE_PLAN_APPROVAL` | 是否强制人工审批 |
@@ -135,12 +133,15 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -buildvcs=false ./...
 
 测试同样依赖 Linux 进程组语义，建议在 Docker 容器内运行 `go test ./...`。
 
-单文件构建需要前端产物：
+单文件构建需要前端产物，并且运行时必须提供外部沙箱：
 
 ```bash
 cd ../frontend && npm run build
 cd ../backend && go build -o bin/research-assistant ./cmd/app
+SANDBOX_URL=http://localhost:8082 ./bin/research-assistant
 ```
+
+`cmd/app` 不再自动拉起嵌入式沙箱；未设置 `SANDBOX_URL` 会直接退出。
 
 `webui/embed.go` 使用 `//go:embed dist`。仓库中保留 `webui/dist/placeholder.txt` 以便未构建前端时也能通过编译；实际发布前应把前端 `dist` 同步到该目录。
 

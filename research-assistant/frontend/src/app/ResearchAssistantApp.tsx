@@ -19,7 +19,7 @@ import { ExecutionSidebar } from '../features/execution/ExecutionSidebar';
 import { GraphPanel } from '../features/plan-graph/GraphPanel';
 import { buildGraphLayout } from '../features/plan-graph/buildGraphLayout';
 import type { IntentContext } from '../contracts/api';
-import { getPdfProxyUrl } from '../services/api/researchAssistantApi';
+import { isPdfAttachment } from '../features/pdf-viewer/pdfAttachment';
 
 interface ResearchAssistantAppShellProps {
   layout: ReturnType<typeof useResearchAssistantLayoutState>;
@@ -93,6 +93,7 @@ interface ResearchAssistantWorkspaceContentProps {
   layout: ReturnType<typeof useResearchAssistantLayoutState>;
   chatFlow: {
     chatHistory: ReturnType<typeof useResearchAssistantChatFlow>['chatHistory'];
+    appendChatMessage: ReturnType<typeof useResearchAssistantChatFlow>['appendChatMessage'];
     loading: boolean;
     prompt: string;
     setPrompt: (value: string) => void;
@@ -140,7 +141,7 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
       widthPercent={layout.leftPanelWidth}
       pdfUrl={pdfFlow.pdfUrl}
       isFullTranslating={pdfFlow.isFullTranslating}
-      onClosePdf={() => pdfFlow.setPdfUrl(null)}
+      onClosePdf={pdfFlow.closePdf}
       onFullTranslation={pdfFlow.handleFullTranslation}
       defaultLayoutPluginInstance={pdfFlow.defaultLayoutPluginInstance}
       aiTranslationPluginInstance={pdfFlow.aiTranslationPluginInstance}
@@ -172,10 +173,18 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
         onSwitchSession: chatFlow.handleSwitchSession,
 		onAttachFiles: chatFlow.handleAttachFiles,
 		onRemoveAttachment: chatFlow.handleRemoveAttachment,
+		onOpenAttachment: pdfFlow.openPdfFromUpload,
       }}
       pdfActions={{
-        onOpenPdf: () => pdfFlow.setPdfUrl(getPdfProxyUrl('https://arxiv.org/pdf/1706.03762.pdf')),
-        onClosePdf: () => pdfFlow.setPdfUrl(null),
+        onOpenPdf: () => {
+          const pdfAttachment = chatFlow.pendingAttachments.find(isPdfAttachment);
+          if (!pdfAttachment) {
+            chatFlow.appendChatMessage({ role: 'system', text: '请先上传 PDF 附件，再打开阅读器。' });
+            return;
+          }
+          void pdfFlow.openPdfFromUpload(pdfAttachment);
+        },
+        onClosePdf: pdfFlow.closePdf,
         onFullTranslation: pdfFlow.handleFullTranslation,
       }}
       taskActions={{
@@ -282,6 +291,7 @@ export default function ResearchAssistantApp() {
         layout={layout}
         chatFlow={{
           chatHistory: chatFlow.chatHistory,
+          appendChatMessage: chatFlow.appendChatMessage,
           loading: chatFlow.loading,
           prompt: chatFlow.prompt,
           setPrompt: chatFlow.setPrompt,

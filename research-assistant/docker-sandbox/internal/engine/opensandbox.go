@@ -7,8 +7,18 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"time"
 )
+
+var openSandboxIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+
+func validateOpenSandboxID(id string) error {
+	if !openSandboxIDPattern.MatchString(id) {
+		return fmt.Errorf("invalid OpenSandbox sandbox id")
+	}
+	return nil
+}
 
 type OpenSandboxEngine struct {
 	BaseURL    string
@@ -60,6 +70,9 @@ func (e *OpenSandboxEngine) Create(ctx context.Context, image string, mountPath 
 }
 
 func (e *OpenSandboxEngine) Delete(ctx context.Context, id string) error {
+	if err := validateOpenSandboxID(id); err != nil {
+		return err
+	}
 	req, _ := http.NewRequestWithContext(ctx, "DELETE", e.BaseURL+"/v1/sandboxes/"+id, nil)
 	resp, err := e.httpClient.Do(req)
 	if err != nil {
@@ -70,6 +83,9 @@ func (e *OpenSandboxEngine) Delete(ctx context.Context, id string) error {
 }
 
 func (e *OpenSandboxEngine) ExecutePython(ctx context.Context, id string, code string) (*ExecutionResponse, error) {
+	if err := validateOpenSandboxID(id); err != nil {
+		return nil, err
+	}
 	payload, _ := json.Marshal(map[string]string{"code": code})
 	targetURL := fmt.Sprintf("%s/v1/sandboxes/%s/proxy/49152/python", e.BaseURL, id)
 	resp, err := e.httpClient.Post(targetURL, "application/json", bytes.NewBuffer(payload))
@@ -86,6 +102,9 @@ func (e *OpenSandboxEngine) ExecutePython(ctx context.Context, id string, code s
 }
 
 func (e *OpenSandboxEngine) ExecuteCommand(ctx context.Context, id string, cmd []string) (*ExecutionResponse, error) {
+	if err := validateOpenSandboxID(id); err != nil {
+		return nil, err
+	}
 	payload, _ := json.Marshal(map[string][]string{"cmd": cmd})
 	targetURL := fmt.Sprintf("%s/v1/sandboxes/%s/proxy/49152/commands", e.BaseURL, id)
 	resp, err := e.httpClient.Post(targetURL, "application/json", bytes.NewBuffer(payload))

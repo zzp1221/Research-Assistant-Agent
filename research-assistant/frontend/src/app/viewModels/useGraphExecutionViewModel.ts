@@ -50,6 +50,7 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
           selectedTask: runtime.state.executionState.selectedTask,
           width: isExpandedMode ? '100%' : `${layout.sidebarWidth}px`,
           isExecuting: runtime.state.executionState.isExecuting,
+          requiresApproval: activePlanStatus === 'awaiting_approval' && !runtime.state.executionState.approvalResolved,
           displayMode: runtime.state.executionState.displayMode,
           executionLogs: runtime.state.selectedTaskState.logs,
           executionResult: runtime.state.selectedTaskState.result,

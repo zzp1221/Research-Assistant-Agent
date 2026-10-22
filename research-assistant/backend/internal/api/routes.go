@@ -15,7 +15,6 @@ import (
 	"research-assistant-backend/internal/planner"
 	"research-assistant-backend/internal/sandbox"
 	"research-assistant-backend/internal/scheduler"
-	"sort"
 	"strings"
 	"time"
 
@@ -25,15 +24,6 @@ import (
 type RequestPayload struct {
 	Intent      string   `json:"intent" binding:"required"`
 	Attachments []string `json:"attachments,omitempty"`
-}
-
-type ExecutePayload struct {
-	TaskID          string         `json:"task_id"`
-	TaskName        string         `json:"task_name"`
-	TaskType        string         `json:"task_type"`
-	TaskDescription string         `json:"task_description" binding:"required"`
-	AssignedTo      string         `json:"assigned_to"`
-	Inputs          map[string]any `json:"inputs"`
 }
 
 type ChatPayload struct {
@@ -229,43 +219,6 @@ func SetupRoutes(r *gin.Engine) {
 	}
 }
 
-func shouldAllocateDirectSandbox(task *models.Task) bool {
-	if task == nil {
-		return false
-	}
-	// Benchmark tasks use the prepared_runtime produced by their DAG. Creating a
-	// second direct-execution sandbox would mount the wrong workspace.
-	return task.AssignedTo != "research_coding_agent" && task.AssignedTo != "benchmark_agent"
-}
-
-func RegisterPlanRoute(apiGroup *gin.RouterGroup, p *planner.Planner) {
-	apiGroup.POST("/plan", func(c *gin.Context) {
-		var payload RequestPayload
-		if err := c.ShouldBindJSON(&payload); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		intentType := DetectIntentType(payload.Intent)
-
-		plan, err := p.GeneratePlan(payload.Intent, intentType)
-		if err != nil {
-			log.Printf("Error generating plan: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate plan"})
-			return
-		}
-
-		response := gin.H{
-			"message": "Plan generated successfully",
-			"plan":    plan,
-		}
-		if clarification, ok := buildPlanClarification(intentType, payload.Intent); ok {
-			response["clarification"] = clarification
-		}
-		c.JSON(http.StatusOK, response)
-	})
-}
-
 func buildServiceHealth(ctx context.Context, sandboxURL string, optimizerURLs ...string) gin.H {
 	optimizerURL := ""
 	if len(optimizerURLs) > 0 {
@@ -425,49 +378,6 @@ func buildExecuteOutputs(task *models.Task) map[string]any {
 		outputs["image_base64"] = task.ImageBase64
 	}
 	return outputs
-}
-
-func formatExecuteParamsLog(title string, values map[string]any) string {
-	if len(values) == 0 {
-		return title + ": 无"
-	}
-
-	keys := make([]string, 0, len(values))
-	for key, value := range values {
-		if value == nil || strings.TrimSpace(fmt.Sprint(value)) == "" {
-			continue
-		}
-		keys = append(keys, key)
-	}
-	if len(keys) == 0 {
-		return title + ": 无"
-	}
-	sort.Strings(keys)
-
-	var builder strings.Builder
-	builder.WriteString(title)
-	builder.WriteString(":\n")
-	for _, key := range keys {
-		builder.WriteString("- ")
-		builder.WriteString(key)
-		builder.WriteString(": ")
-		builder.WriteString(previewExecuteParamValue(key, values[key]))
-		builder.WriteString("\n")
-	}
-	return strings.TrimRight(builder.String(), "\n")
-}
-
-func previewExecuteParamValue(key string, value any) string {
-	text := fmt.Sprint(value)
-	lowerKey := strings.ToLower(key)
-	if strings.Contains(lowerKey, "image") || strings.Contains(lowerKey, "base64") {
-		return fmt.Sprintf("<base64 payload, %d chars>", len(text))
-	}
-	const limit = 1200
-	if len(text) <= limit {
-		return text
-	}
-	return text[:limit] + "...[truncated]"
 }
 
 func buildPlanClarification(intentType string, intent string) (gin.H, bool) {

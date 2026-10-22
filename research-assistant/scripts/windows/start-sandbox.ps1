@@ -79,4 +79,4 @@ $env:NO_PROXY = "localhost,127.0.0.1,::1"
 $env:no_proxy = "localhost,127.0.0.1,::1"
 
 Set-Location (Join-Path $root "docker-sandbox")
-go run main.go
+go run .

@@ -26,6 +26,7 @@ IDENTITY_HEADERS = {
     "X-User-Id": os.environ.get("RESEARCH_ASSISTANT_USER_ID", "paper-reproduction-runner"),
     "X-Session-Id": os.environ.get("RESEARCH_ASSISTANT_SESSION_ID", "paper-reproduction-smoke"),
 }
+API_TOKEN = os.environ.get("RESEARCH_ASSISTANT_API_TOKEN") or os.environ.get("API_AUTH_TOKEN") or ""
 
 
 def request_json(
@@ -40,7 +41,11 @@ def request_json(
         base_url.rstrip("/") + path,
         data=data,
         method=method,
-        headers={"Content-Type": "application/json", **IDENTITY_HEADERS},
+        headers={
+            "Content-Type": "application/json",
+            **IDENTITY_HEADERS,
+            **({"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}),
+        },
     )
     try:
         with urlopen(request, timeout=timeout) as response:

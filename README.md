@@ -57,7 +57,7 @@ Researcher / Paper / Repository / Dataset
                                                    Python Research Optimizer
                                        Context / Route UCB / Beam + UCT / Experience
                                     |
-               Sandbox Client -> docker-sandbox -> Native Docker
+       Sandbox Client -> docker-sandbox gateway -> sandbox executor -> Native Docker
                                     |
             stdout / metrics / files / TrialLedger / evidence graph
                                     |
@@ -106,20 +106,21 @@ Research Assistant Agent/
 ```bash
 cd research-assistant
 cp .env.example .env
-# 编辑 .env，设置随机 SANDBOX_API_TOKEN 与 RESEARCH_OPTIMIZER_API_TOKEN
+# 编辑 .env，设置随机 SANDBOX_API_TOKEN、RESEARCH_OPTIMIZER_API_TOKEN 与 API_AUTH_TOKEN
+# API_AUTH_TOKEN 会同时注入 backend、sandbox 认证和前端构建；Compose 不会使用默认 token。
 cp backend.env.example backend.env
-# 编辑 backend.env，至少填写 OPENAI_API_KEY，并保持 SANDBOX_API_TOKEN 与上面的 .env 一致
+# 编辑 backend.env，至少填写 OPENAI_API_KEY
 
 docker compose up --build -d
 ```
 
-启动后访问：
+启动后访问（端口可通过 `.env` 的 `*_HOST_PORT` 覆盖，以下为默认值）：
 
 | 服务 | 地址 |
 |---|---|
 | Web UI | http://localhost:5173 |
 | Backend API | http://localhost:8080 |
-| Health Check | http://localhost:8080/api/health |
+| Health Check | http://localhost:8080/api/health（唯一无需 Bearer 的 API） |
 | Sandbox API | http://localhost:8082 |
 | Research Optimizer | http://localhost:8090 |
 
@@ -141,12 +142,13 @@ docker compose down
 ```bash
 cd research-assistant
 make install
-make run-sandbox     # 终端 1
-make run-backend     # 终端 2
+export SANDBOX_API_TOKEN=<random-token>
+make run-sandbox     # 终端 1，gateway + executor 的本地等价物
+make run-backend     # 终端 2，需要 SANDBOX_URL 与 API_AUTH_TOKEN
 make run-frontend    # 终端 3
 ```
 
-Windows 用户请使用 Docker Compose；`scripts/windows/start-backend.ps1` 仍会尝试原生 `go run`，但后端并不支持 Windows 原生编译。详见 [scripts/README.md](research-assistant/scripts/README.md)。
+Windows 用户请使用 Docker Compose；`scripts/windows/start-backend.ps1` 会直接提示 Docker Compose，后端原生 Windows 编译仍不受支持。CI 的 Windows job 覆盖前端、docker-sandbox 与 docker-core，backend 保持 Linux-only。详见 [scripts/README.md](research-assistant/scripts/README.md)。
 
 ## 配置
 
@@ -159,14 +161,14 @@ Windows 用户请使用 Docker Compose；`scripts/windows/start-backend.ps1` 仍
 | `OPENAI_MODEL_NAME` | 否 | 默认示例为 `qwen3-coder-plus` |
 | `SANDBOX_URL` | 否 | 本地默认 `http://localhost:8082`；Compose 会覆盖为服务地址 |
 | `SANDBOX_DEFAULT_IMAGE` | 否 | 默认 Python 运行时镜像 |
-| `PLAN_STORE_PATH` | 否 | 计划与事件 JSON 存储路径 |
+| `PLAN_STORE_PATH` | 否 | 计划与事件 append-only JSONL 日志路径；旧 JSON 快照会自动迁移 |
 | `RESEARCH_OPTIMIZER_URL` | 否 | Python Research Optimizer 地址；不配置时使用确定性 Go fallback |
 | `RESEARCH_OPTIMIZER_API_TOKEN` | 否 | Backend 与 Optimizer 之间的 Bearer Token |
 | `PLAN_MAX_TASK_ATTEMPTS` / `PLAN_MAX_DURATION_SECONDS` | 否 | 计划尝试次数与时长预算 |
 | `REQUIRE_PLAN_APPROVAL` | 否 | 执行前强制人工审批 |
-| `API_AUTH_TOKEN` / `REQUIRE_API_AUTH` | 否 | API 静态 Bearer 保护；`REQUIRE_API_AUTH=true` 且 token 为空时 fail-closed |
-| `VITE_API_AUTH_TOKEN` | 否 | 前端构建时注入的 Bearer Token；必须与 `API_AUTH_TOKEN` 一致，仅用于可信静态部署 |
-| `SANDBOX_API_TOKEN` | 是 | Compose 必须通过 `.env` 设置；不再使用可预测默认值 |
+| `API_AUTH_TOKEN` / `REQUIRE_API_AUTH` | Compose 必填 | API 静态 Bearer 保护；Compose 强制 `REQUIRE_API_AUTH=true`，token 为空时拒绝启动请求 |
+| `VITE_API_AUTH_TOKEN` | 自动 | Compose 用 `API_AUTH_TOKEN` 构建前端；不再需要单独设置 |
+| `SANDBOX_API_TOKEN` | 是 | Compose 必须通过 `.env` 设置；gateway 与 executor 均 fail-closed |
 | `CORS_ALLOWED_ORIGINS` | 否 | 允许访问后端的前端 Origin 列表 |
 
 后端镜像构建还支持 `DEBIAN_MIRROR` 与 `DEBIAN_SECURITY_MIRROR`，由执行 `docker compose` 的 shell 或项目 `.env` 读取。GPU 透传需要宿主机安装 NVIDIA Container Toolkit，并设置 `SANDBOX_DOCKER_GPUS=all`。
@@ -232,9 +234,9 @@ Benchmark Agent 会审计列映射、生成泄漏安全的 train/validation/test
 ## 运行边界
 
 - 本项目是研究原型，接口和数据结构可能调整，不承诺向后兼容。
-- 单机持久化基于 JSON 文件；多副本部署需要共享事务数据库与 leader election。
+- 单机持久化基于 append-only JSONL 事件日志；多副本部署需要共享事务数据库与 leader election。
 - 已支持静态 API token 和计划所有权检查，但不是 OIDC、RBAC 或生产级多租户认证。
-- 沙箱具备 CPU、内存、PID、capability、镜像和挂载限制，但 Docker socket 仍等同于较高宿主机权限。
+- `docker-sandbox` gateway 不挂载 Docker socket，也不挂载宿主工作区；只有内部 `docker-sandbox-executor` 持有 socket 和 `/tmp` 挂载。executor 不发布端口，仍是受控的高权限执行边界。
 - 默认运行时镜像是 CPU/通用 Python 镜像；GPU 透传需要额外配置。
 - 当前复现重点是轻量 smoke 与结构消融，不包含大规模数据集训练。
 - 候选搜索是真实 Validation Reward 驱动的分层 UCB、Top-K Beam 与 UCT-style 搜索，不是完整 MCTS 或通用强化学习策略。

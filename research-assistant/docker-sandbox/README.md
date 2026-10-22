@@ -2,14 +2,19 @@
 
 独立的 Go 沙箱服务，为后端提供容器生命周期管理与代码/命令执行能力。默认监听 `:8082`。
 
+Compose 将同一个镜像拆成两个角色：
+
+- `docker-sandbox`（`SANDBOX_MODE=gateway`）：控制面，只做 Bearer 鉴权和 HTTP 转发，不挂载 Docker socket，也不挂载宿主 `/tmp`。
+- `docker-sandbox-executor`（`SANDBOX_MODE=engine`）：执行面，持有 Docker socket 和 `/tmp`，不发布宿主机端口。
+
 ## 执行引擎
 
 | 引擎 | 说明 |
 |---|---|
-| Native Docker | 默认引擎，通过 Docker SDK 创建容器、挂载工作区并执行命令 |
+| Native Docker | 默认引擎，通过 Docker CLI 创建容器、挂载工作区并执行命令 |
 | OpenSandbox | 可选 fallback，通过 `OPEN_SANDBOX_URL` 接入外部沙箱服务 |
 
-Native Docker 优先；只有 `ENABLE_OPENSANDBOX_FALLBACK=true` 且 Native Docker 不可用时才使用 OpenSandbox。
+Native Docker 优先；只有 `ENABLE_OPENSANDBOX_FALLBACK=true`、Native Docker 不可用，并且显式设置 `SANDBOX_ALLOW_UNLABELED_FALLBACK=true` 时才使用 OpenSandbox（该 fallback 无法施加租户/任务标签）。
 
 ## API
 
@@ -28,9 +33,14 @@ Native Docker 优先；只有 `ENABLE_OPENSANDBOX_FALLBACK=true` 且 Native Dock
 ```json
 {
   "image": "python:3.9-bullseye",
-  "mount_path": "/tmp/workspace"
+  "mount_path": "/tmp/workspace",
+  "tenant_id": "tenant-a",
+  "task_id": "task-123",
+  "plan_id": "plan-456"
 }
 ```
+
+`task_id` 必填，且必须匹配 `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`。创建后会写入 `research-assistant.sandbox=true`、`research-assistant.tenant-id`、`research-assistant.task-id` 和 `research-assistant.plan-id` 标签；执行/删除前会 `docker inspect` 校验标签，未绑定租户/任务的容器会被拒绝。Native Docker ID 必须匹配 `^[a-f0-9]{12,64}$`，OpenSandbox ID 也会做格式校验。
 
 执行 Python：
 
@@ -52,7 +62,9 @@ Native Docker 优先；只有 `ENABLE_OPENSANDBOX_FALLBACK=true` 且 Native Dock
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `SANDBOX_API_TOKEN` | 空 | 非空时要求 `Authorization: Bearer <token>` |
+| `SANDBOX_API_TOKEN` | 必填 | 缺失时拒绝启动；非 health 请求要求 `Authorization: Bearer <token>` |
+| `SANDBOX_MODE` | `engine` | `gateway` 或 `engine` |
+| `SANDBOX_UPSTREAM_URL` | `http://docker-sandbox-executor:8082` | gateway 的上游 executor 地址 |
 | `SANDBOX_DOCKER_GPUS` | 空 | GPU 透传，例如 `all` |
 | `SANDBOX_CPU_LIMIT` | `2` | CPU 配额 |
 | `SANDBOX_MEMORY_LIMIT` | `4g` | 内存上限 |
@@ -81,6 +93,6 @@ go build -o bin/sandbox .
 
 ## 安全边界
 
-- 容器挂载 Docker socket，等价于较高宿主机权限，只应在本机或受控网络使用。
-- 默认限制 CPU、内存、PID、capability、镜像与挂载路径，但不等同于强多租户隔离。
-- 生产环境建议使用 gVisor、只读根文件系统、镜像签名和独立网络。
+- 只有内部 executor 挂载 Docker socket；gateway 不持有 socket，也不挂载宿主工作区。executor 仍等价于较高宿主机权限，只应通过内部网络访问。
+- 默认限制 CPU、内存、PID、capability、镜像与挂载路径，并强制租户/任务标签，但不等同于强多租户隔离。
+- 生产环境建议使用 gVisor、只读根文件系统、镜像签名、独立网络和 rootless/socket-proxy 方案。

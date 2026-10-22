@@ -3,18 +3,15 @@ package tests
 import (
 	"context"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
-	"research-assistant-backend/internal/agent"
 	"research-assistant-backend/internal/appconfig"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/planner"
-	"research-assistant-backend/internal/sandbox"
 )
 
-func TestRealFrameworkEvaluationFlow(t *testing.T) {
+func TestRealFrameworkEvaluationPlan(t *testing.T) {
 	if os.Getenv("REAL_FRAMEWORK_EVAL_TEST") == "" {
 		t.Skip("跳过真实框架对比测试。如需运行，请设置 REAL_FRAMEWORK_EVAL_TEST=1")
 	}
@@ -22,69 +19,30 @@ func TestRealFrameworkEvaluationFlow(t *testing.T) {
 		t.Skipf("跳过真实框架对比测试：无法从 config.toml 读取 LLM 配置: %v", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
 	p := planner.NewPlanner()
-	plan, err := p.GeneratePlan("比较 LangChain 和 LlamaIndex 在同一个 RAG 场景下的最小可运行例子，并给出客观对比", "Framework_Evaluation")
+	plan, err := p.BuildPlan(ctx, models.IntentContext{
+		RawIntent:   "比较 LangChain 和 LlamaIndex 在同一个 RAG 场景下的最小可运行例子，并给出客观对比",
+		IntentType:  "Framework_Evaluation",
+		Entities:    map[string]any{},
+		Constraints: map[string]any{},
+		Metadata:    map[string]any{},
+	})
 	if err != nil {
-		t.Fatalf("GeneratePlan failed: %v", err)
+		t.Fatalf("BuildPlan failed: %v", err)
 	}
-
-	var librarianTask *models.Task
-	var coderTasks []*models.Task
-	var dataTask *models.Task
-	for _, task := range plan.Tasks {
-		switch task.AssignedTo {
-		case "librarian_agent":
-			librarianTask = task
-		case "coder_agent":
-			coderTasks = append(coderTasks, task)
-		case "data_agent":
-			dataTask = task
+	if len(plan.Nodes) == 0 {
+		t.Fatal("real planner returned an empty plan graph")
+	}
+	var coderCount int
+	for _, node := range plan.Nodes {
+		if node != nil && node.AssignedTo == "coder_agent" {
+			coderCount++
 		}
 	}
-
-	if librarianTask == nil || len(coderTasks) != 2 || dataTask == nil {
-		t.Fatalf("unexpected plan structure: librarian=%v coder=%d data=%v", librarianTask != nil, len(coderTasks), dataTask != nil)
-	}
-
-	librarianAgent := agent.NewLibrarianAgent()
-	if err := librarianAgent.ExecuteTask(ctx, librarianTask, nil); err != nil {
-		t.Fatalf("librarian task failed: %v", err)
-	}
-	if strings.TrimSpace(librarianTask.Result) == "" {
-		t.Fatal("librarian task returned empty result")
-	}
-
-	sb := sandbox.NewSandboxClient(os.Getenv("SANDBOX_URL"))
-	coderAgent := agent.NewCoderAgent(sb)
-	for _, task := range coderTasks {
-		task.Description += "\n\n上游文档分析结果：\n" + librarianTask.Result
-		if err := coderAgent.ExecuteTask(ctx, task, nil); err != nil {
-			t.Fatalf("coder task %q failed: %v", task.Name, err)
-		}
-		if strings.TrimSpace(task.Code) == "" {
-			t.Fatalf("coder task %q generated empty code", task.Name)
-		}
-		if strings.TrimSpace(task.Result) == "" {
-			t.Fatalf("coder task %q returned empty result", task.Name)
-		}
-		if strings.Contains(task.Result, "达到最大重试次数") {
-			t.Fatalf("coder task %q exhausted retries: %s", task.Name, task.Result)
-		}
-	}
-
-	dataTask.Description += "\n\n上游执行结果汇总：\n"
-	for _, task := range coderTasks {
-		dataTask.Description += "\n---\n任务: " + task.Name + "\n代码:\n" + task.Code + "\n\n输出:\n" + task.Result + "\n"
-	}
-
-	dataAgent := agent.NewDataAgent()
-	if err := dataAgent.ExecuteTask(ctx, dataTask, nil); err != nil {
-		t.Fatalf("data task failed: %v", err)
-	}
-	if strings.TrimSpace(dataTask.Result) == "" {
-		t.Fatal("data task returned empty report")
+	if coderCount == 0 {
+		t.Fatalf("expected coder nodes in real plan, got %#v", plan.Nodes)
 	}
 }

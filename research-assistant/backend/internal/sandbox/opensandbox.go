@@ -20,10 +20,22 @@ type SandboxClient struct {
 	Token   string
 }
 
+// SandboxIdentity binds a sandbox to its tenant, plan and task. The sandbox
+// service turns these values into Docker labels and refuses unlabeled
+// containers.
+type SandboxIdentity struct {
+	TenantID string
+	TaskID   string
+	PlanID   string
+}
+
 // SandboxCreateRequest 创建沙箱请求 (简化版)
 type SandboxCreateRequest struct {
 	Image     string `json:"image"`
 	MountPath string `json:"mount_path"`
+	TenantID  string `json:"tenant_id,omitempty"`
+	TaskID    string `json:"task_id,omitempty"`
+	PlanID    string `json:"plan_id,omitempty"`
 }
 
 // SandboxCreateResponse 创建沙箱响应
@@ -65,10 +77,13 @@ func NewSandboxClient(baseURL string) *SandboxClient {
 }
 
 // CreatePersistentSandbox 创建持久化沙箱
-func (s *SandboxClient) CreatePersistentSandbox(ctx context.Context, taskID string, image string, mountPath string) (string, error) {
+func (s *SandboxClient) CreatePersistentSandbox(ctx context.Context, identity SandboxIdentity, image string, mountPath string) (string, error) {
 	reqBody, _ := json.Marshal(SandboxCreateRequest{
 		Image:     image,
 		MountPath: mountPath,
+		TenantID:  strings.TrimSpace(identity.TenantID),
+		TaskID:    strings.TrimSpace(identity.TaskID),
+		PlanID:    strings.TrimSpace(identity.PlanID),
 	})
 	req, err := http.NewRequestWithContext(ctx, "POST", s.BaseURL+"/api/v1/sandboxes", bytes.NewBuffer(reqBody))
 	if err != nil {

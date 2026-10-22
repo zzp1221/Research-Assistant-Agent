@@ -210,8 +210,8 @@ func TestConfigOnlyAutoResearchUploadsStayOnRepositoryPath(t *testing.T) {
 		RawIntent:  "用 https://github.com/dorianbrown/rank_bm25 做 AutoResearch，使用上传的 autoresearch.json",
 		IntentType: "AutoResearch",
 		Entities: map[string]any{
-			"needs_autoresearch":     true,
-			"needs_dataset_research": true,
+			"needs_autoresearch":       true,
+			"needs_dataset_research":   true,
 			"autoresearch_config_only": true,
 			"uploaded_files": []map[string]any{
 				{"name": "autoresearch.json"},

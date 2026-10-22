@@ -6,27 +6,72 @@ on:
 
 jobs:
   go:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: research-assistant/backend/go.mod
           cache: true
+
+      - name: gofmt gate
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          files=$(gofmt -l $(git ls-files '*.go'))
+          if [ -n "$files" ]; then
+            echo "The following Go files are not formatted:"
+            echo "$files"
+            exit 1
+          fi
+
       - name: Backend tests
+        if: runner.os == 'Linux'
         working-directory: research-assistant/backend
         run: |
           go test ./...
           go vet ./...
+
       - name: Backend race tests
+        if: runner.os == 'Linux'
         working-directory: research-assistant/backend
         run: go test -race ./internal/scheduler ./internal/api ./internal/store
+
+      - name: Backend coverage gate
+        if: runner.os == 'Linux'
+        working-directory: research-assistant/backend
+        run: |
+          go test -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out | tail -1
+          total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | tr -d '%')
+          awk "BEGIN {exit !($total >= 50)}"
+
       - name: Docker sandbox tests
         working-directory: research-assistant/docker-sandbox
-        run: go test ./...
+        run: |
+          go test ./...
+          go vet ./...
+
       - name: Docker core tests
+        if: runner.os == 'Linux'
         working-directory: docker-core
-        run: go test ./...
+        run: |
+          go test ./...
+          go vet ./...
+
+      - name: Docker core build (Windows)
+        if: runner.os == 'Windows'
+        working-directory: docker-core
+        run: go build ./...
+
+      - name: Tool build (Windows)
+        if: runner.os == 'Windows'
+        working-directory: tool
+        run: go build ./...
 
   frontend:
     runs-on: ubuntu-latest
@@ -72,3 +117,14 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: python -m unittest discover -s examples/autoresearch/intent_router -p 'test_*.py'
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend image
+        run: docker build -t research-assistant-backend:ci research-assistant/backend
+      - name: Build sandbox image
+        run: docker build -t research-assistant-sandbox:ci research-assistant/docker-sandbox
+      - name: Build frontend image
+        run: docker build -t research-assistant-frontend:ci research-assistant/frontend

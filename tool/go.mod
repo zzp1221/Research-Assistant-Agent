@@ -1,3 +1,3 @@
 module research-assistant-tools
 
-go 1.22
+go 1.26.1

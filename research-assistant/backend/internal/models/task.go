@@ -50,13 +50,3 @@ type Task struct {
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }
-
-// Plan represents the overall DAG generated for a user intent
-type Plan struct {
-	ID         string
-	UserIntent string
-	Tasks      map[string]*Task
-	Status     TaskStatus
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-}

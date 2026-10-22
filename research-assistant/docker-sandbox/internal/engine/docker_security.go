@@ -5,10 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 )
 
-func secureDockerRunArgs(image string) ([]string, error) {
+func secureDockerRunArgs(image string, labels map[string]string) ([]string, error) {
 	image = strings.TrimSpace(image)
 	if image == "" {
 		return nil, fmt.Errorf("sandbox image is empty")
@@ -26,6 +27,17 @@ func secureDockerRunArgs(image string) ([]string, error) {
 		"--security-opt", "no-new-privileges:true",
 		"--cap-drop", "ALL",
 		"--network", envOrDefault("SANDBOX_NETWORK_MODE", "bridge"),
+	}
+	labelKeys := make([]string, 0, len(labels))
+	for key := range labels {
+		if key == sandboxLabelKey || strings.TrimSpace(labels[key]) == "" {
+			continue
+		}
+		labelKeys = append(labelKeys, key)
+	}
+	sort.Strings(labelKeys)
+	for _, key := range labelKeys {
+		args = append(args, "--label", key+"="+labels[key])
 	}
 	if user := strings.TrimSpace(os.Getenv("SANDBOX_CONTAINER_USER")); user != "" {
 		args = append(args, "--user", user)

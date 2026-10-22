@@ -356,6 +356,9 @@ func (s *Scheduler) ExecuteTask(ctx context.Context, planID, taskID string) (*mo
 	if s.executor == nil {
 		return nil, fmt.Errorf("scheduler executor is nil")
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	plan, err := s.store.GetPlan(planID)
 	if err != nil {
 		return nil, err
@@ -367,6 +370,11 @@ func (s *Scheduler) ExecuteTask(ctx context.Context, planID, taskID string) (*mo
 	if task.Status == models.StatusInProgress {
 		return nil, fmt.Errorf("task is already running")
 	}
+	executionID, leaseOwner, executionEpoch, err := s.markTaskStarted(planID, taskID)
+	if err != nil {
+		return nil, err
+	}
+
 	timeout := time.Duration(task.TimeoutSeconds) * time.Second
 	if timeout <= 0 {
 		timeout = 10 * time.Minute
@@ -374,15 +382,42 @@ func (s *Scheduler) ExecuteTask(ctx context.Context, planID, taskID string) (*mo
 	taskCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	result, err := s.executor.ExecuteTask(taskCtx, plan, task)
-	if err != nil {
-		return result, err
+	result, execErr := s.executor.ExecuteTask(taskCtx, plan, task)
+	if execErr != nil {
+		result = &models.TaskExecutionResult{
+			Status: models.StatusFailed,
+			Error:  execErr.Error(),
+		}
 	}
 	if result == nil {
-		return nil, fmt.Errorf("task execution returned nil result")
+		result = &models.TaskExecutionResult{
+			Status: models.StatusFailed,
+			Error:  "task execution returned nil result",
+		}
 	}
 	if result.Status == "" {
 		result.Status = models.StatusCompleted
+	}
+
+	if result.Status != models.StatusCompleted {
+		if result.Error == "" {
+			result.Error = fmt.Sprintf("task returned non-completed status %q", result.Status)
+		}
+		if _, markErr := s.markTaskFailed(planID, taskID, executionID, leaseOwner, executionEpoch, result, false); markErr != nil {
+			return result, markErr
+		}
+		return result, nil
+	}
+
+	if err := s.markTaskCompleted(planID, taskID, executionID, leaseOwner, executionEpoch, result); err != nil {
+		failed := &models.TaskExecutionResult{
+			Status: models.StatusFailed,
+			Error:  err.Error(),
+		}
+		if _, markErr := s.markTaskFailed(planID, taskID, executionID, leaseOwner, executionEpoch, failed, false); markErr != nil {
+			return result, markErr
+		}
+		return result, err
 	}
 	return result, nil
 }
@@ -459,7 +494,7 @@ func (s *Scheduler) findReadyNodes(plan *models.PlanGraph, availableSlots int) [
 
 func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*models.TaskNode) error {
 	for _, task := range ready {
-		executionID, leaseOwner, err := s.markTaskStarted(planID, task.ID)
+		executionID, leaseOwner, executionEpoch, err := s.markTaskStarted(planID, task.ID)
 		if err != nil {
 			return err
 		}
@@ -514,7 +549,7 @@ func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*m
 				if result.Error == "" {
 					result.Error = fmt.Sprintf("task returned non-completed status %q", result.Status)
 				}
-				retrying, err := s.markTaskFailed(planID, taskID, executionID, leaseOwner, result)
+				retrying, err := s.markTaskFailed(planID, taskID, executionID, leaseOwner, executionEpoch, result, true)
 				if errors.Is(err, ErrStaleExecution) {
 					s.publishDiscardedResult(planID, taskID, executionID, leaseOwner)
 					return
@@ -532,13 +567,13 @@ func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*m
 				return
 			}
 
-			if err := s.markTaskCompleted(planID, taskID, executionID, leaseOwner, result); errors.Is(err, ErrStaleExecution) {
+			if err := s.markTaskCompleted(planID, taskID, executionID, leaseOwner, executionEpoch, result); errors.Is(err, ErrStaleExecution) {
 				s.publishDiscardedResult(planID, taskID, executionID, leaseOwner)
 				return
 			} else if err != nil {
 				log.Printf("scheduler: markTaskCompleted failed for %s: %v", taskID, err)
 				failed := &models.TaskExecutionResult{Status: models.StatusFailed, Error: err.Error()}
-				if _, markErr := s.markTaskFailed(planID, taskID, executionID, leaseOwner, failed); markErr != nil {
+				if _, markErr := s.markTaskFailed(planID, taskID, executionID, leaseOwner, executionEpoch, failed, true); markErr != nil {
 					log.Printf("scheduler: markTaskFailed after completion validation failed for %s: %v", taskID, markErr)
 				}
 				return
@@ -564,10 +599,11 @@ func (s *Scheduler) forwardTaskLogs(planID, taskID string, logChannel <-chan str
 	}
 }
 
-func (s *Scheduler) markTaskStarted(planID, taskID string) (string, string, error) {
+func (s *Scheduler) markTaskStarted(planID, taskID string) (string, string, int, error) {
 	now := time.Now()
 	executionID := uuid.NewString()
 	leaseOwner := ""
+	executionEpoch := 0
 	if err := s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
 		if plan.Status == models.StatusCanceled {
 			return ErrPlanCanceled
@@ -588,6 +624,7 @@ func (s *Scheduler) markTaskStarted(planID, taskID string) (string, string, erro
 		task.Status = models.StatusInProgress
 		task.ExecutionID = executionID
 		task.ExecutionEpoch++
+		executionEpoch = task.ExecutionEpoch
 		task.LeaseOwner = leaseOwner
 		task.LeaseExpiresAt = &leaseExpiresAt
 		task.RunCount++
@@ -598,7 +635,7 @@ func (s *Scheduler) markTaskStarted(planID, taskID string) (string, string, erro
 		fillMeta(plan)
 		return nil
 	}); err != nil {
-		return "", "", err
+		return "", "", 0, err
 	}
 
 	s.publishAndStore(planID, models.PlanEvent{
@@ -607,20 +644,20 @@ func (s *Scheduler) markTaskStarted(planID, taskID string) (string, string, erro
 		TaskID:      taskID,
 		TaskStatus:  string(models.StatusInProgress),
 		ExecutionID: executionID,
-		Payload:     map[string]any{"lease_owner": leaseOwner},
+		Payload:     map[string]any{"lease_owner": leaseOwner, "execution_epoch": executionEpoch},
 		Timestamp:   now,
 	})
-	return executionID, leaseOwner, nil
+	return executionID, leaseOwner, executionEpoch, nil
 }
 
-func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner string, result *models.TaskExecutionResult) error {
+func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner string, executionEpoch int, result *models.TaskExecutionResult) error {
 	now := time.Now()
 	if err := s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
 		task := getNodeByID(plan, taskID)
 		if task == nil {
 			return fmt.Errorf("task not found: %s", taskID)
 		}
-		if !executionMatches(task, executionID, leaseOwner) {
+		if !executionMatches(task, executionID, leaseOwner, executionEpoch) {
 			return ErrStaleExecution
 		}
 		task.Status = models.StatusCompleted
@@ -646,6 +683,11 @@ func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner st
 			}
 			if _, exists := seenArtifacts[key]; exists {
 				return fmt.Errorf("task %s produced duplicate artifact %q", taskID, key)
+			}
+			if existing, exists := plan.Artifacts[key]; exists &&
+				strings.TrimSpace(existing.ProducerTaskID) != "" &&
+				existing.ProducerTaskID != taskID {
+				return fmt.Errorf("artifact %q was already produced by task %s", key, existing.ProducerTaskID)
 			}
 			seenArtifacts[key] = struct{}{}
 			plan.Artifacts[key] = artifact
@@ -692,7 +734,7 @@ func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner st
 	return nil
 }
 
-func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner string, result *models.TaskExecutionResult) (bool, error) {
+func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner string, executionEpoch int, result *models.TaskExecutionResult, allowRetry bool) (bool, error) {
 	now := time.Now()
 	retrying := false
 	if err := s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
@@ -700,14 +742,14 @@ func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner strin
 		if task == nil {
 			return fmt.Errorf("task not found: %s", taskID)
 		}
-		if !executionMatches(task, executionID, leaseOwner) {
+		if !executionMatches(task, executionID, leaseOwner, executionEpoch) {
 			return ErrStaleExecution
 		}
 		task.Error = result.Error
 		task.ExecutionID = ""
 		task.LeaseOwner = ""
 		task.LeaseExpiresAt = nil
-		if task.RunCount <= task.RetryLimit {
+		if allowRetry && task.RunCount <= task.RetryLimit {
 			task.Status = models.StatusPending
 			task.FinishedAt = nil
 			retrying = true
@@ -782,10 +824,11 @@ func previewValue(value string) string {
 	return value[:limit] + "...[truncated]"
 }
 
-func executionMatches(task *models.TaskNode, executionID, leaseOwner string) bool {
+func executionMatches(task *models.TaskNode, executionID, leaseOwner string, executionEpoch int) bool {
 	return task != nil &&
 		task.Status == models.StatusInProgress &&
 		task.ExecutionID == executionID &&
+		task.ExecutionEpoch == executionEpoch &&
 		task.LeaseOwner == leaseOwner &&
 		task.AssignedTo == leaseOwner &&
 		(task.LeaseExpiresAt == nil || time.Now().Before(task.LeaseExpiresAt.Add(taskLeaseGrace)))

@@ -60,13 +60,12 @@ func TestPlanRuntimeExecutesStoredGraphAndReplaysEvents(t *testing.T) {
 
 	var created struct {
 		PlanGraph models.PlanGraph `json:"plan_graph"`
-		Plan      models.Plan      `json:"plan"`
 	}
 	if err := json.Unmarshal(planResponse.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode create plan response: %v", err)
 	}
-	if created.PlanGraph.ID == "" || created.PlanGraph.ID != created.Plan.ID {
-		t.Fatalf("plan identifiers are not compatible: graph=%q legacy=%q", created.PlanGraph.ID, created.Plan.ID)
+	if created.PlanGraph.ID == "" {
+		t.Fatal("create plan response did not include plan_graph.id")
 	}
 	if len(created.PlanGraph.Nodes) < 5 {
 		t.Fatalf("expected executable graph, got %d nodes", len(created.PlanGraph.Nodes))

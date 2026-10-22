@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"io"
 	"io/fs"
@@ -11,7 +10,6 @@ import (
 	"path"
 	"path/filepath"
 	"research-assistant-backend/internal/api"
-	"research-assistant-backend/internal/sandboxserver"
 	"research-assistant-backend/webui"
 	"strings"
 	"time"
@@ -23,18 +21,8 @@ func main() {
 	clearProxyEnv()
 	configureFileLogging()
 
-	sandboxShutdown, err := ensureSandboxURL()
-	if err != nil {
-		log.Fatalf("failed to prepare embedded sandbox: %v", err)
-	}
-	if sandboxShutdown != nil {
-		defer func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			if shutdownErr := sandboxShutdown(ctx); shutdownErr != nil {
-				log.Printf("embedded sandbox shutdown failed: %v", shutdownErr)
-			}
-		}()
+	if strings.TrimSpace(os.Getenv("SANDBOX_URL")) == "" {
+		log.Fatal("SANDBOX_URL is required: the embedded sandbox was removed; start docker-sandbox or use docker compose")
 	}
 
 	r := gin.Default()
@@ -61,23 +49,6 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("failed to start single-binary app: %v", err)
 	}
-}
-
-func ensureSandboxURL() (func(context.Context) error, error) {
-	if strings.TrimSpace(os.Getenv("SANDBOX_URL")) != "" {
-		return nil, nil
-	}
-
-	// 单文件模式自动拉起本地沙箱，后端继续沿用已有的 HTTP 客户端调用方式。
-	sandboxURL, shutdown, err := sandboxserver.StartLocal()
-	if err != nil {
-		return nil, err
-	}
-	if err := os.Setenv("SANDBOX_URL", sandboxURL); err != nil {
-		return nil, err
-	}
-	log.Printf("embedded sandbox is listening on %s", sandboxURL)
-	return shutdown, nil
 }
 
 func registerEmbeddedFrontend(r *gin.Engine) {

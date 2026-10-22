@@ -2,8 +2,11 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/workspace"
 	"strings"
 	"time"
 )
@@ -79,10 +82,21 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		RunCount:          task.RunCount,
 		Inputs:            buildTaskInputs(plan, task),
 		Metadata: map[string]any{
-			"plan_id": plan.ID,
+			"plan_id":   plan.ID,
+			"tenant_id": plan.OwnerID,
 		},
 		CreatedAt: task.CreatedAt,
 		UpdatedAt: task.UpdatedAt,
+	}
+
+	// Every agent receives host paths. Enforce the allowed roots centrally so a
+	// stray artifact/plan input cannot turn into an arbitrary host read or bind
+	// mount, regardless of which agent handles the node.
+	if err := validateRuntimeTaskPaths(runtimeTask); err != nil {
+		return &models.TaskExecutionResult{
+			Status: models.StatusFailed,
+			Error:  err.Error(),
+		}, nil
 	}
 
 	// 特殊节点：repo_discovery 改为后端真实查询 Papers with Code（通过 HuggingFace Papers API），不走 LLM。
@@ -212,6 +226,71 @@ func buildTaskInputs(plan *models.PlanGraph, task *models.TaskNode) map[string]a
 		}
 	}
 	return inputs
+}
+
+func taskInputString(inputs map[string]any, key string) string {
+	if inputs == nil {
+		return ""
+	}
+	value, ok := inputs[key]
+	if !ok || value == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
+}
+
+func validateRuntimeTaskPaths(task *models.Task) error {
+	if task == nil {
+		return nil
+	}
+	workspacePath := taskInputString(task.Inputs, "workspace_path")
+	if workspacePath != "" {
+		validated, err := workspace.ValidateWorkspacePath(workspacePath)
+		if err != nil {
+			return fmt.Errorf("workspace_path rejected: %w", err)
+		}
+		workspacePath = validated
+	}
+	for _, key := range []string{"code_file_path", "validated_code_file_path"} {
+		raw := taskInputString(task.Inputs, key)
+		if raw == "" {
+			continue
+		}
+		if !filepath.IsAbs(raw) && workspacePath != "" {
+			raw = filepath.Join(workspacePath, filepath.FromSlash(raw))
+		}
+		if _, err := workspace.ValidateWorkspaceFilePath(raw); err != nil {
+			return fmt.Errorf("%s rejected: %w", key, err)
+		}
+	}
+	return validateUploadedFilePaths(task.Inputs["uploaded_files"])
+}
+
+func validateUploadedFilePaths(raw any) error {
+	if raw == nil {
+		return nil
+	}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return fmt.Errorf("encode uploaded_files: %w", err)
+	}
+	var files []struct {
+		Name        string `json:"name"`
+		StoragePath string `json:"storage_path"`
+	}
+	if err := json.Unmarshal(encoded, &files); err != nil {
+		return fmt.Errorf("decode uploaded_files: %w", err)
+	}
+	for _, file := range files {
+		path := strings.TrimSpace(file.StoragePath)
+		if path == "" {
+			continue
+		}
+		if _, err := workspace.ValidateUploadedFilePath(path); err != nil {
+			return fmt.Errorf("uploaded file %q storage_path rejected: %w", file.Name, err)
+		}
+	}
+	return nil
 }
 
 func buildTaskDescription(plan *models.PlanGraph, task *models.TaskNode) string {

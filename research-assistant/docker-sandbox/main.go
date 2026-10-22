@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -29,9 +30,13 @@ type SandboxService struct {
 
 func sandboxAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		expected := strings.TrimSpace(os.Getenv("SANDBOX_API_TOKEN"))
-		if expected == "" || c.Request.URL.Path == "/api/v1/health" {
+		if c.Request.URL.Path == "/api/v1/health" {
 			c.Next()
+			return
+		}
+		expected := strings.TrimSpace(os.Getenv("SANDBOX_API_TOKEN"))
+		if expected == "" {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "SANDBOX_API_TOKEN is required"})
 			return
 		}
 		provided := strings.TrimSpace(strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer "))
@@ -109,9 +114,20 @@ func isProjectRoot(dir string) bool {
 
 // --- API 定义 ---
 
+const (
+	sandboxLabelKey   = "research-assistant.sandbox"
+	sandboxLabelValue = "true"
+	tenantLabelKey    = "research-assistant.tenant-id"
+	taskLabelKey      = "research-assistant.task-id"
+	planLabelKey      = "research-assistant.plan-id"
+)
+
 type CreateRequest struct {
 	Image     string `json:"image"`
 	MountPath string `json:"mount_path"`
+	TenantID  string `json:"tenant_id,omitempty"`
+	TaskID    string `json:"task_id,omitempty"`
+	PlanID    string `json:"plan_id,omitempty"`
 }
 
 type CreateResponse struct {
@@ -149,9 +165,14 @@ func (s *SandboxService) CreateSandbox(c *gin.Context) {
 	if req.Image == "" {
 		req.Image = "python:3.9-bullseye"
 	}
+	labels, err := sandboxLabels(req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
 	// 1. 优先尝试 Native Docker (本地开发最可靠，支持挂载)
-	id, err := s.dkEngine.Create(c.Request.Context(), req.Image, req.MountPath)
+	id, err := s.dkEngine.Create(c.Request.Context(), req.Image, req.MountPath, labels)
 	if err == nil {
 		log.Printf("[Success] Native Docker sandbox created: %s", id)
 		c.JSON(http.StatusOK, CreateResponse{SandboxID: "dk-" + id})
@@ -164,6 +185,12 @@ func (s *SandboxService) CreateSandbox(c *gin.Context) {
 	if !s.config.EnableFallback || s.osEngine == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("Native Docker failed: %v", dockerErr),
+		})
+		return
+	}
+	if !strings.EqualFold(strings.TrimSpace(os.Getenv("SANDBOX_ALLOW_UNLABELED_FALLBACK")), "true") {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("Native Docker failed: %v; OpenSandbox fallback cannot enforce tenant/task labels (set SANDBOX_ALLOW_UNLABELED_FALLBACK=true only for trusted local use)", dockerErr),
 		})
 		return
 	}
@@ -180,6 +207,35 @@ func (s *SandboxService) CreateSandbox(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, CreateResponse{SandboxID: "os-" + id})
+}
+
+var sandboxIdentityPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+
+func sandboxLabels(req CreateRequest) (map[string]string, error) {
+	taskID := strings.TrimSpace(req.TaskID)
+	if !sandboxIdentityPattern.MatchString(taskID) {
+		return nil, fmt.Errorf("task_id is required and must match %s", sandboxIdentityPattern)
+	}
+	tenantID := strings.TrimSpace(req.TenantID)
+	if tenantID == "" {
+		tenantID = "local"
+	}
+	if !sandboxIdentityPattern.MatchString(tenantID) {
+		return nil, fmt.Errorf("tenant_id must match %s", sandboxIdentityPattern)
+	}
+	planID := strings.TrimSpace(req.PlanID)
+	if planID != "" && !sandboxIdentityPattern.MatchString(planID) {
+		return nil, fmt.Errorf("plan_id must match %s", sandboxIdentityPattern)
+	}
+	labels := map[string]string{
+		sandboxLabelKey: sandboxLabelValue,
+		tenantLabelKey:  tenantID,
+		taskLabelKey:    taskID,
+	}
+	if planID != "" {
+		labels[planLabelKey] = planID
+	}
+	return labels, nil
 }
 
 func chooseHealthStrategy(nativeDockerAvailable bool, fallbackEnabled bool) string {
@@ -407,9 +463,27 @@ func writeStreamError(w io.Writer, flusher http.Flusher, err error) {
 func main() {
 	configureFileLogging()
 
+	if strings.TrimSpace(os.Getenv("SANDBOX_API_TOKEN")) == "" {
+		log.Fatal("SANDBOX_API_TOKEN is required; refusing to start a fail-open sandbox service")
+	}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("SANDBOX_MODE")), "gateway") {
+		runGateway()
+		return
+	}
+	runEngine()
+}
+
+func sandboxListenAddr() string {
+	if addr := strings.TrimSpace(os.Getenv("SANDBOX_LISTEN_ADDR")); addr != "" {
+		return addr
+	}
+	return ":8082"
+}
+
+func runEngine() {
 	osURL := os.Getenv("OPEN_SANDBOX_URL")
 	enableFallback := strings.EqualFold(os.Getenv("ENABLE_OPENSANDBOX_FALLBACK"), "true")
-	listenAddr := ":8082"
+	listenAddr := sandboxListenAddr()
 
 	svc := NewSandboxService(Config{
 		OpenSandboxURL: osURL,
@@ -429,6 +503,8 @@ func main() {
 		api.POST("/sandboxes/:id/commands/stream", svc.ExecuteCommandStream)
 	}
 
-	log.Printf("Docker Sandbox Service starting on %s, fallback=%t, opensandbox=%s", listenAddr, enableFallback, osURL)
-	r.Run(listenAddr)
+	log.Printf("Docker Sandbox Engine starting on %s, fallback=%t, opensandbox=%s", listenAddr, enableFallback, osURL)
+	if err := r.Run(listenAddr); err != nil {
+		log.Fatalf("sandbox engine stopped: %v", err)
+	}
 }

@@ -43,6 +43,14 @@ func ValidateWorkspacePath(raw string) (string, error) {
 	return validatePath(raw, WorkspaceRoots(), true)
 }
 
+// ValidateWorkspaceFilePath verifies that a file consumed from a workspace
+// (for example code_file_path) is a regular file inside an allowed workspace
+// root. It applies the same symlink and traversal checks as the directory
+// variant.
+func ValidateWorkspaceFilePath(raw string) (string, error) {
+	return validatePath(raw, WorkspaceRoots(), false)
+}
+
 func validatePath(raw string, roots []string, requireDir bool) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -21,6 +22,9 @@ var containerIDPattern = regexp.MustCompile(`^[a-f0-9]{12,64}$`)
 const (
 	sandboxLabelKey   = "research-assistant.sandbox"
 	sandboxLabelValue = "true"
+	tenantLabelKey    = "research-assistant.tenant-id"
+	taskLabelKey      = "research-assistant.task-id"
+	planLabelKey      = "research-assistant.plan-id"
 )
 
 type NativeDockerEngine struct {
@@ -112,8 +116,8 @@ func (e *NativeDockerEngine) GetType() string {
 	return "Docker"
 }
 
-func (e *NativeDockerEngine) Create(ctx context.Context, image string, mountPath string) (string, error) {
-	args, err := secureDockerRunArgs(image)
+func (e *NativeDockerEngine) Create(ctx context.Context, image string, mountPath string, labels map[string]string) (string, error) {
+	args, err := secureDockerRunArgs(image, labels)
 	if err != nil {
 		return "", err
 	}
@@ -176,12 +180,19 @@ func (e *NativeDockerEngine) validateSandboxContainer(ctx context.Context, id st
 		return fmt.Errorf("invalid sandbox container id")
 	}
 	output, err := exec.CommandContext(ctx, dockerCommand(),
-		"inspect", "--format", `{{ index .Config.Labels "`+sandboxLabelKey+`" }}`, id).Output()
+		"inspect", "--format", `{{json .Config.Labels}}`, id).Output()
 	if err != nil {
 		return fmt.Errorf("inspect sandbox container: %w", err)
 	}
-	if strings.TrimSpace(string(output)) != sandboxLabelValue {
+	labels := map[string]string{}
+	if err := json.Unmarshal(bytes.TrimSpace(output), &labels); err != nil {
+		return fmt.Errorf("decode sandbox labels: %w", err)
+	}
+	if strings.TrimSpace(labels[sandboxLabelKey]) != sandboxLabelValue {
 		return fmt.Errorf("container %s is not managed by this sandbox service", id)
+	}
+	if strings.TrimSpace(labels[tenantLabelKey]) == "" || strings.TrimSpace(labels[taskLabelKey]) == "" {
+		return fmt.Errorf("container %s is not bound to a tenant/task", id)
 	}
 	return nil
 }

@@ -19,8 +19,8 @@ func (e *WatchdogError) Error() string {
 
 // 错误类型常量
 const (
-	ErrTypeCircuitBroken = "CIRCUIT_BROKEN"
-	ErrTypeTimeoutHang   = "TIMEOUT_HANG"
+	ErrTypeCircuitBroken        = "CIRCUIT_BROKEN"
+	ErrTypeTimeoutHang          = "TIMEOUT_HANG"
 	ErrTypeEnvironmentCorrupted = "ENV_CORRUPTED"
 )
 

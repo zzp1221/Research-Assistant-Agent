@@ -18,6 +18,7 @@ from urllib.request import Request, urlopen
 
 TERMINAL_STATUSES = {"completed", "failed", "blocked", "cancelled", "canceled"}
 PACKAGE_FILES = ("autoresearch.json", "evaluator.py", "holdout_evaluator.py")
+API_TOKEN = os.environ.get("RESEARCH_ASSISTANT_API_TOKEN") or os.environ.get("API_AUTH_TOKEN") or ""
 
 
 def request_json(
@@ -41,6 +42,7 @@ def request_json(
             "Content-Type": content_type,
             "X-User-Id": user_id,
             "X-Session-Id": session_id,
+            **({"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}),
         },
     )
     try:

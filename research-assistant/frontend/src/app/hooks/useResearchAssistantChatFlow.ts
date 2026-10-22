@@ -380,6 +380,17 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSession?.id]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const refreshOnFocus = () => {
+      if (activeSession?.activePlanId) {
+        void refreshActivePlan();
+      }
+    };
+    window.addEventListener('focus', refreshOnFocus);
+    return () => window.removeEventListener('focus', refreshOnFocus);
+  }, [activeSession?.activePlanId, refreshActivePlan]);
+
   const handleSendMessage = useCallback(async () => {
 	if (loading || (!prompt.trim() && pendingAttachments.length === 0) || !persistedState.activeSessionId || uploadingAttachments) return;
 

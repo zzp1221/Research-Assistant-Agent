@@ -69,6 +69,7 @@ interface LeftWorkspaceChatProps {
     onSwitchSession: (sessionId: string) => void;
 	onAttachFiles: (files: File[]) => void;
 	onRemoveAttachment: (uploadId: string) => void;
+	onOpenAttachment: (attachment: UploadedFile) => void;
   };
   pdfActions: {
     onOpenPdf: () => void;

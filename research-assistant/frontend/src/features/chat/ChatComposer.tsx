@@ -1,6 +1,7 @@
 import { useRef } from 'react';
-import { ChevronDown, ChevronUp, FileText, Loader2, Paperclip, Send, Sparkles, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Eye, FileText, Loader2, Paperclip, Send, Sparkles, X } from 'lucide-react';
 import type { UploadedFile } from '../../contracts/api';
+import { isPdfAttachment } from '../pdf-viewer/pdfAttachment';
 
 interface ChatComposerProps {
   prompt: string;
@@ -15,6 +16,7 @@ interface ChatComposerProps {
   onSendMessage: () => void;
 	onAttachFiles: (files: File[]) => void;
 	onRemoveAttachment: (uploadId: string) => void;
+	onOpenAttachment: (attachment: UploadedFile) => void;
 }
 
 const suggestions = [
@@ -28,7 +30,7 @@ const suggestions = [
 export function ChatComposer(props: ChatComposerProps) {
   const {
 		prompt, loading, isLoggedIn, showSuggestions, pendingAttachments, uploadingAttachments, attachmentError,
-		setPrompt, setShowSuggestions, onSendMessage, onAttachFiles, onRemoveAttachment,
+		setPrompt, setShowSuggestions, onSendMessage, onAttachFiles, onRemoveAttachment, onOpenAttachment,
 	} = props;
 	const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -66,6 +68,11 @@ export function ChatComposer(props: ChatComposerProps) {
 						<FileText className="h-3.5 w-3.5 shrink-0 text-blue-600" />
 						<span className="max-w-48 truncate">{attachment.name}</span>
 						<span className="shrink-0 text-gray-400">{Math.max(1, Math.round(attachment.size / 1024))}KB</span>
+						{isPdfAttachment(attachment) && (
+							<button type="button" onClick={() => onOpenAttachment(attachment)} className="rounded p-0.5 text-gray-400 hover:bg-blue-100 hover:text-blue-700" title="在阅读器中打开 PDF" aria-label={`打开 ${attachment.name}`}>
+								<Eye className="h-3.5 w-3.5" />
+							</button>
+						)}
 						<button type="button" onClick={() => onRemoveAttachment(attachment.id)} className="rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700" title="移除附件" aria-label={`移除 ${attachment.name}`}>
 							<X className="h-3.5 w-3.5" />
 						</button>

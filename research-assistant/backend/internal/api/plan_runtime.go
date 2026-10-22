@@ -137,7 +137,6 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 	response := gin.H{
 		"message":        "Plan generated successfully",
 		"plan_graph":     plan,
-		"plan":           legacyPlanFromGraph(plan),
 		"intent_context": intentContext,
 		"session_id":     sessionID,
 		"anon_user_id":   userID,
@@ -674,40 +673,6 @@ func removeAttachmentTextExcerpts(attachments []map[string]any) {
 	for _, attachment := range attachments {
 		delete(attachment, "text_excerpt")
 	}
-}
-
-func legacyPlanFromGraph(graph *models.PlanGraph) *models.Plan {
-	legacy := &models.Plan{
-		ID:         graph.ID,
-		UserIntent: graph.UserIntent,
-		Tasks:      make(map[string]*models.Task, len(graph.Nodes)),
-		Status:     graph.Status,
-		CreatedAt:  graph.CreatedAt,
-		UpdatedAt:  graph.UpdatedAt,
-	}
-	for _, node := range graph.Nodes {
-		if node == nil {
-			continue
-		}
-		legacy.Tasks[node.ID] = &models.Task{
-			ID:                node.ID,
-			Name:              node.Name,
-			Type:              node.Type,
-			Description:       node.Description,
-			AssignedTo:        node.AssignedTo,
-			Status:            node.Status,
-			Dependencies:      append([]string(nil), node.Dependencies...),
-			RequiredArtifacts: append([]string(nil), node.RequiredArtifacts...),
-			OutputArtifacts:   append([]string(nil), node.OutputArtifacts...),
-			Parallelizable:    node.Parallelizable,
-			Priority:          node.Priority,
-			RetryLimit:        node.RetryLimit,
-			Inputs:            node.Inputs,
-			CreatedAt:         node.CreatedAt,
-			UpdatedAt:         node.UpdatedAt,
-		}
-	}
-	return legacy
 }
 
 func writePlanSSE(c *gin.Context, eventName string, payload any) bool {

@@ -15,7 +15,11 @@ func TestSecureDockerRunArgsApplyResourceAndPrivilegeLimits(t *testing.T) {
 	t.Setenv("SANDBOX_CONTAINER_USER", "65534:65534")
 	t.Setenv("SANDBOX_READ_ONLY_ROOT", "true")
 
-	args, err := secureDockerRunArgs("python:3.11-slim")
+	args, err := secureDockerRunArgs("python:3.11-slim", map[string]string{
+		tenantLabelKey: "tenant-a",
+		taskLabelKey:   "task-a",
+		planLabelKey:   "plan-a",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,6 +29,8 @@ func TestSecureDockerRunArgsApplyResourceAndPrivilegeLimits(t *testing.T) {
 		"--security-opt no-new-privileges:true", "--cap-drop ALL",
 		"--network none", "--user 65534:65534", "--read-only",
 		"--label research-assistant.sandbox=true",
+		"--label research-assistant.tenant-id=tenant-a",
+		"--label research-assistant.task-id=task-a",
 	} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("expected %q in docker args: %s", expected, joined)
@@ -34,10 +40,10 @@ func TestSecureDockerRunArgsApplyResourceAndPrivilegeLimits(t *testing.T) {
 
 func TestSandboxImageAllowlist(t *testing.T) {
 	t.Setenv("SANDBOX_IMAGE_ALLOWLIST", "python:3.11,registry.example/research/")
-	if _, err := secureDockerRunArgs("python:3.11-slim"); err != nil {
+	if _, err := secureDockerRunArgs("python:3.11-slim", nil); err != nil {
 		t.Fatalf("expected allowlisted image: %v", err)
 	}
-	if _, err := secureDockerRunArgs("ubuntu:latest"); err == nil {
+	if _, err := secureDockerRunArgs("ubuntu:latest", nil); err == nil {
 		t.Fatal("expected image outside allowlist to be rejected")
 	}
 }

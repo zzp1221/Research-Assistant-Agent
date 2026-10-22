@@ -1,5 +1,5 @@
 import type { RefObject } from 'react';
-import { ChartNoAxesCombined, Code, Eye, FileText, FlaskConical, GitBranch, Loader2, Maximize2, Play, RotateCcw, TerminalSquare, X } from 'lucide-react';
+import { ChartNoAxesCombined, Code, Eye, FileText, FlaskConical, GitBranch, Loader2, Maximize2, Play, RotateCcw, ShieldAlert, TerminalSquare, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -18,6 +18,7 @@ interface ExecutionSidebarProps {
   selectedTask: Task;
   width: string;
   isExecuting: boolean;
+  requiresApproval: boolean;
   displayMode: ExecutionDisplayMode;
   executionLogs: string;
   executionResult: string;
@@ -46,6 +47,7 @@ export function ExecutionSidebar(props: ExecutionSidebarProps) {
     selectedTask,
     width,
     isExecuting,
+    requiresApproval,
     displayMode,
     executionLogs,
     executionResult,
@@ -87,6 +89,7 @@ export function ExecutionSidebar(props: ExecutionSidebarProps) {
         <ExecutionSidebarShell
           selectedTask={selectedTask}
           isExecuting={isExecuting}
+          requiresApproval={requiresApproval}
           activeMode={activeMode}
           executionLogs={executionLogs}
           executionResult={executionResult}
@@ -288,6 +291,7 @@ function ExpandedReportView({ title, executionResult, onClose }: ExpandedReportV
 interface ExecutionSidebarShellProps {
   selectedTask: Task;
   isExecuting: boolean;
+  requiresApproval: boolean;
   activeMode: CompactMode;
   executionLogs: string;
   executionResult: string;
@@ -304,6 +308,7 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
   const {
     selectedTask,
     isExecuting,
+    requiresApproval,
     activeMode,
     executionLogs,
     executionResult,
@@ -365,10 +370,16 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
 
         <button
           onClick={onExecute}
-          disabled={isExecuting}
+          disabled={isExecuting || requiresApproval}
+          title={requiresApproval ? '计划尚未审批，请先使用右上角“审批并运行”' : '启动当前节点'}
           className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 px-6 rounded-2xl flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-[0_10px_20px_-10px_rgba(37,99,235,0.5)] active:scale-[0.98] active:shadow-inner"
         >
-          {isExecuting ? (
+          {requiresApproval ? (
+            <span className="flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5" />
+              计划待审批，暂不可执行节点
+            </span>
+          ) : isExecuting ? (
             <span className="animate-pulse flex items-center gap-2">
               <Loader2 className="w-5 h-5 animate-spin" />
               正在深度解析...

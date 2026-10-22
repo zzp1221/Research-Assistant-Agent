@@ -25,7 +25,7 @@ func DefaultConfig() Config {
 		WorkingDir:  "/workspace",
 		AuditLogDir: "/tmp/sandbox-audit",
 		MemoryLimit: 2 * 1024 * 1024 * 1024, // 2GB
-		CPUQuota:    200000,                  // 2 cores
+		CPUQuota:    200000,                 // 2 cores
 		ExecTimeout: 5 * time.Minute,
 		TruncateN:   20,
 		TruncateM:   50,
