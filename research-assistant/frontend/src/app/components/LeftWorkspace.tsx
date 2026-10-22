@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Bot, X } from 'lucide-react';
 import { ChatPanel } from '../../features/chat/ChatPanel';
 import { PdfPanel } from '../../features/pdf-viewer/PdfPanel';
-import type { ChatMessage, UploadedFile } from '../../contracts/api';
+import type { ChatMessage, DocumentInfoResponse, TranslationJob, UploadedFile } from '../../contracts/api';
 import type { Plugin } from '@react-pdf-viewer/core';
 import type { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 
@@ -74,7 +74,6 @@ interface LeftWorkspaceChatProps {
   pdfActions: {
     onOpenPdf: () => void;
     onClosePdf: () => void;
-    onFullTranslation: () => void;
   };
   taskActions: {
     onOpenTaskView: (taskId: string, mode: 'plot' | 'report') => void;
@@ -93,23 +92,37 @@ export function LeftWorkspaceChat(props: LeftWorkspaceChatProps) {
 interface LeftWorkspacePdfProps {
   widthPercent: number;
   pdfUrl: string;
-  isFullTranslating: boolean;
+  documentInfo: DocumentInfoResponse | null;
   onClosePdf: () => void;
-  onFullTranslation: () => void;
   defaultLayoutPluginInstance: ReturnType<typeof defaultLayoutPlugin>;
   aiTranslationPluginInstance: Plugin;
+  onPageChange?: (page: number) => void;
+  translation: TranslationPanelState;
+}
+
+export interface TranslationPanelState {
+  job: TranslationJob | null;
+  isStarting: boolean;
+  error: string;
+  pageText: string;
+  pageTextLoading: boolean;
+  pageTextError: string;
+  onStart: () => void;
+  onCancel: () => void;
+  onOpenPage: (page: number) => void;
 }
 
 export function LeftWorkspacePdf(props: LeftWorkspacePdfProps) {
-  const { widthPercent, pdfUrl, isFullTranslating, onClosePdf, onFullTranslation, defaultLayoutPluginInstance, aiTranslationPluginInstance } = props;
+  const { widthPercent, pdfUrl, documentInfo, onClosePdf, defaultLayoutPluginInstance, aiTranslationPluginInstance, onPageChange, translation } = props;
   return (
     <LeftWorkspaceShell widthPercent={widthPercent} showClosePdf onClosePdf={onClosePdf}>
       <PdfPanel
         pdfUrl={pdfUrl}
-        isFullTranslating={isFullTranslating}
-        onFullTranslation={onFullTranslation}
+        documentInfo={documentInfo}
+        onPageChange={onPageChange}
         defaultLayoutPluginInstance={defaultLayoutPluginInstance}
         aiTranslationPluginInstance={aiTranslationPluginInstance}
+        translation={translation}
       />
     </LeftWorkspaceShell>
   );

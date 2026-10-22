@@ -140,11 +140,11 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
     <LeftWorkspacePdf
       widthPercent={layout.leftPanelWidth}
       pdfUrl={pdfFlow.pdfUrl}
-      isFullTranslating={pdfFlow.isFullTranslating}
+      documentInfo={pdfFlow.documentInfo}
       onClosePdf={pdfFlow.closePdf}
-      onFullTranslation={pdfFlow.handleFullTranslation}
       defaultLayoutPluginInstance={pdfFlow.defaultLayoutPluginInstance}
       aiTranslationPluginInstance={pdfFlow.aiTranslationPluginInstance}
+      translation={pdfFlow.translation}
     />
   ) : (
     <LeftWorkspaceChat
@@ -185,7 +185,6 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
           void pdfFlow.openPdfFromUpload(pdfAttachment);
         },
         onClosePdf: pdfFlow.closePdf,
-        onFullTranslation: pdfFlow.handleFullTranslation,
       }}
       taskActions={{
         onOpenTaskView: runtime.actions.handleOpenTaskView,
@@ -220,10 +219,17 @@ export default function ResearchAssistantApp() {
         return;
       }
 
-      const graphLayout = buildGraphLayout(planGraph);
-      setNodes(graphLayout.nodes);
-      setEdges(graphLayout.edges);
-      setMobilePane('graph');
+      try {
+        const graphLayout = buildGraphLayout(planGraph);
+        setNodes(graphLayout.nodes);
+        setEdges(graphLayout.edges);
+        setMobilePane('graph');
+      } catch (error) {
+        // A malformed persisted plan must not take down the whole workspace.
+        console.error('[plan] failed to build graph layout', error);
+        setNodes([]);
+        setEdges([]);
+      }
     },
     [setEdges, setNodes],
   );
@@ -238,6 +244,7 @@ export default function ResearchAssistantApp() {
     appendChatMessage: chatFlow.appendChatMessage,
 	identity: chatFlow.requestIdentity,
 	refreshPlanState: chatFlow.refreshActivePlan,
+	activePlanGraph: chatFlow.activePlanGraph,
   });
   const { resetRuntimeState } = runtime;
 
@@ -245,6 +252,7 @@ export default function ResearchAssistantApp() {
     setPrompt: chatFlow.setPrompt,
     appendChatMessage: chatFlow.appendChatMessage,
     appendSelectedTaskLog: runtime.appendSelectedTaskLog,
+    identity: chatFlow.requestIdentity,
   });
 
   useEffect(() => {

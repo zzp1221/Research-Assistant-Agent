@@ -40,7 +40,6 @@ interface ChatActions {
 interface PdfActions {
   onOpenPdf: () => void;
   onClosePdf: () => void;
-  onFullTranslation: () => void;
 }
 
 interface TaskActions {

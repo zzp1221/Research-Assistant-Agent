@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"research-assistant-backend/internal/documents"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -32,18 +34,20 @@ type uploadMetadata struct {
 }
 
 type uploadResponse struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	ContentType string    `json:"content_type"`
-	Size        int64     `json:"size"`
-	SHA256      string    `json:"sha256"`
-	ContentURL  string    `json:"content_url"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	ContentType string         `json:"content_type"`
+	Size        int64          `json:"size"`
+	SHA256      string         `json:"sha256"`
+	ContentURL  string         `json:"content_url"`
+	CreatedAt   time.Time      `json:"created_at"`
+	Document    map[string]any `json:"document,omitempty"`
 }
 
 func RegisterUploadRoutes(apiGroup *gin.RouterGroup) {
 	apiGroup.POST("/uploads", createUpload)
 	apiGroup.GET("/uploads/:id/content", serveUploadContent)
+	registerDocumentRoutes(apiGroup)
 }
 
 func createUpload(c *gin.Context) {
@@ -123,7 +127,21 @@ func createUpload(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, uploadResponseFromMetadata(metadata))
+	// A PDF upload must be readable before it can feed paper parsing or the
+	// document assist API. Extraction failures are recorded, not fatal: the
+	// reader still opens and the UI shows why text is unavailable.
+	response := uploadResponseFromMetadata(metadata)
+	if extension == ".pdf" {
+		document := documents.ExtractPDF(c.Request.Context(), uploadID, storedPath)
+		if err := documents.Save(directory, document); err != nil {
+			_ = os.RemoveAll(directory)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot persist extracted document"})
+			return
+		}
+		response.Document = documentSummary(document)
+	}
+
+	c.JSON(http.StatusCreated, response)
 }
 
 func persistUpload(source multipart.File, header *multipart.FileHeader, path string, metadata uploadMetadata, maxBytes int64) (uploadMetadata, error) {
@@ -189,6 +207,13 @@ func resolvePlanUploads(ownerID string, uploadIDs []string) ([]map[string]any, e
 					raw = raw[:uploadTextExcerptLimit]
 				}
 				item["text_excerpt"] = string(raw)
+			}
+		} else if strings.ToLower(filepath.Ext(metadata.Name)) == ".pdf" {
+			// Feed the extracted paper text to the planner instead of only a
+			// file path: agents otherwise have no way to read the PDF.
+			if document, loadErr := documents.Load(filepath.Dir(metadata.StoredPath)); loadErr == nil && document.HasText() {
+				item["text_excerpt"] = documents.Excerpt(document)
+				item["page_count"] = document.PageCount
 			}
 		}
 		resolved = append(resolved, item)

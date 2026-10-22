@@ -65,24 +65,7 @@ func (p *Planner) BuildPlan(ctx context.Context, intent models.IntentContext) (*
 		}
 	}
 	if len(nodes) == 0 {
-		switch intent.IntentType {
-		case "Framework_Evaluation":
-			nodes = buildFrameworkEvaluationNodesV2(intent)
-		case "Paper_Reproduction":
-			nodes = buildPaperReproductionNodesV2(intent)
-		case "Code_Execution":
-			nodes = buildCodeExecutionNodesV2(intent)
-		case "Custom_Benchmark":
-			nodes = buildCustomDatasetBenchmarkNodes(intent)
-		case "AutoResearch":
-			if isDatasetExperimentIntent(intent) {
-				nodes = buildDatasetExperimentNodes(intent)
-			} else {
-				nodes = buildAutoResearchNodes(intent)
-			}
-		default:
-			nodes = buildGeneralNodesV2(intent)
-		}
+		nodes = buildFallbackNodes(intent)
 	}
 
 	edges := buildEdgesFromNodes(nodes)
@@ -102,7 +85,46 @@ func (p *Planner) BuildPlan(ctx context.Context, intent models.IntentContext) (*
 	}
 	fillGraphMeta(plan)
 
-	return plan, validatePlanGraph(plan)
+	// A planner-agent blueprint can pass its own contract checks yet still leave
+	// required artifacts without a producer. Fall back to the deterministic
+	// template rather than failing the whole request.
+	if err := validatePlanGraph(plan); err != nil {
+		logPlannerFallback(intent, err)
+		if intent.IntentType != "" {
+			templateNodes := buildFallbackNodes(intent)
+			if len(templateNodes) > 0 {
+				nodes = templateNodes
+				edges := buildEdgesFromNodes(nodes)
+				fillInitialStatuses(nodes)
+				plan.Nodes = nodes
+				plan.Edges = edges
+				fillGraphMeta(plan)
+			}
+		}
+		return plan, validatePlanGraph(plan)
+	}
+	return plan, nil
+}
+
+// buildFallbackNodes selects the deterministic template for one intent type.
+func buildFallbackNodes(intent models.IntentContext) []*models.TaskNode {
+	switch intent.IntentType {
+	case "Framework_Evaluation":
+		return buildFrameworkEvaluationNodesV2(intent)
+	case "Paper_Reproduction":
+		return buildPaperReproductionNodesV2(intent)
+	case "Code_Execution":
+		return buildCodeExecutionNodesV2(intent)
+	case "Custom_Benchmark":
+		return buildCustomDatasetBenchmarkNodes(intent)
+	case "AutoResearch":
+		if isDatasetExperimentIntent(intent) {
+			return buildDatasetExperimentNodes(intent)
+		}
+		return buildAutoResearchNodes(intent)
+	default:
+		return buildGeneralNodesV2(intent)
+	}
 }
 
 func newNode(name, taskType, agent string, deps, requiredArtifacts, outputArtifacts []string, parallelizable bool, context string) *models.TaskNode {

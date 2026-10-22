@@ -746,6 +746,20 @@ func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner strin
 			return ErrStaleExecution
 		}
 		task.Error = result.Error
+		// Keep whatever the agent produced before failing: partial code, metrics
+		// or structured evidence is still useful for debugging and the UI.
+		if strings.TrimSpace(result.Result) != "" {
+			task.Result = result.Result
+		}
+		if strings.TrimSpace(result.Code) != "" {
+			task.Code = result.Code
+		}
+		if strings.TrimSpace(result.StructuredData) != "" {
+			task.StructuredData = result.StructuredData
+		}
+		if strings.TrimSpace(result.ImageBase64) != "" {
+			task.ImageBase64 = result.ImageBase64
+		}
 		task.ExecutionID = ""
 		task.LeaseOwner = ""
 		task.LeaseExpiresAt = nil

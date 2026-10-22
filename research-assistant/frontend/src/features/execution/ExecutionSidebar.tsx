@@ -8,11 +8,20 @@ import type { ExecutionDisplayMode } from '../../app/hooks/useResearchAssistantR
 import type { Task } from '../../contracts/api';
 import { AblationTreeView } from '../ablation/AblationTreeView';
 import { AutoResearchTrialView } from '../autoresearch/AutoResearchTrialView';
+import { BenchmarkReportView } from '../benchmark/BenchmarkReportView';
+import { parseBenchmarkReport } from '../benchmark/benchmarkReport';
 import { ClaimEvidenceGraphView } from '../claim-evidence/ClaimEvidenceGraphView';
 import { ExperimentResearchView } from '../experiment/ExperimentResearchView';
 import { getAgentIcon, getAgentLabel } from '../shared/agentVisuals';
 
 type CompactMode = Exclude<ExecutionDisplayMode, 'report-expanded' | 'plot-expanded' | 'evidence-expanded' | 'trials-expanded' | 'ablation-expanded'>;
+
+const benchmarkTaskTypes = new Set([
+  'benchmark_validate', 'benchmark_execute', 'benchmark_contract_freeze',
+  'benchmark_split_materialize', 'benchmark_dataset_audit', 'benchmark_adapter_preflight',
+]);
+const hasBenchmarkReport = (task: Task, structuredData: string, result: string): boolean =>
+  benchmarkTaskTypes.has(task.Type || '') && Boolean(parseBenchmarkReport(structuredData || result));
 
 interface ExecutionSidebarProps {
   selectedTask: Task;
@@ -84,7 +93,27 @@ export function ExecutionSidebar(props: ExecutionSidebarProps) {
       ) : displayMode === 'plot-expanded' ? (
         <ExpandedPlotView executionImage={executionImage} onClose={() => onChangeDisplayMode('plot')} />
       ) : displayMode === 'report-expanded' ? (
-        <ExpandedReportView title={selectedTask.Name} executionResult={executionResult} onClose={() => onChangeDisplayMode('report')} />
+        hasBenchmarkReport(selectedTask, executionStructuredData, executionResult) ? (
+          <div className="flex min-h-0 flex-1 flex-col bg-white">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-3">
+              <h2 className="truncate text-lg font-semibold text-slate-900">{selectedTask.Name}</h2>
+              <button
+                type="button"
+                onClick={() => onChangeDisplayMode('report')}
+                className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                title="退出全屏报告"
+                aria-label="退出全屏报告"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <BenchmarkReportView raw={executionStructuredData || executionResult} expanded />
+            </div>
+          </div>
+        ) : (
+          <ExpandedReportView title={selectedTask.Name} executionResult={executionResult} onClose={() => onChangeDisplayMode('report')} />
+        )
       ) : (
         <ExecutionSidebarShell
           selectedTask={selectedTask}
@@ -325,6 +354,7 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
   const hasAutoResearchEvidence = (selectedTask.Type === 'autoresearch_run' || selectedTask.Type === 'autoresearch_validate') && Boolean(executionStructuredData || executionResult);
   const hasExperimentEvidence = (selectedTask.Type === 'experiment_run' || selectedTask.Type === 'experiment_validate') && Boolean(executionStructuredData || executionResult);
   const hasTrialEvidence = hasAutoResearchEvidence || hasExperimentEvidence;
+  const hasBenchmarkEvidence = hasBenchmarkReport(selectedTask, executionStructuredData, executionResult);
 
   return (
     <>
@@ -469,7 +499,7 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
                   证据图
                 </button>
               )}
-              {reportAgents.has(selectedTask.AssignedTo) && executionResult && !hasTrialEvidence && !hasAblationEvidence && (
+              {(hasBenchmarkEvidence || (reportAgents.has(selectedTask.AssignedTo) && executionResult && !hasTrialEvidence && !hasAblationEvidence)) && (
                 <button
                   onClick={() => onChangeDisplayMode('report')}
                   className={`flex-1 py-3 text-xs font-black text-center border-b-2 flex items-center justify-center gap-1 transition-all ${
@@ -477,7 +507,7 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
                   }`}
                 >
                   <Eye className="w-4 h-4" />
-                  <span className="hidden sm:inline">分析报告</span>
+                  <span className="hidden sm:inline">{hasBenchmarkEvidence ? '评测报告' : '分析报告'}</span>
                   <span className="sm:hidden">报告</span>
                 </button>
               )}
@@ -574,6 +604,10 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
           ) : activeMode === 'evidence' ? (
             <div className="h-96 min-h-0 flex-1 overflow-hidden border border-slate-200 bg-white">
               <ClaimEvidenceGraphView rawGraph={executionStructuredData} />
+            </div>
+          ) : activeMode === 'report' && hasBenchmarkEvidence ? (
+            <div className="min-h-[32rem] flex-1 overflow-hidden border border-slate-200 bg-white">
+              <BenchmarkReportView raw={executionStructuredData || executionResult} />
             </div>
           ) : (
             <div className="bg-white rounded-2xl border border-gray-100 p-6 flex-1 overflow-y-auto shadow-inner prose prose-slate prose-sm max-w-none text-gray-800 prose-headings:text-blue-900 prose-strong:text-blue-700 prose-code:bg-blue-50 prose-code:text-blue-600 prose-code:px-1 prose-code:rounded h-64">

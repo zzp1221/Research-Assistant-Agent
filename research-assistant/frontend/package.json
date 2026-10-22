@@ -8,9 +8,11 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "predev": "npm run sync:pdfjs",
+    "build": "npm run sync:pdfjs && tsc -b && vite build",
     "lint": "eslint .",
     "test": "node --test test/*.test.mjs",
+    "sync:pdfjs": "node scripts/sync-pdfjs-assets.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

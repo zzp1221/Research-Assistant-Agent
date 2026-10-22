@@ -26,6 +26,15 @@ var (
 	loadErr  error
 )
 
+// ResetLLMConfigForTest clears the process-wide config cache. It exists so
+// tests that point OPENAI_BASE_URL at an httptest server can re-read the
+// environment between cases.
+func ResetLLMConfigForTest() {
+	loadOnce = sync.Once{}
+	loadCfg = LLMConfig{}
+	loadErr = nil
+}
+
 func LoadLLMConfig() (LLMConfig, error) {
 	loadOnce.Do(func() {
 		cfg := LLMConfig{}

@@ -1,7 +1,6 @@
 export type ChatAction =
   | 'open_pdf'
   | 'close_pdf'
-  | 'translate_full'
   | 'view_plot'
   | 'view_report';
 
@@ -12,6 +11,15 @@ export interface ChatMessage {
   taskId?: string;
 }
 
+export interface UploadDocumentSummary {
+  status: string;
+  page_count: number;
+  characters: number;
+  extractor?: string;
+  error?: string;
+  extracted_at?: string;
+}
+
 export interface UploadedFile {
   id: string;
   name: string;
@@ -20,6 +28,58 @@ export interface UploadedFile {
   sha256: string;
   content_url: string;
   created_at: string;
+  document?: UploadDocumentSummary;
+}
+
+export interface DocumentPageInfo {
+  number: number;
+  chars: number;
+}
+
+export interface DocumentInfoResponse {
+  upload_id: string;
+  name: string;
+  document: UploadDocumentSummary;
+  pages: DocumentPageInfo[];
+}
+
+export interface AssistTerm {
+  source: string;
+  target: string;
+  note?: string;
+}
+
+export interface AssistResponse {
+  mode: string;
+  page: number;
+  result: string;
+  bullets?: string[];
+  terms?: AssistTerm[];
+  model: string;
+  cached: boolean;
+}
+
+export interface TranslationPageJob {
+  number: number;
+  status: string;
+  chars: number;
+  error?: string;
+  updated_at: string;
+}
+
+export interface TranslationJob {
+  id: string;
+  upload_id: string;
+  status: string;
+  total_pages: number;
+  completed_pages: number;
+  failed_pages: number;
+  current_page: number;
+  pages: TranslationPageJob[];
+  error?: string;
+  created_at: string;
+  started_at?: string;
+  finished_at?: string;
 }
 
 export interface Task {
@@ -37,6 +97,7 @@ export interface Task {
   Code?: string;
   StructuredData?: string;
   ImageBase64?: string;
+  Error?: string;
 }
 
 export interface GraphTask {
@@ -73,6 +134,16 @@ export interface GraphTask {
   error?: string;
 }
 
+export interface PlanArtifact {
+  key: string;
+  type: string;
+  producer_task_id: string;
+  value?: string;
+  location?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface GraphEdge {
   id: string;
   from: string;
@@ -106,6 +177,15 @@ export interface PlanGraph {
   };
   nodes: GraphTask[];
   edges: GraphEdge[];
+  artifacts?: Record<string, PlanArtifact>;
+  meta?: {
+    total_nodes: number;
+    completed_nodes: number;
+    failed_nodes: number;
+    blocked_nodes: number;
+    in_progress_nodes: number;
+    ready_nodes: number;
+  };
 }
 
 export interface IntentContext {

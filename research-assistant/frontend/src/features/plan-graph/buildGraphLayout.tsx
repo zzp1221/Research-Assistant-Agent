@@ -61,9 +61,33 @@ export const graphTaskToTask = (task: GraphTask): Task => ({
   Code: task.code,
   StructuredData: task.structured_data,
   ImageBase64: task.image_base64 || task.image_base_64,
+  Error: task.error,
 });
 
-export const buildGraphLayout = (planGraph: PlanGraph): { nodes: Node[]; edges: Edge[] } => {
+// Go marshals a nil slice as JSON null, so a plan created before a dependency
+// exists can arrive with `dependencies: null`. Normalise every collection here
+// instead of crashing the whole workspace on `.map`/`.length`.
+export const normalizePlanGraph = (planGraph: PlanGraph): PlanGraph => ({
+  ...planGraph,
+  nodes: (planGraph.nodes ?? []).map((task) => ({
+    ...task,
+    dependencies: task.dependencies ?? [],
+    required_artifacts: task.required_artifacts ?? [],
+    output_artifacts: task.output_artifacts ?? [],
+    inputs: task.inputs ?? {},
+    contract: {
+      ...task.contract,
+      input_artifacts: task.contract?.input_artifacts ?? [],
+      output_artifacts: task.contract?.output_artifacts ?? [],
+      allowed_tools: task.contract?.allowed_tools ?? [],
+    },
+  })),
+  edges: planGraph.edges ?? [],
+  artifacts: planGraph.artifacts ?? {},
+});
+
+export const buildGraphLayout = (inputPlanGraph: PlanGraph): { nodes: Node[]; edges: Edge[] } => {
+  const planGraph = normalizePlanGraph(inputPlanGraph);
   const newNodes: Node[] = [];
   const newEdges: Edge[] = [];
 

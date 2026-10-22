@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Node } from '@xyflow/react';
-import type { ChatMessage, ExecuteTaskResultEvent, NodeExecutionState, Task } from '../../contracts/api';
+import type { ChatMessage, ExecuteTaskResultEvent, NodeExecutionState, PlanGraph, Task } from '../../contracts/api';
 import { PLAN_EVENTS, isPlanTerminalEvent, pickImageBase64 } from '../../contracts/events';
 import { approvePlan, cancelPlan, createPlanEventSource, executePlan, executePlanTaskStream, retryTask } from '../../services/api/researchAssistantApi';
+import { usePlanHistoryHydrator } from './usePlanHistoryHydrator';
 import type { RequestIdentity } from '../../services/api/researchAssistantApi';
 import { getTaskStyleByStatus } from '../../features/shared/agentVisuals';
 import { createTaskNodeLabel } from '../../features/plan-graph/nodeLabelFactory';
@@ -189,10 +190,11 @@ interface UseResearchAssistantRuntimeOptions {
   appendChatMessage: (message: ChatMessage) => void;
 	identity: RequestIdentity;
 	refreshPlanState?: () => void | Promise<void>;
+	activePlanGraph?: PlanGraph | null;
 }
 
 export function useResearchAssistantRuntime(options: UseResearchAssistantRuntimeOptions) {
-	const { nodes, setNodes, appendChatMessage, identity, refreshPlanState } = options;
+	const { nodes, setNodes, appendChatMessage, identity, refreshPlanState, activePlanGraph } = options;
   const planEventSourceRef = useRef<EventSource | null>(null);
   const [executionState, dispatchExecution] = useReducer(executionReducer, {
     selectedTask: null,
@@ -229,6 +231,17 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
     },
     [setNodes],
   );
+
+  const { applyHistory } = usePlanHistoryHydrator(patchNodeState, identity);
+
+  // On refresh/session switch, hydrate node logs and results from the durable
+  // plan event log so the execution panel is not blank for finished plans.
+  const activePlanGraphId = activePlanGraph?.id;
+  const activePlanGraphStatus = activePlanGraph?.status;
+  useEffect(() => {
+    if (!activePlanGraphId || !activePlanGraphStatus) return;
+    void applyHistory({ id: activePlanGraphId, status: activePlanGraphStatus });
+  }, [activePlanGraphId, activePlanGraphStatus, applyHistory]);
 
   const connectPlanStream = useCallback(
     async (planId: string) => {

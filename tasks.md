@@ -120,3 +120,25 @@
 - [x] `docker compose up -d --build` + health check
 - [x] `git status` clean
 - [x] 最终提交
+
+## Phase 9 — 一期：PDF 阅读与结果可读性
+
+- [x] 本地 pdfjs worker + cMaps + standard fonts（`frontend/public/pdfjs`）
+- [x] 上传 PDF 自动提取分页文本（poppler `pdftotext`，`document.json` 0600）
+- [x] `GET /api/uploads/:id/document` 与 `/document/pages/:page`
+- [x] `POST /api/uploads/:id/assist` 划词翻译/解释（无工具、无代码执行）
+- [x] 全文翻译后台任务：分页并发、缓存、进度、取消、重启恢复
+- [x] 失败节点保留 partial 结果（result/code/structured_data）
+- [x] 前端从 plan events 回填节点日志与结果
+- [x] Benchmark 报告解析与可读页（validation/run/audit）
+- [x] 新增 documents/assist/API/scheduler/Benchmark parser 测试
+- [x] 容器内 `go test ./...`、`go test -race` 关键包通过
+- [x] 容器内前端 build/lint/test 通过（21 个测试）
+- [x] 真实 DeepSeek：chat / plan / assist / 全文翻译
+- [x] PDF E2E：15 页 arXiv 论文上传、提取、划词、2 页全文翻译
+- [x] 论文 E2E：Apriori 10/10、run_metrics、comparison_report、claim evidence
+- [x] Benchmark E2E：13/13、`benchmark.validation/v1`
+- [x] AutoResearch E2E：rank_bm25 8/8、hidden holdout 3/3
+- [x] 报告保存至 `reports/phase1-*.json`
+- [ ] 二期：curated 仓库 registry + smoke recipe 数据化（移除后端硬编码论文特判）
+- [ ] 二期：组件级测试（Vitest + RTL）与 Playwright E2E

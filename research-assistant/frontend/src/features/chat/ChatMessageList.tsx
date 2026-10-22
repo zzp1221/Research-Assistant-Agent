@@ -1,4 +1,4 @@
-import { Bot, FileText, Languages, Maximize2, X } from 'lucide-react';
+import { Bot, FileText, Maximize2, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage } from '../../contracts/api';
@@ -6,7 +6,6 @@ import type { ChatMessage } from '../../contracts/api';
 interface PdfActions {
   onOpenPdf: () => void;
   onClosePdf: () => void;
-  onFullTranslation: () => void;
 }
 
 interface TaskActions {
@@ -57,15 +56,6 @@ export function ChatMessageList(props: ChatMessageListProps) {
                   >
                     <FileText className="w-3 h-3" />
                     打开论文原文
-                  </button>
-                )}
-                {msg.actions.includes('translate_full') && (
-                  <button
-                    onClick={pdfActions.onFullTranslation}
-                    className="flex items-center gap-1 text-xs bg-white text-purple-600 border border-purple-200 px-3 py-1.5 rounded-full hover:bg-purple-50 shadow-sm transition-all active:scale-95"
-                  >
-                    <Languages className="w-3 h-3" />
-                    全文翻译
                   </button>
                 )}
                 {msg.actions.includes('close_pdf') && (

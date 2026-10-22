@@ -32,6 +32,13 @@ export const getPlan = async (planId: string, identity: RequestIdentity): Promis
   return response.data.plan_graph;
 };
 
+export const getPlanEvents = async (planId: string, identity: RequestIdentity): Promise<PlanEvent[]> => {
+  const response = await httpClient.get<{ events: PlanEvent[] }>(`/api/plans/${planId}/events`, {
+    headers: buildIdentityHeaders(identity),
+  });
+  return response.data.events ?? [];
+};
+
 export const uploadFile = async (file: File, identity: RequestIdentity): Promise<UploadedFile> => {
   const formData = new FormData();
   formData.append('file', file);

@@ -462,6 +462,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     chatHistory,
     activePlanId,
 	activePlanStatus,
+	activePlanGraph: activeSession?.planGraph ?? null,
     intentContext,
     appendChatMessage,
     isLoggedIn: Boolean(persistedState.userId),
