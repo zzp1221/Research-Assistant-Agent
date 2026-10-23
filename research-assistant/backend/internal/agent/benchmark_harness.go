@@ -346,7 +346,7 @@ func (a *ResearchCodingAgent) runBenchmarkHarness(ctx context.Context, sandboxID
 	containerOutput := "/workspace/" + filepath.ToSlash(outputRelative)
 	command := []string{
 		"bash", "-lc", fmt.Sprintf(
-			"cd /workspace && PYTHONPATH=/workspace:${PYTHONPATH:-} python3 %s --dataset %s --output-dir %s --limit %d --repo-root /workspace --seed 17",
+			"cd /workspace && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/workspace:${PYTHONPATH:-} python3 %s --dataset %s --output-dir %s --limit %d --repo-root /workspace --seed 17",
 			shellEscape(benchmarkAdapterFile), shellEscape(containerDataset), shellEscape(containerOutput), limit,
 		),
 	}
@@ -418,7 +418,7 @@ func (a *ResearchCodingAgent) runBenchmarkPredictionHarness(ctx context.Context,
 	}
 	command := []string{
 		"bash", "-lc", fmt.Sprintf(
-			"cd /workspace && PYTHONPATH=/workspace:${PYTHONPATH:-} python3 %s --dataset %s --output-dir %s --limit %d --repo-root /workspace --seed 17",
+			"cd /workspace && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/workspace:${PYTHONPATH:-} python3 %s --dataset %s --output-dir %s --limit %d --repo-root /workspace --seed 17",
 			shellEscape(benchmarkAdapterFile), shellEscape("/workspace/"+filepath.ToSlash(datasetRelative)),
 			shellEscape("/workspace/"+filepath.ToSlash(outputRelative)), limit,
 		),
@@ -874,12 +874,12 @@ func benchmarkRepositoryFingerprint(workspacePath string) (string, error) {
 			return nil
 		}
 		if entry.IsDir() {
-			if relative == ".git" || relative == ".research-assistant" || strings.HasPrefix(filepath.ToSlash(relative), ".git/") || strings.HasPrefix(filepath.ToSlash(relative), ".research-assistant/") {
+			if benchmarkSkipFingerprintPath(relative) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if entry.Type()&os.ModeSymlink != 0 {
+		if entry.Type()&os.ModeSymlink != 0 || benchmarkSkipFingerprintPath(relative) {
 			return nil
 		}
 		paths = append(paths, path)
@@ -908,6 +908,24 @@ func benchmarkRepositoryFingerprint(workspacePath string) (string, error) {
 		}
 	}
 	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+// benchmarkSkipFingerprintPath excludes VCS/cache metadata and Python
+// bytecode. Running an adapter must not be misclassified as a repository edit
+// just because the interpreter created a __pycache__ directory.
+func benchmarkSkipFingerprintPath(relative string) bool {
+	relative = filepath.ToSlash(relative)
+	for _, segment := range strings.Split(relative, "/") {
+		switch segment {
+		case ".git", ".research-assistant", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache":
+			return true
+		}
+	}
+	lower := strings.ToLower(relative)
+	if strings.HasSuffix(lower, ".pyc") || strings.HasSuffix(lower, ".pyo") {
+		return true
+	}
+	return relative == ".research-assistant-repository-source.json"
 }
 
 func writeBenchmarkHash(hasher hash.Hash, value string) {

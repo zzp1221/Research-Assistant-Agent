@@ -459,7 +459,6 @@ func collectPaperSearchFields(intentCtx models.IntentContext, rawIntent string) 
 		}
 	}
 
-	normalized := strings.ToLower(strings.TrimSpace(rawIntent))
 	if _, ok := fields["paper_arxiv_id"]; !ok {
 		if arxivID := routePaperArxivIDRe.FindString(rawIntent); arxivID != "" {
 			fields["paper_arxiv_id"] = arxivID
@@ -468,13 +467,6 @@ func collectPaperSearchFields(intentCtx models.IntentContext, rawIntent string) 
 	if _, ok := fields["paper_title"]; !ok {
 		if title := extractQuotedPaperTitle(rawIntent); title != "" {
 			fields["paper_title"] = title
-		} else if title := extractPaperTitle(normalized); title != "" {
-			fields["paper_title"] = title
-		}
-	}
-	if _, ok := fields["paper_method_name"]; !ok {
-		if method := extractPaperMethodName(normalized); method != "" {
-			fields["paper_method_name"] = method
 		}
 	}
 	if _, ok := fields["paper_search_query"]; !ok {
@@ -510,30 +502,6 @@ func extractQuotedPaperTitle(rawIntent string) string {
 		}
 	}
 	return ""
-}
-
-func extractPaperTitle(normalized string) string {
-	switch {
-	case strings.Contains(normalized, "attention is all you need"):
-		return "Attention Is All You Need"
-	case strings.Contains(normalized, "transformer"):
-		return "Transformer"
-	default:
-		return ""
-	}
-}
-
-func extractPaperMethodName(normalized string) string {
-	switch {
-	case strings.Contains(normalized, "transformer"):
-		return "Transformer"
-	case strings.Contains(normalized, "resnet"):
-		return "ResNet"
-	case strings.Contains(normalized, "bert"):
-		return "BERT"
-	default:
-		return ""
-	}
 }
 
 func stringFieldFromMap(values map[string]any, key string) string {

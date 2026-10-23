@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 
 const BASE = process.env.E2E_BASE || 'http://backend:8080';
 const TOKEN = process.env.E2E_TOKEN || '';
@@ -8,6 +9,7 @@ const OUT = process.env.E2E_OUT || '/reports/phase1-autoresearch.json';
 const TIMEOUT_MS = Number(process.env.E2E_TIMEOUT_MS || 2400000);
 const REPO = process.env.E2E_REPO || 'https://github.com/dorianbrown/rank_bm25';
 const SPEC = process.env.E2E_SPEC || 'autoresearch.json';
+const FIXTURES = process.env.E2E_FIXTURES || '/fixtures';
 
 const headers = {
   ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}),
@@ -23,9 +25,25 @@ async function call(method, url, body) {
   return text ? JSON.parse(text) : null;
 }
 
+async function uploadFixture(filename, contentType) {
+  const filePath = path.join(FIXTURES, filename);
+  const data = fs.readFileSync(filePath);
+  const form = new FormData();
+  form.append('file', new Blob([data], { type: contentType }), path.basename(filePath));
+  const response = await fetch(BASE + '/api/uploads', { method: 'POST', headers, body: form });
+  const text = await response.text();
+  if (!response.ok) throw new Error(`upload ${filename} -> ${response.status}: ${text.slice(0, 300)}`);
+  const uploaded = JSON.parse(text);
+  console.log('[ok] uploaded', filename, uploaded.id);
+  return uploaded;
+}
+
 async function main() {
   const intent = `用 ${REPO} 做 AutoResearch，按 ${SPEC} 运行，最多 3 轮，总时长不超过 15 分钟，最终验证 3 次。`;
-  const created = await call('POST', '/api/plan', { intent, attachments: [] });
+  const spec = await uploadFixture(SPEC, 'application/json');
+  const evaluator = await uploadFixture('evaluator.py', 'text/x-python');
+  const holdout = await uploadFixture('holdout_evaluator.py', 'text/x-python');
+  const created = await call('POST', '/api/plan', { intent, attachments: [spec.id, evaluator.id, holdout.id] });
   const plan = created.plan_graph;
   console.log('[ok] plan', plan.id, plan.intent_type, plan.nodes.length, 'nodes');
   if (plan.intent_type !== 'AutoResearch') throw new Error('unexpected intent type ' + plan.intent_type);

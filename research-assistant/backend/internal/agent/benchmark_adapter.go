@@ -20,12 +20,15 @@ import (
 )
 
 const (
-	benchmarkAdapterDirectory  = ".research-assistant/benchmark"
-	benchmarkAdapterFile       = ".research-assistant/benchmark/adapter.py"
-	benchmarkAdapterSpecFile   = ".research-assistant/benchmark/benchmark.json"
-	benchmarkMaxContextFiles   = 12
-	benchmarkMaxContextPerFile = 12 * 1024
-	benchmarkMaxContextBytes   = 80 * 1024
+	benchmarkAdapterDirectory = ".research-assistant/benchmark"
+	benchmarkAdapterFile      = ".research-assistant/benchmark/adapter.py"
+	benchmarkAdapterSpecFile  = ".research-assistant/benchmark/benchmark.json"
+	// Keep the adapter-generation prompt bounded. Large repository contexts can
+	// exceed slow OpenAI-compatible gateway timeouts (observed 504s), and the
+	// adapter only needs the entry points/configuration, not the whole repo.
+	benchmarkMaxContextFiles   = 8
+	benchmarkMaxContextPerFile = 8 * 1024
+	benchmarkMaxContextBytes   = 32 * 1024
 )
 
 type benchmarkAdapterGenerationResponse struct {

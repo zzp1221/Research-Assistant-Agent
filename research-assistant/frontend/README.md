@@ -48,7 +48,10 @@ npm install
 npm run dev       # Vite 开发服务器，默认 5173
 npm run build     # TypeScript 构建 + 生产打包
 npm run lint      # ESLint
-npm test          # Node 原生测试
+npm test          # Node 解析测试 + Vitest 组件测试
+npm run test:unit # Node 原生测试（test/*.test.mjs）
+npm run test:components # Vitest + Testing Library（test/components）
+npm run test:e2e  # Playwright（需运行中的 frontend）
 npm run preview   # 预览生产构建
 ```
 
@@ -73,7 +76,15 @@ Docker 构建使用 `Dockerfile`：Node 构建后由 Nginx 提供静态资源，
 ## 测试
 
 ```bash
-npm test
+npm test                # 解析测试 + 组件测试
+npm run test:components # 只跑 Vitest 组件测试
+npm run test:e2e        # Playwright E2E
 ```
 
-测试覆盖消融计划、实验账本和 Trial 账本解析。`test/fixtures/` 中的 JSON 是前端回放和断言使用的稳定数据。
+- `test/*.test.mjs`：消融计划、实验账本、Trial 账本、PDF 附件和 Benchmark 报告解析。
+- `test/components/`：Vitest + Testing Library + jsdom，覆盖 PDF 本地 worker、全文翻译面板、Benchmark 报告、ExecutionSidebar 和 ChatComposer。
+- `test/e2e/`：Playwright，覆盖首页、PDF 上传/打开/全文翻译流程和 Benchmark 报告页。
+- `test/fixtures/` 中的 JSON 是前端回放和断言使用的稳定数据。
+
+E2E 默认访问 `http://127.0.0.1:15173`，可用 `E2E_BASE_URL` 覆盖；容器内运行时请使用
+compose 网络中的 `http://research-assistant-frontend-1`。

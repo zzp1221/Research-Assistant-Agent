@@ -2,6 +2,7 @@ config.toml
 tmp-realtest-logs/
 __pycache__/
 *.py[cod]
+.dsh-tmp/
 
 # Downloaded E2E fixture PDFs (2 MB+); regenerate from the arXiv URL in reports/README
 reports/fixtures/

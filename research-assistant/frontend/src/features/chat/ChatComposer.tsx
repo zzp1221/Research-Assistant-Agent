@@ -21,10 +21,10 @@ interface ChatComposerProps {
 
 const suggestions = [
   '帮我画一个正弦函数和余弦函数的对比图',
-  '复现一下 Transformer 论文的核心架构并跑通测试',
+  '复现一下上传论文的核心方法并跑通最小测试',
   '对比一下 LangChain 和 LlamaIndex 的 RAG 性能',
   '分析一下这篇论文的主要创新点和局限性',
-  '帮我复现 Attention Is All You Need 论文的代码',
+  '帮我复现上传论文中的核心实验',
 ];
 
 export function ChatComposer(props: ChatComposerProps) {

@@ -1,0 +1,59 @@
+{
+  "steps": [
+    {
+      "name": "upload",
+      "id": "58eaa5fd-bc7f-4391-b9f5-565c2f5099bf",
+      "size": 2215244,
+      "document": {
+        "characters": 61239,
+        "error": "",
+        "extracted_at": "2026-10-23T05:20:52.457414555Z",
+        "extractor": "pdftotext",
+        "page_count": 15,
+        "status": "extracted"
+      }
+    },
+    {
+      "name": "document-info",
+      "pages": 15,
+      "status": "extracted",
+      "characters": 61239
+    },
+    {
+      "name": "document-page",
+      "page": 1,
+      "chars": 5180,
+      "snippet": "Provided proper attribution is provided, Google hereby grants permission to "
+    },
+    {
+      "name": "assist-translate",
+      "model": "deepseek-v4.1-flash-1017",
+      "result": "注意力就是你所需要的一切",
+      "terms": 2
+    },
+    {
+      "name": "assist-explain",
+      "model": "deepseek-v4.1-flash-1017",
+      "result": "这句话出现在论文引言末尾，是作者对 Transformer 核心优势的概括性陈述：由于模型不再依赖循环结构，而是完全依靠注意力机制建立输入和输出之间的全局依赖，因此计算可以比传统循环模型实现更高程度的并行化。它主要回答“为什么要去掉循环网络”这一问题，并为后文介绍模型架构和训练效率实验做铺垫；它不是定量结论，也不是说模"
+    },
+    {
+      "name": "translation-start",
+      "id": "job-1792732875289762209",
+      "total": 2,
+      "status": "running"
+    },
+    {
+      "name": "translation-finish",
+      "status": "completed",
+      "completed": 2,
+      "failed": 0
+    },
+    {
+      "name": "translation-page",
+      "page": 1,
+      "chars": 1324,
+      "snippet": "在提供适当署名的前提下，Google 特此授予许可，仅出于新闻或学术作品用途复制本文中的表格和图。\n\nAttention Is All You Need（注意力就是你所需要的一切）\narXiv:170"
+    }
+  ],
+  "uploadId": "58eaa5fd-bc7f-4391-b9f5-565c2f5099bf"
+}

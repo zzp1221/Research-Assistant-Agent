@@ -1,0 +1,184 @@
+{
+  "plan_id": "6d789ae3-ac0e-4e36-bd72-f084cd0f6fda",
+  "status": "failed",
+  "intent_type": "Custom_Benchmark",
+  "nodes": [
+    {
+      "name": "Audit Benchmark Dataset",
+      "type": "benchmark_dataset_audit",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "获取评测目标仓库 / Retrieve Benchmark Repository",
+      "type": "repo_discovery",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "准备评测工作区 / Prepare Benchmark Workspace",
+      "type": "repo_prepare",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "Materialize Leakage-Safe Splits",
+      "type": "benchmark_split_materialize",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "Freeze Metric And Reward Contract",
+      "type": "benchmark_contract_freeze",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "生成仓库评测适配器 / Generate Repository Benchmark Adapter",
+      "type": "benchmark_adapter_generate",
+      "status": "failed",
+      "error": "adapter code generation failed: failed to create chat completion: error, status code: 504, status: 504 Gateway Timeout, message: invalid character '<' looking for beginning of value, body: <html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx/1.18.0 (Ubuntu)</center>\r\n</body>\r\n</html>\r\n"
+    },
+    {
+      "name": "解析评测依赖 / Resolve Benchmark Dependencies",
+      "type": "resolve_dependencies",
+      "status": "blocked",
+      "error": null
+    },
+    {
+      "name": "准备评测运行环境 / Prepare Benchmark Runtime",
+      "type": "prepare_runtime",
+      "status": "blocked",
+      "error": null
+    },
+    {
+      "name": "安装评测依赖 / Install Benchmark Dependencies",
+      "type": "install_dependencies",
+      "status": "blocked",
+      "error": null
+    },
+    {
+      "name": "预检并修复评测适配器 / Preflight And Repair Benchmark Adapter",
+      "type": "benchmark_adapter_preflight",
+      "status": "blocked",
+      "error": null
+    },
+    {
+      "name": "执行自定义数据评测 / Execute Custom Dataset Benchmark",
+      "type": "benchmark_execute",
+      "status": "blocked",
+      "error": null
+    },
+    {
+      "name": "Validate Hidden Benchmark Evidence",
+      "type": "benchmark_validate",
+      "status": "blocked",
+      "error": null
+    },
+    {
+      "name": "生成可信评测报告 / Generate Trusted Benchmark Report",
+      "type": "framework_report",
+      "status": "blocked",
+      "error": null
+    }
+  ],
+  "artifacts": {
+    "benchmark_contract": {
+      "type": "json",
+      "value": "{\"version\":\"benchmark.contract/v1\",\"id\":\"benchmark-449cdc90df7bf7fd55e9\",\"dataset_sha256\":\"2df6d2344e65627ff51a64346de3cd1811246bab570c3a6767cb5ddccf5eb91f\",\"split_manifest_sha256\":\"1cce6212a70497f30ba14ad619d32a44946c35d98619ed0855173514715a9087\",\"task_type\":\"classification\",\"input_columns\":[\"review\"],\"target_column\":\"label\",\"metric\":{\"version\":\"benchmark.metric-contract/v1\",\"task_type\":\"classification\",\"primary_metric\":\"macro_f1\",\"direction\":\"maximize\",\"min_delta\":0.0001,\"metrics\":[{\"name\":\"macro_f1\",\"direction\":\"maximize\",\"minimum\":0,\"maximum\":1,\"description\":\"unweighted mean F1 over observed classes\"},{\"name\":\"accuracy\",\"direction\":\"maximize\",\"minimum\":0,\"maximum\":1,\"description\":\"fraction of exact class matches\"}],\"aggregation\":\"deterministic_full_split\",\"validation_runs\":1,\"evaluator_version\":\"benchmark.evaluator/v1\"},\"reward\":{\"version\":\"benchmark.reward-contract/v1\",\"quality_transform\":\"baseline_scaled_delta\",\"baseline_normalization\":\"max_abs_baseline_or_one\",\"duration_penalty_per_second\":0.0001,\"failure_penalty\":1,\"usage\":\"candidate_priority_only\"},\"public_evaluator_sha256\":\"5a5ed2d85cf5955b2bf6b40eea9a0109e16b5a5c92ccd32ef25b5f3ed6e3e1b5\",\"hidden_evaluator_sha256\":\"55b85dd11917553eb803d71c5228b76a3017ffe34e972e514c936a0f9c916dbb\",\"frozen_at\":\"2026-10-23T05:43:41.821152753Z\"}"
+    },
+    "benchmark_contract_report": {
+      "type": "json",
+      "value": "frozen classification benchmark: primary=macro_f1 direction=maximize reward=candidate_priority_only"
+    },
+    "benchmark_dataset_audit": {
+      "type": "text",
+      "value": "{\"version\":\"benchmark.audit/v1\",\"dataset_sha256\":\"2df6d2344e65627ff51a64346de3cd1811246bab570c3a6767cb5ddccf5eb91f\",\"task_type\":\"classification\",\"input_columns\":[\"review\"],\"target_column\":\"label\",\"confidence\":0.9,\"reasons\":[\"task type inferred from input and target column values\"],\"class_counts\":{\"negative\":12,\"positive\":12},\"missing_counts\":{},\"metadata\":{\"profile_scope\":\"first_1000_rows_max\",\"source_name\":\"reviews.csv\"},\"created_at\":\"2026-10-23T05:43:41.284008373Z\"}"
+    },
+    "benchmark_evaluator_manifest": {
+      "type": "text",
+      "value": "{\"contract_id\":\"benchmark-449cdc90df7bf7fd55e9\",\"hidden_evaluator_exposed\":false,\"hidden_evaluator_sha256\":\"55b85dd11917553eb803d71c5228b76a3017ffe34e972e514c936a0f9c916dbb\",\"public_evaluator_sha256\":\"5a5ed2d85cf5955b2bf6b40eea9a0109e16b5a5c92ccd32ef25b5f3ed6e3e1b5\",\"version\":\"benchmark.evaluator-manifest/v1\"}"
+    },
+    "benchmark_input_only_preflight_manifest": {
+      "type": "text",
+      "value": "{\"version\":\"benchmark.dataset/v1\",\"name\":\"preflight_features.jsonl\",\"format\":\"jsonl\",\"relative_path\":\".research-assistant/benchmark/dataset/preflight_features.jsonl\",\"sha256\":\"20b520ed5f2f408fa20f44bd21f8221b6e0d58d8795960cc24bc0213476be694\",\"size\":0,\"row_count\":4,\"columns\":[{\"name\":\"label\",\"inferred_type\":\"string\",\"non_null_count\":24,\"unique_count\":2},{\"name\":\"review\",\"inferred_type\":\"string\",\"non_null_count\":24,\"unique_count\":24}],\"input_column\":\"review\",\"suggested_task\":\"classification\",\"mapping_confidence\":1,\"requires_confirmation\":false}"
+    },
+    "benchmark_leakage_report": {
+      "type": "report",
+      "value": "{\"version\":\"benchmark.leakage/v1\",\"status\":\"passed\",\"exact_duplicate_groups\":0,\"conflicting_target_groups\":0,\"cross_split_input_overlaps\":0,\"cross_split_group_overlaps\":0,\"chronology_violations\":0,\"near_duplicate_pairs_checked\":144,\"near_duplicate_cross_split\":0,\"checks\":[\"normalized input fingerprints do not cross splits\",\"explicit groups do not cross splits\",\"time splits preserve chronological order when configured\",\"bounded token-Jaccard near-duplicate scan completed\"]}"
+    },
+    "benchmark_metric_contract": {
+      "type": "text",
+      "value": "{\"version\":\"benchmark.metric-contract/v1\",\"task_type\":\"classification\",\"primary_metric\":\"macro_f1\",\"direction\":\"maximize\",\"min_delta\":0.0001,\"metrics\":[{\"name\":\"macro_f1\",\"direction\":\"maximize\",\"minimum\":0,\"maximum\":1,\"description\":\"unweighted mean F1 over observed classes\"},{\"name\":\"accuracy\",\"direction\":\"maximize\",\"minimum\":0,\"maximum\":1,\"description\":\"fraction of exact class matches\"}],\"aggregation\":\"deterministic_full_split\",\"validation_runs\":1,\"evaluator_version\":\"benchmark.evaluator/v1\"}"
+    },
+    "benchmark_public_evaluator_path": {
+      "type": "text",
+      "value": ".research-assistant/benchmark/evaluators/public_evaluator.py"
+    },
+    "benchmark_public_test_manifest": {
+      "type": "text",
+      "value": "{\"version\":\"benchmark.dataset/v1\",\"name\":\"test_features.jsonl\",\"format\":\"jsonl\",\"relative_path\":\".research-assistant/benchmark/dataset/test_features.jsonl\",\"sha256\":\"9776c04bec41fec0023fddbc3e9c869b24baeb085b04bb4e60c93390cdabdd75\",\"size\":0,\"row_count\":4,\"columns\":[{\"name\":\"label\",\"inferred_type\":\"string\",\"non_null_count\":24,\"unique_count\":2},{\"name\":\"review\",\"inferred_type\":\"string\",\"non_null_count\":24,\"unique_count\":24}],\"input_column\":\"review\",\"suggested_task\":\"classification\",\"mapping_confidence\":1,\"requires_confirmation\":false}"
+    },
+    "benchmark_reward_contract": {
+      "type": "text",
+      "value": "{\"version\":\"benchmark.reward-contract/v1\",\"quality_transform\":\"baseline_scaled_delta\",\"baseline_normalization\":\"max_abs_baseline_or_one\",\"duration_penalty_per_second\":0.0001,\"failure_penalty\":1,\"usage\":\"candidate_priority_only\"}"
+    },
+    "benchmark_split_manifest": {
+      "type": "json",
+      "value": "{\"version\":\"benchmark.split/v1\",\"id\":\"split-2ee1293f1bfc3101e5a2\",\"dataset_sha256\":\"2df6d2344e65627ff51a64346de3cd1811246bab570c3a6767cb5ddccf5eb91f\",\"task_type\":\"classification\",\"method\":\"stratified_hash\",\"seed\":17,\"ratios\":{\"test\":0.15,\"train\":0.7,\"validation\":0.15},\"input_columns\":[\"review\"],\"target_column\":\"label\",\"splits\":{\"test\":{\"name\":\"test\",\"relative_path\":\".research-assistant/benchmark/dataset/test_features.jsonl\",\"sha256\":\"9776c04bec41fec0023fddbc3e9c869b24baeb085b04bb4e60c93390cdabdd75\",\"row_count\":4,\"target_public\":false,\"distribution\":{\"negative\":2,\"positive\":2}},\"train\":{\"name\":\"train\",\"relative_path\":\".research-assistant/benchmark/dataset/train.jsonl\",\"sha256\":\"163d61018fbd3cb7e3708b00010765ad2f7c149e7e0e1f985de217b7a612c8c4\",\"row_count\":16,\"target_public\":true,\"distribution\":{\"negative\":8,\"positive\":8}},\"validation\":{\"name\":\"validation\",\"relative_path\":\".research-assistant/benchmark/dataset/validation.jsonl\",\"sha256\":\"79a29e040d005620e4e60efe053eb3730517f86175ce0720fb0f653bfc5459b6\",\"row_count\":4,\"target_public\":true,\"distribution\":{\"negative\":2,\"positive\":2}}},\"preflight_features\":{\"name\":\"preflight_features\",\"relative_path\":\".research-assistant/benchmark/dataset/preflight_features.jsonl\",\"sha256\":\"20b520ed5f2f408fa20f44bd21f8221b6e0d58d8795960cc24bc0213476be694\",\"row_count\":4,\"target_public\":false},\"private_state_id\":\"split-2ee1293f1bfc3101e5a2\",\"hidden_labels_sha256\":\"03303e4cf41484511a2e06a626f65fca7280928761508f210db0ca692244ad16\",\"source_row_count\":24,\"eligible_row_count\":24,\"excluded_row_count\":0,\"materialized_at\":\"2026-10-23T05:43:41.636000244Z\"}"
+    },
+    "benchmark_test_features_path": {
+      "type": "text",
+      "value": ".research-assistant/benchmark/dataset/test_features.jsonl"
+    },
+    "benchmark_train_path": {
+      "type": "text",
+      "value": ".research-assistant/benchmark/dataset/train.jsonl"
+    },
+    "benchmark_validation_dataset_manifest": {
+      "type": "text",
+      "value": "{\"version\":\"benchmark.dataset/v1\",\"name\":\"validation.jsonl\",\"format\":\"jsonl\",\"relative_path\":\".research-assistant/benchmark/dataset/validation.jsonl\",\"sha256\":\"79a29e040d005620e4e60efe053eb3730517f86175ce0720fb0f653bfc5459b6\",\"size\":0,\"row_count\":4,\"columns\":[{\"name\":\"label\",\"inferred_type\":\"string\",\"non_null_count\":24,\"unique_count\":2},{\"name\":\"review\",\"inferred_type\":\"string\",\"non_null_count\":24,\"unique_count\":24}],\"input_column\":\"review\",\"target_column\":\"label\",\"suggested_task\":\"classification\",\"mapping_confidence\":1,\"requires_confirmation\":false}"
+    },
+    "benchmark_validation_path": {
+      "type": "text",
+      "value": ".research-assistant/benchmark/dataset/validation.jsonl"
+    },
+    "candidate_repositories": {
+      "type": "text",
+      "value": "[{\"title\":\"User-preferred repository\",\"repo_name\":\"muatik/naive-bayes-classifier\",\"description\":\"Repository explicitly requested by the user; cloneability is verified by repo_prepare.\",\"repo_urls\":[\"https://github.com/muatik/naive-bayes-classifier\"],\"source\":\"user_preference\",\"score_hint\":1000000}]"
+    },
+    "code_file_path": {
+      "type": "code",
+      "value": "/tmp/research-assistant_repo_workspace_3401533958/naiveBayesClassifier/ExceptionNotSeen.py"
+    },
+    "dataset_manifest": {
+      "type": "text",
+      "value": "{\"version\":\"benchmark.dataset/v1\",\"name\":\"reviews.csv\",\"format\":\"csv\",\"sha256\":\"2df6d2344e65627ff51a64346de3cd1811246bab570c3a6767cb5ddccf5eb91f\",\"size\":856,\"row_count\":24,\"columns\":[{\"name\":\"label\",\"inferred_type\":\"string\",\"non_null_count\":24,\"unique_count\":2},{\"name\":\"review\",\"inferred_type\":\"string\",\"non_null_count\":24,\"unique_count\":24}],\"input_column\":\"review\",\"target_column\":\"label\",\"suggested_task\":\"classification\",\"mapping_confidence\":1,\"requires_confirmation\":false,\"sample_preview\":[{\"label\":\"positive\",\"review\":\"clear explanation sample a\"},{\"label\":\"negative\",\"review\":\"missing evidence sample b\"},{\"label\":\"positive\",\"review\":\"useful comparison sample c\"}]}"
+    },
+    "generated_code": {
+      "type": "code",
+      "value": "class NotSeen(Exception):\n    \"\"\"\n    Exception for tokens which are not indexed \n    because never seen in the trainin data\n    \"\"\"\n    def __init__(self, value):\n        self.value = value\n    \n    def __str__(self):\n        return \"Token '{}' is never seen in the training set.\".format(self.value)"
+    },
+    "repo_manifest": {
+      "type": "text",
+      "value": "{\"repo_url\":\"https://github.com/muatik/naive-bayes-classifier\",\"repository_commit\":\"cdc1d8681ef6674e946cff38e87ce3b00c732fbb\",\"acquisition_method\":\"git_local_cache_clone\",\"workspace_path\":\"/tmp/research-assistant_repo_workspace_3401533958\",\"selected_code_file\":\"/tmp/research-assistant_repo_workspace_3401533958/naiveBayesClassifier/ExceptionNotSeen.py\",\"dependency_files\":[\"requirements.txt\",\"setup.py\"],\"code_file_candidates\":[\"naiveBayesClassifier/ExceptionNotSeen.py\",\"naiveBayesClassifier/__init__.py\",\"naiveBayesClassifier/classifier.py\",\"naiveBayesClassifier/tokenizer.py\",\"naiveBayesClassifier/trainedData.py\",\"naiveBayesClassifier/trainer.py\",\"setup.py\",\"examples/newsClassifier.py\"],\"clone_attempts\":[\"https://github.com/muatik/naive-bayes-classifier: immutable Git cache clone from /tmp/research-assistant_repo_workspace_1173834694\"],\"reproduction_mode\":\"smoke\",\"full_reproduction_switch\":false,\"mode_decision\":{\"requested_mode\":\"smoke\",\"effective_mode\":\"smoke\",\"full_eligible\":false,\"reasons\":[\"smoke mode explicitly requested\",\"memory_gb=15.3 \\u003c required=64.0\",\"disk_free_gb=1.5 \\u003c required=100.0\",\"cuda_gpu_count=0 \\u003c required=1\"],\"probe\":{\"cpu_count\":24,\"memory_gb\":15.3,\"disk_free_gb\":1.5,\"gpu_count\":0,\"thresholds\":{\"min_cpu_count\":16,\"min_cuda_gpu\":1,\"min_disk_free_gb\":100,\"min_memory_gb\":64}}},\"hardware_probe\":{\"cpu_count\":24,\"memory_gb\":15.3,\"disk_free_gb\":1.5,\"gpu_count\":0,\"thresholds\":{\"min_cpu_count\":16,\"min_cuda_gpu\":1,\"min_disk_free_gb\":100,\"min_memory_gb\":64}},\"uploaded_files\":[\".research-assistant/uploads/01-reviews.csv\"]}"
+    },
+    "repo_url": {
+      "type": "url",
+      "value": "https://github.com/muatik/naive-bayes-classifier"
+    },
+    "repo_validation_report": {
+      "type": "report",
+      "value": "仓库检索报告 / Repository Discovery Report\nQuery: 任务目标: 检索并定位论文对应的高可信公开仓库 / Retrieve and validate the most relevant public repository for the target paper 具体要求: 1\nSource: Papers with Code (via HuggingFace Papers API)\nCandidates: 1\nSelected repo_url: https://github.com/muatik/naive-bayes-classifier\n"
+    },
+    "reproduction_mode_report": {
+      "type": "report",
+      "value": "{\n  \"requested_mode\": \"smoke\",\n  \"effective_mode\": \"smoke\",\n  \"full_eligible\": false,\n  \"reasons\": [\n    \"smoke mode explicitly requested\",\n    \"memory_gb=15.3 \\u003c required=64.0\",\n    \"disk_free_gb=1.5 \\u003c required=100.0\",\n    \"cuda_gpu_count=0 \\u003c required=1\"\n  ],\n  \"probe\": {\n    \"cpu_count\": 24,\n    \"memory_gb\": 15.3,\n    \"disk_free_gb\": 1.5,\n    \"gpu_count\": 0,\n    \"thresholds\": {\n      \"min_cpu_count\": 16,\n      \"min_cuda_gpu\": 1,\n      \"min_disk_free_gb\": 100,\n      \"min_memory_gb\": 64\n    }\n  }\n}"
+    },
+    "workspace_path": {
+      "type": "text",
+      "value": "/tmp/research-assistant_repo_workspace_3401533958"
+    }
+  },
+  "finished_at": "2026-10-23T05:54:39.273Z"
+}

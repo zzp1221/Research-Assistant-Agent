@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"research-assistant-backend/internal/catalog"
 	"research-assistant-backend/internal/models"
 	"sort"
 	"strings"
@@ -460,11 +461,14 @@ func isTrustedRepoCandidate(query string, candidate repoCandidate) bool {
 	if strings.EqualFold(strings.TrimSpace(candidate.Source), "curated_fallback") {
 		return true
 	}
-	lowerQuery := strings.ToLower(cleanPaperTitle(query))
 	lowerText := strings.ToLower(candidateSearchText(candidate))
-	if (strings.Contains(lowerQuery, "attention is all you need") || strings.Contains(lowerQuery, "transformer")) &&
-		strings.Contains(lowerText, "harvardnlp/annotated-transformer") {
-		return true
+	for _, entry := range catalog.MatchRepositories(query) {
+		for _, repoURL := range entry.RepoURLs {
+			repoPath := strings.ToLower(strings.TrimPrefix(repoURL, "https://github.com/"))
+			if repoPath != "" && strings.Contains(lowerText, repoPath) {
+				return true
+			}
+		}
 	}
 	tokens := significantTokens(cleanPaperTitle(query))
 	if len(tokens) == 0 {
@@ -517,35 +521,31 @@ func buildGitHubFallbackQueries(title string) []string {
 	queries := []string{
 		title,
 		title + " implementation",
-		title + " transformer",
 	}
-	lower := strings.ToLower(title)
-	if strings.Contains(lower, "attention is all you need") || strings.Contains(lower, "transformer") {
-		queries = append(queries,
-			"annotated transformer",
-			"attention is all you need pytorch",
-			"transformer original paper implementation",
-		)
+	for _, entry := range catalog.MatchRepositories(title) {
+		queries = append(queries, entry.FallbackQueries...)
 	}
 	return uniqueNonEmptyStrings(queries)
 }
 
+// curatedRepoFallbackCandidates reads the curated repository catalog. It is a
+// labelled fallback used only when Papers/GitHub search produced no usable
+// repository; the discovery report states that a curated entry was selected.
 func curatedRepoFallbackCandidates(query string) []repoCandidate {
-	lower := strings.ToLower(cleanPaperTitle(query))
-	if strings.Contains(lower, "attention is all you need") || strings.Contains(lower, "transformer") {
-		return []repoCandidate{
-			{
-				Title:        "Attention Is All You Need",
-				RepoName:     "harvardnlp/annotated-transformer",
-				Description:  "Annotated implementation of the Transformer paper.",
-				RepoURLs:     []string{"https://github.com/harvardnlp/annotated-transformer"},
-				Source:       "curated_fallback",
-				ScoreHint:    180,
-				FallbackUsed: true,
-			},
-		}
+	matches := catalog.MatchRepositories(query)
+	candidates := make([]repoCandidate, 0, len(matches))
+	for _, entry := range matches {
+		candidates = append(candidates, repoCandidate{
+			Title:        entry.Title,
+			RepoName:     entry.RepoName,
+			Description:  entry.Description,
+			RepoURLs:     append([]string(nil), entry.RepoURLs...),
+			Source:       "curated_fallback",
+			ScoreHint:    entry.ScoreHint,
+			FallbackUsed: true,
+		})
 	}
-	return nil
+	return candidates
 }
 
 func githubRepoSearch(ctx context.Context, client *http.Client, queries []string, limit int) ([]repoCandidate, error) {
@@ -617,23 +617,16 @@ func githubRepoScore(query string, item githubRepoItem) int {
 	fullName := strings.ToLower(item.FullName)
 	desc := strings.ToLower(item.Description)
 
-	if strings.Contains(fullName, "annotated-transformer") && strings.Contains(lowerQuery, "attention is all you need") {
-		score += 120
-	}
-	if strings.Contains(fullName, "harvardnlp/annotated-transformer") {
-		score += 40
-	}
-	if strings.Contains(fullName, "attention-is-all-you-need") {
-		score += 30
-	}
-	if strings.Contains(fullName, "transformer") {
-		score += 10
-	}
-	if strings.Contains(desc, "annotated implementation of the transformer paper") {
-		score += 25
-	}
-	if strings.Contains(desc, "transformer paper") {
-		score += 10
+	// Curated entries carry an explicit score hint. Matching by repo name keeps
+	// the ranking generic: new papers are added to repositories.json instead of
+	// this function.
+	for _, entry := range catalog.MatchRepositories(query) {
+		for _, repoURL := range entry.RepoURLs {
+			repoPath := strings.ToLower(strings.TrimPrefix(repoURL, "https://github.com/"))
+			if repoPath != "" && strings.HasSuffix(fullName, repoPath) {
+				score += entry.ScoreHint
+			}
+		}
 	}
 
 	for _, token := range significantTokens(lowerQuery) {

@@ -148,5 +148,23 @@
   - [x] AutoResearch 8/8、hidden holdout 3/3
   - [x] 浏览器 UI 10 节点 / 10 边渲染，无控制台错误
   - [x] 报告见 `reports/phase1-provider-retest.md`
-- [ ] 二期：curated 仓库 registry + smoke recipe 数据化（移除后端硬编码论文特判）
-- [ ] 二期：组件级测试（Vitest + RTL）与 Playwright E2E
+- [x] 二期：curated 仓库 registry + smoke recipe 数据化（移除后端硬编码论文特判）
+  - [x] 新增 `backend/internal/catalog`，embed repositories/recipes/templates
+  - [x] `repo_discovery` / `repo_prepare` 改用 catalog，删除论文标题/方法硬编码
+  - [x] 删除 GitHub 回退查询中的通用 `title + transformer` 拼接
+  - [x] catalog 单测 + 论文/仓库匹配回归测试
+- [x] 二期：组件级测试（Vitest + RTL）与 Playwright E2E
+  - [x] Vitest + jsdom + Testing Library，5 个文件 / 11 个组件测试
+  - [x] Playwright 3 个 spec / 3 tests（首页、PDF、Benchmark 报告）
+  - [x] 前端 `npm test` = 21 个解析测试 + 11 个组件测试
+  - [x] 容器内 lint/build 通过
+- [x] 二期回归修复：Benchmark adapter 的 `__pycache__`/fingerprint 误判
+  - [x] `PYTHONDONTWRITEBYTECODE=1` + fingerprint 忽略 VCS/cache/bytecode
+  - [x] 新增 `TestBenchmarkRepositoryFingerprintIgnoresGeneratedMetadata`
+  - [x] adapter 仓库上下文限制为 32 KB，降低网关超时风险
+- [x] 容器内完整验收：`go test ./...`、关键包 `-race`、`go vet`、前端 test/lint/build、Playwright 3/3
+- [x] 真实 provider 重新测试：`/api/chat` → `PROVIDER_OK`；PDF 8 步；论文 10/10、21 artifacts
+- [x] Benchmark/AutoResearch 证据保留：phase 1 同 provider 13/13、8/8
+  - [x] fresh Benchmark retest 在 adapter 生成处收到网关 HTTP 504（外部）
+  - [x] fresh AutoResearch retest 修复 spec/evaluator 上传后，依赖镜像下载停滞（外部）
+  - [x] 详细记录见 `reports/phase2-provider-retest.md`

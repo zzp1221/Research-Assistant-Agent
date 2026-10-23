@@ -14,6 +14,46 @@ import (
 	"research-assistant-backend/internal/sandbox"
 )
 
+func TestBenchmarkRepositoryFingerprintIgnoresGeneratedMetadata(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "repo.py"), []byte("print('ok')"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := benchmarkRepositoryFingerprint(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(workspace, "__pycache__"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		filepath.Join("__pycache__", "repo.cpython-311.pyc"),
+		"standalone.pyc",
+		".research-assistant-repository-source.json",
+	} {
+		if err := os.WriteFile(filepath.Join(workspace, path), []byte("generated"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	after, err := benchmarkRepositoryFingerprint(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != after {
+		t.Fatal("generated Python bytecode/metadata changed the repository fingerprint")
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "repo.py"), []byte("print('changed')"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := benchmarkRepositoryFingerprint(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed == after {
+		t.Fatal("real repository content change was not detected")
+	}
+}
+
 type scriptedBenchmarkSandbox struct {
 	workspace  string
 	failFirst  bool

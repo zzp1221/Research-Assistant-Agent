@@ -1,0 +1,189 @@
+{
+  "version": "catalog/smoke-recipes/v1",
+  "recipes": [
+    {
+      "id": "apriori-frequent-itemsets",
+      "kind": "apriori_frequent_itemsets",
+      "template": "templates/apriori_itemsets.py",
+      "require_files": [
+        "apriori.py",
+        "INTEGRATED-DATASET.csv"
+      ]
+    },
+    {
+      "id": "attention-structure-ablation",
+      "kind": "attention_structure_ablation",
+      "template": "templates/attention_ablation.py",
+      "task_groups": [
+        [
+          "ablation",
+          "消融"
+        ],
+        [
+          "heads=",
+          "attention scaling",
+          "residual",
+          "注意力头",
+          "缩放",
+          "残差"
+        ]
+      ],
+      "variants": {
+        "baseline": {
+          "name": "baseline",
+          "heads": 4,
+          "use_scaling": true,
+          "use_residual": true,
+          "batch_size": 2,
+          "sequence_length": 16,
+          "seed": 20260717,
+          "category": "baseline"
+        },
+        "default_categories": [
+          "parameter",
+          "module"
+        ],
+        "categories": {
+          "parameter": [
+            {
+              "name": "heads_1",
+              "heads": 1,
+              "use_scaling": true,
+              "use_residual": true,
+              "batch_size": 2,
+              "sequence_length": 16,
+              "seed": 20260717,
+              "category": "parameter"
+            },
+            {
+              "name": "heads_2",
+              "heads": 2,
+              "use_scaling": true,
+              "use_residual": true,
+              "batch_size": 2,
+              "sequence_length": 16,
+              "seed": 20260717,
+              "category": "parameter"
+            },
+            {
+              "name": "heads_8",
+              "heads": 8,
+              "use_scaling": true,
+              "use_residual": true,
+              "batch_size": 2,
+              "sequence_length": 16,
+              "seed": 20260717,
+              "category": "parameter"
+            }
+          ],
+          "module": [
+            {
+              "name": "no_scaling",
+              "heads": 4,
+              "use_scaling": false,
+              "use_residual": true,
+              "batch_size": 2,
+              "sequence_length": 16,
+              "seed": 20260717,
+              "category": "module"
+            },
+            {
+              "name": "no_residual",
+              "heads": 4,
+              "use_scaling": true,
+              "use_residual": false,
+              "batch_size": 2,
+              "sequence_length": 16,
+              "seed": 20260717,
+              "category": "module"
+            }
+          ],
+          "data_scale": [
+            {
+              "name": "sequence_8",
+              "heads": 4,
+              "use_scaling": true,
+              "use_residual": true,
+              "batch_size": 2,
+              "sequence_length": 8,
+              "seed": 20260717,
+              "category": "data_scale"
+            },
+            {
+              "name": "sequence_32",
+              "heads": 4,
+              "use_scaling": true,
+              "use_residual": true,
+              "batch_size": 2,
+              "sequence_length": 32,
+              "seed": 20260717,
+              "category": "data_scale"
+            }
+          ],
+          "seed_stability": [
+            {
+              "name": "seed_17",
+              "heads": 4,
+              "use_scaling": true,
+              "use_residual": true,
+              "batch_size": 2,
+              "sequence_length": 16,
+              "seed": 17,
+              "category": "seed_stability"
+            },
+            {
+              "name": "seed_47",
+              "heads": 4,
+              "use_scaling": true,
+              "use_residual": true,
+              "batch_size": 2,
+              "sequence_length": 16,
+              "seed": 47,
+              "category": "seed_stability"
+            }
+          ],
+          "runtime_cost": [
+            {
+              "name": "batch_1",
+              "heads": 4,
+              "use_scaling": true,
+              "use_residual": true,
+              "batch_size": 1,
+              "sequence_length": 16,
+              "seed": 20260717,
+              "category": "runtime_cost"
+            },
+            {
+              "name": "batch_4",
+              "heads": 4,
+              "use_scaling": true,
+              "use_residual": true,
+              "batch_size": 4,
+              "sequence_length": 16,
+              "seed": 20260717,
+              "category": "runtime_cost"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "attention-repo-forward",
+      "kind": "bounded_forward_pass",
+      "template": "templates/attention_repo_forward.py",
+      "require_files": [
+        "src/architectures/machine_translation_transformer.py"
+      ]
+    },
+    {
+      "id": "transformer-generic-forward",
+      "kind": "bounded_forward_pass",
+      "template": "templates/transformer_generic_forward.py",
+      "text_groups": [
+        [
+          "attention is all you need"
+        ]
+      ]
+    }
+  ]
+}

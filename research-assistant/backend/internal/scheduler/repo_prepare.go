@@ -16,8 +16,10 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"text/template"
 	"time"
 
+	"research-assistant-backend/internal/catalog"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/workspace"
 )
@@ -307,100 +309,127 @@ func maybeCreateReproductionSmokeRunner(workspacePath string, task *models.Task)
 	if workspacePath == "" {
 		return "", "", nil
 	}
+	paperTitle := smokePaperTitle(task)
+	for _, recipe := range catalog.Recipes() {
+		if !smokeRecipeMatches(workspacePath, task, recipe) {
+			continue
+		}
+		raw, err := catalog.Template(recipe)
+		if err != nil {
+			return "", "", err
+		}
+		rendered, err := renderSmokeTemplate(recipe, raw, paperTitle, task)
+		if err != nil {
+			return "", "", err
+		}
+		runnerPath := filepath.Join(workspacePath, reproductionSmokeRunnerName)
+		if err := os.WriteFile(runnerPath, []byte(rendered), 0o644); err != nil {
+			return "", "", fmt.Errorf("create smoke runner %q: %w", recipe.ID, err)
+		}
+		return runnerPath, recipe.Kind, nil
+	}
+	return "", "", nil
+}
 
-	if _, err := os.Stat(filepath.Join(workspacePath, "apriori.py")); err == nil {
-		if _, datasetErr := os.Stat(filepath.Join(workspacePath, "INTEGRATED-DATASET.csv")); datasetErr == nil {
-			runnerPath := filepath.Join(workspacePath, reproductionSmokeRunnerName)
-			if err := os.WriteFile(runnerPath, []byte(buildAprioriSmokeRunner()), 0o644); err != nil {
-				return "", "", fmt.Errorf("create Apriori smoke runner: %w", err)
-			}
-			return runnerPath, "apriori_frequent_itemsets", nil
+// smokePaperTitle prefers the structured paper title supplied by the planner so
+// generated runners never hardcode a paper name.
+func smokePaperTitle(task *models.Task) string {
+	if title := strings.TrimSpace(taskInputValue(task, "paper_title")); title != "" {
+		return title
+	}
+	if task != nil {
+		if title := extractTitleHeuristic(task.Description); title != "" {
+			return title
 		}
 	}
-
-	transformerPath := filepath.Join(workspacePath, "src", "architectures", "machine_translation_transformer.py")
-	hasRepoTransformer := false
-	if _, err := os.Stat(transformerPath); err == nil {
-		hasRepoTransformer = true
-	}
-	if !hasRepoTransformer && !shouldCreateGenericAttentionSmokeRunner(workspacePath, task) {
-		return "", "", nil
-	}
-
-	runnerPath := filepath.Join(workspacePath, reproductionSmokeRunnerName)
-	runnerKind := "bounded_forward_pass"
-	runner := buildAttentionReproductionSmokeRunner(hasRepoTransformer)
-	if shouldCreateAttentionAblationRunner(task) {
-		runner = buildAttentionAblationSmokeRunner(task)
-		runnerKind = "attention_structure_ablation"
-	}
-	if err := os.WriteFile(runnerPath, []byte(runner), 0o644); err != nil {
-		return "", "", fmt.Errorf("create reproduction smoke runner: %w", err)
-	}
-	return runnerPath, runnerKind, nil
+	return "paper"
 }
 
-func buildAprioriSmokeRunner() string {
-	return `import json
-import subprocess
-import sys
-
-command = [
-    sys.executable,
-    "apriori.py",
-    "-f",
-    "INTEGRATED-DATASET.csv",
-    "-s",
-    "0.15",
-    "-c",
-    "0.6",
-]
-completed = subprocess.run(command, capture_output=True, text=True, timeout=120)
-if completed.stdout:
-    sys.stdout.write(completed.stdout)
-if completed.stderr:
-    sys.stderr.write(completed.stderr)
-metrics = {
-    "exit_code": completed.returncode,
-    "frequent_itemsets": completed.stdout.count("item: "),
-    "association_rules": completed.stdout.count("Rule: "),
-}
-print(json.dumps({"paper_smoke_metrics": metrics}, sort_keys=True))
-raise SystemExit(completed.returncode)
-`
-}
-
-func shouldCreateAttentionAblationRunner(task *models.Task) bool {
-	if strings.TrimSpace(taskInputValue(task, "ablation_plan")) != "" {
+func smokeRecipeMatches(workspacePath string, task *models.Task, recipe catalog.SmokeRecipe) bool {
+	for _, relative := range recipe.RequireFiles {
+		info, err := os.Stat(filepath.Join(workspacePath, filepath.FromSlash(relative)))
+		if err != nil || info.IsDir() {
+			return false
+		}
+	}
+	// A planner-provided ablation plan is an explicit request for the ablation
+	// recipe even when the task description itself is terse.
+	if recipe.Variants != nil && strings.TrimSpace(taskInputValue(task, "ablation_plan")) != "" {
 		return true
 	}
-	context := strings.ToLower(strings.Join([]string{
-		taskField(task, func(t *models.Task) string { return t.Name }),
-		taskField(task, func(t *models.Task) string { return t.Description }),
-	}, " "))
-	requestsAblation := strings.Contains(context, "ablation") || strings.Contains(context, "消融")
-	requestsAttentionVariants := strings.Contains(context, "heads=") ||
-		strings.Contains(context, "attention scaling") ||
-		strings.Contains(context, "residual") ||
-		strings.Contains(context, "注意力头") ||
-		strings.Contains(context, "缩放") ||
-		strings.Contains(context, "残差")
-	return requestsAblation && requestsAttentionVariants
+	if len(recipe.TaskGroups) > 0 && !matchesAllGroups(smokeTaskText(task), recipe.TaskGroups) {
+		return false
+	}
+	if len(recipe.TextGroups) > 0 && !matchesAllGroups(smokeWorkspaceText(workspacePath, task), recipe.TextGroups) {
+		return false
+	}
+	return true
 }
 
-type attentionAblationVariant struct {
-	Name        string `json:"name"`
-	Heads       int    `json:"heads"`
-	UseScaling  bool   `json:"use_scaling"`
-	UseResidual bool   `json:"use_residual"`
-	BatchSize   int    `json:"batch_size"`
-	SequenceLen int    `json:"sequence_length"`
-	Seed        int    `json:"seed"`
-	Category    string `json:"category"`
+func smokeTaskText(task *models.Task) string {
+	return strings.ToLower(strings.Join([]string{
+		taskField(task, func(item *models.Task) string { return item.Name }),
+		taskField(task, func(item *models.Task) string { return item.Description }),
+		taskInputValue(task, "repo_url"),
+		taskInputValue(task, "paper_title"),
+	}, "\n"))
 }
 
-func selectedAttentionAblationVariants(task *models.Task) []attentionAblationVariant {
-	variants := []attentionAblationVariant{{Name: "baseline", Heads: 4, UseScaling: true, UseResidual: true, BatchSize: 2, SequenceLen: 16, Seed: 20260717, Category: "baseline"}}
+func smokeWorkspaceText(workspacePath string, task *models.Task) string {
+	parts := []string{smokeTaskText(task)}
+	for _, name := range []string{"README.md", "readme.md", "README.rst"} {
+		raw, err := os.ReadFile(filepath.Join(workspacePath, name))
+		if err == nil {
+			parts = append(parts, string(raw))
+		}
+	}
+	return strings.ToLower(strings.Join(parts, "\n"))
+}
+
+// matchesAllGroups treats the outer slice as AND and each inner slice as OR.
+func matchesAllGroups(text string, groups [][]string) bool {
+	for _, group := range groups {
+		matched := false
+		for _, term := range group {
+			if term != "" && strings.Contains(text, strings.ToLower(term)) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	return true
+}
+
+func renderSmokeTemplate(recipe catalog.SmokeRecipe, raw, paperTitle string, task *models.Task) (string, error) {
+	titleJSON, err := json.Marshal(paperTitle)
+	if err != nil {
+		return "", fmt.Errorf("encode paper title: %w", err)
+	}
+	data := map[string]any{"PaperTitleJSON": string(titleJSON)}
+	if recipe.Variants != nil {
+		variants := selectedSmokeVariants(task, recipe.Variants)
+		encoded, err := json.Marshal(variants)
+		if err != nil {
+			return "", fmt.Errorf("encode smoke variants: %w", err)
+		}
+		data["VariantsJSON"] = string(encoded)
+	}
+	tmpl, err := template.New(recipe.ID).Option("missingkey=error").Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("parse smoke template %q: %w", recipe.ID, err)
+	}
+	var buffer strings.Builder
+	if err := tmpl.Execute(&buffer, data); err != nil {
+		return "", fmt.Errorf("render smoke template %q: %w", recipe.ID, err)
+	}
+	return buffer.String(), nil
+}
+
+func selectedSmokeVariants(task *models.Task, set *catalog.VariantSet) []catalog.Variant {
+	variants := []catalog.Variant{set.Baseline}
 	categories := map[string]bool{}
 	if raw := strings.TrimSpace(taskInputValue(task, "ablation_plan")); raw != "" {
 		var plan models.AblationPlan
@@ -411,200 +440,16 @@ func selectedAttentionAblationVariants(task *models.Task) []attentionAblationVar
 		}
 	}
 	if len(categories) == 0 {
-		categories["parameter"] = true
-		categories["module"] = true
+		for _, category := range set.DefaultCategories {
+			categories[category] = true
+		}
 	}
-	if categories["parameter"] {
-		variants = append(variants,
-			attentionAblationVariant{Name: "heads_1", Heads: 1, UseScaling: true, UseResidual: true, BatchSize: 2, SequenceLen: 16, Seed: 20260717, Category: "parameter"},
-			attentionAblationVariant{Name: "heads_2", Heads: 2, UseScaling: true, UseResidual: true, BatchSize: 2, SequenceLen: 16, Seed: 20260717, Category: "parameter"},
-			attentionAblationVariant{Name: "heads_8", Heads: 8, UseScaling: true, UseResidual: true, BatchSize: 2, SequenceLen: 16, Seed: 20260717, Category: "parameter"},
-		)
-	}
-	if categories["module"] {
-		variants = append(variants,
-			attentionAblationVariant{Name: "no_scaling", Heads: 4, UseScaling: false, UseResidual: true, BatchSize: 2, SequenceLen: 16, Seed: 20260717, Category: "module"},
-			attentionAblationVariant{Name: "no_residual", Heads: 4, UseScaling: true, UseResidual: false, BatchSize: 2, SequenceLen: 16, Seed: 20260717, Category: "module"},
-		)
-	}
-	if categories["data_scale"] {
-		variants = append(variants,
-			attentionAblationVariant{Name: "sequence_8", Heads: 4, UseScaling: true, UseResidual: true, BatchSize: 2, SequenceLen: 8, Seed: 20260717, Category: "data_scale"},
-			attentionAblationVariant{Name: "sequence_32", Heads: 4, UseScaling: true, UseResidual: true, BatchSize: 2, SequenceLen: 32, Seed: 20260717, Category: "data_scale"},
-		)
-	}
-	if categories["seed_stability"] {
-		variants = append(variants,
-			attentionAblationVariant{Name: "seed_17", Heads: 4, UseScaling: true, UseResidual: true, BatchSize: 2, SequenceLen: 16, Seed: 17, Category: "seed_stability"},
-			attentionAblationVariant{Name: "seed_47", Heads: 4, UseScaling: true, UseResidual: true, BatchSize: 2, SequenceLen: 16, Seed: 47, Category: "seed_stability"},
-		)
-	}
-	if categories["runtime_cost"] {
-		variants = append(variants,
-			attentionAblationVariant{Name: "batch_1", Heads: 4, UseScaling: true, UseResidual: true, BatchSize: 1, SequenceLen: 16, Seed: 20260717, Category: "runtime_cost"},
-			attentionAblationVariant{Name: "batch_4", Heads: 4, UseScaling: true, UseResidual: true, BatchSize: 4, SequenceLen: 16, Seed: 20260717, Category: "runtime_cost"},
-		)
+	for _, category := range []string{"parameter", "module", "data_scale", "seed_stability", "runtime_cost"} {
+		if categories[category] {
+			variants = append(variants, set.Categories[category]...)
+		}
 	}
 	return variants
-}
-
-func buildAttentionAblationSmokeRunner(task *models.Task) string {
-	variantsJSON, _ := json.Marshal(selectedAttentionAblationVariants(task))
-	template := `import json
-import math
-import statistics
-import time
-
-import torch
-import torch.nn as nn
-
-
-DMODEL = 64
-WARMUP_RUNS = 8
-TIMED_RUNS = 40
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-VARIANTS = json.loads(r'''__RESEARCH_ASSISTANT_ABLATION_VARIANTS__''')
-
-
-class AblationAttention(nn.Module):
-    def __init__(self, heads, use_scaling=True, use_residual=True):
-        super().__init__()
-        if DMODEL % heads != 0:
-            raise ValueError("d_model must be divisible by heads")
-        self.heads = heads
-        self.head_dim = DMODEL // heads
-        self.use_scaling = use_scaling
-        self.use_residual = use_residual
-        self.qkv = nn.Linear(DMODEL, DMODEL * 3, bias=False)
-        self.output = nn.Linear(DMODEL, DMODEL, bias=False)
-
-    def forward(self, x):
-        batch, length, _ = x.shape
-        qkv = self.qkv(x).reshape(batch, length, 3, self.heads, self.head_dim)
-        q, k, v = qkv.unbind(dim=2)
-        q = q.transpose(1, 2)
-        k = k.transpose(1, 2)
-        v = v.transpose(1, 2)
-        scores = torch.matmul(q, k.transpose(-2, -1))
-        if self.use_scaling:
-            scores = scores / math.sqrt(self.head_dim)
-        weights = torch.softmax(scores, dim=-1)
-        attended = torch.matmul(weights, v).transpose(1, 2).contiguous().reshape(batch, length, DMODEL)
-        output = self.output(attended)
-        if self.use_residual:
-            output = output + x
-        entropy = -(weights * weights.clamp_min(1e-12).log()).sum(dim=-1).mean()
-        return output, entropy
-
-
-def run_variant(config, shared_state):
-    torch.manual_seed(config["seed"])
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(config["seed"])
-    inputs = torch.randn(config["batch_size"], config["sequence_length"], DMODEL, device=DEVICE)
-    model = AblationAttention(config["heads"], config["use_scaling"], config["use_residual"])
-    model.load_state_dict(shared_state)
-    model.to(DEVICE)
-    model.eval()
-    with torch.no_grad():
-        for _ in range(WARMUP_RUNS):
-            model(inputs)
-        if DEVICE.type == "cuda":
-            torch.cuda.synchronize()
-        elapsed = []
-        output = None
-        entropy = None
-        for _ in range(TIMED_RUNS):
-            start = time.perf_counter()
-            output, entropy = model(inputs)
-            if DEVICE.type == "cuda":
-                torch.cuda.synchronize()
-            elapsed.append((time.perf_counter() - start) * 1000.0)
-    return {
-        **config,
-        "latency_median_ms": round(statistics.median(elapsed), 6),
-        "attention_entropy": round(float(entropy.item()), 6),
-        "output_l2": round(float(output.norm().item()), 6),
-        "parameter_count": sum(p.numel() for p in model.parameters()),
-    }
-
-
-def percent_change(value, baseline):
-    if baseline == 0:
-        return None
-    return round((value - baseline) / baseline * 100.0, 6)
-
-
-def main():
-    torch.manual_seed(20260717)
-    if DEVICE.type == "cpu":
-        torch.set_num_threads(1)
-    reference = AblationAttention(4, True, True)
-    shared_state = reference.state_dict()
-    results = [run_variant(config, shared_state) for config in VARIANTS]
-    by_name = {item["name"]: item for item in results}
-    baseline = by_name["baseline"]
-    comparisons = {}
-    for item in results:
-        if item["name"] == "baseline":
-            continue
-        comparisons[item["name"]] = {
-            "latency_median_ms": percent_change(item["latency_median_ms"], baseline["latency_median_ms"]),
-            "attention_entropy": percent_change(item["attention_entropy"], baseline["attention_entropy"]),
-            "output_l2": percent_change(item["output_l2"], baseline["output_l2"]),
-        }
-    metrics = {
-        "status": "ok",
-        "reproduction_scope": "attention_structure_ablation",
-        "paper": "Attention Is All You Need",
-        "repo_entry": "research_assistant_generated_attention_ablation",
-        "device": str(DEVICE),
-        "torch_version": torch.__version__,
-        "config": {
-            "d_model": DMODEL,
-            "warmup_runs": WARMUP_RUNS,
-            "timed_runs": TIMED_RUNS,
-        },
-        "results": results,
-        "comparisons_percent_vs_baseline": comparisons,
-        "notes": [
-            "The repository is cloned and scanned by Research Assistant Agent before this bounded harness is generated.",
-            "This is a structural smoke ablation, not WMT14 training or paper BLEU reproduction.",
-        ],
-    }
-    print(json.dumps(metrics, ensure_ascii=True, sort_keys=True))
-
-
-if __name__ == "__main__":
-    main()
-`
-	return strings.Replace(template, "__RESEARCH_ASSISTANT_ABLATION_VARIANTS__", string(variantsJSON), 1)
-}
-
-func shouldCreateGenericAttentionSmokeRunner(workspacePath string, task *models.Task) bool {
-	context := strings.ToLower(strings.Join([]string{
-		taskField(task, func(t *models.Task) string { return t.Name }),
-		taskField(task, func(t *models.Task) string { return t.Description }),
-		taskInputValue(task, "repo_url"),
-	}, " "))
-	if strings.Contains(context, "attention is all you need") || strings.Contains(context, "transformer") {
-		return true
-	}
-
-	for _, candidate := range []string{
-		filepath.Join(workspacePath, "README.md"),
-		filepath.Join(workspacePath, "readme.md"),
-	} {
-		raw, err := os.ReadFile(candidate)
-		if err != nil {
-			continue
-		}
-		text := strings.ToLower(string(raw))
-		if strings.Contains(text, "attention is all you need") || strings.Contains(text, "transformer") {
-			return true
-		}
-	}
-	return false
 }
 
 func taskField(task *models.Task, getter func(*models.Task) string) string {
@@ -612,136 +457,6 @@ func taskField(task *models.Task, getter func(*models.Task) string) string {
 		return ""
 	}
 	return getter(task)
-}
-
-func buildAttentionReproductionSmokeRunner(useRepoTransformer bool) string {
-	if useRepoTransformer {
-		return `import json
-import os
-import sys
-import time
-
-import torch
-
-sys.path.insert(0, os.path.join(os.getcwd(), "src"))
-from architectures.machine_translation_transformer import MachineTranslationTransformer
-
-
-def main():
-    torch.manual_seed(0)
-    cfg = {
-        "d_model": 64,
-        "n_blocks": 2,
-        "n_heads": 4,
-        "d_ff": 128,
-        "dropout_proba": 0.0,
-        "src_vocab_size": 96,
-        "trg_vocab_size": 96,
-        "batch_size": 2,
-        "src_seq_len": 8,
-        "trg_seq_len": 9,
-    }
-    model = MachineTranslationTransformer(
-        d_model=cfg["d_model"],
-        n_blocks=cfg["n_blocks"],
-        src_vocab_size=cfg["src_vocab_size"],
-        trg_vocab_size=cfg["trg_vocab_size"],
-        n_heads=cfg["n_heads"],
-        d_ff=cfg["d_ff"],
-        dropout_proba=cfg["dropout_proba"],
-    )
-    model.eval()
-    src = torch.randint(1, cfg["src_vocab_size"], (cfg["batch_size"], cfg["src_seq_len"]))
-    trg = torch.randint(1, cfg["trg_vocab_size"], (cfg["batch_size"], cfg["trg_seq_len"]))
-
-    start = time.perf_counter()
-    with torch.no_grad():
-        output = model(src, trg)
-    elapsed_ms = (time.perf_counter() - start) * 1000
-
-    metrics = {
-        "status": "ok",
-        "reproduction_scope": "bounded_forward_pass",
-        "paper": "Attention Is All You Need",
-        "architecture": "Transformer encoder-decoder",
-        "repo_entry": "src/architectures/machine_translation_transformer.py",
-        "model_config": cfg,
-        "output_shape": list(output.shape),
-        "parameter_count": sum(p.numel() for p in model.parameters()),
-        "forward_elapsed_ms": round(elapsed_ms, 3),
-        "output_abs_mean": round(float(output.abs().mean().item()), 6),
-        "notes": [
-            "真实导入仓库 Transformer 模型代码并在 CPU 上执行前向传播。",
-            "自动化 smoke reproduction 不默认跑完整 WMT14 训练，以避免外部登录、GPU 和长时间训练依赖。",
-        ],
-    }
-    print(json.dumps(metrics, ensure_ascii=False, sort_keys=True))
-
-
-if __name__ == "__main__":
-    main()
-`
-	}
-
-	return `import json
-import time
-
-import torch
-import torch.nn as nn
-
-
-def main():
-    torch.manual_seed(0)
-    cfg = {
-        "d_model": 64,
-        "n_blocks": 2,
-        "n_heads": 4,
-        "d_ff": 128,
-        "dropout_proba": 0.0,
-        "batch_size": 2,
-        "src_seq_len": 8,
-        "trg_seq_len": 7,
-    }
-    model = nn.Transformer(
-        d_model=cfg["d_model"],
-        nhead=cfg["n_heads"],
-        num_encoder_layers=cfg["n_blocks"],
-        num_decoder_layers=cfg["n_blocks"],
-        dim_feedforward=cfg["d_ff"],
-        dropout=cfg["dropout_proba"],
-        batch_first=True,
-    )
-    model.eval()
-    src = torch.randn(cfg["batch_size"], cfg["src_seq_len"], cfg["d_model"])
-    trg = torch.randn(cfg["batch_size"], cfg["trg_seq_len"], cfg["d_model"])
-
-    start = time.perf_counter()
-    with torch.no_grad():
-        output = model(src, trg)
-    elapsed_ms = (time.perf_counter() - start) * 1000
-
-    metrics = {
-        "status": "ok",
-        "reproduction_scope": "bounded_forward_pass",
-        "paper": "Attention Is All You Need",
-        "architecture": "Transformer encoder-decoder",
-        "repo_entry": "generic_torch_transformer_smoke",
-        "model_config": cfg,
-        "output_shape": list(output.shape),
-        "parameter_count": sum(p.numel() for p in model.parameters()),
-        "forward_elapsed_ms": round(elapsed_ms, 3),
-        "output_abs_mean": round(float(output.abs().mean().item()), 6),
-        "notes": [
-            "真实 clone 论文候选仓库；该仓库未提供可直接导入的 Python 模型源码，因此使用 PyTorch 标准 Transformer 做受控前向复现。",
-            "自动化 smoke reproduction 不默认跑完整 WMT14 训练，以避免外部登录、GPU 和长时间训练依赖。",
-        ],
-    }
-    print(json.dumps(metrics, ensure_ascii=False, sort_keys=True))
-
-
-if __name__ == "__main__":
-    main()
-`
 }
 
 func repoPrepareCandidateURLs(task *models.Task, primary string) []string {

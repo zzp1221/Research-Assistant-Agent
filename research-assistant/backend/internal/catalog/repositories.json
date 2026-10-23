@@ -1,0 +1,45 @@
+{
+  "version": "catalog/repositories/v1",
+  "entries": [
+    {
+      "id": "attention-is-all-you-need",
+      "title": "Attention Is All You Need",
+      "match_terms": [
+        "attention is all you need",
+        "annotated transformer"
+      ],
+      "repo_name": "harvardnlp/annotated-transformer",
+      "repo_urls": [
+        "https://github.com/harvardnlp/annotated-transformer"
+      ],
+      "description": "Annotated implementation of the Transformer paper.",
+      "score_hint": 180,
+      "fallback_queries": [
+        "annotated transformer",
+        "attention is all you need pytorch",
+        "transformer original paper implementation"
+      ]
+    },
+    {
+      "id": "apriori",
+      "title": "Apriori",
+      "match_terms": [
+        "apriori",
+        "association rule mining",
+        "frequent itemset"
+      ],
+      "method_terms": [
+        "apriori"
+      ],
+      "repo_name": "asaini/Apriori",
+      "repo_urls": [
+        "https://github.com/asaini/Apriori"
+      ],
+      "description": "Implementation of the Apriori algorithm for frequent itemset mining.",
+      "score_hint": 180,
+      "fallback_queries": [
+        "apriori frequent itemset implementation"
+      ]
+    }
+  ]
+}
