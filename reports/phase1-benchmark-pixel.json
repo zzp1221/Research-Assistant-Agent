@@ -1,0 +1,272 @@
+{
+  "plan_id": "edf1e41b-5a88-4766-bc9a-8016de0df785",
+  "status": "completed",
+  "intent_type": "Custom_Benchmark",
+  "nodes": [
+    {
+      "name": "Audit Benchmark Dataset",
+      "type": "benchmark_dataset_audit",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "获取评测目标仓库 / Retrieve Benchmark Repository",
+      "type": "repo_discovery",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "准备评测工作区 / Prepare Benchmark Workspace",
+      "type": "repo_prepare",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "Materialize Leakage-Safe Splits",
+      "type": "benchmark_split_materialize",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "Freeze Metric And Reward Contract",
+      "type": "benchmark_contract_freeze",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "生成仓库评测适配器 / Generate Repository Benchmark Adapter",
+      "type": "benchmark_adapter_generate",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "解析评测依赖 / Resolve Benchmark Dependencies",
+      "type": "resolve_dependencies",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "准备评测运行环境 / Prepare Benchmark Runtime",
+      "type": "prepare_runtime",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "安装评测依赖 / Install Benchmark Dependencies",
+      "type": "install_dependencies",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "预检并修复评测适配器 / Preflight And Repair Benchmark Adapter",
+      "type": "benchmark_adapter_preflight",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "执行自定义数据评测 / Execute Custom Dataset Benchmark",
+      "type": "benchmark_execute",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "Validate Hidden Benchmark Evidence",
+      "type": "benchmark_validate",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "name": "生成可信评测报告 / Generate Trusted Benchmark Report",
+      "type": "framework_report",
+      "status": "completed",
+      "error": null
+    }
+  ],
+  "artifacts": {
+    "benchmark_adapter_plan": {
+      "type": "text",
+      "value": "{\"status\":\"ready\",\"candidates\":[{\"kind\":\"native_eval\",\"entrypoint\":\"none found\",\"confidence\":0,\"evidence\":\"Repository manifest lists library modules (naiveBayesClassifier/trainer.py, classifier.py, tokenizer.py, trainedData.py), setup.py, and examples/newsClassifier.py; no evaluation script or benchmark entry point is present.\",\"risk\":\"No native benchmark runner or metric computation exists.\"},{\"kind\":\"framework_api\",\"entrypoint\":\"naiveBayesClassifier.trainer.Trainer + naiveBayesClassifier.classifier.Classifier\",\"confidence\":0.9,\"evidence\":\"README shows importing tokenizer, Trainer, and Classifier; Trainer(tokenizer).train(text, category) trains labeled text, and Classifier(trainer.data, tokenizer).classify(text) returns categories sorted by probability. setup.py declares the naiveBayesClassifier package.\",\"risk\":\"No pretrained model or held-out split; adapter must train from the labeled rows, so same-row evaluation can be optimistic.\"},{\"kind\":\"import_wrapper\",\"entrypoint\":\"generated adapter script importing naiveBayesClassifier\",\"confidence\":0.75,\"evidence\":\"The package is importable from the cloned workspace and exposes simple train/classify APIs; a wrapper can load JSONL review/label rows, cap at 24 samples, train, predict, and emit macro_f1/accuracy-compatible outputs.\",\"risk\":\"Requires generated glue for label mapping, prediction selection, and metric output; no existing evaluation harness to reuse.\"}],\"selected_index\":1,\"reason\":\"No native evaluation entry point exists. The repository directly exposes a simple library API for text classification via Trainer and Classifier, so a framework_api adapter is the lowest-risk path. The adapter should import the local package, train on the supplied labeled review rows (up to 24), predict labels, and report macro_f1/accuracy. Main risk is that no pretrained checkpoint or held-out split is provided, so training and evaluation may use the same rows unless the harness supplies a split.\"}"
+    },
+    "benchmark_adapter_report": {
+      "type": "report",
+      "value": "selected framework_api adapter at naiveBayesClassifier.trainer.Trainer + naiveBayesClassifier.classifier.Classifier with confidence 0.74"
+    },
+    "benchmark_adapter_spec": {
+      "type": "text",
+      "value": "{\"version\":\"benchmark.adapter/v1\",\"status\":\"generated\",\"strategy\":\"framework_api\",\"entrypoint\":\"naiveBayesClassifier.trainer.Trainer + naiveBayesClassifier.classifier.Classifier\",\"confidence\":0.74,\"dataset_sha256\":\"79a29e040d005620e4e60efe053eb3730517f86175ce0720fb0f653bfc5459b6\",\"input_column\":\"review\",\"target_column\":\"label\",\"metrics\":[\"macro_f1\",\"accuracy\"],\"adapter_code_sha256\":\"93542990c8d7dbc88842ed3dae2422ad60b0f810f7193b9af1fd35174a91c2e8\",\"repair_attempts\":0,\"reason\":\"The repository exposes Trainer/Classifier but no native evaluation entry point or pretrained checkpoint. The adapter imports the local package, trains from labeled review rows in the supplied dataset, or from an available labeled benchmark/upload split when the evaluation split is input-only, then predicts up to --limit rows and writes macro_f1/accuracy only when targets are present.\"}"
+    },
+    "benchmark_code_file_path": {
+      "type": "code",
+      "value": "/tmp/research-assistant_repo_workspace_1956645465/.research-assistant/benchmark/adapter.py"
+    },
+    "benchmark_contract": {
+      "type": "json",
+      "value": "{\"version\":\"benchmark.contract/v1\",\"id\":\"benchmark-b6a2ccb58710871e859e\",\"dataset_sha256\":\"2df6d2344e65627ff51a64346de3cd1811246bab570c3a6767cb5ddccf5eb91f\",\"split_manifest_sha256\":\"3cb8304ad4b9e4a15874db1438e2f92165dc176e2695b9c94af80cf819f82647\",\"task_type\":\"classification\",\"input_columns\":[\"review\"],\"target_column\":\"label\",\"metric\":{\"version\":\"benchmark.metric-contract/v1\",\"task_type\":\"classification\",\"primary_metric\":\"macro_f1\",\"direction\":\"maximize\",\"min_delta\":0.0001,\"metrics\":[{\"name\":\"macro_f1\",\"direction\":\"maximize\",\"minimum\":0,\"maximum\":1,\"description\":\"unweighted mean F1 over observed classes\"},{\"name\":\"accuracy\",\"direction\":\"maximize\",\"minimum\":0,\"maximum\":1,\"description\":\"fraction of exact class matches\"}],\"aggregation\":\"deterministic_full_split\",\"validation_runs\":1,\"evaluator_version\":\"benchmark.evaluator/v1\"},\"reward\":{\"version\":\"benchmark.reward-contract/v1\",\"quality_transform\":\"baseline_scaled_delta\",\"baseline_normalization\":\"max_abs_baseline_or_one\",\"duration_penalty_per_second\":0.0001,\"failure_penalty\":1,\"usage\":\"candidate_priority_only\"},\"public_evaluator_sha256\":\"5a5ed2d85cf5955b2bf6b40eea9a0109e16b5a5c92ccd32ef25b5f3ed6e3e1b5\",\"hidden_evaluator_sha256\":\"55b85dd11917553eb803d71c5228b76a3017ffe34e972e514c936a0f9c916dbb\",\"frozen_at\":\"2026-10-23T00:37:41.538882834Z\"}"
+    },
+    "benchmark_contract_report": {
+      "type": "json",
+      "value": "frozen classification benchmark: primary=macro_f1 direction=maximize reward=candidate_priority_only"
+    },
+    "benchmark_dataset_audit": {
+      "type": "text",
+      "value": "{\"version\":\"benchmark.audit/v1\",\"dataset_sha256\":\"2df6d2344e65627ff51a64346de3cd1811246bab570c3a6767cb5ddccf5eb91f\",\"task_type\":\"classification\",\"input_columns\":[\"review\"],\"target_column\":\"label\",\"confidence\":0.9,\"reasons\":[\"task type inferred from input and target column values\"],\"class_counts\":{\"negative\":12,\"positive\":12},\"missing_counts\":{},\"metadata\":{\"profile_scope\":\"first_1000_rows_max\",\"source_name\":\"reviews.csv\"},\"created_at\":\"2026-10-23T00:37:35.161002635Z\"}"
+    },
+    "benchmark_evaluator_manifest": {
+      "type": "text",
+      "value": "{\"contract_id\":\"benchmark-b6a2ccb58710871e859e\",\"hidden_evaluator_exposed\":false,\"hidden_evaluator_sha256\":\"55b85dd11917553eb803d71c5228b76a3017ffe34e972e514c936a0f9c916dbb\",\"public_evaluator_sha256\":\"5a5ed2d85cf5955b2bf6b40eea9a0109e16b5a5c92ccd32ef25b5f3ed6e3e1b5\",\"version\":\"benchmark.evaluator-manifest/v1\"}"
+    },
+    "benchmark_execution_report": {
+      "type": "report",
+      "value": "{\"status\":\"passed\",\"mode\":\"run\",\"attempts\":null,\"sample_count\":4,\"metrics\":{\"accuracy\":1,\"macro_f1\":1},\"predictions_path\":\".research-assistant/benchmark/run/predictions.jsonl\"}"
+    },
+    "benchmark_generated_code": {
+      "type": "code",
+      "value": "import argparse\nimport csv\nimport hashlib\nimport json\nimport os\nimport random\nimport sys\nfrom pathlib import Path\n\n\nADAPTER_NAME = 'naiveBayesClassifier_framework_api_adapter'\n\n\ndef parse_args():\n    p = argparse.ArgumentParser()\n    p.add_argument('--dataset', required=True)\n    p.add_argument('--output-dir', required=True)\n    p.add_argument('--limit', type=int, required=True)\n    p.add_argument('--repo-root', required=True)\n    p.add_argument('--seed', type=int, default=0)\n    return p.parse_args()\n\n\ndef sha256_file(path):\n    h = hashlib.sha256()\n    with open(path, 'rb') as f:\n        while True:\n            chunk = f.read(1024 * 1024)\n            if not chunk:\n                break\n            h.update(chunk)\n    return h.hexdigest()\n\n\ndef load_jsonl(path, limit):\n    rows = []\n    with open(path, 'r', encoding='utf-8') as f:\n        for line in f:\n            line = line.strip()\n            if not line:\n                continue\n            rows.append(json.loads(line))\n            if limit is not None and len(rows) >= limit:\n                break\n    return rows\n\n\ndef load_csv(path, limit):\n    rows = []\n    with open(path, 'r', encoding='utf-8', newline='') as f:\n        reader = csv.DictReader(f)\n        if not reader.fieldnames:\n            return rows\n        lower = {name.lower(): name for name in reader.fieldnames}\n        review_key = lower.get('review')\n        label_key = lower.get('label')\n        if review_key is None or label_key is None:\n            return rows\n        for item in reader:\n            review = item.get(review_key)\n            label = item.get(label_key)\n            if review is None or label is None:\n                continue\n            rows.append({'review': review, 'label': label})\n            if limit is not None and len(rows) >= limit:\n                break\n    return rows\n\n\ndef candidate_labeled_paths(dataset_path, repo_root):\n    dataset = Path(dataset_path)\n    repo = Path(repo_root)\n    names_jsonl = ['validation.jsonl', 'train.jsonl', 'test.jsonl', 'dataset.jsonl']\n    names_csv = ['01-reviews.csv', 'reviews.csv', 'validation.csv', 'train.csv']\n    candidates = []\n    for name in names_jsonl + names_csv:\n        candidates.append(dataset.parent / name)\n    bases = [repo, repo.parent, Path.cwd(), Path.cwd().parent]\n    for base in bases:\n        for name in names_jsonl:\n            candidates.append(base / '.research-assistant' / 'benchmark' / 'dataset' / name)\n        for name in names_csv:\n            candidates.append(base / '.research-assistant' / 'uploads' / name)\n    seen = set()\n    result = []\n    for c in candidates:\n        key = str(c.resolve()) if c.exists() else str(c)\n        if key in seen:\n            continue\n        seen.add(key)\n        if c.exists() and c.is_file():\n            result.append(c)\n    return result\n\n\ndef load_labeled_rows(path, limit):\n    suffix = path.suffix.lower()\n    if suffix == '.csv':\n        return load_csv(path, limit)\n    return [r for r in load_jsonl(path, limit) if 'review' in r and 'label' in r]\n\n\ndef first_prediction(classifier, text):\n    result = classifier.classify(text)\n    if result is None:\n        return None\n    if isinstance(result, dict):\n        if not result:\n            return None\n        return sorted(result.items(), key=lambda item: item[1], reverse=True)[0][0]\n    if isinstance(result, (list, tuple)):\n        if not result:\n            return None\n        first = result[0]\n        if isinstance(first, (list, tuple)):\n            return first[0]\n        return first\n    return result\n\n\ndef compute_metrics(y_true, y_pred):\n    if not y_true:\n        return {}\n    total = len(y_true)\n    correct = sum(1 for t, p in zip(y_true, y_pred) if t == p)\n    labels = sorted(set(y_true) | set(y_pred))\n    f1_values = []\n    for label in labels:\n        tp = sum(1 for t, p in zip(y_true, y_pred) if t == label and p == label)\n        fp = sum(1 for t, p in zip(y_true, y_pred) if t != label and p == label)\n        fn = sum(1 for t, p in zip(y_true, y_pred) if t == label and p != label)\n        if tp == 0:\n            f1 = 0.0\n        else:\n            precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0\n            recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0\n            if precision + recall > 0:\n                f1 = 2.0 * precision * recall / (precision + recall)\n            else:\n                f1 = 0.0\n        f1_values.append(f1)\n    macro_f1 = sum(f1_values) / len(f1_values) if f1_values else 0.0\n    return {'macro_f1': float(macro_f1), 'accuracy': float(correct / total)}\n\n\ndef write_manifest(output_dir, status, dataset_sha256, sample_count, seed):\n    manifest = {\n        'status': status,\n        'dataset_sha256': dataset_sha256,\n        'sample_count': int(sample_count),\n        'seed': int(seed),\n        'adapter': ADAPTER_NAME,\n    }\n    path = os.path.join(output_dir, 'run_manifest.json')\n    with open(path, 'w', encoding='utf-8') as f:\n        json.dump(manifest, f, ensure_ascii=False)\n        f.write(chr(10))\n\n\ndef main():\n    args = parse_args()\n    random.seed(args.seed)\n    os.makedirs(args.output_dir, exist_ok=True)\n    dataset_sha256 = sha256_file(args.dataset)\n    limit = max(0, int(args.limit))\n    rows = load_jsonl(args.dataset, limit)\n    sample_count = len(rows)\n    metrics = {}\n    status = 'ok'\n    try:\n        sys.path.insert(0, os.path.abspath(args.repo_root))\n        from naiveBayesClassifier import tokenizer\n        from naiveBayesClassifier.trainer import Trainer\n        from naiveBayesClassifier.classifier import Classifier\n\n        train_rows = [r for r in rows if 'review' in r and 'label' in r]\n        if not train_rows:\n            for candidate in candidate_labeled_paths(args.dataset, args.repo_root):\n                try:\n                    aux = load_labeled_rows(candidate, limit)\n                except Exception:\n                    aux = []\n                if aux:\n                    train_rows = aux\n                    break\n        if not train_rows:\n            raise RuntimeError('no labeled rows available to train naiveBayesClassifier')\n\n        train_tok = tokenizer.Tokenizer(stop_words=[], signs_to_remove=['?!#%&'])\n        trainer = Trainer(train_tok)\n        for item in train_rows:\n            trainer.train(str(item['review']), str(item['label']))\n        classify_tok = tokenizer.Tokenizer(stop_words=[], signs_to_remove=['?!#%&'])\n        classifier = Classifier(trainer.data, classify_tok)\n\n        predictions = []\n        y_true = []\n        y_pred = []\n        for row in rows:\n            if 'review' not in row:\n                raise RuntimeError('dataset row missing review field')\n            pred = first_prediction(classifier, str(row['review']))\n            if pred is None:\n                raise RuntimeError('classifier returned no prediction')\n            pred = str(pred)\n            out = {}\n            if '__benchmark_id' in row:\n                out['id'] = row['__benchmark_id']\n            out['prediction'] = pred\n            if 'label' in row and row['label'] is not None:\n                out['target'] = row['label']\n                y_true.append(str(row['label']))\n                y_pred.append(pred)\n            predictions.append(out)\n        if y_true:\n            metrics = compute_metrics(y_true, y_pred)\n\n        pred_path = os.path.join(args.output_dir, 'predictions.jsonl')\n        with open(pred_path, 'w', encoding='utf-8') as f:\n            for item in predictions:\n                f.write(json.dumps(item, ensure_ascii=False))\n                f.write(chr(10))\n    except Exception:\n        status = 'unsupported'\n        metrics = {}\n        with open(os.path.join(args.output_dir, 'predictions.jsonl'), 'w', encoding='utf-8') as f:\n            pass\n\n    with open(os.path.join(args.output_dir, 'metrics.json'), 'w', encoding='utf-8') as f:\n        json.dump(metrics, f, ensure_ascii=False)\n        f.write(chr(10))\n    write_manifest(args.output_dir, status, dataset_sha256, sample_count, args.seed)\n    summary = {\n        'status': status,\n        'sample_count': sample_count,\n        'metrics': metrics,\n        'dataset_sha256': dataset_sha256,\n    }\n    print(json.dumps(summary, ensure_ascii=False))\n\n\nif __name__ == '__main__':\n    main()"
+    },
+    "benchmark_hidden_predictions_path": {
+      "type": "text",
+      "value": ".research-assistant/benchmark/hidden/predictions.jsonl"
+    },
+    "benchmark_hidden_run_manifest": {
+      "type": "text",
+      "value": "{\"status\": \"ok\", \"dataset_sha256\": \"9776c04bec41fec0023fddbc3e9c869b24baeb085b04bb4e60c93390cdabdd75\", \"sample_count\": 4, \"seed\": 17, \"adapter\": \"naiveBayesClassifier_framework_api_adapter\"}\n"
+    },
+    "benchmark_input_only_preflight_manifest": {
+      "type": "text",
+      "value": "{\"version\":\"benchmark.dataset/v1\",\"name\":\"preflight_features.jsonl\",\"format\":\"jsonl\",\"relative_path\":\".research-assistant/benchmark/dataset/preflight_features.jsonl\",\"sha256\":\"20b520ed5f2f408fa20f44bd21f8221b6e0d58d8795960cc24bc0213476be694\",\"size\":0,\"row_count\":4,\"columns\":[{\"name\":\"label\",\"inferred_type\":\"string\",\"non_null_count\":24,\"unique_count\":2},{\"name\":\"review\",\"inferred_type\":\"string\",\"non_null_count\":24,\"unique_count\":24}],\"input_column\":\"review\",\"suggested_task\":\"classification\",\"mapping_confidence\":1,\"requires_confirmation\":false}"
+    },
+    "benchmark_leakage_report": {
+      "type": "report",
+      "value": "{\"version\":\"benchmark.leakage/v1\",\"status\":\"passed\",\"exact_duplicate_groups\":0,\"conflicting_target_groups\":0,\"cross_split_input_overlaps\":0,\"cross_split_group_overlaps\":0,\"chronology_violations\":0,\"near_duplicate_pairs_checked\":144,\"near_duplicate_cross_split\":0,\"checks\":[\"normalized input fingerprints do not cross splits\",\"explicit groups do not cross splits\",\"time splits preserve chronological order when configured\",\"bounded token-Jaccard near-duplicate scan completed\"]}"
+    },
+    "benchmark_metric_contract": {
+      "type": "text",
+      "value": "{\"version\":\"benchmark.metric-contract/v1\",\"task_type\":\"classification\",\"primary_metric\":\"macro_f1\",\"direction\":\"maximize\",\"min_delta\":0.0001,\"metrics\":[{\"name\":\"macro_f1\",\"direction\":\"maximize\",\"minimum\":0,\"maximum\":1,\"description\":\"unweighted mean F1 over observed classes\"},{\"name\":\"accuracy\",\"direction\":\"maximize\",\"minimum\":0,\"maximum\":1,\"description\":\"fraction of exact class matches\"}],\"aggregation\":\"deterministic_full_split\",\"validation_runs\":1,\"evaluator_version\":\"benchmark.evaluator/v1\"}"
+    },
+    "benchmark_metrics": {
+      "type": "metrics",
+      "value": "{\"accuracy\":0.5,\"macro_f1\":0.3333333333333333}"
+    },
+    "benchmark_predictions_path": {
+      "type": "text",
+      "value": ".research-assistant/benchmark/run/predictions.jsonl"
+    },
+    "benchmark_preflight_report": {
+      "type": "report",
+      "value": "{\"status\":\"passed\",\"mode\":\"preflight\",\"attempts\":[{\"attempt\":1,\"exit_code\":0,\"repaired\":false}],\"sample_count\":4,\"metrics\":{\"accuracy\":1,\"macro_f1\":1},\"predictions_path\":\".research-assistant/benchmark/preflight/predictions.jsonl\",\"reason\":\"labeled metric preflight and unlabeled inference preflight passed\"}"
+    },
+    "benchmark_public_evaluator_path": {
+      "type": "text",
+      "value": ".research-assistant/benchmark/evaluators/public_evaluator.py"
+    },
+    "benchmark_public_test_manifest": {
+      "type": "text",
+      "value": "{\"version\":\"benchmark.dataset/v1\",\"name\":\"test_features.jsonl\",\"format\":\"jsonl\",\"relative_path\":\".research-assistant/benchmark/dataset/test_features.jsonl\",\"sha256\":\"9776c04bec41fec0023fddbc3e9c869b24baeb085b04bb4e60c93390cdabdd75\",\"size\":0,\"row_count\":4,\"columns\":[{\"name\":\"label\",\"inferred_type\":\"string\",\"non_null_count\":24,\"unique_count\":2},{\"name\":\"review\",\"inferred_type\":\"string\",\"non_null_count\":24,\"unique_count\":24}],\"input_column\":\"review\",\"suggested_task\":\"classification\",\"mapping_confidence\":1,\"requires_confirmation\":false}"
+    },
+    "benchmark_reward_contract": {
+      "type": "text",
+      "value": "{\"version\":\"benchmark.reward-contract/v1\",\"quality_transform\":\"baseline_scaled_delta\",\"baseline_normalization\":\"max_abs_baseline_or_one\",\"duration_penalty_per_second\":0.0001,\"failure_penalty\":1,\"usage\":\"candidate_priority_only\"}"
+    },
+    "benchmark_run_manifest": {
+      "type": "text",
+      "value": "{\"status\": \"ok\", \"dataset_sha256\": \"79a29e040d005620e4e60efe053eb3730517f86175ce0720fb0f653bfc5459b6\", \"sample_count\": 4, \"seed\": 17, \"adapter\": \"naiveBayesClassifier_framework_api_adapter\"}\n"
+    },
+    "benchmark_run_metrics": {
+      "type": "metrics",
+      "value": "{\"accuracy\":1,\"macro_f1\":1}"
+    },
+    "benchmark_split_manifest": {
+      "type": "json",
+      "value": "{\"version\":\"benchmark.split/v1\",\"id\":\"split-2ee1293f1bfc3101e5a2\",\"dataset_sha256\":\"2df6d2344e65627ff51a64346de3cd1811246bab570c3a6767cb5ddccf5eb91f\",\"task_type\":\"classification\",\"method\":\"stratified_hash\",\"seed\":17,\"ratios\":{\"test\":0.15,\"train\":0.7,\"validation\":0.15},\"input_columns\":[\"review\"],\"target_column\":\"label\",\"splits\":{\"test\":{\"name\":\"test\",\"relative_path\":\".research-assistant/benchmark/dataset/test_features.jsonl\",\"sha256\":\"9776c04bec41fec0023fddbc3e9c869b24baeb085b04bb4e60c93390cdabdd75\",\"row_count\":4,\"target_public\":false,\"distribution\":{\"negative\":2,\"positive\":2}},\"train\":{\"name\":\"train\",\"relative_path\":\".research-assistant/benchmark/dataset/train.jsonl\",\"sha256\":\"163d61018fbd3cb7e3708b00010765ad2f7c149e7e0e1f985de217b7a612c8c4\",\"row_count\":16,\"target_public\":true,\"distribution\":{\"negative\":8,\"positive\":8}},\"validation\":{\"name\":\"validation\",\"relative_path\":\".research-assistant/benchmark/dataset/validation.jsonl\",\"sha256\":\"79a29e040d005620e4e60efe053eb3730517f86175ce0720fb0f653bfc5459b6\",\"row_count\":4,\"target_public\":true,\"distribution\":{\"negative\":2,\"positive\":2}}},\"preflight_features\":{\"name\":\"preflight_features\",\"relative_path\":\".research-assistant/benchmark/dataset/preflight_features.jsonl\",\"sha256\":\"20b520ed5f2f408fa20f44bd21f8221b6e0d58d8795960cc24bc0213476be694\",\"row_count\":4,\"target_public\":false},\"private_state_id\":\"split-2ee1293f1bfc3101e5a2\",\"hidden_labels_sha256\":\"03303e4cf41484511a2e06a626f65fca7280928761508f210db0ca692244ad16\",\"source_row_count\":24,\"eligible_row_count\":24,\"excluded_row_count\":0,\"materialized_at\":\"2026-10-23T00:37:41.363234851Z\"}"
+    },
+    "benchmark_test_features_path": {
+      "type": "text",
+      "value": ".research-assistant/benchmark/dataset/test_features.jsonl"
+    },
+    "benchmark_train_path": {
+      "type": "text",
+      "value": ".research-assistant/benchmark/dataset/train.jsonl"
+    },
+    "benchmark_validation_dataset_manifest": {
+      "type": "text",
+      "value": "{\"version\":\"benchmark.dataset/v1\",\"name\":\"validation.jsonl\",\"format\":\"jsonl\",\"relative_path\":\".research-assistant/benchmark/dataset/validation.jsonl\",\"sha256\":\"79a29e040d005620e4e60efe053eb3730517f86175ce0720fb0f653bfc5459b6\",\"size\":0,\"row_count\":4,\"columns\":[{\"name\":\"label\",\"inferred_type\":\"string\",\"non_null_count\":24,\"unique_count\":2},{\"name\":\"review\",\"inferred_type\":\"string\",\"non_null_count\":24,\"unique_count\":24}],\"input_column\":\"review\",\"target_column\":\"label\",\"suggested_task\":\"classification\",\"mapping_confidence\":1,\"requires_confirmation\":false}"
+    },
+    "benchmark_validation_path": {
+      "type": "text",
+      "value": ".research-assistant/benchmark/dataset/validation.jsonl"
+    },
+    "benchmark_validation_report": {
+      "type": "report",
+      "value": "{\"version\":\"benchmark.validation/v1\",\"status\":\"validated\",\"contract_id\":\"benchmark-b6a2ccb58710871e859e\",\"dataset_sha256\":\"2df6d2344e65627ff51a64346de3cd1811246bab570c3a6767cb5ddccf5eb91f\",\"primary_metric\":\"macro_f1\",\"direction\":\"maximize\",\"public_metrics\":{\"accuracy\":1,\"macro_f1\":1},\"hidden_metrics\":{\"accuracy\":0.5,\"macro_f1\":0.3333333333333333},\"hidden_sample_count\":4,\"target_reached\":true,\"protected_files_valid\":true,\"checks\":[\"public split and evaluator hashes matched\",\"hidden labels and evaluator hashes matched\",\"prediction IDs matched every hidden label exactly once\",\"metrics were recomputed by the backend\"],\"validated_at\":\"2026-10-23T00:45:09.885662799Z\"}"
+    },
+    "candidate_repositories": {
+      "type": "text",
+      "value": "[{\"title\":\"User-preferred repository\",\"repo_name\":\"muatik/naive-bayes-classifier\",\"description\":\"Repository explicitly requested by the user; cloneability is verified by repo_prepare.\",\"repo_urls\":[\"https://github.com/muatik/naive-bayes-classifier\"],\"source\":\"user_preference\",\"score_hint\":1000000}]"
+    },
+    "code_file_path": {
+      "type": "code",
+      "value": "/tmp/research-assistant_repo_workspace_1956645465/naiveBayesClassifier/ExceptionNotSeen.py"
+    },
+    "dataset_manifest": {
+      "type": "text",
+      "value": "{\"version\":\"benchmark.dataset/v1\",\"name\":\"reviews.csv\",\"format\":\"csv\",\"sha256\":\"2df6d2344e65627ff51a64346de3cd1811246bab570c3a6767cb5ddccf5eb91f\",\"size\":856,\"row_count\":24,\"columns\":[{\"name\":\"label\",\"inferred_type\":\"string\",\"non_null_count\":24,\"unique_count\":2},{\"name\":\"review\",\"inferred_type\":\"string\",\"non_null_count\":24,\"unique_count\":24}],\"input_column\":\"review\",\"target_column\":\"label\",\"suggested_task\":\"classification\",\"mapping_confidence\":1,\"requires_confirmation\":false,\"sample_preview\":[{\"label\":\"positive\",\"review\":\"clear explanation sample a\"},{\"label\":\"negative\",\"review\":\"missing evidence sample b\"},{\"label\":\"positive\",\"review\":\"useful comparison sample c\"}]}"
+    },
+    "dependency_install_report": {
+      "type": "report",
+      "value": "Looking in indexes: https://mirrors.aliyun.com/pypi/simple/\nCollecting naiveBayesClassifier\n  Using cached https://mirrors.aliyun.com/pypi/packages/79/95/4e1350294827e10d31de03cc1ec166c2eb69e707758447cea848d0513a8d/naiveBayesClassifier-0.1.3.tar.gz (5.2 kB)\n  Preparing metadata (setup.py): started\n  Preparing metadata (setup.py): finished with status 'done'\nRequirement already satisfied: setuptools in /usr/local/lib/python3.11/site-packages (65.5.1)\nBuilding wheels for collected packages: naiveBayesClassifier\n  Building wheel for naiveBayesClassifier (setup.py): started\n  Building wheel for naiveBayesClassifier (setup.py): finished with status 'done'\n  Created wheel for naiveBayesClassifier: filename=naiveBayesClassifier-0.1.3-py3-none-any.whl size=6279 sha256=07294b28515b412f3b4f3b7fe934f123d8383a91a6031556e1bc0deeaf22588a\n  Stored in directory: /root/.cache/pip/wheels/a7/79/6d/414dc322ba2cf89d9dd31e4a993a61d1ce148f5901ce4e9734\nSuccessfully built naiveBayesClassifier\nInstalling collected packages: naiveBayesClassifier\nSuccessfully installed naiveBayesClassifier-0.1.3"
+    },
+    "dependency_spec": {
+      "type": "dependency_spec",
+      "value": "[\"naiveBayesClassifier\",\"operator\",\"setuptools\",\"distutils\"]"
+    },
+    "evaluation_report": {
+      "type": "report",
+      "value": "# 可信评测报告：naive-bayes-classifier 评论分类 Benchmark\n\n> **报告性质**：本次为单框架、离线传统机器学习流程评测，不是多框架 A/B benchmark。结论仅适用于当前 benchmark contract、当前数据切分和本次运行，不应外推为生产模型效果或 LLM 效果。\n\n## 1. 实验目标与背景\n\n本次任务目标是使用 [`muatik/naive-bayes-classifier`](https://github.com/muatik/naive-bayes-classifier) 对上传的评论数据集进行基准评测：\n\n- 任务类型：文本分类\n- 输入列：`review`\n- 标签列：`label`\n- 主指标：`macro_f1`，方向为最大化\n- 辅助指标：`accuracy`\n- 运行约束：最多运行 24 条样本\n- 评测目的：验证该库在评论分类任务上的流程可用性，并给出初步效果评估\n\n需要特别说明：该库是传统朴素贝叶斯分类器，不涉及向量索引、检索或 LLM 生成，因此“索引构建耗时、检索延迟”等指标不适用。本次指标主要反映小样本分类流程是否跑通，以及在该切分上的分类表现。\n\n## 2. 执行过程与输入材料概述\n\n### 2.1 Benchmark Contract 与指标口径\n\n| 项目 | 内容 |\n|---|---|\n| Contract ID | `benchmark-b6a2ccb58710871e859e` |\n| 任务类型 | `classification` |\n| 输入列 / 标签列 | `review` / `label` |\n| 主指标 | `macro_f1`，maximize，min_delta=`0.0001` |\n| 辅助指标 | `accuracy` |\n| 聚合方式 | `deterministic_full_split` |\n| 验证运行次数 | `1` |\n| Evaluator 版本 | `benchmark.evaluator/v1` |\n| Contract 数据集 SHA256 | `2df6d2344e65627ff51a64346de3cd1811246bab570c3a6767cb5ddccf5eb91f` |\n\n### 2.2 适配器预检\n\n| 项目 | 结果 |\n|---|---|\n| 适配器状态 | `preflight_passed` |\n| 适配策略 | `framework_api` |\n| 入口 | `naiveBayesClassifier.trainer.Trainer + naiveBayesClassifier.classifier.Classifier` |\n| 预检置信度 | `0.74`，这是适配预检置信度，不是模型预测置信度 |\n| 修复尝试 | `0` |\n| 支持指标 | `macro_f1`, `accuracy` |\n\n适配器说明显示：该仓库提供 `Trainer/Classifier`，但没有原生评测入口或预训练 checkpoint。适配器通过导入本地包，从带标签的 `review` 数据中训练，再对最多 `--limit` 条样本进行预测；仅在存在标签时计算 `macro_f1` 和 `accuracy`。\n\n### 2.3 数据泄漏与完整性检查\n\n| 检查项 | 结果 |\n|---|---|\n| 泄漏报告状态 | `passed` |\n| 精确重复组 | `0` |\n| 冲突标签组 | `0` |\n| 跨切分输入重叠 | `0` |\n| 跨切分组重叠 | `0` |\n| 时间顺序违规 | `0` |\n| 近重复检查对 | `144` |\n| 跨切分近重复 | `0` |\n\n泄漏检查未发现跨切分重复、冲突标签或时间顺序问题，说明本次评测在数据切分层面具备基本可信度。但“无泄漏”不等于“无过拟合”，尤其在小样本场景下仍需谨慎解释。\n\n### 2.4 验证与审计结果\n\n| 项目 | 结果 |\n|---|---|\n| 验证状态 | `validated` |\n| `target_reached` | `true` |\n| 受保护文件有效 | `true` |\n| 公共切分与 evaluator 哈希 | 匹配 |\n| 隐藏标签与 evaluator 哈希 | 匹配 |\n| 预测 ID 覆盖 | 每个隐藏标签恰好一次 |\n| 指标重算 | 后端已重算 |\n\n验证流程完整，预测 ID、标签和 evaluator 哈希均通过校验。但 `target_reached=true` 仅表示该验证记录中的目标门槛被满足，不应直接解读为模型效果达标；隐藏集指标仍然偏弱。\n\n### 2.5 可追溯性风险：数据集 SHA256 不一致\n\n材料中存在一个需要确认的审计问题：\n\n- Contract、validation report、benchmark metrics 使用数据集 SHA256：`2df6d2344e65627ff51a64346de3cd1811246bab570c3a6767cb5ddccf5eb91f`\n- Adapter spec 中记录的数据集 SHA256：`79a29e040d005620e4e60efe053eb3730517f86175ce0720fb0f653bfc5459b6`\n\n两者不一致。材料未说明这是预处理前后差异、上传快照差异，还是适配器预检使用了另一份数据。若无法解释，该问题会降低复现与审计可信度，建议优先核实。\n\n### 2.6 缺失的执行信息\n\n材料未提供以下关键运行信息：\n\n- 公共切分与隐藏切分的样本总数、训练样本数、类别分布\n- 实际运行总样本数是否严格不超过 24 条\n- 训练耗时、预测延迟、端到端延迟、吞吐\n- 内存占用、依赖体积、Python/库版本\n- 随机种子、运行环境、完整执行命令\n- 每类 precision/recall/F1、混淆矩阵、预测样例\n- baseline 结果与相对提升\n\n因此，本报告只能基于已有指标做有限评估，不能补充或推断未提供的运行数据。\n\n## 3. 核心指标分析\n\n### 3.1 公共切分与隐藏切分指标对比\n\n| 切分 | 样本数 | Accuracy | Macro-F1 | 说明 |\n|---|---:|---:|---:|---|\n| 公共切分 | 未提供 | `1.000` | `1.000` | 表现完美，但样本数未知，不能代表泛化能力 |\n| 隐藏切分 | `4` | `0.500` | `0.333` | 最终用于评估的隐藏指标，样本极少 |\n\n隐藏集 `accuracy=0.5`，在 `n=4` 下等价于 2 条预测正确。`macro_f1=0.3333`，约等于 `1/3`，显著低于 accuracy，说明宏平均意义下至少有一个类别的 F1 很低，存在类别预测不均衡或某一类被系统性错分的可能。\n\n公共切分 `accuracy=1.0`、`macro_f1=1.0`，与隐藏切分 `0.5/0.333` 形成明显落差。由于公共切分样本数未提供，不能判断这是小样本波动、过拟合，还是切分分布差异。泄漏检查通过只能说明未发现跨切分重复，不能排除模型在小样本公共切分上过拟合。\n\n### 3.2 指标解读\n\n1. **主指标偏弱**：隐藏集 `macro_f1=0.3333`，对于分类任务而言偏低。若该任务存在多个类别，宏平均会放大少数类错误的影响。\n2. **accuracy 与 macro-F1 背离**：`accuracy=0.5` 但 `macro_f1=0.3333`，通常意味着模型对多数类或单一类别预测较多，少数类召回/F1 较差。具体原因需混淆矩阵和每类指标确认。\n3. **统计不确定性极高**：隐藏集仅 4 条样本，单条样本变化即可显著改变 accuracy 和 macro-F1。该结果只能作为 smoke test 信号，不能作为稳定泛化估计。\n4. **流程可信度高于效果可信度**：验证、哈希校验、预测 ID 覆盖和后端重算均通过，说明“评测流程”本身较完整；但“模型效果”的证据强度不足。\n5. **不是 A/B 对比**：本次没有第二框架、baseline 或消融结果，无法给出框架排名或相对提升。只能评价该库在当前 contract 下的单框架表现。\n\n### 3.3 缺失指标与影响\n\n| 缺失项 | 影响 |\n|---|---|\n| 训练/预测耗时、吞吐 | 无法评估工程效率与 SLA 适用性 |\n| 内存、依赖体积 | 无法评估部署成本 |\n| 每类 P/R/F1、混淆矩阵 | 无法定位 `macro_f1` 偏低的具体类别 |\n| 类别分布与切分大小 | 无法判断指标波动来源 |\n| 多次运行/交叉验证 | 无法评估稳定性与方差 |\n| Baseline 结果 | 无法判断该库是否优于多数类基线或 sklearn 基线 |\n| 数据集 SHA 不一致的解释 | 影响复现与审计可信度 |\n\n## 4. 结论与建议\n\n### 4.1 主要结论\n\n1. **流程可用性：通过。** 适配器预检通过，验证状态为 `validated`，预测 ID、标签和 evaluator 哈希校验通过，泄漏检查通过。\n2. **效果证据：不足。** 隐藏集仅 4 条，`accuracy=0.5`、`macro_f1=0.3333`，指标偏弱且统计不确定性极高。公共切分 `1.0/1.0` 不能作为泛化能力证据。\n3. **选型结论：暂不作为效果优选。** 在本轮证据下，该库更适合作为轻量文本分类 baseline 或流程 smoke test 工具，不适合直接作为生产模型选型依据。\n4. **审计风险：需核实。** Contract 与 adapter spec 的数据集 SHA256 不一致，需确认是否为预处理/快照差异，否则会影响可复现性。\n\n### 4.2 框架适用场景边界\n\n**较适合：**\n\n- 轻量文本分类原型、教学示例、离线 smoke test\n- 资源受限环境下的快速 baseline\n- 简单 bag-of-words / 词频特征分类流程验证\n- 仅需验证“训练—预测—评测”链路是否跑通的任务\n\n**不适合或需谨慎：**\n\n- 类别不均衡且重点关注 macro-F1 的任务\n- 需要复杂语义理解、上下文建模的评论分类\n- 需要概率校准、稳定生产 SLA 的场景\n- 需要与强 baseline 或深度模型进行效果竞争的选型场景\n- 仅凭 4 条隐藏样本做统计结论的场景\n\n### 4.3 建议\n\n**P0：先解决评测可信度问题**\n\n- 核实 Contract 数据集 SHA256 与 Adapter spec 数据集 SHA256 不一致的原因。\n- 明确公共/隐藏切分样本数、类别分布，以及总运行样本是否满足“最多 24 条”的约束。\n- 提供完整运行命令、环境版本和随机种子。\n\n**P1：扩大评测并补充诊断指标**\n\n- 将隐藏集从 4 条扩展到至少数百条，并进行分层切分。\n- 增加每类 precision/recall/F1、混淆矩阵和错误样例。\n- 至少运行多个随机种子或交叉验证，报告均值与方差。\n- 补充训练耗时、预测延迟、内存和依赖体积。\n\n**P1：增加 baseline 后再做选型**\n\n- 增加 Majority Class、MultinomialNB / ComplementNB、Logistic Regression 等 baseline。\n- 若目标是评论语义分类，再考虑 Transformer 类模型作为效果上界参考。\n- 只有在同数据、同切分、同指标、同运行约束下，才能做框架 A/B 对比。\n\n### 4.4 本轮评级\n\n| 维度 | 结论 |\n|---|---|\n| 流程完整性 | 通过，具备基本审计证据 |\n| 指标可信度 | 低，隐藏集仅 4 条 |\n| 模型效果 | 偏弱 / 不确定，`macro_f1=0.3333` |\n| 框架选型优先级 | 低，仅建议作为轻量 baseline |\n| 生产可用性 | 证据不足，不建议直接采用 |"
+    },
+    "generated_code": {
+      "type": "code",
+      "value": "class NotSeen(Exception):\n    \"\"\"\n    Exception for tokens which are not indexed \n    because never seen in the trainin data\n    \"\"\"\n    def __init__(self, value):\n        self.value = value\n    \n    def __str__(self):\n        return \"Token '{}' is never seen in the training set.\".format(self.value)"
+    },
+    "prepared_runtime": {
+      "type": "text",
+      "value": "dk-ee238cc21647d5b260e004c56d1f672eb4710c827ea56ea777cc549872f18e7e"
+    },
+    "repo_manifest": {
+      "type": "text",
+      "value": "{\"repo_url\":\"https://github.com/muatik/naive-bayes-classifier\",\"repository_commit\":\"cdc1d8681ef6674e946cff38e87ce3b00c732fbb\",\"acquisition_method\":\"git_shallow_clone\",\"workspace_path\":\"/tmp/research-assistant_repo_workspace_1956645465\",\"selected_code_file\":\"/tmp/research-assistant_repo_workspace_1956645465/naiveBayesClassifier/ExceptionNotSeen.py\",\"dependency_files\":[\"requirements.txt\",\"setup.py\"],\"code_file_candidates\":[\"naiveBayesClassifier/ExceptionNotSeen.py\",\"naiveBayesClassifier/__init__.py\",\"naiveBayesClassifier/classifier.py\",\"naiveBayesClassifier/tokenizer.py\",\"naiveBayesClassifier/trainedData.py\",\"naiveBayesClassifier/trainer.py\",\"setup.py\",\"examples/newsClassifier.py\"],\"clone_attempts\":[\"https://github.com/muatik/naive-bayes-classifier: git shallow clone ok\"],\"reproduction_mode\":\"smoke\",\"full_reproduction_switch\":false,\"mode_decision\":{\"requested_mode\":\"smoke\",\"effective_mode\":\"smoke\",\"full_eligible\":false,\"reasons\":[\"smoke mode explicitly requested\",\"memory_gb=15.3 \\u003c required=64.0\",\"disk_free_gb=1.5 \\u003c required=100.0\",\"cuda_gpu_count=0 \\u003c required=1\"],\"probe\":{\"cpu_count\":24,\"memory_gb\":15.3,\"disk_free_gb\":1.5,\"gpu_count\":0,\"thresholds\":{\"min_cpu_count\":16,\"min_cuda_gpu\":1,\"min_disk_free_gb\":100,\"min_memory_gb\":64}}},\"hardware_probe\":{\"cpu_count\":24,\"memory_gb\":15.3,\"disk_free_gb\":1.5,\"gpu_count\":0,\"thresholds\":{\"min_cpu_count\":16,\"min_cuda_gpu\":1,\"min_disk_free_gb\":100,\"min_memory_gb\":64}},\"uploaded_files\":[\".research-assistant/uploads/01-reviews.csv\"]}"
+    },
+    "repo_url": {
+      "type": "url",
+      "value": "https://github.com/muatik/naive-bayes-classifier"
+    },
+    "repo_validation_report": {
+      "type": "report",
+      "value": "仓库检索报告 / Repository Discovery Report\nQuery: 任务目标: 检索并定位论文对应的高可信公开仓库 / Retrieve and validate the most relevant public repository for the target paper 具体要求: 1\nSource: Papers with Code (via HuggingFace Papers API)\nCandidates: 1\nSelected repo_url: https://github.com/muatik/naive-bayes-classifier\n"
+    },
+    "reproduction_mode_report": {
+      "type": "report",
+      "value": "{\n  \"requested_mode\": \"smoke\",\n  \"effective_mode\": \"smoke\",\n  \"full_eligible\": false,\n  \"reasons\": [\n    \"smoke mode explicitly requested\",\n    \"memory_gb=15.3 \\u003c required=64.0\",\n    \"disk_free_gb=1.5 \\u003c required=100.0\",\n    \"cuda_gpu_count=0 \\u003c required=1\"\n  ],\n  \"probe\": {\n    \"cpu_count\": 24,\n    \"memory_gb\": 15.3,\n    \"disk_free_gb\": 1.5,\n    \"gpu_count\": 0,\n    \"thresholds\": {\n      \"min_cpu_count\": 16,\n      \"min_cuda_gpu\": 1,\n      \"min_disk_free_gb\": 100,\n      \"min_memory_gb\": 64\n    }\n  }\n}"
+    },
+    "runtime_session": {
+      "type": "text",
+      "value": "dk-ee238cc21647d5b260e004c56d1f672eb4710c827ea56ea777cc549872f18e7e"
+    },
+    "validated_benchmark_adapter_spec": {
+      "type": "text",
+      "value": "{\"version\":\"benchmark.adapter/v1\",\"status\":\"preflight_passed\",\"strategy\":\"framework_api\",\"entrypoint\":\"naiveBayesClassifier.trainer.Trainer + naiveBayesClassifier.classifier.Classifier\",\"confidence\":0.74,\"dataset_sha256\":\"79a29e040d005620e4e60efe053eb3730517f86175ce0720fb0f653bfc5459b6\",\"input_column\":\"review\",\"target_column\":\"label\",\"metrics\":[\"macro_f1\",\"accuracy\"],\"adapter_code_sha256\":\"93542990c8d7dbc88842ed3dae2422ad60b0f810f7193b9af1fd35174a91c2e8\",\"repair_attempts\":0,\"reason\":\"The repository exposes Trainer/Classifier but no native evaluation entry point or pretrained checkpoint. The adapter imports the local package, trains from labeled review rows in the supplied dataset, or from an available labeled benchmark/upload split when the evaluation split is input-only, then predicts up to --limit rows and writes macro_f1/accuracy only when targets are present.\"}"
+    },
+    "validated_benchmark_code_file_path": {
+      "type": "code",
+      "value": "/tmp/research-assistant_repo_workspace_1956645465/.research-assistant/benchmark/adapter.py"
+    },
+    "validated_benchmark_generated_code": {
+      "type": "code",
+      "value": "import argparse\nimport csv\nimport hashlib\nimport json\nimport os\nimport random\nimport sys\nfrom pathlib import Path\n\n\nADAPTER_NAME = 'naiveBayesClassifier_framework_api_adapter'\n\n\ndef parse_args():\n    p = argparse.ArgumentParser()\n    p.add_argument('--dataset', required=True)\n    p.add_argument('--output-dir', required=True)\n    p.add_argument('--limit', type=int, required=True)\n    p.add_argument('--repo-root', required=True)\n    p.add_argument('--seed', type=int, default=0)\n    return p.parse_args()\n\n\ndef sha256_file(path):\n    h = hashlib.sha256()\n    with open(path, 'rb') as f:\n        while True:\n            chunk = f.read(1024 * 1024)\n            if not chunk:\n                break\n            h.update(chunk)\n    return h.hexdigest()\n\n\ndef load_jsonl(path, limit):\n    rows = []\n    with open(path, 'r', encoding='utf-8') as f:\n        for line in f:\n            line = line.strip()\n            if not line:\n                continue\n            rows.append(json.loads(line))\n            if limit is not None and len(rows) >= limit:\n                break\n    return rows\n\n\ndef load_csv(path, limit):\n    rows = []\n    with open(path, 'r', encoding='utf-8', newline='') as f:\n        reader = csv.DictReader(f)\n        if not reader.fieldnames:\n            return rows\n        lower = {name.lower(): name for name in reader.fieldnames}\n        review_key = lower.get('review')\n        label_key = lower.get('label')\n        if review_key is None or label_key is None:\n            return rows\n        for item in reader:\n            review = item.get(review_key)\n            label = item.get(label_key)\n            if review is None or label is None:\n                continue\n            rows.append({'review': review, 'label': label})\n            if limit is not None and len(rows) >= limit:\n                break\n    return rows\n\n\ndef candidate_labeled_paths(dataset_path, repo_root):\n    dataset = Path(dataset_path)\n    repo = Path(repo_root)\n    names_jsonl = ['validation.jsonl', 'train.jsonl', 'test.jsonl', 'dataset.jsonl']\n    names_csv = ['01-reviews.csv', 'reviews.csv', 'validation.csv', 'train.csv']\n    candidates = []\n    for name in names_jsonl + names_csv:\n        candidates.append(dataset.parent / name)\n    bases = [repo, repo.parent, Path.cwd(), Path.cwd().parent]\n    for base in bases:\n        for name in names_jsonl:\n            candidates.append(base / '.research-assistant' / 'benchmark' / 'dataset' / name)\n        for name in names_csv:\n            candidates.append(base / '.research-assistant' / 'uploads' / name)\n    seen = set()\n    result = []\n    for c in candidates:\n        key = str(c.resolve()) if c.exists() else str(c)\n        if key in seen:\n            continue\n        seen.add(key)\n        if c.exists() and c.is_file():\n            result.append(c)\n    return result\n\n\ndef load_labeled_rows(path, limit):\n    suffix = path.suffix.lower()\n    if suffix == '.csv':\n        return load_csv(path, limit)\n    return [r for r in load_jsonl(path, limit) if 'review' in r and 'label' in r]\n\n\ndef first_prediction(classifier, text):\n    result = classifier.classify(text)\n    if result is None:\n        return None\n    if isinstance(result, dict):\n        if not result:\n            return None\n        return sorted(result.items(), key=lambda item: item[1], reverse=True)[0][0]\n    if isinstance(result, (list, tuple)):\n        if not result:\n            return None\n        first = result[0]\n        if isinstance(first, (list, tuple)):\n            return first[0]\n        return first\n    return result\n\n\ndef compute_metrics(y_true, y_pred):\n    if not y_true:\n        return {}\n    total = len(y_true)\n    correct = sum(1 for t, p in zip(y_true, y_pred) if t == p)\n    labels = sorted(set(y_true) | set(y_pred))\n    f1_values = []\n    for label in labels:\n        tp = sum(1 for t, p in zip(y_true, y_pred) if t == label and p == label)\n        fp = sum(1 for t, p in zip(y_true, y_pred) if t != label and p == label)\n        fn = sum(1 for t, p in zip(y_true, y_pred) if t == label and p != label)\n        if tp == 0:\n            f1 = 0.0\n        else:\n            precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0\n            recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0\n            if precision + recall > 0:\n                f1 = 2.0 * precision * recall / (precision + recall)\n            else:\n                f1 = 0.0\n        f1_values.append(f1)\n    macro_f1 = sum(f1_values) / len(f1_values) if f1_values else 0.0\n    return {'macro_f1': float(macro_f1), 'accuracy': float(correct / total)}\n\n\ndef write_manifest(output_dir, status, dataset_sha256, sample_count, seed):\n    manifest = {\n        'status': status,\n        'dataset_sha256': dataset_sha256,\n        'sample_count': int(sample_count),\n        'seed': int(seed),\n        'adapter': ADAPTER_NAME,\n    }\n    path = os.path.join(output_dir, 'run_manifest.json')\n    with open(path, 'w', encoding='utf-8') as f:\n        json.dump(manifest, f, ensure_ascii=False)\n        f.write(chr(10))\n\n\ndef main():\n    args = parse_args()\n    random.seed(args.seed)\n    os.makedirs(args.output_dir, exist_ok=True)\n    dataset_sha256 = sha256_file(args.dataset)\n    limit = max(0, int(args.limit))\n    rows = load_jsonl(args.dataset, limit)\n    sample_count = len(rows)\n    metrics = {}\n    status = 'ok'\n    try:\n        sys.path.insert(0, os.path.abspath(args.repo_root))\n        from naiveBayesClassifier import tokenizer\n        from naiveBayesClassifier.trainer import Trainer\n        from naiveBayesClassifier.classifier import Classifier\n\n        train_rows = [r for r in rows if 'review' in r and 'label' in r]\n        if not train_rows:\n            for candidate in candidate_labeled_paths(args.dataset, args.repo_root):\n                try:\n                    aux = load_labeled_rows(candidate, limit)\n                except Exception:\n                    aux = []\n                if aux:\n                    train_rows = aux\n                    break\n        if not train_rows:\n            raise RuntimeError('no labeled rows available to train naiveBayesClassifier')\n\n        train_tok = tokenizer.Tokenizer(stop_words=[], signs_to_remove=['?!#%&'])\n        trainer = Trainer(train_tok)\n        for item in train_rows:\n            trainer.train(str(item['review']), str(item['label']))\n        classify_tok = tokenizer.Tokenizer(stop_words=[], signs_to_remove=['?!#%&'])\n        classifier = Classifier(trainer.data, classify_tok)\n\n        predictions = []\n        y_true = []\n        y_pred = []\n        for row in rows:\n            if 'review' not in row:\n                raise RuntimeError('dataset row missing review field')\n            pred = first_prediction(classifier, str(row['review']))\n            if pred is None:\n                raise RuntimeError('classifier returned no prediction')\n            pred = str(pred)\n            out = {}\n            if '__benchmark_id' in row:\n                out['id'] = row['__benchmark_id']\n            out['prediction'] = pred\n            if 'label' in row and row['label'] is not None:\n                out['target'] = row['label']\n                y_true.append(str(row['label']))\n                y_pred.append(pred)\n            predictions.append(out)\n        if y_true:\n            metrics = compute_metrics(y_true, y_pred)\n\n        pred_path = os.path.join(args.output_dir, 'predictions.jsonl')\n        with open(pred_path, 'w', encoding='utf-8') as f:\n            for item in predictions:\n                f.write(json.dumps(item, ensure_ascii=False))\n                f.write(chr(10))\n    except Exception:\n        status = 'unsupported'\n        metrics = {}\n        with open(os.path.join(args.output_dir, 'predictions.jsonl'), 'w', encoding='utf-8') as f:\n            pass\n\n    with open(os.path.join(args.output_dir, 'metrics.json'), 'w', encoding='utf-8') as f:\n        json.dump(metrics, f, ensure_ascii=False)\n        f.write(chr(10))\n    write_manifest(args.output_dir, status, dataset_sha256, sample_count, args.seed)\n    summary = {\n        'status': status,\n        'sample_count': sample_count,\n        'metrics': metrics,\n        'dataset_sha256': dataset_sha256,\n    }\n    print(json.dumps(summary, ensure_ascii=False))\n\n\nif __name__ == '__main__':\n    main()"
+    },
+    "workspace_path": {
+      "type": "text",
+      "value": "/tmp/research-assistant_repo_workspace_1956645465"
+    }
+  },
+  "finished_at": "2026-10-23T00:46:03.183Z"
+}

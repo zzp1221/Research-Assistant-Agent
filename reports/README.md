@@ -49,6 +49,13 @@ run (`HTTP 402 Insufficient Balance`). Completed evidence above was captured
 before that point; failed pages are reported as `failed`/`partial` instead of
 being shown as translated.
 
+## Provider retest (2026-10-23)
+
+The suite was re-run with `https://api.ai-pixel.online/v1` and
+`deepseek-v4.1-flash-1017`; see [phase1-provider-retest.md](phase1-provider-retest.md).
+All phase 1 flows passed again: PDF extract/assist/translation, Apriori 10/10,
+benchmark 13/13, AutoResearch 8/8 hidden holdout 3/3, backend and frontend tests.
+
 ## Notes
 
 The initial Attention Is All You Need smoke attempt was canceled after it began

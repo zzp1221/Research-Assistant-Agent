@@ -2,7 +2,8 @@ import fs from 'node:fs';
 
 const BASE = process.env.E2E_BASE || 'http://backend:8080';
 const TOKEN = process.env.E2E_TOKEN || '';
-const USER = 'phase1-e2e';
+const USER = process.env.E2E_USER || 'phase1-e2e';
+const SESSION = process.env.E2E_SESSION || 'phase1-session';
 const PLAN_ID = process.env.E2E_PLAN_ID;
 const OUT = process.env.E2E_OUT || '/reports/phase1-paper-plan.json';
 const TIMEOUT_MS = Number(process.env.E2E_TIMEOUT_MS || 2400000);
@@ -10,7 +11,7 @@ const TIMEOUT_MS = Number(process.env.E2E_TIMEOUT_MS || 2400000);
 const headers = {
   ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}),
   'X-User-Id': USER,
-  'X-Session-Id': 'phase1-session',
+  'X-Session-Id': SESSION,
 };
 
 async function getPlan() {

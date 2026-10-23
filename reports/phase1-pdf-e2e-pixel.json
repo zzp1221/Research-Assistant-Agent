@@ -1,0 +1,59 @@
+{
+  "steps": [
+    {
+      "name": "upload",
+      "id": "6a074849-1b52-4986-8257-ddd29700b054",
+      "size": 2215244,
+      "document": {
+        "characters": 61239,
+        "error": "",
+        "extracted_at": "2026-10-23T00:21:40.186685507Z",
+        "extractor": "pdftotext",
+        "page_count": 15,
+        "status": "extracted"
+      }
+    },
+    {
+      "name": "document-info",
+      "pages": 15,
+      "status": "extracted",
+      "characters": 61239
+    },
+    {
+      "name": "document-page",
+      "page": 1,
+      "chars": 5180,
+      "snippet": "Provided proper attribution is provided, Google hereby grants permission to "
+    },
+    {
+      "name": "assist-translate",
+      "model": "deepseek-v4.1-flash-1017",
+      "result": "注意力就是你所需要的一切",
+      "terms": 1
+    },
+    {
+      "name": "assist-explain",
+      "model": "deepseek-v4.1-flash-1017",
+      "result": "这句话位于引言末尾，是作者对 Transformer 核心优势的概括：由于模型摒弃了循环结构、完全依赖注意力机制，它比传统循环神经网络模型允许显著更多的并行化。它在论文中的作用是承上启下：前文指出循环模型按位置顺序计算、难以在训练样本内部并行，后文将展开模型架构；同时它支撑摘要中“更可并行、训练时间显著更少”的主张。作"
+    },
+    {
+      "name": "translation-start",
+      "id": "job-1792714912321189624",
+      "total": 2,
+      "status": "running"
+    },
+    {
+      "name": "translation-finish",
+      "status": "completed",
+      "completed": 2,
+      "failed": 0
+    },
+    {
+      "name": "translation-page",
+      "page": 1,
+      "chars": 1337,
+      "snippet": "在提供适当署名的情况下，Google 特此授予许可，仅可将本论文中的表格和图片复制用于新闻或学术作品。\n\n注意力就是你所需要的一切\narXiv:1706.03762v7 [cs.CL] 2023年8月"
+    }
+  ],
+  "uploadId": "6a074849-1b52-4986-8257-ddd29700b054"
+}
