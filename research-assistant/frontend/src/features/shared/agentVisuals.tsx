@@ -1,13 +1,13 @@
-import { Bot, Code, Database, FileText, Gauge, TerminalSquare, Wrench } from 'lucide-react';
+import { Bot, Code2, Database, FileText, FlaskConical, Gauge, TerminalSquare } from 'lucide-react';
 
 const agentLabels: Record<string, string> = {
-  librarian_agent: 'Librarian',
-  coder_agent: 'Coder',
-  sandbox_agent: 'Sandbox Runner',
-  data_agent: 'Data',
-	benchmark_agent: 'Benchmark',
-  research_coding_agent: 'Research Coding',
-  general_agent: 'General',
+  librarian_agent: '文献智能体',
+  coder_agent: '代码智能体',
+  sandbox_agent: '沙箱执行器',
+  data_agent: '数据智能体',
+  benchmark_agent: '评测智能体',
+  research_coding_agent: '科研 Coding 智能体',
+  general_agent: '通用智能体',
 };
 
 export const getAgentLabel = (agentName: string) => agentLabels[agentName] ?? agentName;
@@ -15,41 +15,42 @@ export const getAgentLabel = (agentName: string) => agentLabels[agentName] ?? ag
 export const getAgentIcon = (agentName: string) => {
   switch (agentName) {
     case 'librarian_agent':
-      return <FileText className="w-5 h-5 text-blue-500" />;
+      return <FileText className="h-4 w-4 text-accent" />;
     case 'coder_agent':
-      return <Code className="w-5 h-5 text-purple-500" />;
+      return <Code2 className="h-4 w-4 text-accent" />;
     case 'sandbox_agent':
-      return <TerminalSquare className="w-5 h-5 text-orange-500" />;
+      return <TerminalSquare className="h-4 w-4 text-accent" />;
     case 'data_agent':
-      return <Database className="w-5 h-5 text-green-500" />;
-		case 'benchmark_agent':
-			return <Gauge className="w-5 h-5 text-rose-600" />;
+      return <Database className="h-4 w-4 text-accent" />;
+    case 'benchmark_agent':
+      return <Gauge className="h-4 w-4 text-accent" />;
     case 'research_coding_agent':
-      return <Wrench className="w-5 h-5 text-teal-600" />;
+      return <FlaskConical className="h-4 w-4 text-accent" />;
     default:
-      return <Bot className="w-5 h-5 text-gray-500" />;
+      return <Bot className="h-4 w-4 text-muted" />;
   }
 };
+
+const neutral = { borderColor: '#e2dcce', backgroundColor: '#fffdf8', borderLeftColor: '#c9c2b1' };
 
 export const getTaskStyleByStatus = (status?: string) => {
   switch (status) {
     case 'ready':
-      return { borderColor: '#3b82f6', backgroundColor: '#eff6ff' };
+      return { ...neutral, borderLeftColor: '#3e5c76' };
     case 'in_progress':
-      return { borderColor: '#f59e0b', backgroundColor: '#fffbeb' };
+      return { ...neutral, borderLeftColor: '#8a5a12' };
     case 'completed':
-      return { borderColor: '#22c55e', backgroundColor: '#f0fdf4' };
+      return { ...neutral, borderLeftColor: '#2f6b4f' };
     case 'failed':
-      return { borderColor: '#ef4444', backgroundColor: '#fef2f2' };
+      return { ...neutral, borderLeftColor: '#a5483a' };
     case 'blocked':
-      return { borderColor: '#6b7280', backgroundColor: '#f3f4f6' };
+      return { ...neutral, borderLeftColor: '#6e685d' };
     case 'canceled':
-      return { borderColor: '#94a3b8', backgroundColor: '#f8fafc' };
     case 'skipped':
-      return { borderColor: '#94a3b8', backgroundColor: '#f8fafc' };
+      return { ...neutral, borderLeftColor: '#989184' };
     case 'awaiting_approval':
-      return { borderColor: '#8b5cf6', backgroundColor: '#f5f3ff' };
+      return { ...neutral, borderLeftColor: '#6b5a7a' };
     default:
-      return { borderColor: '#e5e7eb', backgroundColor: '#ffffff' };
+      return neutral;
   }
 };

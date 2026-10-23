@@ -15,11 +15,11 @@ interface GraphPanelProps {
   graphTitle: string;
   graphHint: string;
   isExecuting: boolean;
-	requiresApproval: boolean;
+  requiresApproval: boolean;
   onRunAll: () => void;
-	onApproveAndRun: () => void;
-	onCancel: () => void;
-	onRetryFailed: () => void;
+  onApproveAndRun: () => void;
+  onCancel: () => void;
+  onRetryFailed: () => void;
 }
 
 const intentLabels: Record<string, string> = {
@@ -46,15 +46,15 @@ export function GraphPanel(props: GraphPanelProps) {
     graphTitle,
     graphHint,
     isExecuting,
-	requiresApproval,
+    requiresApproval,
     onRunAll,
-	onApproveAndRun,
-	onCancel,
-	onRetryFailed,
+    onApproveAndRun,
+    onCancel,
+    onRetryFailed,
   } = props;
   const completedCount = nodes.filter((node) => node.data.status === 'completed').length;
   const runningCount = nodes.filter((node) => node.data.status === 'in_progress').length;
-	const failedCount = nodes.filter((node) => node.data.status === 'failed').length;
+  const failedCount = nodes.filter((node) => node.data.status === 'failed').length;
   const pendingCount = nodes.filter((node) => node.data.task && !terminalNodeStatuses.has(String(node.data.status))).length;
   const intentLabel = intentContext ? intentLabels[intentContext.intent_type] ?? intentContext.intent_type : null;
   const subtitle = intentContext?.raw_intent || graphHint;
@@ -64,85 +64,107 @@ export function GraphPanel(props: GraphPanelProps) {
     : 4;
 
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col bg-slate-50">
-      <div className="shrink-0 border-b border-slate-200 bg-white px-5 py-4">
+    <div className="flex h-full min-w-0 flex-1 flex-col bg-paper">
+      <header className="shrink-0 border-b border-line bg-surface px-5 py-3">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-              <GitBranch className="h-4 w-4 text-blue-600" />
-              {graphTitle}
-            </h2>
-            <p className="mt-1.5 max-w-3xl truncate text-xs text-slate-500" title={subtitle}>
+            <div className="flex min-w-0 items-center gap-2">
+              <GitBranch className="h-4 w-4 shrink-0 text-accent" />
+              <h2 className="truncate text-[14px] font-semibold tracking-[-0.01em] text-ink">{graphTitle}</h2>
+              {intentLabel && (
+                <span className="shrink-0 rounded-[3px] border border-line bg-surface-muted px-1.5 py-0.5 text-[10.5px] font-medium text-ink-soft">
+                  {intentLabel}
+                </span>
+              )}
+            </div>
+            <p className="mt-1 max-w-3xl truncate text-[11.5px] leading-4 text-muted" title={subtitle}>
               {subtitle}
             </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-              {intentLabel && <span className="rounded-md bg-blue-50 px-2 py-1 font-medium text-blue-700">{intentLabel}</span>}
-              <span className="rounded-md bg-slate-100 px-2 py-1 text-slate-600">{nodes.length} 个步骤</span>
-              {experimentSearchTask && <span className="rounded-md bg-violet-50 px-2 py-1 font-medium text-violet-700">ToT 设计与环境异步</span>}
-              {experimentSearchTask && <span className="rounded-md bg-cyan-50 px-2 py-1 font-medium text-cyan-800">Search Agent x{experimentParallelism}</span>}
-              <span className="flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-emerald-700">
-                <CheckCircle2 className="h-3.5 w-3.5" />
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
+              <span className="tabular-nums">{nodes.length} 个步骤</span>
+              <span className="h-2.5 w-px bg-line" />
+              <span className="inline-flex items-center gap-1 text-ok">
+                <CheckCircle2 className="h-3 w-3" />
                 {completedCount}/{nodes.length} 完成
               </span>
               {runningCount > 0 && (
-                <span className="flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-amber-700">
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                <span className="inline-flex items-center gap-1 text-warn">
+                  <LoaderCircle className="h-3 w-3 animate-spin" />
                   {runningCount} 运行中
                 </span>
               )}
-			  {failedCount > 0 && <span className="rounded-md bg-rose-50 px-2 py-1 font-medium text-rose-700">{failedCount} 失败</span>}
+              {failedCount > 0 && <span className="inline-flex items-center gap-1 font-medium text-flag">{failedCount} 失败</span>}
+              {experimentSearchTask && (
+                <>
+                  <span className="h-2.5 w-px bg-line" />
+                  <span className="inline-flex items-center gap-1 rounded-[3px] bg-plum-soft px-1.5 py-0.5 font-medium text-plum">
+                    ToT 设计与环境异步
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-[3px] bg-accent-soft px-1.5 py-0.5 font-medium text-accent-ink">
+                    Search Agent ×{experimentParallelism}
+                  </span>
+                </>
+              )}
             </div>
           </div>
-		  <div className="flex shrink-0 items-center gap-2">
-			{isExecuting ? (
-			  <button
-				type="button"
-				onClick={onCancel}
-				title="取消计划"
-				className="flex items-center gap-2 rounded-md border border-rose-200 bg-white px-3.5 py-2 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-50"
-			  >
-				<Square className="h-3.5 w-3.5 fill-current" />
-				取消
-			  </button>
-			) : requiresApproval ? (
-			  <button
-				type="button"
-				onClick={onApproveAndRun}
-				className="flex items-center gap-2 rounded-md bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700"
-			  >
-				<ShieldCheck className="h-4 w-4" />
-				审批并运行
-			  </button>
-			) : failedCount > 0 ? (
-			  <button
-				type="button"
-				onClick={onRetryFailed}
-				className="flex items-center gap-2 rounded-md bg-amber-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-700"
-			  >
-				<RotateCcw className="h-4 w-4" />
-				重试失败节点
-			  </button>
-			) : (
-			  <button
-				type="button"
-				onClick={onRunAll}
-				disabled={pendingCount === 0}
-				className="flex items-center gap-2 rounded-md bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-			  >
-				<Play className="h-4 w-4 fill-current" />
-				{runAllText}
-			  </button>
-			)}
-		  </div>
+
+          <div className="flex shrink-0 items-center gap-2 pt-0.5">
+            {isExecuting ? (
+              <button
+                type="button"
+                onClick={onCancel}
+                title="取消计划"
+                className="inline-flex h-8 items-center gap-1.5 rounded-[5px] border border-flag/30 bg-surface px-3 text-[12.5px] font-semibold text-flag transition-colors hover:bg-flag-soft active:scale-[0.98]"
+              >
+                <Square className="h-3 w-3 fill-current" />
+                取消
+              </button>
+            ) : requiresApproval ? (
+              <button
+                type="button"
+                onClick={onApproveAndRun}
+                className="inline-flex h-8 items-center gap-1.5 rounded-[5px] bg-accent px-3 text-[12.5px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-strong active:scale-[0.98]"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                审批并运行
+              </button>
+            ) : failedCount > 0 ? (
+              <button
+                type="button"
+                onClick={onRetryFailed}
+                className="inline-flex h-8 items-center gap-1.5 rounded-[5px] border border-warn/30 bg-surface px-3 text-[12.5px] font-semibold text-warn transition-colors hover:bg-warn-soft active:scale-[0.98]"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                重试失败节点
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onRunAll}
+                disabled={pendingCount === 0}
+                className="inline-flex h-8 items-center gap-1.5 rounded-[5px] bg-accent px-3 text-[12.5px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-strong active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-line disabled:text-faint disabled:shadow-none"
+              >
+                <Play className="h-3.5 w-3.5 fill-current" />
+                {runAllText}
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      </header>
 
       <div className="relative min-h-0 flex-1">
         {nodes.length === 0 && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-8">
-            <div className="max-w-sm rounded-xl border border-dashed border-slate-300 bg-white/90 p-6 text-center shadow-sm">
-              <p className="text-sm font-semibold text-slate-700">还没有执行图</p>
-              <p className="mt-2 text-xs leading-5 text-slate-500">
+            <div className="max-w-sm text-center">
+              <div className="mx-auto mb-6 flex items-center justify-center" aria-hidden="true">
+                <span className="h-10 w-16 rounded-[4px] border border-line bg-surface shadow-[var(--shadow-card)]" />
+                <span className="mx-2 w-7 border-t border-dashed border-line-strong" />
+                <span className="h-10 w-16 rounded-[4px] border border-accent/35 bg-accent-soft shadow-[var(--shadow-card)]" />
+                <span className="mx-2 w-7 border-t border-dashed border-line-strong" />
+                <span className="h-10 w-16 rounded-[4px] border border-line bg-surface shadow-[var(--shadow-card)]" />
+              </div>
+              <p className="font-serif text-[17px] font-semibold tracking-[-0.01em] text-ink">还没有执行图</p>
+              <p className="mx-auto mt-2 max-w-[17rem] text-[12px] leading-6 text-muted">
                 在左侧描述你的研究目标，系统会生成可执行的 DAG，并在右侧展示节点与实时状态。
               </p>
             </div>
@@ -157,10 +179,11 @@ export function GraphPanel(props: GraphPanelProps) {
           nodesConnectable={false}
           nodesDraggable={false}
           fitView
-          fitViewOptions={{ padding: 0.16, maxZoom: 1.08 }}
-          className="bg-slate-50"
+          fitViewOptions={{ padding: 0.16, minZoom: 0.72, maxZoom: 1.02 }}
+          minZoom={0.2}
+          className="bg-paper"
         >
-          <Background color="#cbd5e1" gap={20} size={1} />
+          <Background color="#d8d1c0" gap={22} size={1.2} />
           <Controls showInteractive={false} />
         </ReactFlow>
       </div>

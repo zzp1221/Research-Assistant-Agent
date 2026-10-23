@@ -74,24 +74,24 @@ export function PdfPanel(props: PdfPanelProps) {
   }, [documentInfo?.document.error, documentStatus]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-100 px-4 py-2 text-xs text-gray-500">
-        <span className="flex items-center gap-1 font-medium">
-          <FileUp className="h-3 w-3" />
-          PDF 阅读器
-          {pageCount > 0 && <span className="rounded bg-white px-1.5 py-0.5 text-[10px] text-slate-500">共 {pageCount} 页</span>}
-          {pageCount > 0 && <span className="text-[10px] text-slate-400">当前第 {currentPage} 页</span>}
+    <div className="flex min-h-0 flex-1 flex-col bg-paper-deep/40">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-line bg-surface px-3 text-[11.5px] text-muted">
+        <span className="flex min-w-0 items-center gap-1.5 font-medium">
+          <FileUp className="h-3.5 w-3.5 text-accent" />
+          <span className="truncate">论文阅读</span>
+          {pageCount > 0 && <span className="rounded-[3px] border border-line bg-surface-muted px-1.5 py-0.5 text-[10px] text-muted">共 {pageCount} 页</span>}
+          {pageCount > 0 && <span className="hidden text-[10px] text-faint sm:inline">第 {currentPage} 页</span>}
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5">
           <button
             type="button"
             onClick={() => setShowTranslation((value) => !value)}
             disabled={documentStatus !== 'extracted' || pageCount === 0}
             title={documentStatus !== 'extracted' ? '该 PDF 没有可提取的文本层' : '按页翻译全文'}
-            className={`flex items-center gap-1 rounded border px-2 py-1 shadow-sm transition-all active:scale-95 ${
+            className={`flex h-7 items-center gap-1.5 rounded-[4px] border px-2 text-[11px] font-medium transition-colors ${
               showTranslation
-                ? 'border-blue-300 bg-blue-50 text-blue-700'
-                : 'border-slate-200 bg-white text-slate-600 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50'
+                ? 'border-accent/35 bg-accent-soft text-accent-ink'
+                : 'border-line bg-surface text-muted hover:border-line-strong hover:text-ink-soft disabled:cursor-not-allowed disabled:opacity-40'
             }`}
           >
             <Languages className="h-3 w-3" />
@@ -101,14 +101,14 @@ export function PdfPanel(props: PdfPanelProps) {
       </div>
 
       {statusHint && (
-        <div className="flex shrink-0 items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[11px] leading-5 text-amber-800">
+        <div className="flex shrink-0 items-start gap-2 border-b border-warn/25 bg-warn-soft px-3 py-2 text-[11px] leading-5 text-warn">
           <X className="mt-0.5 h-3 w-3 shrink-0" />
           {statusHint}
         </div>
       )}
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
-        <div className={`overflow-y-auto ${showTranslation ? 'h-[55%]' : 'h-full'}`}>
+        <div className={`overflow-y-auto bg-paper-deep/50 ${showTranslation ? 'h-[55%]' : 'h-full'}`}>
           <Worker workerUrl={PDF_WORKER_URL}>
             <div style={{ height: '100%', width: '100%' }}>
               <Viewer
@@ -126,7 +126,7 @@ export function PdfPanel(props: PdfPanelProps) {
         </div>
 
         {showTranslation && (
-          <div className="absolute bottom-0 left-0 right-0 top-[55%] border-t border-slate-200 bg-slate-50">
+          <div className="absolute bottom-0 left-0 right-0 top-[55%] border-t border-line bg-surface">
             <TranslationPanel
               job={translation.job}
               isStarting={translation.isStarting}

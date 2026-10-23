@@ -3,12 +3,12 @@ import type { GraphTask, PlanGraph, Task } from '../../contracts/api';
 import { getTaskStyleByStatus } from '../shared/agentVisuals';
 import { createTaskNodeLabel } from './nodeLabelFactory';
 
-const NODE_WIDTH = 216;
-const NODE_HEIGHT = 92;
+const NODE_WIDTH = 222;
+const NODE_HEIGHT = 88;
 const SEARCH_NODE_WIDTH = 680;
 const SEARCH_NODE_HEIGHT = 256;
 
-const getCompactColumnCount = () => (typeof window !== 'undefined' && window.innerWidth < 640 ? 2 : 3);
+const getCompactColumnCount = () => 2;
 
 const pairKey = (from: string, to: string) => `${from}->${to}`;
 
@@ -128,8 +128,8 @@ export const buildGraphLayout = (inputPlanGraph: PlanGraph): { nodes: Node[]; ed
   const hasExperimentSearch = sortedTasks.some((task) => task.type === 'experiment_run');
   const useCompactLongChain = maxLevel >= 5 && maxTasksInLevel <= 2;
   const compactColumns = getCompactColumnCount();
-  const compactStackGap = 112;
-  const compactRowHeight = maxTasksInLevel > 1 ? 260 : 148;
+  const compactStackGap = 100;
+  const compactRowHeight = maxTasksInLevel > 1 ? 240 : 206;
 
   const levelCounts: Record<number, number> = {};
   sortedTasks.forEach((task, taskIndex) => {
@@ -175,8 +175,8 @@ export const buildGraphLayout = (inputPlanGraph: PlanGraph): { nodes: Node[]; ed
       const levelStackOffset = ((maxTasksInLevel - tasksPerLevel[level]) * compactStackGap) / 2;
 
       position = {
-        x: 48 + column * 268,
-        y: 48 + row * compactRowHeight + levelStackOffset + stackIndex * compactStackGap,
+        x: 40 + column * 252,
+        y: 32 + row * compactRowHeight + levelStackOffset + stackIndex * compactStackGap,
       };
       targetPosition = startsNewRow ? Position.Top : row % 2 === 0 ? Position.Left : Position.Right;
       sourcePosition = endsRow ? Position.Bottom : row % 2 === 0 ? Position.Right : Position.Left;
@@ -201,11 +201,13 @@ export const buildGraphLayout = (inputPlanGraph: PlanGraph): { nodes: Node[]; ed
           }),
       },
       style: {
-        borderRadius: '8px',
+        borderRadius: '6px',
         backgroundColor: styleState.backgroundColor,
         border: '1px solid',
         borderColor: styleState.borderColor,
-        boxShadow: '0 4px 14px rgb(15 23 42 / 0.07)',
+        borderLeftWidth: '3px',
+        borderLeftColor: styleState.borderLeftColor,
+        boxShadow: '0 1px 2px rgb(61 52 36 / 0.05), 0 8px 20px -16px rgb(61 52 36 / 0.22)',
         cursor: 'pointer',
         overflow: 'hidden',
         padding: 0,
@@ -225,15 +227,15 @@ export const buildGraphLayout = (inputPlanGraph: PlanGraph): { nodes: Node[]; ed
       type: 'smoothstep',
       animated: targetStatus === 'in_progress',
       style: {
-        stroke: isDataEdge ? '#8b5cf6' : '#94a3b8',
-        strokeWidth: isDataEdge ? 1.5 : 2,
+        stroke: isDataEdge ? '#8a7a9a' : '#b9b2a2',
+        strokeWidth: isDataEdge ? 1.4 : 1.6,
         strokeDasharray: isDataEdge ? '5 5' : undefined,
       },
       markerEnd: {
         type: MarkerType.ArrowClosed,
-        color: isDataEdge ? '#8b5cf6' : '#94a3b8',
-        width: 16,
-        height: 16,
+        color: isDataEdge ? '#8a7a9a' : '#b9b2a2',
+        width: 15,
+        height: 15,
       },
     });
   });

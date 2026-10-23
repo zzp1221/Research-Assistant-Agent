@@ -58,14 +58,14 @@ export const useAITranslationPlugin = (options: UseAITranslationPluginOptions) =
           transform: 'translate(0, 8px)',
           zIndex: 100,
         }}
-        className="flex items-center gap-1 rounded-lg border border-blue-200 bg-white p-1 shadow-2xl animate-in fade-in zoom-in duration-200"
+        className="ra-fade-up flex items-center gap-0.5 rounded-[6px] border border-line bg-surface p-1 shadow-[var(--shadow-float)]"
       >
         <button
           onClick={() => {
             props.toggle();
             void run('translate', props.selectedText, props.selectionRegion.pageIndex + 1);
           }}
-          className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-blue-600 transition-all hover:bg-blue-50"
+          className="flex items-center gap-1.5 rounded-[4px] px-2.5 py-1.5 text-[11px] font-semibold text-accent-ink transition-colors hover:bg-accent-soft"
         >
           <Languages className="h-3.5 w-3.5" />
           翻译
@@ -75,7 +75,7 @@ export const useAITranslationPlugin = (options: UseAITranslationPluginOptions) =
             props.toggle();
             void run('explain', props.selectedText, props.selectionRegion.pageIndex + 1);
           }}
-          className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-violet-600 transition-all hover:bg-violet-50"
+          className="flex items-center gap-1.5 rounded-[4px] px-2.5 py-1.5 text-[11px] font-semibold text-plum transition-colors hover:bg-plum-soft"
         >
           <BookOpen className="h-3.5 w-3.5" />
           解释
@@ -93,49 +93,49 @@ export const useAITranslationPlugin = (options: UseAITranslationPluginOptions) =
           zIndex: 110,
           width: '360px',
         }}
-        className="flex max-h-[70vh] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl animate-in slide-in-from-top-2 duration-300"
+        className="ra-fade-up flex max-h-[70vh] flex-col overflow-hidden rounded-[7px] border border-line bg-surface shadow-[var(--shadow-float)]"
       >
-        <div className={`flex items-center justify-between px-3 py-2 text-white ${mode === 'translate' ? 'bg-blue-600' : 'bg-violet-600'}`}>
-          <span className="flex items-center gap-1 text-xs font-bold">
+        <div className={`flex items-center justify-between px-3 py-2 text-white ${mode === 'translate' ? 'bg-accent' : 'bg-plum'}`}>
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold">
             <Sparkles className="h-3 w-3" />
             {mode === 'translate' ? 'AI 翻译' : 'AI 解释'}
-            <span className="rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-medium">第 {props.selectionRegion.pageIndex + 1} 页</span>
+            <span className="rounded-[2px] bg-white/15 px-1.5 py-0.5 text-[9.5px] font-normal">第 {props.selectionRegion.pageIndex + 1} 页</span>
           </span>
-          <button onClick={() => { reset(); props.cancel(); }} className="text-white/80 transition-colors hover:text-white" aria-label="关闭">
+          <button onClick={() => { reset(); props.cancel(); }} className="text-white/75 transition-colors hover:text-white" aria-label="关闭">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="max-h-72 overflow-y-auto bg-white p-3 text-sm leading-relaxed text-gray-700">
-          <div className="mb-2 rounded-lg border border-gray-100 bg-gray-50 p-2 text-[11px] italic text-gray-500">
-            "{props.selectedText.substring(0, 120)}{props.selectedText.length > 120 ? '...' : ''}"
+        <div className="max-h-72 overflow-y-auto bg-surface p-3 text-[12px] leading-6 text-ink-soft">
+          <div className="mb-2 rounded-[4px] border border-line bg-surface-muted p-2 font-serif text-[11px] italic leading-5 text-muted">
+            “{props.selectedText.substring(0, 120)}{props.selectedText.length > 120 ? '…' : ''}”
           </div>
 
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-4 text-blue-500">
-              <Loader2 className="h-6 w-6 animate-spin" />
-              <span className="animate-pulse text-xs">{mode === 'translate' ? '正在翻译论文段落...' : '正在阅读并解释...'}</span>
+            <div className="flex flex-col items-center justify-center gap-2 py-5 text-accent">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="ra-pulse text-[11px]">{mode === 'translate' ? '正在翻译论文段落…' : '正在阅读并解释…'}</span>
             </div>
           ) : error ? (
-            <p className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">{error}</p>
+            <p className="rounded-[4px] border border-flag/25 bg-flag-soft p-2 text-[11px] text-flag">{error}</p>
           ) : answer ? (
             <div className="space-y-2">
-              <p className="whitespace-pre-wrap text-[13px] text-gray-800">{answer.result}</p>
+              <p className="whitespace-pre-wrap text-[12.5px] leading-6 text-ink-soft">{answer.result}</p>
               {answer.bullets && answer.bullets.length > 0 && (
-                <ul className="list-disc space-y-1 pl-4 text-[12px] text-gray-600">
+                <ul className="list-disc space-y-1 pl-4 text-[11px] leading-5 text-muted">
                   {answer.bullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
                 </ul>
               )}
               {answer.terms && answer.terms.length > 0 && (
-                <div className="flex flex-wrap gap-1 border-t border-gray-100 pt-2">
+                <div className="flex flex-wrap gap-1 border-t border-line pt-2">
                   {answer.terms.map((term) => (
-                    <span key={`${term.source}-${term.target}`} className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600" title={term.note}>
+                    <span key={`${term.source}-${term.target}`} className="rounded-[3px] bg-paper-deep px-1.5 py-0.5 text-[9.5px] text-muted" title={term.note}>
                       {term.source} → {term.target}
                     </span>
                   ))}
                 </div>
               )}
-              <p className="text-[10px] text-gray-400">
+              <p className="text-[9.5px] text-faint">
                 {answer.cached ? '来自缓存 · ' : ''}{answer.model}
               </p>
             </div>
@@ -148,7 +148,7 @@ export const useAITranslationPlugin = (options: UseAITranslationPluginOptions) =
               onAskAI(props.selectedText);
               props.cancel();
             }}
-            className="flex items-center justify-center gap-2 border-t border-blue-100 bg-blue-50 py-2 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100"
+            className="flex items-center justify-center gap-2 border-t border-line bg-accent-soft py-2 text-[10.5px] font-semibold text-accent-ink transition-colors hover:bg-accent-soft/70"
           >
             <MessageSquare className="h-3 w-3" />
             针对此段落向 Research Assistant Agent 追问

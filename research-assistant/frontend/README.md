@@ -90,7 +90,7 @@ npm run test:e2e        # Playwright E2E
 ```
 
 - `test/*.test.mjs`：消融计划、实验账本、Trial 账本、PDF 附件和 Benchmark 报告解析。
-- `test/components/`：Vitest + Testing Library + jsdom，覆盖 PDF 本地 worker、全文翻译面板、Benchmark 报告、ExecutionSidebar 和 ChatComposer。
+- `test/components/`：Vitest + Testing Library + jsdom，覆盖 PDF 本地 worker、全文翻译面板、Benchmark 报告、ExecutionSidebar、ChatComposer 和会话切换/登录。
 - `test/e2e/`：Playwright，覆盖首页、PDF 上传/打开/全文翻译流程和 Benchmark 报告页。
 - `test/fixtures/` 中的 JSON 是前端回放和断言使用的稳定数据。
 

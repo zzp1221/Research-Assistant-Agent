@@ -34,22 +34,22 @@ interface AutoResearchTrialViewProps {
 
 const trialStatus = (trial: TrialView) => {
   if (trial.number === 0) {
-    return { label: 'Baseline', className: 'border-blue-200 bg-blue-50 text-blue-800', icon: <FlaskConical className="h-3.5 w-3.5" /> };
+    return { label: 'Baseline', className: 'border-accent/25 bg-accent-soft text-accent-ink', icon: <FlaskConical className="h-3.5 w-3.5" /> };
   }
   if (trial.status === 'kept') {
-    return { label: 'Keep', className: 'border-emerald-200 bg-emerald-50 text-emerald-800', icon: <CheckCircle2 className="h-3.5 w-3.5" /> };
+    return { label: 'Keep', className: 'border-ok/25 bg-ok-soft text-ok', icon: <CheckCircle2 className="h-3.5 w-3.5" /> };
   }
   if (trial.status === 'rejected') {
-    return { label: 'Reject', className: 'border-rose-200 bg-rose-50 text-rose-800', icon: <XCircle className="h-3.5 w-3.5" /> };
+    return { label: 'Reject', className: 'border-flag/25 bg-flag-soft text-flag', icon: <XCircle className="h-3.5 w-3.5" /> };
   }
-  return { label: trial.status || 'Unknown', className: 'border-amber-200 bg-amber-50 text-amber-900', icon: <AlertTriangle className="h-3.5 w-3.5" /> };
+  return { label: trial.status || 'Unknown', className: 'border-warn/25 bg-warn-soft text-warn', icon: <AlertTriangle className="h-3.5 w-3.5" /> };
 };
 
 const pointColor = (trial: TrialView) => {
-  if (trial.number === 0) return '#2563eb';
-  if (trial.status === 'kept') return '#059669';
-  if (trial.status === 'rejected') return '#e11d48';
-  return '#64748b';
+  if (trial.number === 0) return '#2c5a4d';
+  if (trial.status === 'kept') return '#2f6b4f';
+  if (trial.status === 'rejected') return '#a5483a';
+  return '#6e685d';
 };
 
 const stopReasonLabel = (reason: string) => {
@@ -90,22 +90,22 @@ function MetricTrend({ ledger }: { ledger: AutoResearchLedgerView }) {
     >
       {ticks.map((tick) => (
         <g key={tick}>
-          <line x1={padding.left} x2={width - padding.right} y1={y(tick)} y2={y(tick)} stroke="#e2e8f0" strokeWidth="1" />
-          <text x={padding.left - 10} y={y(tick) + 4} textAnchor="end" fill="#64748b" fontSize="11">
+          <line x1={padding.left} x2={width - padding.right} y1={y(tick)} y2={y(tick)} stroke="#e2dcce" strokeWidth="1" />
+          <text x={padding.left - 10} y={y(tick) + 4} textAnchor="end" fill="#6e685d" fontSize="11">
             {formatResearchMetric(tick)}
           </text>
         </g>
       ))}
-      <line x1={padding.left} x2={width - padding.right} y1={height - padding.bottom} y2={height - padding.bottom} stroke="#94a3b8" strokeWidth="1" />
+      <line x1={padding.left} x2={width - padding.right} y1={height - padding.bottom} y2={height - padding.bottom} stroke="#c9c2b1" strokeWidth="1" />
       {Array.from({ length: trialDomain + 1 }, (_, trial) => (
         <g key={trial}>
-          <line x1={x(trial)} x2={x(trial)} y1={height - padding.bottom} y2={height - padding.bottom + 5} stroke="#94a3b8" />
-          <text x={x(trial)} y={height - 12} textAnchor="middle" fill="#64748b" fontSize="11">
+          <line x1={x(trial)} x2={x(trial)} y1={height - padding.bottom} y2={height - padding.bottom + 5} stroke="#c9c2b1" />
+          <text x={x(trial)} y={height - 12} textAnchor="middle" fill="#6e685d" fontSize="11">
             {trial === 0 ? 'B' : trial}
           </text>
         </g>
       ))}
-      {measured.length > 1 && <polyline points={points} fill="none" stroke="#334155" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />}
+      {measured.length > 1 && <polyline points={points} fill="none" stroke="#3f3b34" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />}
       {measured.map((trial) => (
         <g key={trial.number}>
           <circle cx={x(trial.number)} cy={y(trial.metric as number)} r="6" fill={pointColor(trial)} stroke="#ffffff" strokeWidth="2">
@@ -119,15 +119,15 @@ function MetricTrend({ ledger }: { ledger: AutoResearchLedgerView }) {
 
 function SummaryValue({ label, value, tone = 'slate' }: { label: string; value: string; tone?: 'slate' | 'emerald' | 'blue' | 'amber' }) {
   const toneClass = {
-    slate: 'text-slate-900',
-    emerald: 'text-emerald-700',
-    blue: 'text-blue-700',
-    amber: 'text-amber-700',
+    slate: 'text-ink',
+    emerald: 'text-ok',
+    blue: 'text-accent-ink',
+    amber: 'text-warn',
   }[tone];
   return (
-    <div className="min-w-0 border-r border-slate-200 px-3 py-3 text-center last:border-r-0">
+    <div className="min-w-0 border-r border-line px-3 py-3 text-center last:border-r-0">
       <div className={`truncate text-sm font-semibold ${toneClass}`} title={value}>{value}</div>
-      <div className="mt-1 text-[10px] font-medium text-slate-500">{label}</div>
+      <div className="mt-1 text-[10px] font-medium text-muted">{label}</div>
     </div>
   );
 }
@@ -135,7 +135,7 @@ function SummaryValue({ label, value, tone = 'slate' }: { label: string; value: 
 function TrialRow({ trial, metricKey }: { trial: TrialView; metricKey: string }) {
   const status = trialStatus(trial);
   return (
-    <li className="rounded-md border border-slate-200 bg-white px-4 py-3 shadow-sm">
+    <li className="rounded-md border border-line bg-surface px-4 py-3 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -143,50 +143,50 @@ function TrialRow({ trial, metricKey }: { trial: TrialView; metricKey: string })
               {status.icon}
               {status.label}
             </span>
-            <span className="text-xs font-semibold text-slate-800">{trial.number === 0 ? '冻结基线' : `候选 ${trial.number}`}</span>
+            <span className="text-xs font-semibold text-ink">{trial.number === 0 ? '冻结基线' : `候选 ${trial.number}`}</span>
             {trial.durationMs > 0 && (
-              <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+              <span className="inline-flex items-center gap-1 text-[11px] text-muted">
                 <Clock3 className="h-3.5 w-3.5" />
                 {formatResearchDuration(trial.durationMs)}
               </span>
             )}
           </div>
           {trial.diagnosis && (
-            <div className="mt-2 border-l-2 border-cyan-200 pl-2 text-[11px] leading-5 text-slate-600">
-              <span className="mr-1 font-semibold text-cyan-800">诊断</span>
+            <div className="mt-2 border-l-2 border-accent/25 pl-2 text-[11px] leading-5 text-muted">
+              <span className="mr-1 font-semibold text-accent-ink">诊断</span>
               <span className="break-words">{trial.diagnosis}</span>
             </div>
           )}
-          {trial.hypothesis && <div className="mt-2 break-words text-xs font-medium leading-5 text-slate-800">{trial.hypothesis}</div>}
-          {trial.reason && <div className="mt-1 break-words text-[11px] leading-5 text-slate-600">{trial.reason}</div>}
+          {trial.hypothesis && <div className="mt-2 break-words text-xs font-medium leading-5 text-ink">{trial.hypothesis}</div>}
+          {trial.reason && <div className="mt-1 break-words text-[11px] leading-5 text-muted">{trial.reason}</div>}
         </div>
         <div className="shrink-0 text-right">
-          <div className="font-mono text-sm font-semibold text-slate-900">
+          <div className="font-mono text-sm font-semibold text-ink">
             {trial.metric === null ? 'N/A' : formatResearchMetric(trial.metric)}
           </div>
-          <div className="mt-1 text-[10px] text-slate-500">{metricKey}</div>
+          <div className="mt-1 text-[10px] text-muted">{metricKey}</div>
           {trial.metricSamples.length > 1 && (
-            <div className="mt-1 font-mono text-[10px] text-slate-500">
+            <div className="mt-1 font-mono text-[10px] text-muted">
               n={trial.metricSamples.length} · {trial.metricAggregation} · σ {formatResearchMetric(trial.metricStdDev)}
             </div>
           )}
           {trial.deltaFromBest !== null && (
-            <div className={`mt-1 font-mono text-[11px] ${trial.deltaFromBest > 0 ? 'text-emerald-700' : trial.deltaFromBest < 0 ? 'text-rose-700' : 'text-slate-500'}`}>
+            <div className={`mt-1 font-mono text-[11px] ${trial.deltaFromBest > 0 ? 'text-ok' : trial.deltaFromBest < 0 ? 'text-flag' : 'text-muted'}`}>
               {trial.deltaFromBest > 0 ? '+' : ''}{formatResearchMetric(trial.deltaFromBest)}
             </div>
           )}
         </div>
       </div>
       {trial.patches.length > 0 && (
-        <div className="mt-3 border-t border-slate-100 pt-3">
+        <div className="mt-3 border-t border-line/70 pt-3">
           {trial.patches.map((patch) => (
             <div key={`${trial.number}-${patch.path}`} className="mb-2 flex items-start gap-2 last:mb-0">
-              <FileCode2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-700" />
+              <FileCode2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
               <div className="min-w-0 flex-1">
-                <div className="break-all font-mono text-[11px] font-semibold text-slate-800">{patch.path}</div>
-                {patch.reason && <div className="mt-0.5 break-words text-[11px] leading-4 text-slate-600">{patch.reason}</div>}
+                <div className="break-all font-mono text-[11px] font-semibold text-ink">{patch.path}</div>
+                {patch.reason && <div className="mt-0.5 break-words text-[11px] leading-4 text-muted">{patch.reason}</div>}
                 {(patch.beforeSha256 || patch.afterSha256) && (
-                  <div className="mt-1 break-all font-mono text-[10px] text-slate-400">
+                  <div className="mt-1 break-all font-mono text-[10px] text-faint">
                     {(patch.beforeSha256 || 'unknown').slice(0, 8)} → {(patch.afterSha256 || 'unknown').slice(0, 8)}
                   </div>
                 )}
@@ -204,8 +204,8 @@ function AutoResearchValidationPanel({ validation, expanded }: { validation: Aut
   const passed = validation.status === 'validated';
   const BannerIcon = hidden ? (passed ? ShieldCheck : ShieldAlert) : RotateCcw;
   const bannerTone = hidden
-    ? passed ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-rose-200 bg-rose-50 text-rose-900'
-    : 'border-amber-200 bg-amber-50 text-amber-900';
+    ? passed ? 'border-ok/25 bg-ok-soft text-ok' : 'border-flag/25 bg-flag-soft text-flag'
+    : 'border-warn/25 bg-warn-soft text-warn';
   const title = hidden
     ? passed ? '隐藏验收通过' : '隐藏验收未通过'
     : '仅完成公开评测重放';
@@ -216,7 +216,7 @@ function AutoResearchValidationPanel({ validation, expanded }: { validation: Aut
   ] as const;
 
   return (
-    <div className={`flex min-h-0 flex-col bg-white ${expanded ? 'h-full' : ''}`}>
+    <div className={`flex min-h-0 flex-col bg-surface ${expanded ? 'h-full' : ''}`}>
       <div className={`border-b px-4 py-4 ${bannerTone}`}>
         <div className="flex items-start gap-3">
           <BannerIcon className="mt-0.5 h-5 w-5 shrink-0" />
@@ -229,17 +229,17 @@ function AutoResearchValidationPanel({ validation, expanded }: { validation: Aut
         </div>
       </div>
 
-      <div className="grid grid-cols-2 border-b border-slate-200 bg-slate-50 sm:grid-cols-4">
+      <div className="grid grid-cols-2 border-b border-line bg-surface-muted sm:grid-cols-4">
         <SummaryValue label="搜索最佳" value={formatResearchMetric(validation.searchBestScore)} tone="blue" />
         <SummaryValue label={hidden ? '隐藏基线' : '搜索分数'} value={formatResearchMetric(validation.holdoutBaselineScore ?? validation.searchBestScore)} />
         <SummaryValue label={hidden ? '验收阈值' : '重放期望'} value={formatResearchMetric(validation.expectedScore)} tone="amber" />
         <SummaryValue label="验收均值" value={formatResearchMetric(validation.meanScore)} tone={passed ? 'emerald' : 'amber'} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-200 px-4 py-3 text-[11px] text-slate-600">
-        <span className="font-semibold text-slate-800">完整性</span>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-line px-4 py-3 text-[11px] text-muted">
+        <span className="font-semibold text-ink">完整性</span>
         {integrity.map(([label, intact]) => (
-          <span key={label} className={`inline-flex items-center gap-1 ${intact ? 'text-emerald-700' : 'font-semibold text-rose-700'}`}>
+          <span key={label} className={`inline-flex items-center gap-1 ${intact ? 'text-ok' : 'font-semibold text-flag'}`}>
             {intact ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
             {label}
           </span>
@@ -250,9 +250,9 @@ function AutoResearchValidationPanel({ validation, expanded }: { validation: Aut
       </div>
 
       {validation.resourceUsage && (
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-200 px-4 py-2.5 text-[11px] text-slate-600">
-          <span className="inline-flex items-center gap-1.5 font-semibold text-slate-800">
-            <Gauge className="h-3.5 w-3.5 text-cyan-700" />
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-line px-4 py-2.5 text-[11px] text-muted">
+          <span className="inline-flex items-center gap-1.5 font-semibold text-ink">
+            <Gauge className="h-3.5 w-3.5 text-accent" />
             验收资源
           </span>
           <span>{validation.resourceUsage.commandRuns} 次命令</span>
@@ -263,30 +263,30 @@ function AutoResearchValidationPanel({ validation, expanded }: { validation: Aut
 
       <section className="min-h-0 flex-1 px-4 py-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="text-sm font-semibold text-slate-900">逐轮验收</div>
-          <div className="break-all font-mono text-[11px] text-slate-500">{validation.metricKey}</div>
+          <div className="text-sm font-semibold text-ink">逐轮验收</div>
+          <div className="break-all font-mono text-[11px] text-muted">{validation.metricKey}</div>
         </div>
         <ol className={`space-y-2 ${expanded ? '' : 'max-h-[30rem] overflow-y-auto pr-1'}`}>
           {validation.runs.map((run) => (
-            <li key={run.number} className="border-b border-slate-100 px-1 py-3 last:border-b-0">
+            <li key={run.number} className="border-b border-line/70 px-1 py-3 last:border-b-0">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex min-w-0 items-start gap-2">
-                  {run.scoreMatches ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-700" />}
+                  {run.scoreMatches ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-ok" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-flag" />}
                   <div className="min-w-0">
-                    <div className="text-xs font-semibold text-slate-800">Run {run.number} · {run.scoreMatches ? 'Pass' : 'Fail'}</div>
-                    {run.error && <div className="mt-1 break-words text-[11px] leading-5 text-rose-700">{run.error}</div>}
+                    <div className="text-xs font-semibold text-ink">Run {run.number} · {run.scoreMatches ? 'Pass' : 'Fail'}</div>
+                    {run.error && <div className="mt-1 break-words text-[11px] leading-5 text-flag">{run.error}</div>}
                   </div>
                 </div>
                 <div className="shrink-0 text-right">
-                  <div className="font-mono text-xs font-semibold text-slate-900">{run.observedScore === null ? 'N/A' : formatResearchMetric(run.observedScore)}</div>
-                  {run.deltaFromBaseline !== null && <div className="mt-1 font-mono text-[10px] text-slate-500">delta {run.deltaFromBaseline >= 0 ? '+' : ''}{formatResearchMetric(run.deltaFromBaseline)}</div>}
-                  {run.durationMs > 0 && <div className="mt-1 text-[10px] text-slate-400">{formatResearchDuration(run.durationMs)}</div>}
+                  <div className="font-mono text-xs font-semibold text-ink">{run.observedScore === null ? 'N/A' : formatResearchMetric(run.observedScore)}</div>
+                  {run.deltaFromBaseline !== null && <div className="mt-1 font-mono text-[10px] text-muted">delta {run.deltaFromBaseline >= 0 ? '+' : ''}{formatResearchMetric(run.deltaFromBaseline)}</div>}
+                  {run.durationMs > 0 && <div className="mt-1 text-[10px] text-faint">{formatResearchDuration(run.durationMs)}</div>}
                 </div>
               </div>
             </li>
           ))}
         </ol>
-        {validation.summary && <div className="mt-3 border-t border-slate-200 pt-3 text-[11px] leading-5 text-slate-600">{validation.summary}</div>}
+        {validation.summary && <div className="mt-3 border-t border-line pt-3 text-[11px] leading-5 text-muted">{validation.summary}</div>}
       </section>
     </div>
   );
@@ -300,11 +300,11 @@ export function AutoResearchTrialView({ rawLedger, expanded = false }: AutoResea
   }
   if (!parsed.ok) {
     return (
-      <div className="flex min-h-48 items-center justify-center border border-rose-200 bg-rose-50 px-6 text-center text-sm text-rose-800" role="alert">
+      <div className="flex min-h-48 items-center justify-center border border-flag/25 bg-flag-soft px-6 text-center text-sm text-flag" role="alert">
         <div>
           <AlertTriangle className="mx-auto mb-2 h-5 w-5" />
           <div className="font-semibold">实验账本无法显示</div>
-          <div className="mt-1 text-xs text-rose-700">{parsed.error}</div>
+          <div className="mt-1 text-xs text-flag">{parsed.error}</div>
         </div>
       </div>
     );
@@ -316,8 +316,8 @@ export function AutoResearchTrialView({ rawLedger, expanded = false }: AutoResea
   const measuredCount = ledger.trials.filter((trial) => trial.metric !== null).length;
 
   return (
-    <div className={`flex min-h-0 flex-col bg-white ${expanded ? 'h-full' : ''}`}>
-      <div className="grid grid-cols-2 border-y border-slate-200 bg-slate-50 sm:grid-cols-4">
+    <div className={`flex min-h-0 flex-col bg-surface ${expanded ? 'h-full' : ''}`}>
+      <div className="grid grid-cols-2 border-y border-line bg-surface-muted sm:grid-cols-4">
         <SummaryValue label="Baseline" value={formatResearchMetric(ledger.baselineScore)} tone="blue" />
         <SummaryValue label="Best" value={formatResearchMetric(ledger.bestScore)} tone="emerald" />
         <SummaryValue label="有效提升" value={`${gain >= 0 ? '+' : ''}${formatResearchMetric(gain)}`} tone={gain > 0 ? 'emerald' : 'amber'} />
@@ -325,9 +325,9 @@ export function AutoResearchTrialView({ rawLedger, expanded = false }: AutoResea
       </div>
 
       {ledger.resourceUsage && (
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-200 px-4 py-2.5 text-[11px] text-slate-600">
-          <span className="inline-flex items-center gap-1.5 font-semibold text-slate-800">
-            <Gauge className="h-3.5 w-3.5 text-cyan-700" />
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-line px-4 py-2.5 text-[11px] text-muted">
+          <span className="inline-flex items-center gap-1.5 font-semibold text-ink">
+            <Gauge className="h-3.5 w-3.5 text-accent" />
             执行资源
           </span>
           <span className="inline-flex items-center gap-1.5">
@@ -340,43 +340,43 @@ export function AutoResearchTrialView({ rawLedger, expanded = false }: AutoResea
           <span>命令累计 {formatResearchDuration(ledger.resourceUsage.commandDurationMs)}</span>
           <span>墙钟 {formatResearchDuration(ledger.resourceUsage.wallDurationMs)}</span>
           {ledger.resourceUsage.failedCommands > 0 && (
-            <span className="font-semibold text-rose-700">失败命令 {ledger.resourceUsage.failedCommands}</span>
+            <span className="font-semibold text-flag">失败命令 {ledger.resourceUsage.failedCommands}</span>
           )}
         </div>
       )}
 
-      <section className="border-b border-slate-200 px-4 py-4">
+      <section className="border-b border-line px-4 py-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-900">
-            <ChartNoAxesCombined className="h-4 w-4 text-cyan-700" />
+          <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-ink">
+            <ChartNoAxesCombined className="h-4 w-4 text-accent" />
             <span className="break-all">{ledger.metricKey}</span>
           </div>
-          <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600">
+          <span className="inline-flex items-center gap-1 rounded-md border border-line bg-surface px-2 py-1 text-[11px] font-medium text-muted">
             <DirectionIcon className="h-3.5 w-3.5" />
             {ledger.direction === 'minimize' ? '越低越好' : '越高越好'}
           </span>
         </div>
         <div className="mx-auto mt-3 w-full max-w-4xl">
           {measuredCount > 0 ? <MetricTrend ledger={ledger} /> : (
-            <div className="flex h-44 items-center justify-center border border-dashed border-slate-300 text-xs text-slate-500">
+            <div className="flex h-44 items-center justify-center border border-dashed border-line-strong text-xs text-muted">
               没有可绘制的指标记录
             </div>
           )}
         </div>
-        <div className="mt-1 flex flex-wrap items-center justify-center gap-4 text-[10px] text-slate-500">
-          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-blue-600" />Baseline</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />Keep</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-rose-600" />Reject</span>
+        <div className="mt-1 flex flex-wrap items-center justify-center gap-4 text-[10px] text-muted">
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-accent" />Baseline</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-ok" />Keep</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-flag" />Reject</span>
         </div>
       </section>
 
       <section className="min-h-0 flex-1 px-4 py-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-            <FlaskConical className="h-4 w-4 text-blue-700" />
+          <div className="flex items-center gap-2 text-sm font-semibold text-ink">
+            <FlaskConical className="h-4 w-4 text-accent-ink" />
             试验记录
           </div>
-          <div className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+          <div className="inline-flex items-center gap-1 text-[11px] text-muted">
             {gain === 0 ? <Minus className="h-3.5 w-3.5" /> : <DirectionIcon className="h-3.5 w-3.5" />}
             {stopReasonLabel(ledger.stopReason)}
           </div>
