@@ -54,6 +54,20 @@ func TestSandboxImageForWorkspaceIgnoresInvalidMetadata(t *testing.T) {
 	}
 }
 
+func TestStripInlinePipInstallKeepsPythonSyntaxValid(t *testing.T) {
+	code := "for pkg in (\"numpy\", \"matplotlib\"):\n    try:\n        __import__(pkg)\n    except ImportError:\n        subprocess.check_call([sys.executable, \"-m\", \"pip\", \"install\", pkg])\n\nimport numpy as np\nprint(np.pi)\n"
+	stripped := stripInlinePipInstall(code)
+	if strings.Contains(stripped, "subprocess.check_call") {
+		t.Fatalf("pip install call was not stripped: %s", stripped)
+	}
+	if strings.Contains(stripped, "except ImportError:\n\n") {
+		t.Fatalf("strip left an empty except block: %s", stripped)
+	}
+	if !strings.Contains(stripped, "import numpy as np") {
+		t.Fatalf("strip removed real code: %s", stripped)
+	}
+}
+
 func TestPipInstallArgsUsesConfiguredIndex(t *testing.T) {
 	t.Setenv("PIP_INDEX_URL", "https://mirrors.example/simple/")
 	args := pipInstallArgs("numpy==2.1.3")

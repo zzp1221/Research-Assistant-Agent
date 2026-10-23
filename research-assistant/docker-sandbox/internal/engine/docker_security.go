@@ -27,6 +27,7 @@ func secureDockerRunArgs(image string, labels map[string]string) ([]string, erro
 		"--security-opt", "no-new-privileges:true",
 		"--cap-drop", "ALL",
 		"--network", envOrDefault("SANDBOX_NETWORK_MODE", "bridge"),
+		"--workdir", "/workspace",
 	}
 	labelKeys := make([]string, 0, len(labels))
 	for key := range labels {

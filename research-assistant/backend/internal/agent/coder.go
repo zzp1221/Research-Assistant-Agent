@@ -263,14 +263,48 @@ if __name__ == "__main__":
 func stripInlinePipInstall(code string) string {
 	lines := strings.Split(code, "\n")
 	filtered := make([]string, 0, len(lines))
-	for _, line := range lines {
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
 		lower := strings.ToLower(line)
 		if strings.Contains(lower, "subprocess.check_call") && strings.Contains(lower, "pip") && strings.Contains(lower, "install") {
+			indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+			filtered = append(filtered, indent+"pass")
+			continue
+		}
+		// The model often writes a defensive dependency block:
+		//   for pkg in (...):
+		//       try:
+		//           __import__(pkg)
+		//       except ImportError:
+		//           subprocess.check_call(...)
+		// After stripping the pip line, the except block becomes empty and
+		// Python raises IndentationError. Drop that whole probe block instead.
+		if strings.HasSuffix(strings.TrimSpace(line), "for pkg in (\"numpy\", \"matplotlib\"):") ||
+			strings.HasSuffix(strings.TrimSpace(line), "for pkg in ('numpy', 'matplotlib'):") {
+			baseIndent := len(line) - len(strings.TrimLeft(line, " \t"))
+			j := i + 1
+			for j < len(lines) {
+				next := lines[j]
+				if strings.TrimSpace(next) == "" {
+					j++
+					continue
+				}
+				nextIndent := len(next) - len(strings.TrimLeft(next, " \t"))
+				if nextIndent <= baseIndent {
+					break
+				}
+				j++
+			}
+			i = j - 1
 			continue
 		}
 		filtered = append(filtered, line)
 	}
-	return strings.Join(filtered, "\n")
+	joined := strings.Join(filtered, "\n")
+	// Final syntax repair for leftover empty except blocks.
+	joined = strings.ReplaceAll(joined, "except ImportError:\n\n", "except ImportError:\n    pass\n\n")
+	joined = strings.ReplaceAll(joined, "except Exception:\n\n", "except Exception:\n    pass\n\n")
+	return joined
 }
 
 func filterFrameworkBenchmarkDependencies(task *models.Task, dependencies []string) []string {
@@ -371,6 +405,12 @@ func (a *CoderAgent) generateAndExecuteCodeTask(ctx context.Context, task *model
 	prompt := strings.TrimSpace(task.Description)
 	if prompt == "" {
 		prompt = task.Name
+	}
+	// Plot tasks must not rely on the model to re-install packages: the plan
+	// already installed declared dependencies in prepared_runtime. Keep the
+	// prompt explicit so the generated code only saves the figure.
+	if strings.EqualFold(strings.TrimSpace(task.Type), "render_plot") || strings.EqualFold(strings.TrimSpace(task.Type), "result_visualization") {
+		prompt += "\n\n这是绘图任务：直接使用已安装好的 matplotlib/numpy，不要执行 pip install，不要调用 plt.show()，必须把图像保存到 /workspace/output_plot.png。"
 	}
 	if len(task.Inputs) > 0 {
 		if payload, err := json.Marshal(task.Inputs); err == nil {

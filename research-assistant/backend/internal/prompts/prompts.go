@@ -369,7 +369,7 @@ func CoderSystemPromptForTask(intentType string, taskType string, taskName strin
 	text := strings.ToLower(strings.Join([]string{taskName, description}, "\n"))
 
 	if task == "render_plot" || task == "result_visualization" {
-		return CoderSystemPrompt
+		return CoderSystemPrompt + "\n9. 【绘图任务约束】当前运行时已由上游安装好绘图依赖；不要生成 pip install / subprocess.check_call，直接 import 已安装的 numpy/matplotlib。必须把图保存到 /workspace/output_plot.png，禁止 plt.show()。"
 	}
 	if intent == "paper_reproduction" || task == "repo_prepare" || task == "fix_and_rerun" || strings.Contains(text, "paper_reproduction") || strings.Contains(text, "论文复现") {
 		return CoderPaperReproductionSystemPrompt

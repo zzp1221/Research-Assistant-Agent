@@ -27,7 +27,7 @@ func TestSecureDockerRunArgsApplyResourceAndPrivilegeLimits(t *testing.T) {
 	for _, expected := range []string{
 		"--cpus 1.5", "--memory 2g", "--pids-limit 128",
 		"--security-opt no-new-privileges:true", "--cap-drop ALL",
-		"--network none", "--user 65534:65534", "--read-only",
+		"--network none", "--user 65534:65534", "--read-only", "--workdir /workspace",
 		"--label research-assistant.sandbox=true",
 		"--label research-assistant.tenant-id=tenant-a",
 		"--label research-assistant.task-id=task-a",
