@@ -1,8 +1,10 @@
-import { Background, Controls, ReactFlow } from '@xyflow/react';
+import { lazy, memo, Suspense } from 'react';
 import type { Edge, Node, OnEdgesChange, OnNodesChange } from '@xyflow/react';
 import { CheckCircle2, GitBranch, LoaderCircle, Play, RotateCcw, ShieldCheck, Square } from 'lucide-react';
 import type { IntentContext } from '../../contracts/api';
 import type { Task } from '../../contracts/api';
+
+const GraphCanvas = lazy(() => import('./GraphCanvas'));
 
 interface GraphPanelProps {
   nodes: Node[];
@@ -34,7 +36,21 @@ const intentLabels: Record<string, string> = {
 
 const terminalNodeStatuses = new Set(['completed', 'failed', 'skipped', 'canceled']);
 
-export function GraphPanel(props: GraphPanelProps) {
+function GraphCanvasSkeleton() {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-paper" aria-busy="true" aria-label="正在加载计划画布">
+      <div className="flex items-center gap-2" aria-hidden="true">
+        <span className="h-12 w-20 animate-pulse rounded-[5px] border border-line bg-surface" />
+        <span className="h-px w-8 border-t border-dashed border-line-strong" />
+        <span className="h-12 w-20 animate-pulse rounded-[5px] border border-accent/30 bg-accent-soft" />
+        <span className="h-px w-8 border-t border-dashed border-line-strong" />
+        <span className="h-12 w-20 animate-pulse rounded-[5px] border border-line bg-surface" />
+      </div>
+    </div>
+  );
+}
+
+export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
   const {
     nodes,
     edges,
@@ -170,23 +186,18 @@ export function GraphPanel(props: GraphPanelProps) {
             </div>
           </div>
         )}
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onNodeClick={onNodeClick}
-          nodesConnectable={false}
-          nodesDraggable={false}
-          fitView
-          fitViewOptions={{ padding: 0.16, minZoom: 0.72, maxZoom: 1.02 }}
-          minZoom={0.2}
-          className="bg-paper"
-        >
-          <Background color="#d8d1c0" gap={22} size={1.2} />
-          <Controls showInteractive={false} />
-        </ReactFlow>
+        {nodes.length > 0 && (
+          <Suspense fallback={<GraphCanvasSkeleton />}>
+            <GraphCanvas
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onNodeClick={onNodeClick}
+            />
+          </Suspense>
+        )}
       </div>
     </div>
   );
-}
+});

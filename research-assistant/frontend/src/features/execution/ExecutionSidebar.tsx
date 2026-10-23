@@ -1,4 +1,4 @@
-import { useState, type ReactNode, type RefObject } from 'react';
+import { lazy, Suspense, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import {
   ChartNoAxesCombined,
   Check,
@@ -14,21 +14,25 @@ import {
   TerminalSquare,
   X,
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
 import type { ExecutionDisplayMode } from '../../app/hooks/useResearchAssistantRuntime';
 import type { Task } from '../../contracts/api';
-import { AblationTreeView } from '../ablation/AblationTreeView';
-import { AutoResearchTrialView } from '../autoresearch/AutoResearchTrialView';
-import { BenchmarkReportView } from '../benchmark/BenchmarkReportView';
 import { parseBenchmarkReport } from '../benchmark/benchmarkReport';
-import { ClaimEvidenceGraphView } from '../claim-evidence/ClaimEvidenceGraphView';
-import { ExperimentResearchView } from '../experiment/ExperimentResearchView';
 import { getAgentIcon, getAgentLabel } from '../shared/agentVisuals';
 
+const BenchmarkReportView = lazy(() => import('../benchmark/BenchmarkReportView').then((module) => ({ default: module.BenchmarkReportView })));
+const AutoResearchTrialView = lazy(() => import('../autoresearch/AutoResearchTrialView').then((module) => ({ default: module.AutoResearchTrialView })));
+const ExperimentResearchView = lazy(() => import('../experiment/ExperimentResearchView').then((module) => ({ default: module.ExperimentResearchView })));
+const AblationTreeView = lazy(() => import('../ablation/AblationTreeView').then((module) => ({ default: module.AblationTreeView })));
+const ClaimEvidenceGraphView = lazy(() => import('../claim-evidence/ClaimEvidenceGraphView').then((module) => ({ default: module.ClaimEvidenceGraphView })));
+const MarkdownReport = lazy(() => import('../shared/MarkdownReport'));
+
 type CompactMode = Exclude<ExecutionDisplayMode, 'report-expanded' | 'plot-expanded' | 'evidence-expanded' | 'trials-expanded' | 'ablation-expanded'>;
+
+interface ResultTab {
+  mode: CompactMode;
+  label: string;
+  icon: ReactNode;
+}
 
 const benchmarkTaskTypes = new Set([
   'benchmark_validate', 'benchmark_execute', 'benchmark_contract_freeze',
@@ -76,6 +80,59 @@ const resolveCompactMode = (displayMode: ExecutionDisplayMode): CompactMode => {
 };
 
 const reportAgents = new Set(['librarian_agent', 'data_agent', 'benchmark_agent', 'research_coding_agent']);
+
+function LazyViewSkeleton({ label = '正在加载结果视图' }: { label?: string }) {
+  return (
+    <div className="flex h-full min-h-[12rem] items-center justify-center bg-surface" aria-busy="true" aria-label={label}>
+      <span className="flex items-center gap-2 text-[11px] text-faint">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function LazyBenchmarkReport({ raw, expanded = false }: { raw: string; expanded?: boolean }) {
+  return (
+    <Suspense fallback={<LazyViewSkeleton label="正在加载评测报告" />}>
+      <BenchmarkReportView raw={raw} expanded={expanded} />
+    </Suspense>
+  );
+}
+
+function LazyTrialView({ rawLedger, experiment = false, expanded = false }: { rawLedger: string; experiment?: boolean; expanded?: boolean }) {
+  return (
+    <Suspense fallback={<LazyViewSkeleton label="正在加载实验记录" />}>
+      {experiment
+        ? <ExperimentResearchView raw={rawLedger} expanded={expanded} />
+        : <AutoResearchTrialView rawLedger={rawLedger} expanded={expanded} />}
+    </Suspense>
+  );
+}
+
+function LazyAblationView({ rawPlan, expanded = false }: { rawPlan: string; expanded?: boolean }) {
+  return (
+    <Suspense fallback={<LazyViewSkeleton label="正在加载方案树" />}>
+      <AblationTreeView rawPlan={rawPlan} expanded={expanded} />
+    </Suspense>
+  );
+}
+
+function LazyEvidenceView({ rawGraph, expanded = false }: { rawGraph: string; expanded?: boolean }) {
+  return (
+    <Suspense fallback={<LazyViewSkeleton label="正在加载证据图" />}>
+      <ClaimEvidenceGraphView rawGraph={rawGraph} expanded={expanded} />
+    </Suspense>
+  );
+}
+
+function ReportMarkdown({ children }: { children: string }) {
+  return (
+    <Suspense fallback={<div className="h-24 animate-pulse rounded-[4px] bg-paper-deep" aria-busy="true" aria-label="正在加载报告" />}>
+      <MarkdownReport>{children}</MarkdownReport>
+    </Suspense>
+  );
+}
 
 function PanelHeader(props: { eyebrow: string; title: string; onClose: () => void; closeLabel: string }) {
   const { eyebrow, title, onClose, closeLabel } = props;
@@ -144,7 +201,7 @@ export function ExecutionSidebar(props: ExecutionSidebarProps) {
           <div className="flex min-h-0 flex-1 flex-col bg-surface">
             <PanelHeader eyebrow="评测报告" title={selectedTask.Name} onClose={() => onChangeDisplayMode('report')} closeLabel="退出全屏报告" />
             <div className="min-h-0 flex-1 overflow-y-auto">
-              <BenchmarkReportView raw={executionStructuredData || executionResult} expanded />
+              <LazyBenchmarkReport raw={executionStructuredData || executionResult} expanded />
             </div>
           </div>
         ) : (
@@ -189,7 +246,7 @@ function ExpandedTrialView({ title, rawLedger, experiment = false, onClose }: Ex
       />
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="min-h-full overflow-hidden rounded-[6px] border border-line bg-surface">
-          {experiment ? <ExperimentResearchView raw={rawLedger} expanded /> : <AutoResearchTrialView rawLedger={rawLedger} expanded />}
+          <LazyTrialView rawLedger={rawLedger} experiment={experiment} expanded />
         </div>
       </div>
     </div>
@@ -208,7 +265,7 @@ function ExpandedAblationView({ title, rawPlan, onClose }: ExpandedAblationViewP
       <PanelHeader eyebrow="Ablation Thought Tree" title={title} onClose={onClose} closeLabel="退出全屏消融树" />
       <div className="min-h-0 flex-1 overflow-hidden p-4">
         <div className="h-full overflow-hidden rounded-[6px] border border-line bg-surface">
-          <AblationTreeView rawPlan={rawPlan} expanded />
+          <LazyAblationView rawPlan={rawPlan} expanded />
         </div>
       </div>
     </div>
@@ -227,7 +284,7 @@ function ExpandedEvidenceView({ title, rawGraph, onClose }: ExpandedEvidenceView
       <PanelHeader eyebrow="Claim-to-Evidence Graph" title={title} onClose={onClose} closeLabel="退出全屏证据图" />
       <div className="min-h-0 flex-1 p-4">
         <div className="h-full overflow-hidden rounded-[6px] border border-line bg-surface">
-          <ClaimEvidenceGraphView rawGraph={rawGraph} expanded />
+          <LazyEvidenceView rawGraph={rawGraph} expanded />
         </div>
       </div>
     </div>
@@ -266,9 +323,7 @@ function ExpandedReportView({ title, executionResult, onClose }: ExpandedReportV
       <PanelHeader eyebrow="Analysis Report" title={title} onClose={onClose} closeLabel="退出全屏报告" />
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
         <article className="mx-auto max-w-3xl font-serif text-[15px] leading-7 text-ink-soft prose prose-stone max-w-3xl prose-headings:font-serif prose-headings:text-ink prose-strong:text-ink prose-code:font-sans prose-code:text-[13px] prose-code:text-accent-ink prose-pre:rounded-[6px] prose-pre:bg-[#1d1e1a] prose-pre:text-[13px] prose-pre:text-[#e6e1d5] prose-img:rounded-[6px] prose-img:border prose-img:border-line">
-          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-            {executionResult}
-          </ReactMarkdown>
+          <ReportMarkdown>{executionResult}</ReportMarkdown>
         </article>
       </div>
     </div>
@@ -314,6 +369,43 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
   const hasExperimentEvidence = (selectedTask.Type === 'experiment_run' || selectedTask.Type === 'experiment_validate') && Boolean(executionStructuredData || executionResult);
   const hasTrialEvidence = hasAutoResearchEvidence || hasExperimentEvidence;
   const hasBenchmarkEvidence = hasBenchmarkReport(selectedTask, executionStructuredData, executionResult);
+
+  const tabItems: ResultTab[] = [
+    { mode: 'logs', label: '日志', icon: <TerminalSquare className="h-3.5 w-3.5" /> },
+    ...(executionCode ? [{ mode: 'code' as const, label: '代码', icon: <Code className="h-3.5 w-3.5" /> }] : []),
+    ...(hasTrialEvidence
+      ? [{
+          mode: 'trials' as const,
+          label: selectedTask.Type === 'autoresearch_validate' || selectedTask.Type === 'experiment_validate' ? '验收' : '实验',
+          icon: <ChartNoAxesCombined className="h-3.5 w-3.5" />,
+        }]
+      : []),
+    ...(hasAblationEvidence ? [{ mode: 'ablation' as const, label: '方案树', icon: <GitBranch className="h-3.5 w-3.5" /> }] : []),
+    ...(executionImage ? [{ mode: 'plot' as const, label: '图表', icon: <Maximize2 className="h-3.5 w-3.5" /> }] : []),
+    ...(selectedTask.Type === 'claim_evidence_build' && executionStructuredData
+      ? [{ mode: 'evidence' as const, label: '证据图', icon: <GitBranch className="h-3.5 w-3.5" /> }]
+      : []),
+    ...((hasBenchmarkEvidence || (reportAgents.has(selectedTask.AssignedTo) && executionResult && !hasTrialEvidence && !hasAblationEvidence))
+      ? [{ mode: 'report' as const, label: hasBenchmarkEvidence ? '评测报告' : '分析报告', icon: <Eye className="h-3.5 w-3.5" /> }]
+      : []),
+  ];
+  const activeTabIndex = tabItems.findIndex((tab) => tab.mode === activeMode);
+
+  const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (tabItems.length === 0) return;
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowRight') nextIndex = (Math.max(activeTabIndex, 0) + 1) % tabItems.length;
+    if (event.key === 'ArrowLeft') nextIndex = (Math.max(activeTabIndex, 0) - 1 + tabItems.length) % tabItems.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = tabItems.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const nextTab = tabItems[nextIndex];
+    if (nextTab) {
+      onChangeDisplayMode(nextTab.mode);
+      window.requestAnimationFrame(() => document.getElementById(`execution-tab-${nextTab.mode}`)?.focus());
+    }
+  };
 
   const copyLogs = async () => {
     try {
@@ -408,30 +500,19 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
 
         {(executionResult || executionCode || executionStructuredData) && (
           <div className="flex items-center justify-between border-b border-line px-2">
-            <div className="flex flex-1 items-center overflow-x-auto">
-              <TabButton active={activeMode === 'logs'} onClick={() => onChangeDisplayMode('logs')} icon={<TerminalSquare className="h-3.5 w-3.5" />} label="日志" />
-              {executionCode && <TabButton active={activeMode === 'code'} onClick={() => onChangeDisplayMode('code')} icon={<Code className="h-3.5 w-3.5" />} label="代码" />}
-              {hasTrialEvidence && (
+            <div role="tablist" aria-label="节点结果视图" className="flex flex-1 items-center overflow-x-auto">
+              {tabItems.map((tab) => (
                 <TabButton
-                  active={activeMode === 'trials'}
-                  onClick={() => onChangeDisplayMode('trials')}
-                  icon={<ChartNoAxesCombined className="h-3.5 w-3.5" />}
-                  label={selectedTask.Type === 'autoresearch_validate' || selectedTask.Type === 'experiment_validate' ? '验收' : '实验'}
+                  key={tab.mode}
+                  id={`execution-tab-${tab.mode}`}
+                  controls="execution-result-panel"
+                  active={activeMode === tab.mode}
+                  onClick={() => onChangeDisplayMode(tab.mode)}
+                  onKeyDown={handleTabKeyDown}
+                  icon={tab.icon}
+                  label={tab.label}
                 />
-              )}
-              {hasAblationEvidence && <TabButton active={activeMode === 'ablation'} onClick={() => onChangeDisplayMode('ablation')} icon={<GitBranch className="h-3.5 w-3.5" />} label="方案树" />}
-              {executionImage && <TabButton active={activeMode === 'plot'} onClick={() => onChangeDisplayMode('plot')} icon={<Maximize2 className="h-3.5 w-3.5" />} label="图表" />}
-              {selectedTask.Type === 'claim_evidence_build' && executionStructuredData && (
-                <TabButton active={activeMode === 'evidence'} onClick={() => onChangeDisplayMode('evidence')} icon={<GitBranch className="h-3.5 w-3.5" />} label="证据图" />
-              )}
-              {(hasBenchmarkEvidence || (reportAgents.has(selectedTask.AssignedTo) && executionResult && !hasTrialEvidence && !hasAblationEvidence)) && (
-                <TabButton
-                  active={activeMode === 'report'}
-                  onClick={() => onChangeDisplayMode('report')}
-                  icon={<Eye className="h-3.5 w-3.5" />}
-                  label={hasBenchmarkEvidence ? '评测报告' : '分析报告'}
-                />
-              )}
+              ))}
             </div>
             {(activeMode === 'report' || activeMode === 'plot' || activeMode === 'evidence' || activeMode === 'trials' || activeMode === 'ablation') && (
               <button
@@ -446,7 +527,12 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
           </div>
         )}
 
-        <div className="flex min-h-0 flex-1 flex-col p-3">
+        <div
+          id="execution-result-panel"
+          role="tabpanel"
+          aria-labelledby={activeTabIndex >= 0 ? `execution-tab-${activeMode}` : undefined}
+          className="flex min-h-0 flex-1 flex-col p-3"
+        >
           {activeMode === 'logs' ? (
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="mb-2 flex items-center justify-between px-1">
@@ -477,21 +563,17 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
             </div>
           ) : activeMode === 'trials' ? (
             <div className="min-h-[32rem] flex-1 overflow-hidden rounded-[6px] border border-line bg-surface">
-              {hasExperimentEvidence
-                ? <ExperimentResearchView raw={executionStructuredData || executionResult} />
-                : <AutoResearchTrialView rawLedger={executionStructuredData || executionResult} />}
+              <LazyTrialView rawLedger={executionStructuredData || executionResult} experiment={hasExperimentEvidence} />
             </div>
           ) : activeMode === 'ablation' ? (
             <div className="min-h-[32rem] flex-1 overflow-hidden rounded-[6px] border border-line bg-surface">
-              <AblationTreeView rawPlan={executionStructuredData || executionResult} />
+              <LazyAblationView rawPlan={executionStructuredData || executionResult} />
             </div>
           ) : activeMode === 'code' ? (
             <div className="flex-1 overflow-y-auto rounded-[6px] border border-line bg-surface-muted p-4">
-              <div className="prose prose-sm max-w-none text-ink-soft prose-pre:m-0 prose-pre:rounded-[4px] prose-pre:bg-[#1d1e1a] prose-pre:text-[11.5px] prose-pre:text-[#e6e1d5]">
-                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                  {`\`\`\`python\n${executionCode}\n\`\`\``}
-                </ReactMarkdown>
-              </div>
+              <pre className="m-0 overflow-x-auto rounded-[4px] bg-[#1d1e1a] p-4 font-mono text-[11.5px] leading-[1.7] text-[#e6e1d5]">
+                <code>{executionCode}</code>
+              </pre>
             </div>
           ) : activeMode === 'plot' ? (
             <div className="flex min-h-[20rem] flex-1 flex-col items-center justify-center overflow-hidden rounded-[6px] border border-line bg-surface-muted p-3">
@@ -500,18 +582,16 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
             </div>
           ) : activeMode === 'evidence' ? (
             <div className="min-h-0 flex-1 overflow-hidden rounded-[6px] border border-line bg-surface">
-              <ClaimEvidenceGraphView rawGraph={executionStructuredData} />
+              <LazyEvidenceView rawGraph={executionStructuredData} />
             </div>
           ) : activeMode === 'report' && hasBenchmarkEvidence ? (
             <div className="min-h-[32rem] flex-1 overflow-hidden rounded-[6px] border border-line bg-surface">
-              <BenchmarkReportView raw={executionStructuredData || executionResult} />
+              <LazyBenchmarkReport raw={executionStructuredData || executionResult} />
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto rounded-[6px] border border-line bg-surface p-5">
               <div className="prose prose-sm max-w-none font-serif text-[14px] leading-6 text-ink-soft prose-headings:font-serif prose-headings:text-ink prose-strong:text-ink prose-code:font-sans prose-code:text-[12.5px] prose-code:text-accent-ink">
-                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                  {executionResult}
-                </ReactMarkdown>
+                <ReportMarkdown>{executionResult}</ReportMarkdown>
               </div>
             </div>
           )}
@@ -521,12 +601,18 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
   );
 }
 
-function TabButton(props: { active: boolean; onClick: () => void; icon: ReactNode; label: string }) {
-  const { active, onClick, icon, label } = props;
+function TabButton(props: { active: boolean; onClick: () => void; onKeyDown?: (event: ReactKeyboardEvent<HTMLElement>) => void; icon: ReactNode; label: string; id?: string; controls?: string }) {
+  const { active, onClick, onKeyDown, icon, label, id, controls } = props;
   return (
     <button
       type="button"
+      role="tab"
+      id={id}
+      aria-controls={controls}
+      aria-selected={active}
+      tabIndex={active ? 0 : -1}
       onClick={onClick}
+      onKeyDown={onKeyDown}
       className={`flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-2.5 text-[11px] font-semibold transition-colors ${
         active
           ? 'border-accent text-accent-ink'

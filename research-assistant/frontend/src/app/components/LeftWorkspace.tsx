@@ -1,10 +1,10 @@
-import type { ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { BookOpenText, UserRound, X } from 'lucide-react';
 import { ChatPanel } from '../../features/chat/ChatPanel';
-import { PdfPanel } from '../../features/pdf-viewer/PdfPanel';
-import type { ChatMessage, DocumentInfoResponse, TranslationJob, UploadedFile } from '../../contracts/api';
-import type { Plugin } from '@react-pdf-viewer/core';
-import type { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
+import type { AssistResponse, ChatMessage, DocumentInfoResponse, TranslationJob, UploadedFile } from '../../contracts/api';
+import type { AssistMode } from '../../hooks/useAITranslationPlugin';
+
+const PdfViewerSurface = lazy(() => import('../../features/pdf-viewer/PdfViewerSurface'));
 
 interface LeftWorkspaceShellProps {
   widthPercent: number;
@@ -130,10 +130,10 @@ interface LeftWorkspacePdfProps {
   pdfUrl: string;
   documentInfo: DocumentInfoResponse | null;
   onClosePdf: () => void;
-  defaultLayoutPluginInstance: ReturnType<typeof defaultLayoutPlugin>;
-  aiTranslationPluginInstance: Plugin;
   onPageChange?: (page: number) => void;
   translation: TranslationPanelState;
+  onAskAI: (text: string) => void;
+  onAssist: (mode: AssistMode, text: string, page: number) => Promise<AssistResponse>;
 }
 
 export interface TranslationPanelState {
@@ -148,8 +148,22 @@ export interface TranslationPanelState {
   onOpenPage: (page: number) => void;
 }
 
+function PdfViewerSkeleton() {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col bg-paper-deep/40" aria-busy="true" aria-label="正在加载论文阅读器">
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line bg-surface px-3">
+        <span className="h-3 w-16 animate-pulse rounded bg-paper-deep" />
+        <span className="h-3 w-10 animate-pulse rounded bg-paper-deep" />
+      </div>
+      <div className="flex flex-1 items-center justify-center p-6">
+        <div className="h-full w-full max-w-2xl animate-pulse rounded-[4px] border border-line bg-surface shadow-[var(--shadow-card)]" />
+      </div>
+    </div>
+  );
+}
+
 export function LeftWorkspacePdf(props: LeftWorkspacePdfProps) {
-  const { widthPercent, pdfUrl, documentInfo, onClosePdf, defaultLayoutPluginInstance, aiTranslationPluginInstance, onPageChange, translation } = props;
+  const { widthPercent, pdfUrl, documentInfo, onClosePdf, onPageChange, translation, onAskAI, onAssist } = props;
   return (
     <LeftWorkspaceShell
       widthPercent={widthPercent}
@@ -157,14 +171,16 @@ export function LeftWorkspacePdf(props: LeftWorkspacePdfProps) {
       onClosePdf={onClosePdf}
       documentName={documentInfo?.name}
     >
-      <PdfPanel
-        pdfUrl={pdfUrl}
-        documentInfo={documentInfo}
-        onPageChange={onPageChange}
-        defaultLayoutPluginInstance={defaultLayoutPluginInstance}
-        aiTranslationPluginInstance={aiTranslationPluginInstance}
-        translation={translation}
-      />
+      <Suspense fallback={<PdfViewerSkeleton />}>
+        <PdfViewerSurface
+          pdfUrl={pdfUrl}
+          documentInfo={documentInfo}
+          onPageChange={onPageChange}
+          translation={translation}
+          onAskAI={onAskAI}
+          onAssist={onAssist}
+        />
+      </Suspense>
     </LeftWorkspaceShell>
   );
 }

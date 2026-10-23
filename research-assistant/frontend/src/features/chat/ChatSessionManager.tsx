@@ -44,6 +44,7 @@ export function ChatSessionManager(props: ChatSessionManagerProps) {
   const { state, actions } = props;
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -53,7 +54,10 @@ export function ChatSessionManager(props: ChatSessionManagerProps) {
       }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener('mousedown', handlePointerDown);
     document.addEventListener('keydown', handleKeyDown);
@@ -63,16 +67,24 @@ export function ChatSessionManager(props: ChatSessionManagerProps) {
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const activeOption = rootRef.current?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]');
+    activeOption?.focus();
+  }, [open]);
+
   const activeSession = state.sessions.find((session) => session.id === state.activeSessionId) ?? state.sessions[0] ?? null;
 
   return (
     <div ref={rootRef} className="relative shrink-0 border-b border-line bg-surface-muted/70 px-3 py-2">
       <div className="flex items-center gap-2">
         <button
+          ref={triggerRef}
           type="button"
           onClick={() => setOpen((value) => !value)}
           aria-expanded={open}
           aria-haspopup="listbox"
+          aria-controls="chat-session-menu"
           className="group flex min-w-0 flex-1 items-center gap-2 rounded-[5px] px-2 py-1.5 text-left transition-colors hover:bg-surface"
         >
           <MessagesSquare className="h-4 w-4 shrink-0 text-accent" />
@@ -106,7 +118,7 @@ export function ChatSessionManager(props: ChatSessionManagerProps) {
             <span className="text-[10.5px] text-faint">{state.sessions.length} 个</span>
           </div>
 
-          <div className="max-h-56 overflow-y-auto py-1" role="listbox" aria-label="会话列表">
+          <div id="chat-session-menu" className="max-h-56 overflow-y-auto py-1" role="listbox" aria-label="会话列表">
             {state.sessions.length === 0 && (
               <p className="px-3 py-4 text-center text-[11.5px] text-faint">还没有会话记录</p>
             )}
@@ -129,7 +141,7 @@ export function ChatSessionManager(props: ChatSessionManagerProps) {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[12.5px] font-medium leading-4 text-ink">{session.title}</span>
-                    <span className="mt-0.5 block truncate text-[10.5px] leading-3 text-faint">
+                    <span className="mt-0.5 block truncate text-[10.5px] leading-3 text-muted">
                       {session.messageCount} 条 · {formatTime(session.updatedAt)}
                     </span>
                   </span>

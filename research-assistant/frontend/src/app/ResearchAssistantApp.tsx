@@ -1,17 +1,13 @@
 import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useEdgesState, useNodesState } from '@xyflow/react';
 import type { Edge, Node, OnEdgesChange, OnNodesChange } from '@xyflow/react';
 import { GitBranch, MessageSquareText } from 'lucide-react';
-import '@xyflow/react/dist/style.css';
-import 'katex/dist/katex.min.css';
-import '@react-pdf-viewer/core/lib/styles/index.css';
-import '@react-pdf-viewer/default-layout/lib/styles/index.css';
 
 import { LeftWorkspaceChat, LeftWorkspacePdf } from './components/LeftWorkspace';
 import { useResearchAssistantRuntimeContext, type ResearchAssistantRuntimeContextValue } from './context/ResearchAssistantRuntimeContext';
 import { ResearchAssistantRuntimeProvider } from './context/ResearchAssistantRuntimeProvider';
 import { usePdfAssistFlow } from './hooks/usePdfAssistFlow';
 import { useResearchAssistantChatFlow } from './hooks/useResearchAssistantChatFlow';
+import { useGraphState } from './hooks/useGraphState';
 import { useResearchAssistantLayoutState } from './hooks/useResearchAssistantLayoutState';
 import { useResearchAssistantRuntime } from './hooks/useResearchAssistantRuntime';
 import { useGraphExecutionViewModel } from './viewModels/useGraphExecutionViewModel';
@@ -173,9 +169,9 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
       pdfUrl={pdfFlow.pdfUrl}
       documentInfo={pdfFlow.documentInfo}
       onClosePdf={pdfFlow.closePdf}
-      defaultLayoutPluginInstance={pdfFlow.defaultLayoutPluginInstance}
-      aiTranslationPluginInstance={pdfFlow.aiTranslationPluginInstance}
       translation={pdfFlow.translation}
+      onAskAI={pdfFlow.handleAskAI}
+      onAssist={pdfFlow.assistWithUpload}
     />
   ) : (
     <LeftWorkspaceChat
@@ -235,8 +231,7 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
 }
 
 export default function ResearchAssistantApp() {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const { nodes, setNodes, onNodesChange, edges, setEdges, onEdgesChange } = useGraphState();
   const [mobilePane, setMobilePane] = useState<'chat' | 'graph'>('chat');
   const logsEndRef = useRef<HTMLDivElement>(null);
   const layout = useResearchAssistantLayoutState();

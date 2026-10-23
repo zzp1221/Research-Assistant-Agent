@@ -1,5 +1,6 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Background, Controls, MarkerType, Position, ReactFlow, type Edge, type Node } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import { AlertTriangle, CheckCircle2, CircleHelp, FileSearch, Link2, XCircle } from 'lucide-react';
 
 type ClaimStatus =

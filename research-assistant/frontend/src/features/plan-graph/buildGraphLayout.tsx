@@ -1,4 +1,10 @@
-import { MarkerType, Position, type Edge, type Node } from '@xyflow/react';
+import type { Edge, MarkerType, Node, Position } from '@xyflow/react';
+
+const POSITION_RIGHT = 'right' as Position;
+const POSITION_LEFT = 'left' as Position;
+const POSITION_TOP = 'top' as Position;
+const POSITION_BOTTOM = 'bottom' as Position;
+const ARROW_CLOSED = 'arrowclosed' as MarkerType;
 import type { GraphTask, PlanGraph, Task } from '../../contracts/api';
 import { getTaskStyleByStatus } from '../shared/agentVisuals';
 import { createTaskNodeLabel } from './nodeLabelFactory';
@@ -143,8 +149,8 @@ export const buildGraphLayout = (inputPlanGraph: PlanGraph): { nodes: Node[]; ed
       x: 48 + level * 276,
       y: 48 + (stackIndex + (maxTasksInLevel - tasksPerLevel[level]) / 2) * 132,
     };
-    let sourcePosition = Position.Right;
-    let targetPosition = Position.Left;
+    let sourcePosition = POSITION_RIGHT;
+    let targetPosition = POSITION_LEFT;
 
     if (hasExperimentSearch) {
       const scientificPositions: Record<string, { x: number; y: number }> = {
@@ -158,12 +164,12 @@ export const buildGraphLayout = (inputPlanGraph: PlanGraph): { nodes: Node[]; ed
         verify_result: { x: 592, y: 602 },
       };
       position = scientificPositions[task.type] ?? position;
-      if (task.type === 'ablation_design' || task.type === 'install_dependencies') sourcePosition = Position.Bottom;
+      if (task.type === 'ablation_design' || task.type === 'install_dependencies') sourcePosition = POSITION_BOTTOM;
       if (task.type === 'experiment_run') {
-        sourcePosition = Position.Bottom;
-        targetPosition = Position.Top;
+        sourcePosition = POSITION_BOTTOM;
+        targetPosition = POSITION_TOP;
       }
-      if (task.type === 'experiment_validate') targetPosition = Position.Top;
+      if (task.type === 'experiment_validate') targetPosition = POSITION_TOP;
     }
 
     if (useCompactLongChain && !hasExperimentSearch) {
@@ -178,8 +184,8 @@ export const buildGraphLayout = (inputPlanGraph: PlanGraph): { nodes: Node[]; ed
         x: 40 + column * 252,
         y: 32 + row * compactRowHeight + levelStackOffset + stackIndex * compactStackGap,
       };
-      targetPosition = startsNewRow ? Position.Top : row % 2 === 0 ? Position.Left : Position.Right;
-      sourcePosition = endsRow ? Position.Bottom : row % 2 === 0 ? Position.Right : Position.Left;
+      targetPosition = startsNewRow ? POSITION_TOP : row % 2 === 0 ? POSITION_LEFT : POSITION_RIGHT;
+      sourcePosition = endsRow ? POSITION_BOTTOM : row % 2 === 0 ? POSITION_RIGHT : POSITION_LEFT;
     }
 
     newNodes.push({
@@ -232,7 +238,7 @@ export const buildGraphLayout = (inputPlanGraph: PlanGraph): { nodes: Node[]; ed
         strokeDasharray: isDataEdge ? '5 5' : undefined,
       },
       markerEnd: {
-        type: MarkerType.ArrowClosed,
+        type: ARROW_CLOSED,
         color: isDataEdge ? '#8a7a9a' : '#b9b2a2',
         width: 15,
         height: 15,

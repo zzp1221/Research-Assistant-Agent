@@ -89,7 +89,7 @@ test('benchmark node opens a readable report', async ({ page }) => {
   await expect(node).toBeVisible();
   await node.click();
 
-  const reportTab = page.getByRole('button', { name: '评测报告' });
+  const reportTab = page.getByRole('tab', { name: '评测报告' });
   await expect(reportTab).toBeVisible();
   await reportTab.click();
   await expect(page.getByText('已通过隐藏标签验收')).toBeVisible();
