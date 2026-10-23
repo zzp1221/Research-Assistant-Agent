@@ -404,6 +404,24 @@ func TestCodeExecutionPlotPlanUsesCoderRenderNode(t *testing.T) {
 	}
 }
 
+func TestGeneralSummaryPlanStillPassesValidation(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	plan, err := NewPlanner().BuildPlan(t.Context(), models.IntentContext{
+		RawIntent:  "分析一下这篇论文的主要创新点和局限性",
+		IntentType: "General",
+		Entities:   map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Nodes) != 2 || plan.Nodes[0].Type != "general_research" || plan.Nodes[1].Type != "general_synthesis" {
+		t.Fatalf("unexpected general summary plan: %#v", plan.Nodes)
+	}
+	if err := validateCriticalNodeContracts(models.IntentContext{IntentType: "General", Entities: map[string]any{}}, plan.Nodes); err != nil {
+		t.Fatalf("general summary plan failed validation: %v", err)
+	}
+}
+
 func TestGeneralPlanHasRealContextAndFinalAnswer(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "")
 	plan, err := NewPlanner().BuildPlan(t.Context(), models.IntentContext{

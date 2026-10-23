@@ -1879,19 +1879,28 @@ func validateCriticalNodeContracts(intent models.IntentContext, nodes []*models.
 		}
 	}
 	if intent.IntentType == "General" {
-		hasGeneralProcess := false
 		hasFinalAnswer := false
 		for _, node := range nodes {
-			if node == nil || node.Type != "general_process" {
+			if node == nil {
 				continue
 			}
-			hasGeneralProcess = true
-			if containsArtifact(node.OutputArtifacts, "final_answer") {
-				hasFinalAnswer = true
+			switch node.Type {
+			case "general_process":
+				if containsArtifact(node.OutputArtifacts, "final_answer") {
+					hasFinalAnswer = true
+				}
+			case "general_synthesis":
+				if containsArtifact(node.OutputArtifacts, "general_response") {
+					hasFinalAnswer = true
+				}
+			case "paper_summary":
+				if containsArtifact(node.OutputArtifacts, "general_response") {
+					hasFinalAnswer = true
+				}
 			}
 		}
-		if !hasGeneralProcess || !hasFinalAnswer {
-			return fmt.Errorf("general plan must contain a general_process node with final_answer output")
+		if !hasFinalAnswer {
+			return fmt.Errorf("general plan must contain a final answer-producing node")
 		}
 	}
 	if boolEntity(intent.Entities, "needs_plot") && !hasPlotNode(nodes) {
