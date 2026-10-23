@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"research-assistant-backend/internal/appconfig"
 	"research-assistant-backend/internal/llmclient"
@@ -87,11 +88,14 @@ func (a *ChatAgent) Answer(ctx context.Context, question string) (string, error)
 	if strings.Contains(response, "[CODE_EXECUTION_REQUIRED]") {
 		log.Printf("[%s] 检测到代码执行需求，正在调用 CoderAgent 自动执行...", a.Name)
 
-		// 创建一个临时任务给 CoderAgent
+		// 创建一个临时任务给 CoderAgent；必须显式标记为 coder_agent +
+		// code_execution，否则 CoderAgent 只会走代码生成链，不会真正在沙箱执行。
 		tempTask := &models.Task{
 			ID:          "chat-exec-" + question[:min(len(question), 10)],
 			Name:        "Auto-Execute from Chat",
+			Type:        "code_execution",
 			Description: question,
+			AssignedTo:  "coder_agent",
 			Status:      models.StatusPending,
 		}
 
@@ -114,7 +118,21 @@ func min(a, b int) int {
 }
 
 func (a *ChatAgent) ExecuteTask(ctx context.Context, task *models.Task, sharedContext map[string]interface{}) error {
-	output, err := a.Answer(ctx, task.Description)
+	question := strings.TrimSpace(task.Description)
+	if question == "" {
+		question = task.Name
+	}
+	if len(task.Inputs) > 0 {
+		if payload, err := json.Marshal(task.Inputs); err == nil {
+			text := string(payload)
+			const maxInputChars = 12000
+			if len(text) > maxInputChars {
+				text = text[:maxInputChars] + "..."
+			}
+			question += "\n\n上游输入（只读，供回答使用）：\n" + text
+		}
+	}
+	output, err := a.Answer(ctx, question)
 	if err != nil {
 		task.Status = models.StatusFailed
 		task.Error = err.Error()

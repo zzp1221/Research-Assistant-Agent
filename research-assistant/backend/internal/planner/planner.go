@@ -1313,8 +1313,10 @@ func buildGeneralNodesV2(intent models.IntentContext) []*models.TaskNode {
 		return []*models.TaskNode{t1, t2}
 	}
 
-	t1 := newNode("Process Request", "general_process", "general_agent", nil, nil, []string{"general_response"}, true, context)
-	return []*models.TaskNode{t1}
+	t1 := newNode("Scope Request", "general_process", "general_agent", nil, nil, []string{"intent_scope", "assumption_log"}, true, context)
+	t2 := newNode("Collect Background Context", "general_research", "librarian_agent", []string{t1.ID}, []string{"intent_scope", "assumption_log"}, []string{"research_notes"}, true, context)
+	t3 := newNode("Process Request", "general_process", "general_agent", []string{t1.ID, t2.ID}, []string{"intent_scope", "research_notes"}, []string{"final_answer"}, false, context)
+	return []*models.TaskNode{t1, t2, t3}
 }
 
 func hasAny(s string, keywords ...string) bool {
@@ -1631,7 +1633,7 @@ func validateAgentPlannedNodes(intent models.IntentContext, nodes []*models.Task
 }
 
 func validateCriticalNodeContracts(intent models.IntentContext, nodes []*models.TaskNode) error {
-	if intent.IntentType != "Code_Execution" && intent.IntentType != "Framework_Evaluation" && intent.IntentType != "Paper_Reproduction" && intent.IntentType != "AutoResearch" && intent.IntentType != "Custom_Benchmark" {
+	if intent.IntentType != "Code_Execution" && intent.IntentType != "Framework_Evaluation" && intent.IntentType != "Paper_Reproduction" && intent.IntentType != "AutoResearch" && intent.IntentType != "Custom_Benchmark" && intent.IntentType != "General" {
 		return nil
 	}
 
@@ -1874,6 +1876,22 @@ func validateCriticalNodeContracts(intent models.IntentContext, nodes []*models.
 	if intent.IntentType == "Custom_Benchmark" {
 		if !hasBenchmarkAudit || !hasBenchmarkSplit || !hasBenchmarkContract || !hasRepoDiscovery || !hasRepoPrepare || !hasPrepareRuntime || !hasInstallDependencies || !hasBenchmarkExecute || !hasBenchmarkValidation {
 			return fmt.Errorf("custom benchmark plan is missing one or more trusted benchmark nodes")
+		}
+	}
+	if intent.IntentType == "General" {
+		hasGeneralProcess := false
+		hasFinalAnswer := false
+		for _, node := range nodes {
+			if node == nil || node.Type != "general_process" {
+				continue
+			}
+			hasGeneralProcess = true
+			if containsArtifact(node.OutputArtifacts, "final_answer") {
+				hasFinalAnswer = true
+			}
+		}
+		if !hasGeneralProcess || !hasFinalAnswer {
+			return fmt.Errorf("general plan must contain a general_process node with final_answer output")
 		}
 	}
 	if boolEntity(intent.Entities, "needs_plot") && !hasPlotNode(nodes) {

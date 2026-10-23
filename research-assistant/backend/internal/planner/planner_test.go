@@ -404,6 +404,31 @@ func TestCodeExecutionPlotPlanUsesCoderRenderNode(t *testing.T) {
 	}
 }
 
+func TestGeneralPlanHasRealContextAndFinalAnswer(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	plan, err := NewPlanner().BuildPlan(t.Context(), models.IntentContext{
+		RawIntent:  "帮我处理一下这个请求",
+		IntentType: "General",
+		Entities:   map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var final *models.TaskNode
+	for _, node := range plan.Nodes {
+		if node != nil && node.Type == "general_process" && containsArtifact(node.OutputArtifacts, "final_answer") {
+			final = node
+			break
+		}
+	}
+	if final == nil {
+		t.Fatalf("general plan has no final_answer general_process node: %#v", plan.Nodes)
+	}
+	if len(final.Dependencies) < 2 {
+		t.Fatalf("final answer must consume explicit scope/research dependencies: %#v", final.Dependencies)
+	}
+}
+
 func TestGeneralProcessUsesGeneralAgent(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "")
 	plan, err := NewPlanner().BuildPlan(t.Context(), models.IntentContext{
