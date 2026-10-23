@@ -104,7 +104,7 @@ func SetupRoutes(r *gin.Engine) {
 			c.Status(204)
 		})
 
-		RegisterPlanRuntimeRoutes(apiGroup, p, librarianAgent, dataAgent, coderAgent, researchCodingAgent, benchmarkAgent)
+		RegisterPlanRuntimeRoutes(apiGroup, p, librarianAgent, dataAgent, coderAgent, researchCodingAgent, benchmarkAgent, chatAgent)
 		RegisterUploadRoutes(apiGroup)
 
 		apiGroup.GET("/hello", func(c *gin.Context) {

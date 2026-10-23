@@ -812,75 +812,6 @@ func copyBenchmarkInputs(source map[string]any) map[string]any {
 	return copyValues
 }
 
-func buildFrameworkEvaluationNodes(context string) []*models.TaskNode {
-	normalized := strings.ToLower(context)
-	frameworks := frameworkLabels(normalized)
-	left := frameworkDisplayName(frameworks, 0, "Framework A")
-	right := frameworkDisplayName(frameworks, 1, "Framework B")
-	needsBenchmark := hasAny(normalized, "benchmark", "性能", "评测", "latency", "吞吐", "run", "运行", "实验")
-
-	t1 := newNode("Research Candidate Frameworks", "framework_research", "librarian_agent", nil, nil, []string{"framework_research_report"}, true, context)
-	if !needsBenchmark {
-		t2 := newNode("Analyze "+left+" Fit", "framework_fit_left", "librarian_agent", []string{t1.ID}, []string{"framework_research_report"}, []string{"left_fit_report"}, true, context)
-		t3 := newNode("Analyze "+right+" Fit", "framework_fit_right", "librarian_agent", []string{t1.ID}, []string{"framework_research_report"}, []string{"right_fit_report"}, true, context)
-		t4 := newNode("Generate Selection Recommendation", "framework_recommendation", "data_agent", []string{t2.ID, t3.ID}, []string{"left_fit_report", "right_fit_report"}, []string{"evaluation_report"}, false, context)
-		return []*models.TaskNode{t1, t2, t3, t4}
-	}
-
-	t2 := newNode("Prepare "+left+" Environment", "framework_prepare_left", "coder_agent", []string{t1.ID}, []string{"framework_research_report"}, []string{"left_env"}, true, context)
-	t3 := newNode("Prepare "+right+" Environment", "framework_prepare_right", "coder_agent", []string{t1.ID}, []string{"framework_research_report"}, []string{"right_env"}, true, context)
-	t4 := newNode("Run "+left+" Benchmark", "framework_run_left", "sandbox_agent", []string{t2.ID}, []string{"left_env"}, []string{"left_metrics"}, true, context)
-	t5 := newNode("Run "+right+" Benchmark", "framework_run_right", "sandbox_agent", []string{t3.ID}, []string{"right_env"}, []string{"right_metrics"}, true, context)
-	t6 := newNode("Generate Benchmark Report", "framework_report", "data_agent", []string{t4.ID, t5.ID}, []string{"left_metrics", "right_metrics"}, []string{"evaluation_report"}, false, context)
-	return []*models.TaskNode{t1, t2, t3, t4, t5, t6}
-}
-
-func buildPaperReproductionNodes(context string) []*models.TaskNode {
-	return buildPaperReproductionNodesV2(models.IntentContext{
-		RawIntent:  context,
-		IntentType: "Paper_Reproduction",
-		Entities:   map[string]any{},
-	})
-}
-
-func buildCodeExecutionNodes(context string) []*models.TaskNode {
-	normalized := strings.ToLower(context)
-	needsPlot := hasAny(normalized, "plot", "matplotlib", "画图", "图表", "曲线")
-	needsAnalysis := hasAny(normalized, "analyze", "analysis", "分析", "解释", "report", "报告")
-
-	t1 := newNode("Generate Code", "generate_code", "coder_agent", nil, nil, []string{"generated_code"}, true, context)
-	t2 := newNode("Prepare Runtime", "prepare_runtime", "sandbox_agent", []string{t1.ID}, []string{"generated_code"}, []string{"runtime_env"}, false, context)
-	t3 := newNode("Execute Code", "execute_code", "sandbox_agent", []string{t2.ID}, []string{"generated_code", "runtime_env"}, []string{"execution_result"}, false, context)
-
-	nodes := []*models.TaskNode{t1, t2, t3}
-	lastID := t3.ID
-	lastArtifact := "execution_result"
-
-	if needsPlot {
-		t4 := newNode("Render Output Plot", "render_plot", "data_agent", []string{lastID}, []string{lastArtifact}, []string{"plot_image"}, true, context)
-		nodes = append(nodes, t4)
-		lastID = t4.ID
-		lastArtifact = "plot_image"
-	}
-	if needsAnalysis || !needsPlot {
-		t5 := newNode("Verify And Summarize Result", "verify_result", "data_agent", []string{lastID}, []string{lastArtifact}, []string{"verification_report"}, true, context)
-		nodes = append(nodes, t5)
-	}
-	return nodes
-}
-
-func buildGeneralNodes(context string) []*models.TaskNode {
-	normalized := strings.ToLower(context)
-	if hasAny(normalized, "论文", "paper", "总结", "summary", "综述", "report", "报告") {
-		t1 := newNode("Collect Background Context", "general_research", "librarian_agent", nil, nil, []string{"background_context"}, true, context)
-		t2 := newNode("Synthesize Response", "general_synthesis", "data_agent", []string{t1.ID}, []string{"background_context"}, []string{"general_response"}, false, context)
-		return []*models.TaskNode{t1, t2}
-	}
-
-	t1 := newNode("Process Request", "general_process", "general_agent", nil, nil, []string{"general_response"}, true, context)
-	return []*models.TaskNode{t1}
-}
-
 func buildEdgesFromNodes(nodes []*models.TaskNode) []*models.TaskEdge {
 	edges := []*models.TaskEdge{}
 	for _, node := range nodes {
@@ -1037,11 +968,14 @@ func buildFrameworkEvaluationNodesV2(intent models.IntentContext) []*models.Task
 	context := intent.RawIntent
 	normalized := strings.ToLower(context)
 	frameworks := frameworkNamesFromIntent(intent, normalized)
-	needsBenchmark := boolEntity(intent.Entities, "needs_benchmark") || hasAny(normalized,
+	needsBenchmark := boolEntity(intent.Entities, "needs_benchmark") || intentpkg.ContainsBenchmarkIntent(context) || hasAny(normalized,
 		"benchmark",
 		"\u6027\u80fd",
 		"\u8bc4\u6d4b",
 		"latency",
+		"\u54cd\u5e94\u65f6\u95f4",
+		"\u8017\u65f6",
+		"\u65f6\u5ef6",
 		"\u541e\u5410",
 		"run",
 		"\u8fd0\u884c",
@@ -1641,11 +1575,14 @@ func validateAgentPlannedNodes(intent models.IntentContext, nodes []*models.Task
 	}
 
 	normalized := strings.ToLower(intent.RawIntent)
-	needsBenchmark := boolEntity(intent.Entities, "needs_benchmark") || hasAny(normalized,
+	needsBenchmark := boolEntity(intent.Entities, "needs_benchmark") || intentpkg.ContainsBenchmarkIntent(intent.RawIntent) || hasAny(normalized,
 		"benchmark",
 		"\u6027\u80fd",
 		"\u8bc4\u6d4b",
 		"latency",
+		"\u54cd\u5e94\u65f6\u95f4",
+		"\u8017\u65f6",
+		"\u65f6\u5ef6",
 		"\u541e\u5410",
 		"run",
 		"\u8fd0\u884c",
@@ -1948,12 +1885,18 @@ func validateCriticalNodeContracts(intent models.IntentContext, nodes []*models.
 
 func hasPlotNode(nodes []*models.TaskNode) bool {
 	for _, node := range nodes {
-		if node == nil {
+		if node == nil || node.AssignedTo != "coder_agent" {
 			continue
 		}
 		switch node.Type {
-		case "render_plot", "result_visualization":
-			return true
+		case "render_plot":
+			if containsArtifact(node.OutputArtifacts, "plot_image") {
+				return true
+			}
+		case "result_visualization":
+			if containsArtifact(node.OutputArtifacts, "result_plot") {
+				return true
+			}
 		}
 	}
 	return false

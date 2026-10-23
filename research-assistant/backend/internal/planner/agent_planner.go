@@ -388,6 +388,8 @@ func normalizePlannerAssignedTo(bp plannerNodeBlueprint) string {
 		return "librarian_agent"
 	case "framework_recommendation", "ablation_design", "paper_compare", "claim_evidence_build", "verify_result", "general_synthesis":
 		return "data_agent"
+	case "general_process":
+		return "general_agent"
 	default:
 		return bp.AssignedTo
 	}
@@ -447,6 +449,15 @@ func applyPlannerNodeDefaults(bp plannerNodeBlueprint) plannerNodeBlueprint {
 	case "experiment_validate":
 		bp.RequiredArtifacts = ensureArtifacts(bp.RequiredArtifacts, "workspace_path", "prepared_runtime", "experiment_spec", "experiment_trial_ledger", "experiment_best_candidate")
 		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, "experiment_validation_report", "experiment_best_metrics")
+	case "render_plot", "result_visualization":
+		bp.AssignedTo = "coder_agent"
+		if len(bp.OutputArtifacts) == 0 {
+			key := "plot_image"
+			if bp.Type == "result_visualization" {
+				key = "result_plot"
+			}
+			bp.OutputArtifacts = []string{key}
+		}
 	}
 	return bp
 }

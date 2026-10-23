@@ -42,6 +42,7 @@ type RoutedTaskExecutor struct {
 	Librarian      AgentRunner
 	Data           AgentRunner
 	Coder          AgentRunner
+	General        AgentRunner
 	ResearchCoding AgentRunner
 	Benchmark      AgentRunner
 }
@@ -57,6 +58,9 @@ func NewRoutedTaskExecutor(librarian, data, coder AgentRunner, specialized ...Ag
 	}
 	if len(specialized) > 1 {
 		executor.Benchmark = specialized[1]
+	}
+	if len(specialized) > 2 {
+		executor.General = specialized[2]
 	}
 	return executor
 }
@@ -190,10 +194,15 @@ func (e *RoutedTaskExecutor) resolveRunner(assignedTo string) (AgentRunner, erro
 		if e.Data != nil {
 			return e.Data, nil
 		}
-	case "coder_agent", "sandbox_agent", "general_agent":
+	case "coder_agent", "sandbox_agent":
 		if e.Coder != nil {
 			return e.Coder, nil
 		}
+	case "general_agent":
+		if e.General != nil {
+			return e.General, nil
+		}
+		return nil, fmt.Errorf("no general agent runner configured for %s", assignedTo)
 	case "research_coding_agent":
 		if e.ResearchCoding != nil {
 			return e.ResearchCoding, nil

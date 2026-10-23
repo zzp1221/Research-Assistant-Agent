@@ -404,6 +404,57 @@ func TestCodeExecutionPlotPlanUsesCoderRenderNode(t *testing.T) {
 	}
 }
 
+func TestGeneralProcessUsesGeneralAgent(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	plan, err := NewPlanner().BuildPlan(t.Context(), models.IntentContext{
+		RawIntent:  "帮我处理一下这个请求",
+		IntentType: "General",
+		Entities:   map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var process *models.TaskNode
+	for _, node := range plan.Nodes {
+		if node != nil && node.Type == "general_process" {
+			process = node
+			break
+		}
+	}
+	if process == nil {
+		t.Fatalf("general_process node missing: %#v", plan.Nodes)
+	}
+	if process.AssignedTo != "general_agent" {
+		t.Fatalf("general_process assigned to %s, want general_agent", process.AssignedTo)
+	}
+}
+
+func TestPlotValidationRequiresCoderOwnedArtifact(t *testing.T) {
+	valid := []*models.TaskNode{{
+		Type:            "render_plot",
+		AssignedTo:      "coder_agent",
+		OutputArtifacts: []string{"plot_image"},
+	}}
+	if !hasPlotNode(valid) {
+		t.Fatal("valid coder plot node was not recognized")
+	}
+	missingArtifact := []*models.TaskNode{{
+		Type:       "render_plot",
+		AssignedTo: "coder_agent",
+	}}
+	if hasPlotNode(missingArtifact) {
+		t.Fatal("plot node without plot_image artifact was accepted")
+	}
+	wrongAgent := []*models.TaskNode{{
+		Type:            "render_plot",
+		AssignedTo:      "data_agent",
+		OutputArtifacts: []string{"plot_image"},
+	}}
+	if hasPlotNode(wrongAgent) {
+		t.Fatal("data_agent plot node was accepted")
+	}
+}
+
 func TestFrameworkEvaluationPlotPlanUsesCoderRenderNode(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "")
 	intent := models.IntentContext{

@@ -17,7 +17,8 @@ var comparisonKeywords = []string{
 }
 
 var benchmarkKeywords = []string{
-	"benchmark", "性能", "评测", "latency", "吞吐", "run", "运行", "实验",
+	"benchmark", "性能", "评测", "latency", "响应时间", "耗时", "时延",
+	"吞吐", "吞吐量", "run", "运行", "实验",
 }
 
 var knownFrameworkNames = []string{
