@@ -1,66 +1,25 @@
-# Container E2E Reports
+# Reports
 
-All product tests were run from containers on the Compose network. The host
-ports `8080`/`5173` were already occupied by an unrelated project, so this run
-published the backend on `127.0.0.1:18080` and the frontend on
-`127.0.0.1:15173`. Service-to-service traffic still used the internal ports
-(`backend:8080`, `docker-sandbox:8082`, `research-optimizer:8090`).
+本目录用于**本地/容器内**生成验收报告与 E2E 产物，默认不进入版本库。
 
-## Results
+`.gitignore` 的约定：
 
-| Check | Result |
-|---|---|
-| DeepSeek `/chat/completions` probe | HTTP 200, model `deepseek-flash` |
-| Backend `/api/chat` with real DeepSeek | `DEEPSEEK_CHAT_OK` |
-| Backend `/api/plan` with real DeepSeek | HTTP 200, `Code_Execution`, 6 nodes |
-| Legacy `/api/execute` | HTTP 410 tombstone |
-| Plan-scoped task execution | HTTP 200 SSE `result`; generated code; client-supplied `/etc` paths ignored |
-| Sandbox create / Python execute / delete | 200 / `SANDBOX_OK` / 200 |
-| Sandbox control-container name attack | rejected (500, `invalid sandbox container id`) |
-| Compose health from backend network | all `backend`, `repository`, `sandbox`, `research_optimizer` = ok |
-| Frontend Nginx + API proxy | HTTP 200 for `/` and `/api/health` |
-| API auth + SSE ticket | no token → 401; ticket endpoint with bearer → 200; stream without ticket → 401; stream with ticket → 200 (`plan_event`) |
-| Apriori paper reproduction | 10/10 nodes completed; 15 frequent itemsets, 5 association rules |
-| rank_bm25 AutoResearch | 8/8 nodes completed; baseline 0.5556 → best 1.0; hidden holdout mean 1.0, 3/3 runs |
-| Go backend/docker-core/docker-sandbox tests | pass (including `-race` for scheduler/api/store) |
-| Frontend build / lint / tests | pass (Node 22 container) |
-| Python optimizer tests | 8/8 pass (Python 3.12 container) |
-| AutoResearch example evaluator tests | 1/1 pass |
-| Paper example tests | 1/1 pass |
-| Benchmark + AutoResearch Go regression tests | 28/28 pass |
+- 仅保留本 `README.md`；
+- `reports/**` 下的 JSON、Markdown、PNG、PDF fixture 与评估报告均为本地生成物；
+- 需要长期保留的结论请先脱敏，再整理到 `docs/` 或模块 README，而不是直接提交原始运行日志。
 
-## Artifacts
+## 生成方式
 
-- `apriori-smoke.json` — complete Apriori paper plan, claim rubric, run metrics,
-  comparison report, and claim-evidence graph.
-- `autoresearch-rank-bm25.json` — complete rank_bm25 AutoResearch plan graph and
-  trial ledgers.
+E2E 脚本位于 `research-assistant/test/e2e/`，容器内默认把结果写到 `/reports`。示例：
 
-## Phase 1 (PDF + document assist + readable results)
+```bash
+docker run --rm --network research-assistant_research-assistant-network \
+  -v "$PWD/research-assistant/test/e2e:/scripts:ro" \
+  -v "$PWD/reports:/reports" \
+  -e E2E_BASE=http://backend:8080 -e E2E_TOKEN=*** \
+  node:22-bookworm-slim node /scripts/phase2-paper-e2e.mjs
+```
 
-The phase 1 acceptance run is documented in [phase1-README.md](phase1-README.md).
-It covers local pdfjs assets, PDF text extraction, real DeepSeek translation and
-explanation, background full-document translation, a 10/10 Apriori reproduction,
-a 13/13 benchmark plan with `benchmark.validation/v1`, rank_bm25 AutoResearch
-with hidden holdout 3/3, and browser UI evidence in `ui/`.
+## 当前本地报告
 
-Note: the DeepSeek account balance was exhausted during the final translation
-run (`HTTP 402 Insufficient Balance`). Completed evidence above was captured
-before that point; failed pages are reported as `failed`/`partial` instead of
-being shown as translated.
-
-## Provider retest (2026-10-23)
-
-The suite was re-run with `https://api.ai-pixel.online/v1` and
-`deepseek-v4.1-flash-1017`; see [phase1-provider-retest.md](phase1-provider-retest.md).
-All phase 1 flows passed again: PDF extract/assist/translation, Apriori 10/10,
-benchmark 13/13, AutoResearch 8/8 hidden holdout 3/3, backend and frontend tests.
-
-## Notes
-
-The initial Attention Is All You Need smoke attempt was canceled after it began
-downloading the CUDA `torch` wheel (888 MB) plus multiple NVIDIA libraries.
-That is not a lightweight reproduction, and the dependency retry left a second
-pip process alive. The lightweight Apriori path was added instead: it uses the
-repository's `INTEGRATED-DATASET.csv` and a bounded smoke runner, with no model
-training and no large downloads.
+本次评估产物在本地 `reports/eval-2026-10-23/`，包括评分卡、Apriori/AutoResearch/PDF/Benchmark 证据与安全探针结果；该目录被 `.gitignore` 忽略，不随仓库提交。

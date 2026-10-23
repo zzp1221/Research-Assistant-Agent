@@ -2,6 +2,14 @@
 
 可直接运行、带验收条件的示例。每个示例都明确说明运行边界、成功条件和验收方式，用于验证产品执行链，不等同于论文的完整训练复现。
 
+## 相关架构图
+
+- [系统架构图](../../docs/diagrams/architecture.drawio)（[SVG 预览](../../docs/diagrams/architecture.svg)）
+- [运行流程图](../../docs/diagrams/runtime-flow.drawio)（[SVG 预览](../../docs/diagrams/runtime-flow.svg)）
+- [Agent 执行流程图](../../docs/diagrams/agent-execution-flow.drawio)（[SVG 预览](../../docs/diagrams/agent-execution-flow.svg)）
+
+示例运行产生的 JSON/截图请写入本地 `reports/`（默认不提交）。
+
 | 示例 | 流程 | 运行环境 | 状态 |
 |---|---|---|---|
 | [Attention 论文复现](paper-reproduction/) | API -> Planner -> Scheduler -> Agents -> Docker Sandbox -> Artifacts | CPU smoke；可选 GPU 透传 | 可运行 |

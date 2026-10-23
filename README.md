@@ -64,11 +64,23 @@ Researcher / Paper / Repository / Dataset
                           Artifact + Event -> SSE
 ```
 
+### 架构与流程图（draw.io）
+
+| 图 | draw.io 源文件 | SVG 预览 |
+|---|---|---|
+| 系统架构图 | [architecture.drawio](docs/diagrams/architecture.drawio) | [architecture.svg](docs/diagrams/architecture.svg) |
+| 运行流程图 | [runtime-flow.drawio](docs/diagrams/runtime-flow.drawio) | [runtime-flow.svg](docs/diagrams/runtime-flow.svg) |
+| Agent 执行流程图 | [agent-execution-flow.drawio](docs/diagrams/agent-execution-flow.drawio) | [agent-execution-flow.svg](docs/diagrams/agent-execution-flow.svg) |
+
+图形说明与编辑方式见 [docs/README.md](docs/README.md) 和 [docs/diagrams/README.md](docs/diagrams/README.md)。
+
 ## 仓库结构
 
 ```text
 Research Assistant Agent/
 ├── README.md
+├── .github/workflows/ci.yml     # Linux/Windows CI：Go、前端、Python、Docker build
+├── docs/                        # 架构图、流程图与项目级文档
 ├── docker-core/                 # 底层 Docker/gVisor 沙箱内核实验模块
 │   ├── checkpoint/              # 快照、回滚与负反馈注入
 │   ├── config/                  # TOML 配置加载
@@ -241,8 +253,15 @@ Benchmark Agent 会审计列映射、生成泄漏安全的 train/validation/test
 - 当前复现重点是轻量 smoke 与结构消融，不包含大规模数据集训练。
 - 候选搜索是真实 Validation Reward 驱动的分层 UCB、Top-K Beam 与 UCT-style 搜索，不是完整 MCTS 或通用强化学习策略。
 
+## 开发产物与报告
+
+- `plan.md`、`spec.md`、`tasks.md` 是开发过程中的计划/规格/任务记录，默认不进入版本库。
+- `reports/` 下的验收报告、E2E JSON、截图和下载的 PDF fixture 属于本地运行产物；`.gitignore` 只保留 `reports/README.md` 作为目录说明。
+- 需要长期保留的架构说明放在 `docs/`，需要长期保留的测试证据请先脱敏再移入文档，而不是直接提交原始运行日志。
+
 ## 模块说明
 
+- [docs](docs/README.md)：架构图、流程图与项目级文档
 - [research-assistant](research-assistant/README.md)：产品主实现与启动方式
 - [backend](research-assistant/backend/README.md)：Go API、规划、调度与 Agent
 - [frontend](research-assistant/frontend/README.md)：React 工作台

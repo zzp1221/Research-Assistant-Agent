@@ -2,6 +2,14 @@
 
 React + TypeScript + Vite 工作台，负责对话、DAG 可视化、节点执行面板、PDF 阅读和 AutoResearch 结果展示。
 
+## 界面与流程
+
+- [系统架构图](../../docs/diagrams/architecture.drawio)（[SVG 预览](../../docs/diagrams/architecture.svg)）
+- [运行流程图](../../docs/diagrams/runtime-flow.drawio)（[SVG 预览](../../docs/diagrams/runtime-flow.svg)）
+- [Agent 执行流程图](../../docs/diagrams/agent-execution-flow.drawio)（[SVG 预览](../../docs/diagrams/agent-execution-flow.svg)）
+
+前端只通过 REST/SSE 与后端交互：创建计划后渲染 PlanGraph，执行时订阅计划级 SSE 事件，并把节点日志、代码、指标、报告和证据图回填到执行侧栏。
+
 ## 技术栈
 
 - React 19 + TypeScript

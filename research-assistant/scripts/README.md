@@ -2,6 +2,13 @@
 
 本地启动与 Docker Compose 辅助脚本。所有脚本都以 `research-assistant/` 为工作根目录，并读取 `backend.env`。
 
+## 相关架构图
+
+- [系统架构图](../../docs/diagrams/architecture.drawio)（[SVG 预览](../../docs/diagrams/architecture.svg)）
+- [运行流程图](../../docs/diagrams/runtime-flow.drawio)（[SVG 预览](../../docs/diagrams/runtime-flow.svg)）
+
+脚本只负责本地开发编排；容器化部署优先使用 `docker compose up --build -d`。
+
 ## Unix
 
 | 脚本 | 说明 |

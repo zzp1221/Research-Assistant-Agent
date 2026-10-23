@@ -2,6 +2,12 @@
 
 一个零第三方依赖的 Go 工具调用框架示例，演示如何把 LLM Function Calling 的注册、路由和执行循环串起来。
 
+## 与主项目的关系
+
+- [系统架构图](../docs/diagrams/architecture.drawio)（[SVG 预览](../docs/diagrams/architecture.svg)）
+
+`tool/` 是独立的 Function Calling 教学示例，不参与 `research-assistant` 的运行时；主项目的工具/Agent 路由见 `research-assistant/backend/internal/agent` 与 `internal/tools`。
+
 ## 文件
 
 | 文件 | 说明 |

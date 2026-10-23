@@ -2,6 +2,14 @@
 
 可选的 Python AI 服务集合。当前包含意图识别服务及其训练脚本，不属于默认 Docker Compose 启动链。
 
+> **当前状态：实验性/示例。** `intent_recognition/main.py` 是关键词 mock，不加载真实 BERT/Qwen 模型；主后端使用确定性的规则意图路由，生产请求不依赖本目录。
+
+## 在系统中的位置
+
+- [系统架构图](../../docs/diagrams/architecture.drawio)（[SVG 预览](../../docs/diagrams/architecture.svg)）
+
+本目录是离线实验与训练脚本的保留区，不参与 Compose 运行时；接入真实模型前请先替换 `main.py` 的 mock 推理并补充服务级测试。
+
 ## 服务
 
 | 目录 | 说明 |

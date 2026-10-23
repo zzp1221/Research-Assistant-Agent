@@ -4,12 +4,27 @@ Go 后端是 Research Assistant Agent 的业务核心，负责 HTTP API、意图
 
 模块路径：`research-assistant-backend`
 
+## 架构与流程
+
+- [系统架构图](../../docs/diagrams/architecture.drawio)（[SVG 预览](../../docs/diagrams/architecture.svg)）
+- [运行流程图](../../docs/diagrams/runtime-flow.drawio)（[SVG 预览](../../docs/diagrams/runtime-flow.svg)）
+- [Agent 执行流程图](../../docs/diagrams/agent-execution-flow.drawio)（[SVG 预览](../../docs/diagrams/agent-execution-flow.svg)）
+
+一次计划执行的生命周期：
+
+```text
+HTTP API -> Intent Router -> Planner + DAG Validator -> PlanStore
+          -> Scheduler (lease/retry/cancel/budget)
+          -> RoutedTaskExecutor -> 专业 Agent -> Sandbox gateway/executor
+          -> Artifact 校验 -> Event Bus -> SSE
+```
+
 ## 入口
 
 | 入口 | 说明 |
 |---|---|
 | `cmd/api/main.go` | 纯 API 服务，监听 `:8080`，适合与独立沙箱服务配合 |
-| `cmd/app/main.go` | 单文件应用，内嵌前端静态资源，并在未配置 `SANDBOX_URL` 时自动拉起本地沙箱 |
+| `cmd/app/main.go` | 单文件应用，内嵌前端静态资源；运行时必须配置 `SANDBOX_URL`，不会自动拉起本地沙箱 |
 
 ## 目录结构
 

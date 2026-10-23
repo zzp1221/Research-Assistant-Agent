@@ -2,6 +2,11 @@
 
 `scheduler` 负责执行 `PlanGraph`：按依赖调度节点、维护任务租约、处理重试/取消、执行仓库准备，并把 Artifact 路由给下游 Agent。
 
+## 相关架构图
+
+- [运行流程图](../../../../docs/diagrams/runtime-flow.drawio)（[SVG 预览](../../../../docs/diagrams/runtime-flow.svg)）
+- [Agent 执行流程图](../../../../docs/diagrams/agent-execution-flow.drawio)（[SVG 预览](../../../../docs/diagrams/agent-execution-flow.svg)）
+
 ## 主要文件
 
 | 文件 | 职责 |

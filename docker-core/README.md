@@ -2,6 +2,13 @@
 
 `docker-core` 是一个独立的 Go 模块，用于验证和演示 Docker / gVisor 环境下的持久化沙箱、DAG 调度、状态快照与安全护栏。它不依赖 `research-assistant` 主应用，可单独构建和测试，也可以作为沙箱执行层的参考实现。
 
+## 与主项目的关系
+
+- [系统架构图](../docs/diagrams/architecture.drawio)（[SVG 预览](../docs/diagrams/architecture.svg)）
+- [Agent 执行流程图](../docs/diagrams/agent-execution-flow.drawio)（[SVG 预览](../docs/diagrams/agent-execution-flow.svg)）
+
+`docker-core` 是沙箱/调度内核的研究与参考实现；产品运行链使用 `research-assistant/docker-sandbox` 的 gateway/executor 组合。两者共享“隔离执行 + 快照/回滚 + 资源护栏”的设计目标，但模块独立、可分别构建和测试。
+
 ## 模块定位
 
 ```text

@@ -2,6 +2,13 @@
 
 独立的 Go 沙箱服务，为后端提供容器生命周期管理与代码/命令执行能力。默认监听 `:8082`。
 
+## 架构位置
+
+- [系统架构图](../../docs/diagrams/architecture.drawio)（[SVG 预览](../../docs/diagrams/architecture.svg)）
+- [Agent 执行流程图](../../docs/diagrams/agent-execution-flow.drawio)（[SVG 预览](../../docs/diagrams/agent-execution-flow.svg)）
+
+沙箱是后端与真实 Docker 之间唯一的执行边界：Backend 的 Agent 只调用 Sandbox Client；gateway 负责鉴权与转发；executor 才持有 Docker socket 并创建/执行容器。
+
 Compose 将同一个镜像拆成两个角色：
 
 - `docker-sandbox`（`SANDBOX_MODE=gateway`）：控制面，只做 Bearer 鉴权和 HTTP 转发，不挂载 Docker socket，也不挂载宿主 `/tmp`。

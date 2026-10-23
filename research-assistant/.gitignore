@@ -5,15 +5,24 @@
 backend.env
 backend.env.ps1
 .env
+.env.*
+!.env.example
+!backend.env.example
 
 # Logs and runtime output
 logs/
 *.log
+backend/data/
 backend/data/private-benchmarks/
 
 # Local caches
 .gocache/
 .gocache_verify*/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
 
 # Build output
 bin/
@@ -22,14 +31,21 @@ dist/
 backend/webui/dist/*
 !backend/webui/dist/placeholder.txt
 coverage/
+coverage.out
+*.coverprofile
 backend/api.exe
 backend/*.exe
 backend/*.test
 docker-sandbox/*.exe
 docker-sandbox/*.test
 
-# Frontend dependencies
+# Frontend dependencies and test artifacts
 frontend/node_modules/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/coverage/
+frontend/.vite/
 
 # OS / editor files
 .DS_Store
@@ -37,7 +53,7 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Temporary backups generated during local edits
+# Temporary backups generated during local edits / draw.io
 *.tmp
 *.bak
 *.orig
@@ -55,6 +71,8 @@ Thumbs.db
 *.test
 *.prof
 *.go.[0-9]*
+*.drawio.bkp
+*.drawio.dtmp
 
 # Project-specific local scratch files
 backend/.tmp_plan_check.go

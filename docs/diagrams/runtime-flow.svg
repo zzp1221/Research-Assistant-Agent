@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1080" viewBox="0 0 1600 1080">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#495057"/></marker></defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<rect x="30" y="90" width="210" height="980" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="42" y="112" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#343a40">User</text>
+<rect x="250" y="90" width="210" height="980" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="262" y="112" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#343a40">Frontend</text>
+<rect x="470" y="90" width="210" height="980" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="482" y="112" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#343a40">Backend API</text>
+<rect x="690" y="90" width="210" height="980" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="702" y="112" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#343a40">Scheduler</text>
+<rect x="910" y="90" width="210" height="980" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="922" y="112" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#343a40">Agent</text>
+<rect x="1130" y="90" width="210" height="980" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="1142" y="112" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#343a40">Sandbox</text>
+<rect x="1350" y="90" width="210" height="980" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="1362" y="112" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#343a40">Store / SSE</text>
+<line x1="135.0" y1="162.0" x2="355.0" y2="162.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="245.0" y="158.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">输入</text>
+<line x1="355.0" y1="162.0" x2="575.0" y2="162.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="465.0" y="158.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">HTTPS</text>
+<line x1="575.0" y1="162.0" x2="575.0" y2="222.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="575.0" y1="222.0" x2="575.0" y2="282.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="575.0" y="248.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">意图</text>
+<line x1="575.0" y1="282.0" x2="575.0" y2="342.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="575.0" y="308.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">PlanGraph</text>
+<line x1="575.0" y1="342.0" x2="1455.0" y2="342.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="575.0" y1="282.0" x2="355.0" y2="262.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="465.0" y="268.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">plan_graph</text>
+<line x1="355.0" y1="262.0" x2="135.0" y2="352.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="245.0" y="303.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">展示</text>
+<line x1="135.0" y1="352.0" x2="355.0" y2="392.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="245.0" y="368.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">批准/执行</text>
+<line x1="355.0" y1="392.0" x2="575.0" y2="422.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="575.0" y1="422.0" x2="795.0" y2="422.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="1455.0" y1="342.0" x2="795.0" y2="422.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1125.0" y="378.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">load</text>
+<line x1="795.0" y1="422.0" x2="795.0" y2="482.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="795.0" y1="482.0" x2="795.0" y2="542.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="795.0" y="508.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">ready</text>
+<line x1="795.0" y1="542.0" x2="1015.0" y2="542.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="905.0" y="538.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">dispatch</text>
+<line x1="1015.0" y1="542.0" x2="1015.0" y2="602.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1015.0" y="568.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">resolve</text>
+<line x1="1015.0" y1="602.0" x2="1235.0" y2="602.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1125.0" y="598.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">sandbox API</text>
+<line x1="1235.0" y1="602.0" x2="1235.0" y2="662.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="1235.0" y1="662.0" x2="1235.0" y2="722.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1235.0" y="688.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">docker exec</text>
+<line x1="1235.0" y1="722.0" x2="1235.0" y2="782.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1235.0" y="748.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">stream</text>
+<line x1="1235.0" y1="782.0" x2="1015.0" y2="682.0" stroke="#495057" stroke-width="1.3" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<text x="1125.0" y="728.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">结果</text>
+<line x1="1015.0" y1="682.0" x2="1015.0" y2="742.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1015.0" y="708.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">valid</text>
+<line x1="1015.0" y1="742.0" x2="795.0" y2="742.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="905.0" y="738.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">artifacts</text>
+<line x1="795.0" y1="542.0" x2="795.0" y2="602.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="795.0" y="568.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">lease</text>
+<line x1="795.0" y1="602.0" x2="795.0" y2="862.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="795.0" y="728.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">超时/取消</text>
+<line x1="795.0" y1="742.0" x2="795.0" y2="862.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="795.0" y="798.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">terminal</text>
+<line x1="795.0" y1="862.0" x2="575.0" y2="922.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="795.0" y1="742.0" x2="1455.0" y2="742.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1125.0" y="738.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">events</text>
+<line x1="1455.0" y1="742.0" x2="1455.0" y2="802.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="1455.0" y1="802.0" x2="355.0" y2="742.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="905.0" y="768.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">SSE</text>
+<line x1="355.0" y1="742.0" x2="355.0" y2="842.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="355.0" y1="842.0" x2="135.0" y2="842.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="245.0" y="838.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">render</text>
+<line x1="1455.0" y1="742.0" x2="1455.0" y2="862.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1455.0" y="798.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">replay</text>
+<line x1="575.0" y1="922.0" x2="1455.0" y2="742.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1015.0" y="828.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">final event</text>
+<rect x="40" y="20" width="1520" height="42" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="800" y="48" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="20" font-weight="700" fill="#212529">Runtime Flow — from a research goal to auditable artifacts</text>
+<rect x="50" y="140" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="135" y="162.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">提交研究目标</text>
+<rect x="50" y="330" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="135" y="352.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">查看 DAG / 审批</text>
+<rect x="50" y="820" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="135" y="842.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">查看日志与产物</text>
+<rect x="270" y="140" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="355" y="162.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">POST /api/plan</text>
+<rect x="270" y="240" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="355" y="262.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">渲染 PlanGraph</text>
+<rect x="270" y="370" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="355" y="392.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">POST /execute</text>
+<rect x="270" y="720" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="355" y="742.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">SSE 订阅 / 轮询</text>
+<rect x="270" y="820" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="355" y="842.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">渲染节点状态</text>
+<rect x="490" y="140" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="575" y="162.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Auth / CORS</text>
+<rect x="490" y="200" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="575" y="222.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Intent Router</text>
+<rect x="490" y="260" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="575" y="282.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Planner + DAG Validator</text>
+<rect x="490" y="320" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="575" y="342.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Plan Store 保存</text>
+<rect x="490" y="400" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="575" y="422.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">启动 Scheduler</text>
+<rect x="490" y="900" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="575" y="922.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">终态判定</text>
+<rect x="710" y="400" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="795" y="422.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">加载 PlanGraph</text>
+<rect x="710" y="460" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="795" y="482.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">就绪节点入队</text>
+<rect x="710" y="520" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="795" y="542.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Dispatch Task</text>
+<rect x="710" y="580" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="795" y="602.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Lease / Timeout / Retry</text>
+<rect x="710" y="720" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="795" y="742.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">更新节点与 Artifact</text>
+<rect x="710" y="840" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="795" y="862.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">完成 / 失败 / 取消</text>
+<rect x="930" y="520" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="1015" y="542.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">RoutedTaskExecutor</text>
+<rect x="930" y="580" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="1015" y="602.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Agent 执行</text>
+<rect x="930" y="660" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="1015" y="682.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">结果校验</text>
+<rect x="930" y="720" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="1015" y="742.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Artifact 构建</text>
+<rect x="1150" y="580" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="1235" y="602.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Gateway 鉴权</text>
+<rect x="1150" y="640" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="1235" y="662.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Executor 执行</text>
+<rect x="1150" y="700" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="1235" y="722.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Docker 容器</text>
+<rect x="1150" y="760" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="1235" y="782.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">stdout / metrics / files</text>
+<rect x="1370" y="320" width="170" height="44" rx="8" fill="#ffe6cc" stroke="#d79b00" stroke-width="1.2"/>
+<text x="1455" y="342.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Plan JSONL</text>
+<rect x="1370" y="720" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="1455" y="742.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Event Bus</text>
+<rect x="1370" y="780" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="1455" y="802.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">SSE 推送</text>
+<rect x="1370" y="840" width="170" height="44" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="1455" y="862.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">事件历史回放</text>
+<rect x="40" y="1000" width="1520" height="50" rx="8" fill="#fff2cc" stroke="#d6b656" stroke-width="1.2"/>
+<text x="800" y="1025.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">cancel / retry / timeout 在任何阶段都写入终态事件；终态不允许被迟到结果复活。</text>
+</svg>

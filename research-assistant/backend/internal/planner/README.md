@@ -2,6 +2,11 @@
 
 `planner` 把用户意图转换为可执行的 `PlanGraph`。它是模型输出与确定性调度之间的边界：模型可以提出计划，但只有通过结构校验的 DAG 才会进入 Scheduler。
 
+## 相关架构图
+
+- [运行流程图](../../../../docs/diagrams/runtime-flow.drawio)（[SVG 预览](../../../../docs/diagrams/runtime-flow.svg)）
+- [系统架构图](../../../../docs/diagrams/architecture.drawio)（[SVG 预览](../../../../docs/diagrams/architecture.svg)）
+
 ## 主要文件
 
 | 文件 | 职责 |

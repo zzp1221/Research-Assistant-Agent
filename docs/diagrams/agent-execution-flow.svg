@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1080" viewBox="0 0 1600 1080">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#495057"/></marker></defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<rect x="40" y="620" width="240" height="330" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="52" y="642" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#343a40">Claim Evidence loop</text>
+<rect x="1320" y="620" width="240" height="430" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="1332" y="642" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#343a40">AutoResearch loop</text>
+<line x1="800.0" y1="99.0" x2="800.0" y2="186.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="800.0" y1="186.0" x2="800.0" y2="290.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="800.0" y1="290.0" x2="150.0" y2="411.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="800.0" y1="290.0" x2="400.0" y2="411.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="800.0" y1="290.0" x2="650.0" y2="411.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="800.0" y1="290.0" x2="900.0" y2="411.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="800.0" y1="290.0" x2="1150.0" y2="411.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="800.0" y1="290.0" x2="1400.0" y2="411.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="150.0" y1="411.0" x2="800.0" y2="541.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="400.0" y1="411.0" x2="800.0" y2="541.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="650.0" y1="411.0" x2="800.0" y2="541.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="900.0" y1="411.0" x2="800.0" y2="541.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="1150.0" y1="411.0" x2="800.0" y2="541.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="1400.0" y1="411.0" x2="800.0" y2="541.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="800.0" y1="541.0" x2="800.0" y2="658.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="800.0" y1="658.0" x2="800.0" y2="748.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="800.0" y1="748.0" x2="800.0" y2="836.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="800.0" y1="836.0" x2="800.0" y2="926.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="400.0" y1="411.0" x2="160.0" y2="680.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="280.0" y="541.5" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">claim</text>
+<line x1="160.0" y1="680.0" x2="160.0" y2="732.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="160.0" y1="732.0" x2="160.0" y2="784.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="160.0" y1="784.0" x2="160.0" y2="836.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="160.0" y1="836.0" x2="800.0" y2="658.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="480.0" y="743.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">graph</text>
+<line x1="900.0" y1="411.0" x2="1440.0" y2="679.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1170.0" y="541.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">AutoResearch</text>
+<line x1="1440.0" y1="679.0" x2="1440.0" y2="727.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="1440.0" y1="727.0" x2="1440.0" y2="775.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="1440.0" y1="775.0" x2="1440.0" y2="823.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="1440.0" y1="823.0" x2="1440.0" y2="871.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<line x1="1440.0" y1="871.0" x2="1440.0" y2="775.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1440.0" y="819.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">reject</text>
+<line x1="1440.0" y1="871.0" x2="1440.0" y2="919.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1440.0" y="891.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">keep</text>
+<line x1="1440.0" y1="919.0" x2="800.0" y2="658.0" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1120.0" y="784.5" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">validation</text>
+<rect x="40" y="20" width="1520" height="42" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="800" y="48" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="20" font-weight="700" fill="#212529">Agent Execution Flow — routing, sandboxing, artifacts and research loops</text>
+<rect x="650" y="70" width="300" height="58" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="800" y="92.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Scheduler TaskNode</text>
+<text x="800" y="107.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">(type / assigned_to / inputs)</text>
+<rect x="650" y="160" width="300" height="52" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="800" y="179.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">RoutedTaskExecutor</text>
+<text x="800" y="194.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">resolveRunner()</text>
+<polygon points="800,245 920,290 800,335 680,290" fill="#fff2cc" stroke="#d6b656" stroke-width="1.2"/>
+<text x="800" y="290.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Agent type?</text>
+<rect x="40" y="380" width="220" height="62" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
+<text x="150" y="404.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Chat</text>
+<text x="150" y="419.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">conversation.respond</text>
+<rect x="290" y="380" width="220" height="62" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
+<text x="400" y="404.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Librarian</text>
+<text x="400" y="419.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">paper parse / claim rubric</text>
+<rect x="540" y="380" width="220" height="62" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
+<text x="650" y="404.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Coder</text>
+<text x="650" y="419.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">repo / dependency / code</text>
+<rect x="790" y="380" width="220" height="62" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
+<text x="900" y="404.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Research Coding</text>
+<text x="900" y="419.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">paper debug / benchmark / AutoResearch</text>
+<rect x="1040" y="380" width="220" height="62" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
+<text x="1150" y="404.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Benchmark</text>
+<text x="1150" y="419.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">audit / split / contract</text>
+<rect x="1290" y="380" width="220" height="62" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
+<text x="1400" y="404.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Data</text>
+<text x="1400" y="419.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">metrics / comparison / evidence</text>
+<rect x="300" y="510" width="1000" height="62" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="800" y="541.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Sandbox Client → Gateway → Executor → Docker Container</text>
+<rect x="650" y="630" width="300" height="56" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="800" y="651.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Artifact Builder</text>
+<text x="800" y="666.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">(non-empty, typed, producer-bound)</text>
+<rect x="650" y="720" width="300" height="56" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="800" y="741.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Validate Artifact</text>
+<text x="800" y="756.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">unique producer / contract</text>
+<rect x="650" y="810" width="300" height="52" rx="8" fill="#ffe6cc" stroke="#d79b00" stroke-width="1.2"/>
+<text x="800" y="836.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">PlanStore + Event Bus + SSE</text>
+<rect x="650" y="900" width="300" height="52" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="800" y="919.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Task terminal status</text>
+<text x="800" y="934.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">completed / failed / canceled</text>
+<rect x="60" y="660" width="200" height="40" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="160" y="680.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Freeze claim rubric</text>
+<rect x="60" y="712" width="200" height="40" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="160" y="732.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Collect evidence inventory</text>
+<rect x="60" y="764" width="200" height="40" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="160" y="784.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">LLM adjudication per criterion</text>
+<rect x="60" y="816" width="200" height="40" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="160" y="836.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Verdict graph + coverage</text>
+<rect x="1340" y="660" width="200" height="38" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="1440" y="679.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Freeze ResearchSpec</text>
+<rect x="1340" y="708" width="200" height="38" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="1440" y="727.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Run baseline</text>
+<rect x="1340" y="756" width="200" height="38" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="1440" y="775.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Propose candidate patch</text>
+<rect x="1340" y="804" width="200" height="38" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="1440" y="823.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Evaluate candidate</text>
+<rect x="1340" y="852" width="200" height="38" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="1440" y="871.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Keep / Reject + rollback</text>
+<rect x="1340" y="900" width="200" height="38" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text x="1440" y="919.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Hidden holdout validation</text>
+<rect x="300" y="1000" width="1000" height="52" rx="8" fill="#fff2cc" stroke="#d6b656" stroke-width="1.2"/>
+<text x="800" y="1026.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">所有 Agent 的代码/命令都只通过沙箱执行；Artifact 为空、重复生产者或契约不匹配时任务失败，而不是伪造成功。</text>
+</svg>

@@ -10,7 +10,15 @@
 | Frontend | `frontend/` | 5173（开发）/ 80（容器） | React 工作台、DAG 可视化、PDF 与执行结果展示 |
 | Docker Sandbox | `docker-sandbox/` | 8082 | 容器创建、命令执行、文件与运行时生命周期管理 |
 | Research Optimizer | `research-optimizer/` | 8090 | 数据特征、候选优先级与 SQLite 跨任务经验 |
-| AI Services | `ai-services/` | 8000（可选） | 意图识别服务与模型训练脚本 |
+| AI Services | `ai-services/` | 8000（可选） | 实验性意图识别/训练脚本；当前 `main.py` 为关键词 mock，不参与 Compose |
+
+## 架构与流程
+
+- [系统架构图](../docs/diagrams/architecture.drawio)（[SVG 预览](../docs/diagrams/architecture.svg)）
+- [运行流程图](../docs/diagrams/runtime-flow.drawio)（[SVG 预览](../docs/diagrams/runtime-flow.svg)）
+- [Agent 执行流程图](../docs/diagrams/agent-execution-flow.drawio)（[SVG 预览](../docs/diagrams/agent-execution-flow.svg)）
+
+一次任务的主链路是：`POST /api/plan` → Intent Router → Planner/DAG 校验 → PlanStore → Scheduler → RoutedTaskExecutor → 专业 Agent → docker-sandbox gateway/executor → Artifact/Event → SSE → 前端。
 
 ## 快速开始
 
@@ -112,6 +120,12 @@ make docker-down      # Docker Compose 停止
 - Compose 只在本机暴露 gateway 端口；gateway 不挂载 Docker socket 或宿主工作区，只有不发布端口的内部 executor 持有 socket，权限仍高但边界更小。
 - 默认镜像为 CPU/通用 Python 镜像；GPU 透传需要 NVIDIA Container Toolkit。
 - 论文复现示例是轻量 smoke，不包含完整数据集训练。
+
+## 相关文档
+
+- [根 README](../README.md)：项目全景与快速开始
+- [docs/README.md](../docs/README.md)：架构图、流程图与文档索引
+- [reports/README.md](../reports/README.md)：本地验收报告目录说明
 
 ## 子模块说明
 

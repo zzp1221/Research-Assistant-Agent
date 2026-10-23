@@ -1,8 +1,85 @@
-config.toml
-tmp-realtest-logs/
-__pycache__/
-*.py[cod]
-.dsh-tmp/
+# ---------------------------------------------------------------------------
+# Development-process artifacts (never commit)
+# ---------------------------------------------------------------------------
+/plan.md
+/spec.md
+/tasks.md
+/.dsh-tmp/
+/reports/*
+!/reports/README.md
+/reports/fixtures/
+*.drawio.bkp
+*.drawio.dtmp
 
-# Downloaded E2E fixture PDFs (2 MB+); regenerate from the arXiv URL in reports/README
-reports/fixtures/
+# ---------------------------------------------------------------------------
+# Secrets and local configuration
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+**/backend.env
+**/backend.env.*
+!**/backend.env.example
+config.toml
+**/config.toml
+!**/config-template.toml
+
+# ---------------------------------------------------------------------------
+# Runtime data, logs and generated outputs
+# ---------------------------------------------------------------------------
+*.log
+logs/
+tmp-realtest-logs/
+**/logs/
+**/data/plans.json
+**/data/uploads/
+**/data/private-benchmarks/
+**/test-results/
+**/playwright-report/
+**/blob-report/
+**/coverage/
+coverage.out
+*.coverprofile
+*.prof
+*.stackdump
+*.trace
+*.out
+*.err
+
+# ---------------------------------------------------------------------------
+# Build output and dependencies
+# ---------------------------------------------------------------------------
+**/node_modules/
+**/dist/
+!research-assistant/backend/webui/dist/
+!research-assistant/backend/webui/dist/placeholder.txt
+**/bin/
+**/.gocache/
+**/.gocache_verify*/
+**/__pycache__/
+*.py[cod]
+**/.pytest_cache/
+**/.venv/
+**/venv/
+**/.vite/
+backend/api.exe
+backend/*.exe
+backend/*.test
+docker-sandbox/*.exe
+docker-sandbox/*.test
+
+# ---------------------------------------------------------------------------
+# OS / editor / temporary files
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*.tmp
+*.bak
+*.orig
+*.rej
+*.pid
+*.pid.lock

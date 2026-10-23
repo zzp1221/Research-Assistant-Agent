@@ -2,6 +2,11 @@
 
 `agent` 包实现各专业 Agent 的输入契约、提示词编排、模型调用、工具执行与结果解析。Agent 不直接执行代码，而是通过 `internal/sandbox` 客户端把命令发送给沙箱服务。
 
+## 相关架构图
+
+- [Agent 执行流程图](../../../../docs/diagrams/agent-execution-flow.drawio)（[SVG 预览](../../../../docs/diagrams/agent-execution-flow.svg)）
+- [系统架构图](../../../../docs/diagrams/architecture.drawio)（[SVG 预览](../../../../docs/diagrams/architecture.svg)）
+
 ## Agent 一览
 
 | Agent | 主要文件 | 职责 |

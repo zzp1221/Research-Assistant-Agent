@@ -2,6 +2,12 @@
 
 Python 研究优化器，为 Go Harness 提供数据特征、候选排序和跨任务经验。它不执行实验，也不决定科学验收。
 
+## 在系统中的位置
+
+- [系统架构图](../../docs/diagrams/architecture.drawio)（[SVG 预览](../../docs/diagrams/architecture.svg)）
+
+Research Optimizer 是 Go Harness 的候选排序顾问：Go 侧冻结 ResearchSpec、执行候选、做 Keep/Reject 与 Holdout 验收；Python 侧只根据规范化样本和历史经验给出候选优先级，不接触实验工作区。
+
 ## 职责
 
 - 从冻结数据中提取有界特征（`/v1/profile`）。

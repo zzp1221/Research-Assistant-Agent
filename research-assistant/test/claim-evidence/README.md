@@ -1,5 +1,10 @@
 # Claim-to-Evidence 验收样例
 
+## 相关流程图
+
+- [Agent 执行流程图](../../../docs/diagrams/agent-execution-flow.drawio)（[SVG 预览](../../../docs/diagrams/agent-execution-flow.svg)）
+- [运行流程图](../../../docs/diagrams/runtime-flow.drawio)（[SVG 预览](../../../docs/diagrams/runtime-flow.svg)）
+
 该目录验证 Claim-to-Evidence Graph 的完整链路：测试通过真实 `RoutedTaskExecutor` 依次调用 Librarian 和 Data Agent 的专用任务入口，并检查：
 
 1. `claim_rubric_extract` 在运行结果判定前冻结 Rubric。
