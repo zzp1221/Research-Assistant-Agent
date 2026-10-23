@@ -140,5 +140,13 @@
 - [x] Benchmark E2E：13/13、`benchmark.validation/v1`
 - [x] AutoResearch E2E：rank_bm25 8/8、hidden holdout 3/3
 - [x] 报告保存至 `reports/phase1-*.json`
+- [x] Provider 切换复测：`https://api.ai-pixel.online/v1` + `deepseek-v4.1-flash-1017`
+  - [x] `/api/chat` 返回 `PROVIDER_OK`
+  - [x] PDF E2E 8 步全通过（15 页提取、划词翻译/解释、2 页全文翻译）
+  - [x] 论文 E2E 10/10、11 claims / 34 criteria、证据覆盖率 100%
+  - [x] Benchmark 13/13、`benchmark.validation/v1`
+  - [x] AutoResearch 8/8、hidden holdout 3/3
+  - [x] 浏览器 UI 10 节点 / 10 边渲染，无控制台错误
+  - [x] 报告见 `reports/phase1-provider-retest.md`
 - [ ] 二期：curated 仓库 registry + smoke recipe 数据化（移除后端硬编码论文特判）
 - [ ] 二期：组件级测试（Vitest + RTL）与 Playwright E2E
