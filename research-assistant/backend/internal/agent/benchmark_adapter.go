@@ -86,16 +86,25 @@ func (a *ResearchCodingAgent) executeAdapterGeneration(ctx context.Context, task
 	}
 	planJSON, _ := json.Marshal(plan)
 
-	generationMessage, err := a.ChatModel.Generate(ctx, []*schema.Message{
+	generationMessages := []*schema.Message{
 		{Role: schema.System, Content: prompts.BenchmarkAdapterSystemPrompt},
 		{Role: schema.User, Content: prompts.BenchmarkAdapterGenerationUserPrompt(repositoryContext, manifestJSON, string(planJSON), task.Description)},
-	})
-	if err != nil {
-		return failResearchCodingTask(task, fmt.Errorf("adapter code generation failed: %w", err))
 	}
-	generation, err := parseBenchmarkAdapterGeneration(generationMessage.Content)
-	if err != nil {
-		return failResearchCodingTask(task, err)
+	var generation benchmarkAdapterGenerationResponse
+	var generationErr error
+	for attempt := 1; attempt <= 2; attempt++ {
+		generationMessage, err := a.ChatModel.Generate(ctx, generationMessages)
+		if err != nil {
+			return failResearchCodingTask(task, fmt.Errorf("adapter code generation failed: %w", err))
+		}
+		generation, generationErr = parseBenchmarkAdapterGeneration(generationMessage.Content)
+		if generationErr == nil {
+			break
+		}
+		logToContext(ctx, "[%s] adapter generation parse failed (attempt %d/2): %v", a.Name, attempt, generationErr)
+	}
+	if generationErr != nil {
+		return failResearchCodingTask(task, generationErr)
 	}
 	if generation.Status != "ready" {
 		return failResearchCodingTask(task, fmt.Errorf("repository adapter unsupported: %s", generation.Reason))

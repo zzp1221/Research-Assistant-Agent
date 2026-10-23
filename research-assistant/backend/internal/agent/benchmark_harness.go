@@ -276,7 +276,7 @@ func (a *ResearchCodingAgent) executeBenchmarkValidation(ctx context.Context, ta
 	if err := json.Unmarshal([]byte(runManifestRaw), &runManifest); err != nil {
 		return failResearchCodingTask(task, fmt.Errorf("invalid benchmark run manifest: %w", err))
 	}
-	if runManifest.Status != "ok" || runManifest.DatasetSHA256 != manifest.SHA256 || runManifest.SampleCount <= 0 || runManifest.SampleCount > manifest.RowCount {
+	if !benchmarkRunStatusOK(runManifest.Status) || runManifest.DatasetSHA256 != manifest.SHA256 || runManifest.SampleCount <= 0 || runManifest.SampleCount > manifest.RowCount {
 		return failResearchCodingTask(task, fmt.Errorf("benchmark run manifest does not match the dataset contract"))
 	}
 	for name, value := range metrics {
@@ -556,6 +556,15 @@ func (a *ResearchCodingAgent) repairBenchmarkAdapter(ctx context.Context, manife
 	return response.AdapterCode, strings.TrimSpace(response.Reason), nil
 }
 
+func benchmarkRunStatusOK(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "ok", "success":
+		return true
+	default:
+		return false
+	}
+}
+
 func validateBenchmarkOutputDirectory(workspacePath, outputRelative string, manifest models.DatasetManifest, limit int, mode string) (models.BenchmarkHarnessReport, error) {
 	outputPath, err := benchmarkPathInWorkspace(workspacePath, outputRelative)
 	if err != nil {
@@ -577,7 +586,7 @@ func validateBenchmarkOutputDirectory(workspacePath, outputRelative string, mani
 	if err := json.Unmarshal(manifestRaw, &runManifest); err != nil {
 		return models.BenchmarkHarnessReport{}, fmt.Errorf("decode run_manifest.json: %w", err)
 	}
-	if runManifest.Status != "ok" {
+	if !benchmarkRunStatusOK(runManifest.Status) {
 		return models.BenchmarkHarnessReport{}, fmt.Errorf("adapter run status is %q", runManifest.Status)
 	}
 	if runManifest.DatasetSHA256 != manifest.SHA256 {

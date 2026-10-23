@@ -168,3 +168,15 @@
   - [x] fresh Benchmark retest 在 adapter 生成处收到网关 HTTP 504（外部）
   - [x] fresh AutoResearch retest 修复 spec/evaluator 上传后，依赖镜像下载停滞（外部）
   - [x] 详细记录见 `reports/phase2-provider-retest.md`
+
+## Phase 10 — 重跑与磁盘清理（2026-10-23）
+
+- [x] AutoResearch 重跑：8/8 节点，20 artifacts，hidden holdout 3/3，score=1
+- [x] Benchmark 重跑：adapter 生成成功；preflight 3 次失败，模型生成 adapter 使用硬编码
+      `SEED_DATA`，accuracy/macro_f1=0；phase 1 的 13/13 证据保留
+- [x] Benchmark 兼容性修复：run_manifest 接受 `ok`/`success`；空 adapter JSON 本地重试一次
+- [x] Docker 清理：删除测试容器、plan 测试数据卷、Go/Playwright 缓存卷、旧镜像；
+      构建缓存 9.583 GB → 0
+- [x] VHDX 压缩：28.3 GB → 24.6 GB；删除旧 16.4 GB VHDX；E: 可用空间增加约 20.2 GB
+- [x] 清理后 Docker Desktop 重启，compose 服务恢复，`/api/health` 全部 ok
+- [x] 报告见 `reports/phase3-rerun-and-cleanup.md`

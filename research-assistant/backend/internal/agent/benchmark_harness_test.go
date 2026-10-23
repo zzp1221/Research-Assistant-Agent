@@ -54,6 +54,19 @@ func TestBenchmarkRepositoryFingerprintIgnoresGeneratedMetadata(t *testing.T) {
 	}
 }
 
+func TestBenchmarkRunStatusOK(t *testing.T) {
+	for _, status := range []string{"ok", "success", " OK ", "Success"} {
+		if !benchmarkRunStatusOK(status) {
+			t.Fatalf("expected %q to be accepted", status)
+		}
+	}
+	for _, status := range []string{"", "failed", "error"} {
+		if benchmarkRunStatusOK(status) {
+			t.Fatalf("expected %q to be rejected", status)
+		}
+	}
+}
+
 type scriptedBenchmarkSandbox struct {
 	workspace  string
 	failFirst  bool

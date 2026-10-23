@@ -49,11 +49,12 @@ docker run --rm --network research-assistant_research-assistant-network \
 - PDF E2E：15 页提取、划词翻译/解释、2/2 页全文翻译通过。
 - 论文 E2E：Apriori smoke 10/10，21 个 artifact，run_metrics/comparison_report/claim_evidence_graph 产出。
 - Benchmark：phase 1 同 provider 13/13、46 artifacts、`benchmark.validation/v1`；
-  二期 fresh retest 在 adapter 生成处遇到网关 HTTP 504，见
-  `reports/phase2-benchmark-gateway-504.json`。本次 retest 暴露并修复了
+  phase 3 fresh retest 的 adapter 生成已成功，但模型生成的 adapter 使用硬编码
+  `SEED_DATA`，preflight accuracy=0，未通过，见
+  `reports/phase3-rerun-and-cleanup.md`。本次 retest 暴露并修复了
   `__pycache__` 被 fingerprint 误判的问题，新增回归测试。
 - AutoResearch：phase 1 同 provider 8/8、20 artifacts、hidden holdout 3/3；
-  二期 fresh retest 修复了 spec/evaluator 上传，之后在 PyPI 镜像下载依赖时停滞，
-  见 `reports/phase2-autoresearch-dependency-blocked.json`。
+  phase 3 fresh retest 已完成 **8/8、20 artifacts、hidden holdout 3/3、score=1**，
+  见 `reports/phase3-autoresearch-retest.json`。
 - 报告：`reports/phase2-provider-retest.md`、`reports/phase2-paper-plan.json`、
-  `reports/phase2-pdf-e2e.json`。
+  `reports/phase2-pdf-e2e.json`、`reports/phase3-rerun-and-cleanup.md`。
