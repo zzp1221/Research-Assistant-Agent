@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
-import { useAITranslationPlugin, type AssistMode } from '../../hooks/useAITranslationPlugin';
 import type {
+  AssistResponse,
   ChatMessage,
   DocumentInfoResponse,
   TranslationJob,
@@ -41,7 +40,6 @@ export function usePdfAssistFlow(options: UsePdfAssistFlowOptions) {
   const [pageText, setPageText] = useState('');
   const [pageTextLoading, setPageTextLoading] = useState(false);
   const [pageTextError, setPageTextError] = useState('');
-  const defaultLayoutPluginInstance = defaultLayoutPlugin();
   const activeJobRef = useRef<string | null>(null);
 
   const handleAskAI = useCallback(
@@ -52,13 +50,13 @@ export function usePdfAssistFlow(options: UsePdfAssistFlowOptions) {
     [appendSelectedTaskLog, setPrompt],
   );
 
-  const aiTranslationPluginInstance = useAITranslationPlugin({
-    onAskAI: handleAskAI,
-    onAssist: async (mode: AssistMode, text: string, page: number) => {
+  const assistWithUpload = useCallback(
+    async (mode: 'translate' | 'explain', text: string, page: number): Promise<AssistResponse> => {
       if (!uploadId) throw new Error('请先打开 PDF 再使用划词翻译。');
       return assistDocument(uploadId, { mode, text, page, context_pages: 1 }, identity);
     },
-  });
+    [identity, uploadId],
+  );
 
   const replacePdfUrl = useCallback((next: string | null) => {
     const previous = pdfUrlRef.current;
@@ -208,8 +206,8 @@ export function usePdfAssistFlow(options: UsePdfAssistFlowOptions) {
     closePdf,
     showSuggestions,
     setShowSuggestions,
-    defaultLayoutPluginInstance,
-    aiTranslationPluginInstance,
+    handleAskAI,
+    assistWithUpload,
     translation: {
       job,
       isStarting: isStartingTranslation,

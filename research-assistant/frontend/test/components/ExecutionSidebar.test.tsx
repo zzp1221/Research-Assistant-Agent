@@ -30,7 +30,7 @@ const task: Task = {
 };
 
 describe('ExecutionSidebar benchmark report', () => {
-  it('routes benchmark nodes to the readable evaluation report', () => {
+  it('routes benchmark nodes to the readable evaluation report', async () => {
     render(
       <ExecutionSidebar
         selectedTask={task}
@@ -51,8 +51,8 @@ describe('ExecutionSidebar benchmark report', () => {
     );
 
     expect(screen.getByText('评测报告')).toBeInTheDocument();
-    expect(screen.getByText('已通过隐藏标签验收')).toBeInTheDocument();
-    expect(screen.getAllByText('macro_f1').length).toBeGreaterThan(0);
-    expect(screen.getByText('metrics were recomputed by the backend')).toBeInTheDocument();
+    expect(await screen.findByText('已通过隐藏标签验收')).toBeInTheDocument();
+    expect((await screen.findAllByText('macro_f1')).length).toBeGreaterThan(0);
+    expect(await screen.findByText('metrics were recomputed by the backend')).toBeInTheDocument();
   });
 });

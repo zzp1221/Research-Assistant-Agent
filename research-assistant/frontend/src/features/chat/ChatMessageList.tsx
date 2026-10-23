@@ -1,4 +1,5 @@
-import { Bot, FileText, Maximize2, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ArrowDown, Bot, FileText, Maximize2, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage } from '../../contracts/api';
@@ -22,81 +23,126 @@ interface ChatMessageListProps {
 
 export function ChatMessageList(props: ChatMessageListProps) {
   const { chatHistory, loading, isLoggedIn, pdfActions, taskActions } = props;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const [nearBottom, setNearBottom] = useState(true);
+
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    bottomRef.current?.scrollIntoView({ behavior, block: 'end' });
+  };
+
+  useEffect(() => {
+    if (nearBottom) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  }, [chatHistory, loading, nearBottom]);
+
+  const handleScroll = () => {
+    const node = scrollRef.current;
+    if (!node) return;
+    const distance = node.scrollHeight - node.scrollTop - node.clientHeight;
+    setNearBottom(distance < 96);
+  };
 
   return (
-    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-      {!isLoggedIn && (
-        <div className="rounded-2xl border border-dashed border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-slate-600">
-          当前为游客模式：可以直接聊天和新建临时 session，但刷新页面后不会保留会话记录。
-        </div>
-      )}
-      {chatHistory.map((msg, i) => (
-        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-          <div className={`max-w-[85%] flex flex-col gap-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-            <div
-              className={`rounded-2xl px-4 py-3 shadow-sm ${
-                msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-gray-100 text-gray-800 rounded-bl-none'
-              }`}
-            >
-              {msg.role === 'user' ? (
-                msg.text
-              ) : (
-                <div className="prose prose-sm prose-slate max-w-none prose-p:leading-snug prose-pre:my-1 prose-pre:bg-gray-800 prose-pre:text-gray-100 prose-code:text-blue-600 prose-code:bg-blue-50 prose-code:px-1 prose-code:rounded">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
-                </div>
-              )}
-            </div>
+    <div className="relative min-h-0 flex-1">
+      <div ref={scrollRef} onScroll={handleScroll} className="h-full space-y-4 overflow-y-auto px-4 py-4">
+        {!isLoggedIn && (
+          <div className="flex items-start gap-2 rounded-[6px] border border-line bg-surface-muted px-3 py-2 text-[11.5px] leading-5 text-muted">
+            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+            <span>游客模式：可以直接对话和新建临时会话，刷新页面后不会保留记录。</span>
+          </div>
+        )}
 
-            {msg.actions && msg.actions.length > 0 && (
-              <div className="flex gap-2 mt-1 animate-in fade-in slide-in-from-top-1 duration-300">
-                {msg.actions.includes('open_pdf') && (
-                  <button
-                    onClick={pdfActions.onOpenPdf}
-                    className="flex items-center gap-1 text-xs bg-white text-blue-600 border border-blue-200 px-3 py-1.5 rounded-full hover:bg-blue-50 shadow-sm transition-all active:scale-95"
-                  >
-                    <FileText className="w-3 h-3" />
-                    打开论文原文
-                  </button>
-                )}
-                {msg.actions.includes('close_pdf') && (
-                  <button
-                    onClick={pdfActions.onClosePdf}
-                    className="flex items-center gap-1 text-xs bg-white text-gray-600 border border-gray-200 px-3 py-1.5 rounded-full hover:bg-gray-50 shadow-sm transition-all active:scale-95"
-                  >
-                    <X className="w-3 h-3" />
-                    关闭阅读器
-                  </button>
-                )}
-                {msg.actions.includes('view_plot') && msg.taskId && (
-                  <button
-                    onClick={() => taskActions.onOpenTaskView(msg.taskId as string, 'plot')}
-                    className="flex items-center gap-1 text-xs bg-white text-orange-600 border border-orange-200 px-3 py-1.5 rounded-full hover:bg-orange-50 shadow-sm transition-all active:scale-95"
-                  >
-                    <Maximize2 className="w-3 h-3" />
-                    查看生成的图表
-                  </button>
-                )}
-                {msg.actions.includes('view_report') && msg.taskId && (
-                  <button
-                    onClick={() => taskActions.onOpenTaskView(msg.taskId as string, 'report')}
-                    className="flex items-center gap-1 text-xs bg-white text-green-600 border border-green-200 px-3 py-1.5 rounded-full hover:bg-green-50 shadow-sm transition-all active:scale-95"
-                  >
-                    <FileText className="w-3 h-3" />
-                    查看分析报告
-                  </button>
-                )}
+        {chatHistory.map((msg, i) => (
+          <div key={i} className={`ra-fade-up flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            {msg.role === 'user' ? (
+              <div className="max-w-[84%] rounded-[9px] rounded-br-[3px] border border-line bg-paper-deep/75 px-3.5 py-2.5 text-[13.5px] leading-6 text-ink shadow-[0_1px_0_rgb(255_255_255/0.6)_inset]">
+                {msg.text}
+              </div>
+            ) : (
+              <div className="flex max-w-[94%] items-start gap-2.5">
+                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-accent">
+                  <Bot className="h-3.5 w-3.5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="prose prose-sm max-w-none text-[13.5px] leading-6 text-ink-soft prose-p:my-1.5 prose-p:leading-6 prose-headings:font-serif prose-headings:font-semibold prose-headings:text-ink prose-strong:text-ink prose-code:rounded-[3px] prose-code:bg-paper-deep prose-code:px-1 prose-code:py-0.5 prose-code:text-[12.5px] prose-code:font-normal prose-code:text-accent-ink prose-pre:rounded-[6px] prose-pre:border prose-pre:border-white/10 prose-pre:bg-[#1d1e1a] prose-pre:text-[12.5px] prose-pre:text-[#e6e1d5] prose-a:text-accent prose-a:underline-offset-2">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+                  </div>
+
+                  {msg.actions && msg.actions.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {msg.actions.includes('open_pdf') && (
+                        <button
+                          onClick={pdfActions.onOpenPdf}
+                          className="inline-flex items-center gap-1.5 rounded-[5px] border border-line bg-surface px-2.5 py-1.5 text-[11.5px] font-medium text-ink-soft transition-colors hover:border-accent/40 hover:bg-accent-soft hover:text-accent-ink"
+                        >
+                          <FileText className="h-3 w-3" />
+                          打开论文原文
+                        </button>
+                      )}
+                      {msg.actions.includes('close_pdf') && (
+                        <button
+                          onClick={pdfActions.onClosePdf}
+                          className="inline-flex items-center gap-1.5 rounded-[5px] border border-line bg-surface px-2.5 py-1.5 text-[11.5px] font-medium text-muted transition-colors hover:border-line-strong hover:bg-surface-muted hover:text-ink"
+                        >
+                          <X className="h-3 w-3" />
+                          关闭阅读器
+                        </button>
+                      )}
+                      {msg.actions.includes('view_plot') && msg.taskId && (
+                        <button
+                          onClick={() => taskActions.onOpenTaskView(msg.taskId as string, 'plot')}
+                          className="inline-flex items-center gap-1.5 rounded-[5px] border border-line bg-surface px-2.5 py-1.5 text-[11.5px] font-medium text-ink-soft transition-colors hover:border-accent/40 hover:bg-accent-soft hover:text-accent-ink"
+                        >
+                          <Maximize2 className="h-3 w-3" />
+                          查看生成的图表
+                        </button>
+                      )}
+                      {msg.actions.includes('view_report') && msg.taskId && (
+                        <button
+                          onClick={() => taskActions.onOpenTaskView(msg.taskId as string, 'report')}
+                          className="inline-flex items-center gap-1.5 rounded-[5px] border border-line bg-surface px-2.5 py-1.5 text-[11.5px] font-medium text-ink-soft transition-colors hover:border-accent/40 hover:bg-accent-soft hover:text-accent-ink"
+                        >
+                          <FileText className="h-3 w-3" />
+                          查看分析报告
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
-        </div>
-      ))}
-      {loading && (
-        <div className="flex justify-start">
-          <div className="bg-gray-100 rounded-2xl rounded-bl-none px-4 py-3 text-gray-500 animate-pulse flex items-center gap-2">
-            <Bot className="w-4 h-4" />
-            正在使用 Planner 编排多智能体任务拓扑图...
+        ))}
+
+        {loading && (
+          <div className="ra-fade-in flex items-start gap-2.5">
+            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-accent">
+              <Bot className="h-3.5 w-3.5" />
+            </span>
+            <div className="flex items-center gap-1.5 rounded-[6px] border border-line bg-surface px-3 py-2 text-[12px] text-muted">
+              <span className="ra-pulse">正在使用 Planner 编排多智能体任务拓扑图</span>
+              <span className="flex gap-0.5">
+                <span className="ra-pulse h-1 w-1 rounded-full bg-accent" />
+                <span className="ra-pulse h-1 w-1 rounded-full bg-accent [animation-delay:160ms]" />
+                <span className="ra-pulse h-1 w-1 rounded-full bg-accent [animation-delay:320ms]" />
+              </span>
+            </div>
           </div>
-        </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {!nearBottom && (
+        <button
+          type="button"
+          onClick={() => scrollToBottom()}
+          className="ra-fade-in absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-[11px] font-medium text-muted shadow-[var(--shadow-card)] transition-colors hover:border-accent/40 hover:text-accent-ink"
+        >
+          <ArrowDown className="h-3 w-3" />
+          回到底部
+        </button>
       )}
     </div>
   );

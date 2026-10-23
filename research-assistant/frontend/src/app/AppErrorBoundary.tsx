@@ -24,10 +24,10 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
   public render(): ReactNode {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
-          <div className="max-w-lg w-full rounded-xl border border-red-200 bg-white p-6 shadow-sm">
-            <h1 className="text-lg font-semibold text-red-600">页面出现异常</h1>
-            <p className="mt-2 text-sm text-slate-600">
+        <div className="flex min-h-[100dvh] items-center justify-center bg-paper p-6">
+          <div className="w-full max-w-lg rounded-[8px] border border-line bg-surface p-6 shadow-[var(--shadow-card)]">
+            <h1 className="font-serif text-lg font-semibold text-flag">页面出现异常</h1>
+            <p className="mt-2 text-[12px] leading-6 text-muted">
               应用遇到了未处理错误。请刷新页面重试，或检查控制台日志定位问题。
             </p>
           </div>

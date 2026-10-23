@@ -1,0 +1,39 @@
+{
+  "id": "a11y-plan",
+  "user_intent": "Run a small accessibility smoke plan",
+  "intent_type": "Custom_Benchmark",
+  "status": "completed",
+  "owner_id": "a11y-user",
+  "session_id": "a11y-session",
+  "trace_id": "a11y-trace",
+  "approval": { "required": false, "status": "not_required" },
+  "budget": { "max_task_attempts": 10, "max_duration_seconds": 600 },
+  "usage": { "task_attempts": 1 },
+  "nodes": [
+    {
+      "id": "task-a11y",
+      "name": "Validate accessibility smoke evidence",
+      "type": "benchmark_validate",
+      "description": "Accessibility smoke node",
+      "assigned_to": "benchmark_agent",
+      "status": "completed",
+      "dependencies": [],
+      "inputs": {},
+      "required_artifacts": [],
+      "output_artifacts": [],
+      "parallelizable": false,
+      "priority": 0,
+      "retry_limit": 1,
+      "run_count": 1,
+      "execution_epoch": 1,
+      "contract": { "version": "task.contract/v1", "input_artifacts": [], "output_artifacts": [], "allowed_tools": [] },
+      "result": "{\"version\":\"benchmark.validation/v1\",\"status\":\"validated\",\"contract_id\":\"a11y-contract\",\"primary_metric\":\"accuracy\",\"direction\":\"maximize\",\"public_metrics\":{\"accuracy\":0.9},\"hidden_metrics\":{\"accuracy\":0.9},\"hidden_sample_count\":2,\"target_reached\":true,\"protected_files_valid\":true,\"checks\":[\"smoke check\"],\"validated_at\":\"2026-10-23T00:00:00Z\"}",
+      "structured_data": "{\"version\":\"benchmark.validation/v1\",\"status\":\"validated\",\"contract_id\":\"a11y-contract\",\"primary_metric\":\"accuracy\",\"direction\":\"maximize\",\"public_metrics\":{\"accuracy\":0.9},\"hidden_metrics\":{\"accuracy\":0.9},\"hidden_sample_count\":2,\"target_reached\":true,\"protected_files_valid\":true,\"checks\":[\"smoke check\"],\"validated_at\":\"2026-10-23T00:00:00Z\"}"
+    }
+  ],
+  "edges": [],
+  "artifacts": {},
+  "meta": { "total_nodes": 1, "completed_nodes": 1, "failed_nodes": 0, "blocked_nodes": 0, "in_progress_nodes": 0, "ready_nodes": 0 },
+  "created_at": "2026-10-23T00:00:00Z",
+  "updated_at": "2026-10-23T00:00:00Z"
+}

@@ -1,4 +1,5 @@
-import { LogIn, MessageSquarePlus, UserRound } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Check, ChevronDown, LogIn, MessageSquarePlus, MessagesSquare, UserRound } from 'lucide-react';
 
 interface SessionSummary {
   id: string;
@@ -41,79 +42,155 @@ const formatTime = (value: string) => {
 
 export function ChatSessionManager(props: ChatSessionManagerProps) {
   const { state, actions } = props;
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const activeOption = rootRef.current?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]');
+    activeOption?.focus();
+  }, [open]);
+
+  const activeSession = state.sessions.find((session) => session.id === state.activeSessionId) ?? state.sessions[0] ?? null;
 
   return (
-    <div className={`border-b border-gray-200 p-4 ${state.isLoggedIn ? 'bg-slate-50' : 'bg-gradient-to-r from-blue-50 to-slate-50'}`}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-            <UserRound className="h-4 w-4 text-blue-600" />
-            {state.isLoggedIn ? '当前用户' : '游客模式'}
-          </div>
-          <div className="mt-1 text-xs leading-5 text-slate-500">
-            {state.isLoggedIn
-              ? state.userId
-              : '未登录也可直接聊天和切换临时 session；登录后才会持久保存会话记录。'}
-          </div>
-        </div>
+    <div ref={rootRef} className="relative shrink-0 border-b border-line bg-surface-muted/70 px-3 py-2">
+      <div className="flex items-center gap-2">
         <button
+          ref={triggerRef}
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-controls="chat-session-menu"
+          className="group flex min-w-0 flex-1 items-center gap-2 rounded-[5px] px-2 py-1.5 text-left transition-colors hover:bg-surface"
+        >
+          <MessagesSquare className="h-4 w-4 shrink-0 text-accent" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] font-semibold leading-4 text-ink">
+              {activeSession?.title || '未命名会话'}
+            </span>
+            <span className="mt-0.5 block text-[10.5px] leading-3 text-faint">
+              {activeSession ? `${activeSession.messageCount} 条消息 · ${formatTime(activeSession.updatedAt)}` : '新建一个会话开始研究'}
+            </span>
+          </span>
+          <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-faint transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+        </button>
+
+        <button
+          type="button"
           onClick={actions.onCreateSession}
           disabled={state.loading}
-          className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-medium text-blue-600 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[5px] border border-line bg-surface text-muted transition-colors hover:border-line-strong hover:bg-surface hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+          title={state.isLoggedIn ? '新建会话' : '新建临时会话'}
+          aria-label={state.isLoggedIn ? '新建会话' : '新建临时 Session'}
         >
-          <MessageSquarePlus className="h-4 w-4" />
-          {state.isLoggedIn ? '新建 Session' : '新建临时 Session'}
+          <MessageSquarePlus className="h-3.5 w-3.5" />
         </button>
       </div>
 
-      {!state.isLoggedIn && (
-        <div className="mt-3 flex gap-2">
-          <input
-            value={state.loginInput}
-            onChange={(event) => actions.setLoginInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                actions.onLogin();
-              }
-            }}
-            placeholder="请输入用户 ID，例如 alice"
-            className="flex-1 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-200"
-          />
-          <button
-            onClick={actions.onLogin}
-            disabled={state.loading || !state.loginInput.trim()}
-            className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <LogIn className="h-4 w-4" />
-            登录
-          </button>
+      {open && (
+        <div className="ra-fade-up absolute left-3 right-3 top-[calc(100%-2px)] z-40 overflow-hidden rounded-[7px] border border-line bg-surface shadow-[var(--shadow-float)]">
+          <div className="flex items-center justify-between border-b border-line px-3 py-2">
+            <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted">会话记录</span>
+            <span className="text-[10.5px] text-faint">{state.sessions.length} 个</span>
+          </div>
+
+          <div id="chat-session-menu" className="max-h-56 overflow-y-auto py-1" role="listbox" aria-label="会话列表">
+            {state.sessions.length === 0 && (
+              <p className="px-3 py-4 text-center text-[11.5px] text-faint">还没有会话记录</p>
+            )}
+            {state.sessions.map((session) => {
+              const isActive = session.id === state.activeSessionId;
+              return (
+                <button
+                  key={session.id}
+                  type="button"
+                  role="option"
+                  aria-selected={isActive}
+                  onClick={() => {
+                    actions.onSwitchSession(session.id);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-surface-muted ${isActive ? 'bg-accent-soft/60' : ''}`}
+                >
+                  <span className={`mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border ${isActive ? 'border-accent bg-accent text-white' : 'border-line-strong text-transparent'}`}>
+                    <Check className="h-2.5 w-2.5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12.5px] font-medium leading-4 text-ink">{session.title}</span>
+                    <span className="mt-0.5 block truncate text-[10.5px] leading-3 text-muted">
+                      {session.messageCount} 条 · {formatTime(session.updatedAt)}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="border-t border-line bg-surface-muted/60 px-3 py-2.5">
+            {state.isLoggedIn ? (
+              <div className="flex items-center gap-2 text-[11.5px] text-muted">
+                <UserRound className="h-3.5 w-3.5 text-accent" />
+                <span className="truncate">已登录：<span className="font-medium text-ink-soft">{state.userId}</span></span>
+              </div>
+            ) : (
+              <div>
+                <div className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-medium text-muted">
+                  <UserRound className="h-3 w-3" />
+                  游客模式 · 登录后持久保存会话
+                </div>
+                <div className="flex gap-1.5">
+                  <input
+                    value={state.loginInput}
+                    onChange={(event) => actions.setLoginInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        actions.onLogin();
+                      }
+                    }}
+                    placeholder="用户 ID，例如 alice"
+                    aria-label="用户 ID"
+                    className="h-8 min-w-0 flex-1 rounded-[5px] border border-line bg-surface px-2 text-[12px] text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus:ring-2 focus:ring-accent/15"
+                  />
+                  <button
+                    type="button"
+                    onClick={actions.onLogin}
+                    disabled={state.loading || !state.loginInput.trim()}
+                    className="inline-flex h-8 items-center gap-1 rounded-[5px] bg-accent px-2.5 text-[12px] font-semibold text-white transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <LogIn className="h-3 w-3" />
+                    登录
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
-
-      <div className="mt-3 space-y-2">
-        {state.sessions.map((session) => {
-          const isActive = session.id === state.activeSessionId;
-          return (
-            <button
-              key={session.id}
-              onClick={() => actions.onSwitchSession(session.id)}
-              className={`w-full rounded-xl border px-3 py-2 text-left transition ${
-                isActive ? 'border-blue-300 bg-blue-50 shadow-sm' : 'border-gray-200 bg-white hover:border-blue-200 hover:bg-slate-50'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="truncate text-sm font-medium text-slate-700">{session.title}</div>
-                <div className="shrink-0 text-[11px] text-slate-400">{session.messageCount} 条</div>
-              </div>
-              <div className="mt-1 flex items-center justify-between gap-3 text-[11px] text-slate-400">
-                <span className="truncate">{session.id}</span>
-                <span className="shrink-0">{formatTime(session.updatedAt)}</span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }

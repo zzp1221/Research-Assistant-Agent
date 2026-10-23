@@ -1,17 +1,13 @@
 import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useEdgesState, useNodesState } from '@xyflow/react';
 import type { Edge, Node, OnEdgesChange, OnNodesChange } from '@xyflow/react';
 import { GitBranch, MessageSquareText } from 'lucide-react';
-import '@xyflow/react/dist/style.css';
-import 'katex/dist/katex.min.css';
-import '@react-pdf-viewer/core/lib/styles/index.css';
-import '@react-pdf-viewer/default-layout/lib/styles/index.css';
 
 import { LeftWorkspaceChat, LeftWorkspacePdf } from './components/LeftWorkspace';
 import { useResearchAssistantRuntimeContext, type ResearchAssistantRuntimeContextValue } from './context/ResearchAssistantRuntimeContext';
 import { ResearchAssistantRuntimeProvider } from './context/ResearchAssistantRuntimeProvider';
 import { usePdfAssistFlow } from './hooks/usePdfAssistFlow';
 import { useResearchAssistantChatFlow } from './hooks/useResearchAssistantChatFlow';
+import { useGraphState } from './hooks/useGraphState';
 import { useResearchAssistantLayoutState } from './hooks/useResearchAssistantLayoutState';
 import { useResearchAssistantRuntime } from './hooks/useResearchAssistantRuntime';
 import { useGraphExecutionViewModel } from './viewModels/useGraphExecutionViewModel';
@@ -32,16 +28,30 @@ interface ResearchAssistantAppShellProps {
 function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
   const { layout, leftWorkspace, graphExecutionViewModel, mobilePane, onMobilePaneChange } = props;
   const graphNodeCount = graphExecutionViewModel.graphPanelProps.nodes.length;
+  const isResizing = layout.isResizing || layout.isResizingSidebar;
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !graphExecutionViewModel.executionSidebarProps) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      graphExecutionViewModel.executionSidebarProps.onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [graphExecutionViewModel.executionSidebarProps]);
 
   return (
     <div
-      className="research-assistant-app-shell flex h-screen overflow-hidden bg-gray-100 font-sans"
+      className="research-assistant-app-shell flex h-[100dvh] overflow-hidden bg-paper font-sans text-ink"
       data-mobile-pane={mobilePane}
+      data-resizing={isResizing ? 'true' : 'false'}
     >
       <div className="research-assistant-mobile-tabbar">
         <button
           type="button"
           onClick={() => onMobilePaneChange('chat')}
+          aria-pressed={mobilePane === 'chat'}
           className={mobilePane === 'chat' ? 'is-active' : ''}
         >
           <MessageSquareText className="h-4 w-4" />
@@ -50,6 +60,7 @@ function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
         <button
           type="button"
           onClick={() => onMobilePaneChange('graph')}
+          aria-pressed={mobilePane === 'graph'}
           className={mobilePane === 'graph' ? 'is-active' : ''}
         >
           <GitBranch className="h-4 w-4" />
@@ -60,21 +71,37 @@ function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
       {leftWorkspace}
 
       <div
-        className={`research-assistant-left-resize-handle flex w-1.5 cursor-col-resize items-center justify-center bg-gray-200 transition-colors hover:bg-blue-400 ${layout.isResizing ? 'bg-blue-500' : ''}`}
-        onMouseDown={layout.startResizingLeftPanel}
+        className="research-assistant-left-resize-handle group relative flex w-2 shrink-0 cursor-col-resize items-center justify-center bg-paper transition-colors hover:bg-accent/10"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          layout.startResizingLeftPanel();
+        }}
+        onDoubleClick={layout.resetLeftPanel}
+        title="拖动调整对话区宽度 · 双击恢复默认"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整对话区宽度"
       >
-        <div className="h-8 w-1 bg-gray-400 rounded-full" />
+        <div className={`h-10 w-px rounded-full transition-colors ${layout.isResizing ? 'bg-accent' : 'bg-line-strong group-hover:bg-accent/70'}`} />
       </div>
 
-      <div className="research-assistant-graph-workspace relative flex min-w-0 flex-1 overflow-hidden">
+      <div className="research-assistant-graph-workspace relative flex min-w-0 flex-1 overflow-hidden bg-paper">
         <GraphPanel {...graphExecutionViewModel.graphPanelProps} />
 
         {graphExecutionViewModel.showExecutionResizeHandle && (
           <div
-            className={`w-1 bg-gray-200 hover:bg-blue-400 cursor-col-resize z-20 transition-colors flex items-center justify-center ${layout.isResizingSidebar ? 'bg-blue-500' : ''}`}
-            onMouseDown={layout.startResizingSidebar}
+            className="group relative z-20 flex w-2 shrink-0 cursor-col-resize items-center justify-center bg-surface transition-colors hover:bg-accent/10"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              layout.startResizingSidebar();
+            }}
+            onDoubleClick={layout.resetSidebar}
+            title="拖动调整详情区宽度 · 双击恢复默认"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="调整节点详情宽度"
           >
-            <div className="h-8 w-0.5 bg-gray-400 rounded-full" />
+            <div className={`h-10 w-px rounded-full transition-colors ${layout.isResizingSidebar ? 'bg-accent' : 'bg-line-strong group-hover:bg-accent/70'}`} />
           </div>
         )}
 
@@ -98,14 +125,14 @@ interface ResearchAssistantWorkspaceContentProps {
     prompt: string;
     setPrompt: (value: string) => void;
     handleSendMessage: () => void;
-	pendingAttachments: ReturnType<typeof useResearchAssistantChatFlow>['pendingAttachments'];
-	uploadingAttachments: boolean;
-	attachmentError: string;
-	handleAttachFiles: (files: File[]) => void;
-	handleRemoveAttachment: (uploadId: string) => void;
+    pendingAttachments: ReturnType<typeof useResearchAssistantChatFlow>['pendingAttachments'];
+    uploadingAttachments: boolean;
+    attachmentError: string;
+    handleAttachFiles: (files: File[]) => void;
+    handleRemoveAttachment: (uploadId: string) => void;
     intentContext: IntentContext | null;
     activePlanId: string | null;
-	activePlanStatus: string | null;
+    activePlanStatus: string | null;
     isLoggedIn: boolean;
     userId: string | null;
     loginInput: string;
@@ -131,7 +158,7 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
     onEdgesChange,
     intentContext: chatFlow.intentContext,
     activePlanId: chatFlow.activePlanId,
-	activePlanStatus: chatFlow.activePlanStatus,
+    activePlanStatus: chatFlow.activePlanStatus,
     layout,
     logsEndRef,
   });
@@ -142,9 +169,9 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
       pdfUrl={pdfFlow.pdfUrl}
       documentInfo={pdfFlow.documentInfo}
       onClosePdf={pdfFlow.closePdf}
-      defaultLayoutPluginInstance={pdfFlow.defaultLayoutPluginInstance}
-      aiTranslationPluginInstance={pdfFlow.aiTranslationPluginInstance}
       translation={pdfFlow.translation}
+      onAskAI={pdfFlow.handleAskAI}
+      onAssist={pdfFlow.assistWithUpload}
     />
   ) : (
     <LeftWorkspaceChat
@@ -154,9 +181,9 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
         loading: chatFlow.loading,
         prompt: chatFlow.prompt,
         showSuggestions: pdfFlow.showSuggestions,
-		pendingAttachments: chatFlow.pendingAttachments,
-		uploadingAttachments: chatFlow.uploadingAttachments,
-		attachmentError: chatFlow.attachmentError,
+        pendingAttachments: chatFlow.pendingAttachments,
+        uploadingAttachments: chatFlow.uploadingAttachments,
+        attachmentError: chatFlow.attachmentError,
         isLoggedIn: chatFlow.isLoggedIn,
         userId: chatFlow.userId,
         loginInput: chatFlow.loginInput,
@@ -171,9 +198,9 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
         onLogin: chatFlow.handleLogin,
         onCreateSession: chatFlow.handleCreateSession,
         onSwitchSession: chatFlow.handleSwitchSession,
-		onAttachFiles: chatFlow.handleAttachFiles,
-		onRemoveAttachment: chatFlow.handleRemoveAttachment,
-		onOpenAttachment: pdfFlow.openPdfFromUpload,
+        onAttachFiles: chatFlow.handleAttachFiles,
+        onRemoveAttachment: chatFlow.handleRemoveAttachment,
+        onOpenAttachment: pdfFlow.openPdfFromUpload,
       }}
       pdfActions={{
         onOpenPdf: () => {
@@ -204,8 +231,7 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
 }
 
 export default function ResearchAssistantApp() {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const { nodes, setNodes, onNodesChange, edges, setEdges, onEdgesChange } = useGraphState();
   const [mobilePane, setMobilePane] = useState<'chat' | 'graph'>('chat');
   const logsEndRef = useRef<HTMLDivElement>(null);
   const layout = useResearchAssistantLayoutState();
@@ -242,9 +268,9 @@ export default function ResearchAssistantApp() {
     nodes,
     setNodes,
     appendChatMessage: chatFlow.appendChatMessage,
-	identity: chatFlow.requestIdentity,
-	refreshPlanState: chatFlow.refreshActivePlan,
-	activePlanGraph: chatFlow.activePlanGraph,
+    identity: chatFlow.requestIdentity,
+    refreshPlanState: chatFlow.refreshActivePlan,
+    activePlanGraph: chatFlow.activePlanGraph,
   });
   const { resetRuntimeState } = runtime;
 
@@ -274,9 +300,9 @@ export default function ResearchAssistantApp() {
         handleOpenTaskView: runtime.handleOpenTaskView,
         handleExecuteTask: runtime.handleExecuteTask,
         handleRunAllTasks: runtime.handleRunAllTasks,
-		handleApproveAndRun: runtime.handleApproveAndRun,
-		handleCancelPlan: runtime.handleCancelPlan,
-		handleRetryFailedPlan: runtime.handleRetryFailedPlan,
+        handleApproveAndRun: runtime.handleApproveAndRun,
+        handleCancelPlan: runtime.handleCancelPlan,
+        handleRetryFailedPlan: runtime.handleRetryFailedPlan,
         setDisplayMode: runtime.setDisplayMode,
         closeTaskPanel: runtime.closeTaskPanel,
         resetRuntimeState: runtime.resetRuntimeState,
@@ -304,14 +330,14 @@ export default function ResearchAssistantApp() {
           prompt: chatFlow.prompt,
           setPrompt: chatFlow.setPrompt,
           handleSendMessage: chatFlow.handleSendMessage,
-		  pendingAttachments: chatFlow.pendingAttachments,
-		  uploadingAttachments: chatFlow.uploadingAttachments,
-		  attachmentError: chatFlow.attachmentError,
-		  handleAttachFiles: chatFlow.handleAttachFiles,
-		  handleRemoveAttachment: chatFlow.handleRemoveAttachment,
+          pendingAttachments: chatFlow.pendingAttachments,
+          uploadingAttachments: chatFlow.uploadingAttachments,
+          attachmentError: chatFlow.attachmentError,
+          handleAttachFiles: chatFlow.handleAttachFiles,
+          handleRemoveAttachment: chatFlow.handleRemoveAttachment,
           intentContext: chatFlow.intentContext,
           activePlanId: chatFlow.activePlanId,
-		  activePlanStatus: chatFlow.activePlanStatus,
+          activePlanStatus: chatFlow.activePlanStatus,
           isLoggedIn: chatFlow.isLoggedIn,
           userId: chatFlow.userId,
           loginInput: chatFlow.loginInput,

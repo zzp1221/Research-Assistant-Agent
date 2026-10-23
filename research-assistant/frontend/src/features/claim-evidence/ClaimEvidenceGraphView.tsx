@@ -1,5 +1,6 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Background, Controls, MarkerType, Position, ReactFlow, type Edge, type Node } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import { AlertTriangle, CheckCircle2, CircleHelp, FileSearch, Link2, XCircle } from 'lucide-react';
 
 type ClaimStatus =
@@ -77,16 +78,16 @@ interface ClaimEvidenceGraphViewProps {
 }
 
 const statusConfig: Record<ClaimStatus, { label: string; color: string; background: string; border: string }> = {
-  verified: { label: '已验证', color: '#166534', background: '#f0fdf4', border: '#86efac' },
-  partially_reproduced: { label: '部分复现', color: '#92400e', background: '#fffbeb', border: '#fbbf24' },
-  contradicted: { label: '与证据矛盾', color: '#991b1b', background: '#fef2f2', border: '#fca5a5' },
-  unverifiable: { label: '不可验证', color: '#475569', background: '#f8fafc', border: '#cbd5e1' },
-  blocked_by_missing_asset: { label: '缺少资产', color: '#075985', background: '#f0f9ff', border: '#7dd3fc' },
+  verified: { label: '已验证', color: '#2f6b4f', background: '#e8f1eb', border: '#a9c9b5' },
+  partially_reproduced: { label: '部分复现', color: '#8a5a12', background: '#f5ecd9', border: '#d7b98a' },
+  contradicted: { label: '与证据矛盾', color: '#a5483a', background: '#f6e7e3', border: '#d9a79f' },
+  unverifiable: { label: '不可验证', color: '#6e685d', background: '#f9f6ee', border: '#d8d1c0' },
+  blocked_by_missing_asset: { label: '缺少资产', color: '#3e5c76', background: '#eef1f4', border: '#a9bfd0' },
 };
 
 const nodeBaseStyle: CSSProperties = {
   borderRadius: 6,
-  boxShadow: '0 3px 10px rgba(15, 23, 42, 0.08)',
+  boxShadow: '0 1px 2px rgba(61, 52, 36, 0.05), 0 8px 20px -16px rgba(61, 52, 36, 0.22)',
   padding: 0,
   overflow: 'hidden',
   fontSize: 12,
@@ -140,21 +141,21 @@ const statusNodeLabel = (eyebrow: string, title: string, status: ClaimStatus, de
 };
 
 const evidenceNodeLabel = (evidence: ClaimEvidenceNode) => (
-  <div className="w-full text-left text-cyan-950">
-    <div className="flex items-center gap-2 border-b border-cyan-200 bg-cyan-50 px-3 py-2">
+  <div className="w-full text-left text-accent-ink">
+    <div className="flex items-center gap-2 border-b border-accent/25 bg-accent-soft px-3 py-2">
       <FileSearch className="h-3.5 w-3.5" />
       <span className="font-mono text-[10px] font-semibold">{evidence.evidence_type}</span>
     </div>
     <div className="px-3 py-2">
       <div className="break-all font-semibold leading-4">{evidence.artifact_key}</div>
-      <div className="mt-1 font-mono text-[9px] text-cyan-700">{evidence.sha256 ? evidence.sha256.slice(0, 12) : 'no hash'}</div>
+      <div className="mt-1 font-mono text-[9px] text-accent">{evidence.sha256 ? evidence.sha256.slice(0, 12) : 'no hash'}</div>
     </div>
   </div>
 );
 
 const gapNodeLabel = () => (
-  <div className="w-full text-left text-slate-700">
-    <div className="flex items-center gap-2 border-b border-dashed border-slate-300 bg-slate-50 px-3 py-2">
+  <div className="w-full text-left text-ink-soft">
+    <div className="flex items-center gap-2 border-b border-dashed border-line-strong bg-surface-muted px-3 py-2">
       <CircleHelp className="h-3.5 w-3.5" />
       <span className="text-[10px] font-semibold">证据缺口</span>
     </div>
@@ -201,8 +202,8 @@ const buildVisualGraph = (graph: ClaimEvidenceGraph): { nodes: Node<VisualNodeDa
         id: `${claim.claim_id}-${criterion.criterion_id}`,
         source: claim.claim_id,
         target: criterion.criterion_id,
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8' },
-        style: { stroke: '#94a3b8', strokeWidth: 1.5 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#c9c2b1' },
+        style: { stroke: '#c9c2b1', strokeWidth: 1.5 },
       });
 
       if (criterion.evidence_ids.length === 0) {
@@ -284,8 +285,8 @@ const buildVisualGraph = (graph: ClaimEvidenceGraph): { nodes: Node<VisualNodeDa
       style: {
         ...nodeBaseStyle,
         width: 225,
-        border: isGap ? '1px dashed #94a3b8' : '1px solid #67e8f9',
-        background: isGap ? '#f8fafc' : '#ecfeff',
+        border: isGap ? '1px dashed #c9c2b1' : '1px solid #a9c9b5',
+        background: isGap ? '#f9f6ee' : '#e8f1eb',
       },
       data: {
         label: isGap ? gapNodeLabel() : evidenceNodeLabel(placement.evidence),
@@ -313,11 +314,11 @@ const buildVisualGraph = (graph: ClaimEvidenceGraph): { nodes: Node<VisualNodeDa
 };
 
 const DetailIcon = ({ detail }: { detail: VisualNodeDetail }) => {
-  if (detail.kind === 'evidence') return <Link2 className="h-4 w-4 text-cyan-700" />;
-  if (detail.kind === 'gap') return <CircleHelp className="h-4 w-4 text-slate-500" />;
-  if (detail.status === 'verified') return <CheckCircle2 className="h-4 w-4 text-green-700" />;
-  if (detail.status === 'contradicted') return <XCircle className="h-4 w-4 text-red-700" />;
-  return <AlertTriangle className="h-4 w-4 text-amber-700" />;
+  if (detail.kind === 'evidence') return <Link2 className="h-4 w-4 text-accent" />;
+  if (detail.kind === 'gap') return <CircleHelp className="h-4 w-4 text-muted" />;
+  if (detail.status === 'verified') return <CheckCircle2 className="h-4 w-4 text-ok" />;
+  if (detail.status === 'contradicted') return <XCircle className="h-4 w-4 text-flag" />;
+  return <AlertTriangle className="h-4 w-4 text-warn" />;
 };
 
 export function ClaimEvidenceGraphView({ rawGraph, expanded = false }: ClaimEvidenceGraphViewProps) {
@@ -327,7 +328,7 @@ export function ClaimEvidenceGraphView({ rawGraph, expanded = false }: ClaimEvid
 
   if (!graph) {
     return (
-      <div className="flex h-full items-center justify-center border border-red-200 bg-red-50 px-6 text-center text-sm text-red-700">
+      <div className="flex h-full items-center justify-center border border-flag/25 bg-flag-soft px-6 text-center text-sm text-flag">
         证据图数据无法解析，请查看分析报告或重新运行该节点。
       </div>
     );
@@ -343,26 +344,26 @@ export function ClaimEvidenceGraphView({ rawGraph, expanded = false }: ClaimEvid
   ];
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-white">
-      <div className="grid grid-cols-5 border-b border-slate-200 bg-slate-50">
+    <div className="flex h-full min-h-0 flex-col bg-surface">
+      <div className="grid grid-cols-5 border-b border-line bg-surface-muted">
         {summaryItems.map((item) => (
-          <div key={item.status} className="border-r border-slate-200 px-2 py-2 text-center last:border-r-0">
+          <div key={item.status} className="border-r border-line px-2 py-2 text-center last:border-r-0">
             <div className="text-sm font-semibold" style={{ color: statusConfig[item.status].color }}>{item.value}</div>
-            <div className="text-[10px] text-slate-500">{item.label}</div>
+            <div className="text-[10px] text-muted">{item.label}</div>
           </div>
         ))}
       </div>
-      <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2 text-[11px] text-slate-600">
+      <div className="flex items-center justify-between border-b border-line px-3 py-2 text-[11px] text-muted">
         <span>{graph.summary.total_claims} 个主张 · {graph.summary.total_criteria} 个准则</span>
         <span>Rubric {(graph.rubric_sha256 || 'unknown').slice(0, 8)} · 证据覆盖 {boundedPercent(graph.summary.criterion_evidence_coverage)}</span>
       </div>
       {graph.status !== 'assessed' && (
-        <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-4 text-amber-900">
+        <div className="border-b border-warn/25 bg-warn-soft px-3 py-2 text-[11px] leading-4 text-warn">
           判定降级：{graph.status_reason || '部分准则没有获得完整证据判定。'}
         </div>
       )}
       <div className={`relative min-h-0 flex-1 ${expanded ? 'min-h-[520px]' : 'min-h-[320px]'}`}>
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 grid grid-cols-3 border-b border-slate-200 bg-white/90 px-4 py-2 text-center text-[10px] font-semibold text-slate-500 backdrop-blur-sm">
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 grid grid-cols-3 border-b border-line bg-surface/90 px-4 py-2 text-center text-[10px] font-semibold text-muted backdrop-blur-sm">
           <span>论文主张</span>
           <span>独立判定准则</span>
           <span>运行证据</span>
@@ -380,18 +381,18 @@ export function ClaimEvidenceGraphView({ rawGraph, expanded = false }: ClaimEvid
           onNodeClick={(_, node) => setSelectedNodeID(node.id)}
           proOptions={{ hideAttribution: true }}
         >
-          <Background color="#cbd5e1" gap={20} size={1} />
+          <Background color="#d8d1c0" gap={20} size={1} />
           <Controls showInteractive={false} position="bottom-right" />
         </ReactFlow>
       </div>
       {selectedDetail && (
-        <div className="max-h-40 overflow-y-auto border-t border-slate-200 bg-white px-4 py-3 text-xs text-slate-700">
-          <div className="flex items-center gap-2 font-semibold text-slate-900">
+        <div className="max-h-40 overflow-y-auto border-t border-line bg-surface px-4 py-3 text-xs text-ink-soft">
+          <div className="flex items-center gap-2 font-semibold text-ink">
             <DetailIcon detail={selectedDetail} />
             <span className="break-all">{selectedDetail.title}</span>
           </div>
           <p className="mt-2 break-words leading-5">{selectedDetail.description}</p>
-          {selectedDetail.metadata.map((item) => <div key={item} className="mt-1 break-all text-[11px] text-slate-500">{item}</div>)}
+          {selectedDetail.metadata.map((item) => <div key={item} className="mt-1 break-all text-[11px] text-muted">{item}</div>)}
         </div>
       )}
     </div>

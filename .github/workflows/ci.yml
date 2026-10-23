@@ -88,12 +88,54 @@ jobs:
       - name: Build
         working-directory: research-assistant/frontend
         run: npm run build
+      - name: Bundle budget
+        working-directory: research-assistant/frontend
+        run: npm run check:bundle
       - name: Lint
         working-directory: research-assistant/frontend
         run: npm run lint
       - name: Test
         working-directory: research-assistant/frontend
         run: npm test
+      - name: Install Playwright browser
+        working-directory: research-assistant/frontend
+        run: npx playwright install --with-deps chromium
+      - name: Accessibility smoke
+        working-directory: research-assistant/frontend
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/preview-a11y.log 2>&1 &
+          node -e "const started=Date.now();(async()=>{while(Date.now()-started<30000){try{const r=await fetch('http://127.0.0.1:4173');if(r.ok)process.exit(0)}catch{}await new Promise(r=>setTimeout(r,500))}process.exit(1)})()"
+          E2E_BASE_URL=http://127.0.0.1:4173 npm run test:a11y
+
+  visual:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: research-assistant/frontend/package-lock.json
+      - name: Install
+        working-directory: research-assistant/frontend
+        run: npm ci --no-audit --no-fund
+      - name: Install Playwright browser and CJK fonts
+        working-directory: research-assistant/frontend
+        run: |
+          npx playwright install --with-deps chromium
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
+      - name: Build
+        working-directory: research-assistant/frontend
+        run: npm run build
+      - name: Start preview
+        working-directory: research-assistant/frontend
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/preview.log 2>&1 &
+          node -e "const started=Date.now();(async()=>{while(Date.now()-started<30000){try{const r=await fetch('http://127.0.0.1:4173');if(r.ok)process.exit(0)}catch{}await new Promise(r=>setTimeout(r,500))}process.exit(1)})()"
+      - name: Visual regression
+        working-directory: research-assistant/frontend
+        run: npm run test:visual
 
   python:
     runs-on: ubuntu-latest

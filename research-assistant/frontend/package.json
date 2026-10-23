@@ -10,11 +10,14 @@
     "dev": "vite",
     "predev": "npm run sync:pdfjs",
     "build": "npm run sync:pdfjs && tsc -b && vite build",
+    "check:bundle": "node scripts/check-bundle-budget.mjs",
     "lint": "eslint .",
     "test": "npm run test:unit && npm run test:components",
     "test:unit": "node --test test/*.test.mjs",
     "test:components": "vitest run",
     "test:e2e": "playwright test",
+    "test:a11y": "playwright test test/e2e/a11y.spec.ts",
+    "test:visual": "playwright test --config playwright.visual.config.ts",
     "sync:pdfjs": "node scripts/sync-pdfjs-assets.mjs",
     "preview": "vite preview"
   },
@@ -37,6 +40,7 @@
     "tailwindcss": "^4.2.2"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@eslint/js": "^9.39.4",
     "@playwright/test": "^1.64.1",
     "@testing-library/jest-dom": "^7.0.1",
@@ -47,6 +51,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "eslint": "^9.39.4",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
