@@ -160,7 +160,7 @@ make run-backend     # 终端 2，需要 SANDBOX_URL 与 API_AUTH_TOKEN
 make run-frontend    # 终端 3
 ```
 
-Windows 用户请使用 Docker Compose；`scripts/windows/start-backend.ps1` 会直接提示 Docker Compose，后端原生 Windows 编译仍不受支持。CI 的 Windows job 覆盖前端、docker-sandbox 与 docker-core，backend 保持 Linux-only。详见 [scripts/README.md](research-assistant/scripts/README.md)。
+Windows 用户请使用 Docker Compose；`scripts/windows/start-backend.ps1` 会直接提示 Docker Compose，后端原生 Windows 编译仍不受支持。CI 的 Windows job 覆盖 docker-sandbox 测试与 docker-core 构建，backend 保持 Linux-only；前端在 Linux job 中构建与测试。详见 [scripts/README.md](research-assistant/scripts/README.md)。
 
 ## 配置
 
