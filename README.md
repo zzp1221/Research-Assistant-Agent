@@ -171,6 +171,10 @@ Windows 用户请使用 Docker Compose；`scripts/windows/start-backend.ps1` 会
 | `OPENAI_API_KEY` | 是 | OpenAI-compatible API 密钥 |
 | `OPENAI_BASE_URL` | 否 | 默认示例为 DashScope compatible endpoint |
 | `OPENAI_MODEL_NAME` | 否 | 默认示例为 `qwen3-coder-plus` |
+| `INTENT_SERVICE_URL` | 否 | 可选 LLM 意图服务；Compose 默认 `http://intent-recognition:8000` |
+| `INTENT_ROUTER_MODE` | 否 | `rule` / `llm` / `hybrid` / `shadow`；Compose 默认 `hybrid` |
+| `INTENT_LLM_CONFIDENCE_THRESHOLD` | 否 | 模型结果最低置信度，低于阈值回退规则 |
+| `INTENT_CLIENT_TIMEOUT_SECONDS` | 否 | 调用意图服务的单次超时秒数 |
 | `SANDBOX_URL` | 否 | 本地默认 `http://localhost:8082`；Compose 会覆盖为服务地址 |
 | `SANDBOX_DEFAULT_IMAGE` | 否 | 默认 Python 运行时镜像 |
 | `PLAN_STORE_PATH` | 否 | 计划与事件 append-only JSONL 日志路径；旧 JSON 快照会自动迁移 |

@@ -234,6 +234,7 @@ export default function ResearchAssistantApp() {
   const { nodes, setNodes, onNodesChange, edges, setEdges, onEdgesChange } = useGraphState();
   const [mobilePane, setMobilePane] = useState<'chat' | 'graph'>('chat');
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const runtimeActionsRef = useRef<((planId: string) => void) | null>(null);
   const layout = useResearchAssistantLayoutState();
 
   const handlePlanGraphChanged = useCallback(
@@ -262,6 +263,12 @@ export default function ResearchAssistantApp() {
 
   const chatFlow = useResearchAssistantChatFlow({
     onPlanGraphChanged: handlePlanGraphChanged,
+    onPlanReady: (planGraph) => {
+      const hasPlotNode = planGraph.nodes.some((node) => node.type === 'render_plot');
+      if (planGraph.intent_type === 'Code_Execution' && !planGraph.approval?.required && hasPlotNode) {
+        runtimeActionsRef.current?.(planGraph.id);
+      }
+    },
   });
 
   const runtime = useResearchAssistantRuntime({
@@ -273,6 +280,13 @@ export default function ResearchAssistantApp() {
     activePlanGraph: chatFlow.activePlanGraph,
   });
   const { resetRuntimeState } = runtime;
+  const runAllTasks = runtime.handleRunAllTasks;
+
+  useEffect(() => {
+    runtimeActionsRef.current = (planId) => {
+      void runAllTasks(planId);
+    };
+  }, [runAllTasks]);
 
   const pdfFlow = usePdfAssistFlow({
     setPrompt: chatFlow.setPrompt,

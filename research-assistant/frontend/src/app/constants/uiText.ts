@@ -1,6 +1,6 @@
 export const uiText = {
   appWelcome: '你好，我是 Research Assistant Agent 科研助手。你可以直接让我做规划、复现实验、代码执行、论文总结或框架对比。',
-  planGenerated: '我已经生成执行计划，右侧会按依赖顺序展示任务节点。',
+  planGenerated: '计划已生成；绘图任务会自动开始执行，其他任务请点击右侧「运行计划」。',
   backendError: '后端请求失败，请确认 Go 服务正在 :8080 端口运行。',
   graphTitle: '多智能体执行流程',
   graphHint: '等待生成执行计划',

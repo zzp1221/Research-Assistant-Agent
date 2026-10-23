@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"regexp"
 	"research-assistant-backend/internal/agent"
+	intentpkg "research-assistant-backend/internal/intent"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/planner"
 	"research-assistant-backend/internal/sandbox"
@@ -224,6 +225,7 @@ func buildServiceHealth(ctx context.Context, sandboxURL string, optimizerURLs ..
 	if len(optimizerURLs) > 0 {
 		optimizerURL = strings.TrimRight(strings.TrimSpace(optimizerURLs[0]), "/")
 	}
+	intentURL := strings.TrimRight(strings.TrimSpace(os.Getenv("INTENT_SERVICE_URL")), "/")
 	gitPath, gitErr := exec.LookPath("git")
 	repositoryHealth := gin.H{"ok": gitErr == nil}
 	if gitErr == nil {
@@ -249,6 +251,12 @@ func buildServiceHealth(ctx context.Context, sandboxURL string, optimizerURLs ..
 			"url":        optimizerURL,
 			"message":    "research optimizer is optional and not configured",
 		},
+		"intent_recognition": gin.H{
+			"ok":         intentURL == "",
+			"configured": intentURL != "",
+			"url":        intentURL,
+			"message":    "intent recognition is optional and not configured",
+		},
 	}
 
 	client := &http.Client{Timeout: 3 * time.Second}
@@ -256,6 +264,13 @@ func buildServiceHealth(ctx context.Context, sandboxURL string, optimizerURLs ..
 	health["sandbox"] = sandboxHealth
 	if ok, _ := sandboxHealth["ok"].(bool); !ok {
 		health["ok"] = false
+	}
+	if intentURL != "" {
+		intentHealth := probeServiceHealth(ctx, client, intentURL, "/health", true)
+		health["intent_recognition"] = intentHealth
+		if ok, _ := intentHealth["ok"].(bool); !ok {
+			health["ok"] = false
+		}
 	}
 	if optimizerURL == "" {
 		return health
@@ -323,6 +338,12 @@ func DetectIntentType(intent string) string {
 	reproKeywords := []string{"复现", "reproduce", "replicate", "论文", "paper", "papers with code", "arxiv", "实现算法"}
 	if containsAny(intent, reproKeywords) {
 		return "Paper_Reproduction"
+	}
+
+	// 纯绘图请求优先于“对比/评估”类关键词：
+	// “帮我画一个正弦函数和余弦函数的对比图”里的“对比”不是框架对比。
+	if intentpkg.ContainsPlotIntent(intent) && !intentpkg.ContainsFrameworkContext(intent) {
+		return "Code_Execution"
 	}
 
 	// 框架对比评测类关键词（扩展版）

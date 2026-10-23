@@ -374,3 +374,64 @@ func TestPaperReproductionRoutesRepositoryDebugToResearchCodingAgent(t *testing.
 		t.Fatalf("claim graph outputs are incomplete: %#v", evidence.OutputArtifacts)
 	}
 }
+
+func TestCodeExecutionPlotPlanUsesCoderRenderNode(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	intent := models.IntentContext{
+		RawIntent:  "帮我画一个正弦函数和余弦函数的对比图",
+		IntentType: "Code_Execution",
+		Entities:   map[string]any{"needs_plot": true},
+	}
+	plan, err := NewPlanner().BuildPlan(t.Context(), intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plot *models.TaskNode
+	for _, node := range plan.Nodes {
+		if node != nil && node.Type == "render_plot" {
+			plot = node
+			break
+		}
+	}
+	if plot == nil {
+		t.Fatalf("render_plot node missing: %#v", plan.Nodes)
+	}
+	if plot.AssignedTo != "coder_agent" {
+		t.Fatalf("render_plot assigned to %s, want coder_agent", plot.AssignedTo)
+	}
+	if !containsArtifact(plot.OutputArtifacts, "plot_image") {
+		t.Fatalf("render_plot outputs=%#v, want plot_image", plot.OutputArtifacts)
+	}
+}
+
+func TestFrameworkEvaluationPlotPlanUsesCoderRenderNode(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	intent := models.IntentContext{
+		RawIntent:  "对比 LangChain 和 LlamaIndex 的响应时间柱状图",
+		IntentType: "Framework_Evaluation",
+		Entities: map[string]any{
+			"frameworks": []string{"langchain", "llamaindex"},
+			"needs_plot": true,
+		},
+	}
+	plan, err := NewPlanner().BuildPlan(t.Context(), intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plot *models.TaskNode
+	for _, node := range plan.Nodes {
+		if node != nil && node.Type == "render_plot" {
+			plot = node
+			break
+		}
+	}
+	if plot == nil {
+		t.Fatalf("framework render_plot node missing: %#v", plan.Nodes)
+	}
+	if plot.AssignedTo != "coder_agent" {
+		t.Fatalf("framework render_plot assigned to %s, want coder_agent", plot.AssignedTo)
+	}
+	if !containsArtifact(plot.OutputArtifacts, "plot_image") {
+		t.Fatalf("framework render_plot outputs=%#v, want plot_image", plot.OutputArtifacts)
+	}
+}

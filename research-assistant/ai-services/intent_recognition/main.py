@@ -41,6 +41,7 @@ class IntentResponse(BaseModel):
     intent_type: str
     confidence: float
     entities: dict[str, Any]
+    reasoning: str | None = None
     model: str
     latency_ms: int
     attempts: int
@@ -139,10 +140,14 @@ def _parse_intent(content: str, model: str, latency_ms: int, attempts: int) -> I
     entities = payload.get("entities")
     if not isinstance(entities, dict):
         entities = {}
+    reasoning = payload.get("reasoning")
+    if not isinstance(reasoning, str):
+        reasoning = ""
     return IntentResponse(
         intent_type=intent_type,
         confidence=confidence,
         entities=entities,
+        reasoning=reasoning or None,
         model=model,
         latency_ms=latency_ms,
         attempts=attempts,
@@ -154,13 +159,22 @@ def classify_intent(text: str, context: str | None = None) -> IntentResponse:
     if not config.api_key:
         raise HTTPException(status_code=503, detail="OPENAI_API_KEY is not configured")
 
-    system_prompt = (
-        "你是科研任务意图分类器。只返回严格 JSON，不要 Markdown。"
-        "JSON 必须包含 intent_type、confidence、entities。"
-        "intent_type 只能是以下之一：General, Code_Execution, Paper_Reproduction, "
-        "Framework_Evaluation, AutoResearch, Custom_Benchmark, Literature_Review, Data_Analysis。"
-        "entities 是字符串键值对象，可提取 paper_title、repo_url、framework、dataset 等。"
-    )
+    system_prompt = """你是科研任务意图分类器。只返回严格 JSON，不要 Markdown。
+JSON 必须包含 intent_type、confidence、entities、reasoning。
+intent_type 只能是以下之一：General, Code_Execution, Paper_Reproduction, Framework_Evaluation, AutoResearch, Custom_Benchmark, Literature_Review, Data_Analysis。
+判断规则：
+1. 纯绘图/画图/对比图请求，如果没有明确框架名称或框架对比/benchmark 语义，intent_type=Code_Execution，entities.needs_plot=true，output_mode=plot。
+2. 明确比较多个框架/工具/技术选型，intent_type=Framework_Evaluation；如果还要求图表，entities.needs_plot=true，output_mode=plot。
+3. 明确复现论文、论文仓库或论文实验，intent_type=Paper_Reproduction。
+4. 明确 AutoResearch/自动实验，intent_type=AutoResearch。
+5. 其他总结、解释、知识问答，intent_type=General。
+entities 是字符串键值对象，可提取 frameworks（字符串数组）、framework_count、needs_plot（布尔）、needs_benchmark（布尔）、output_mode（plot/report）、paper_title、repo_url、topic、needs_report 等。
+示例：
+用户：帮我画一个正弦函数和余弦函数的对比图
+输出：{"intent_type":"Code_Execution","confidence":0.95,"entities":{"needs_plot":true,"output_mode":"plot"},"reasoning":"纯绘图请求，没有框架对比语义"}
+用户：对比 LangChain 和 LlamaIndex 的响应时间柱状图
+输出：{"intent_type":"Framework_Evaluation","confidence":0.93,"entities":{"frameworks":["langchain","llamaindex"],"needs_plot":true,"needs_benchmark":true,"output_mode":"plot"},"reasoning":"框架性能对比并要求图表"}
+"""
     user_prompt = "用户请求：" + chr(10) + text
     if context:
         user_prompt += chr(10) + chr(10) + "补充上下文：" + chr(10) + context

@@ -10,8 +10,8 @@
 
 ## 定位
 
-- `intent-recognition` 是 **可选** 的 Compose 服务，端口 `127.0.0.1:18000`。
-- 主后端仍使用确定性的规则意图路由，不依赖本服务；该服务用于需要独立意图分类能力的场景。
+- `intent-recognition` 是 Compose 服务，端口 `127.0.0.1:18000`。
+- 主后端默认 `INTENT_ROUTER_MODE=hybrid`：规则快路径 + 本服务语义分类 + 后校验；服务不可用或置信度不足时回退规则。
 - 服务不再使用关键词 mock：未配置 `OPENAI_API_KEY` 时 `/predict` 明确返回 503，`/health` 返回 `degraded`。
 
 ## 快速开始（Docker Compose）

@@ -13,6 +13,7 @@ const isTaskIntent = (input: string) => {
 
 interface UseResearchAssistantChatFlowOptions {
   onPlanGraphChanged: (planGraph: PlanGraph | null) => void;
+  onPlanReady?: (planGraph: PlanGraph, intentContext: IntentContext | null) => void;
 }
 
 interface ChatSessionRecord {
@@ -174,7 +175,7 @@ const updateSessionRecord = (
 ) => sessions.map((session) => (session.id === sessionId ? updater(session) : session));
 
 export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFlowOptions) {
-  const { onPlanGraphChanged } = options;
+  const { onPlanGraphChanged, onPlanReady } = options;
   const [persistedState, setPersistedState] = useState<PersistedChatState>(() => loadPersistedChatState());
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
@@ -424,6 +425,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
           activePlanId: generatedPlanGraph.id,
           planGraph: generatedPlanGraph,
         });
+        onPlanReady?.(generatedPlanGraph, returnedIntentContext ?? null);
         const clarificationText = formatPlanClarification(response.clarification);
         if (clarificationText) {
 		appendMessageToSession(requestSessionId, {
@@ -450,7 +452,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     } finally {
       setLoading(false);
     }
-	}, [appendMessageToSession, guestUserId, loading, pendingAttachments, persistedState.activeSessionId, persistedState.userId, prompt, updateSessionPlanState, uploadingAttachments]);
+	}, [appendMessageToSession, guestUserId, loading, onPlanReady, pendingAttachments, persistedState.activeSessionId, persistedState.userId, prompt, updateSessionPlanState, uploadingAttachments]);
 
   return {
     prompt,

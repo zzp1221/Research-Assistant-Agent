@@ -380,13 +380,13 @@ func normalizePlannerAssignedTo(bp plannerNodeBlueprint) string {
 		return "benchmark_agent"
 	case "dataset_profile", "benchmark_adapter_generate", "benchmark_adapter_preflight", "benchmark_execute", "paper_code_execute", "fix_and_rerun", "autoresearch_spec", "autoresearch_run", "autoresearch_validate", "experiment_dataset_prepare", "experiment_spec", "experiment_run", "experiment_validate":
 		return "research_coding_agent"
-	case "generate_code", "resolve_dependencies", "repo_discovery", "repo_prepare":
+	case "generate_code", "resolve_dependencies", "repo_discovery", "repo_prepare", "render_plot", "result_visualization":
 		return "coder_agent"
 	case "prepare_runtime", "install_dependencies", "execute_code":
 		return "sandbox_agent"
 	case "framework_research", "paper_parse", "claim_rubric_extract", "general_research":
 		return "librarian_agent"
-	case "framework_recommendation", "ablation_design", "paper_compare", "claim_evidence_build", "result_visualization", "verify_result", "render_plot", "general_synthesis":
+	case "framework_recommendation", "ablation_design", "paper_compare", "claim_evidence_build", "verify_result", "general_synthesis":
 		return "data_agent"
 	default:
 		return bp.AssignedTo

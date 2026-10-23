@@ -24,6 +24,16 @@ class IntentServiceTests(unittest.TestCase):
         self.assertEqual(parsed.entities["paper_title"], "Apriori")
         self.assertEqual(parsed.attempts, 1)
 
+    def test_parse_intent_keeps_reasoning(self):
+        parsed = main._parse_intent(
+            '{"intent_type":"Code_Execution","confidence":0.91,"entities":{"needs_plot":true},"reasoning":"pure plot request"}',
+            "deepseek-v4.1-flash-1017",
+            8,
+            1,
+        )
+        self.assertEqual(parsed.reasoning, "pure plot request")
+        self.assertTrue(parsed.entities["needs_plot"])
+
     def test_parse_intent_rejects_unknown_label(self):
         with self.assertRaises(RuntimeError):
             main._parse_intent('{"intent_type":"Made_Up","confidence":0.9,"entities":{}}', "model", 1, 1)

@@ -118,6 +118,10 @@ services:
       - BENCHMARK_PRIVATE_ROOT=/app/private-benchmarks
       - RESEARCH_OPTIMIZER_URL=http://research-optimizer:8090
       - RESEARCH_OPTIMIZER_API_TOKEN=${RESEARCH_OPTIMIZER_API_TOKEN:?RESEARCH_OPTIMIZER_API_TOKEN must be set in research-assistant/.env}
+      - INTENT_SERVICE_URL=http://intent-recognition:8000
+      - INTENT_ROUTER_MODE=${INTENT_ROUTER_MODE:-hybrid}
+      - INTENT_LLM_CONFIDENCE_THRESHOLD=${INTENT_LLM_CONFIDENCE_THRESHOLD:-0.65}
+      - INTENT_CLIENT_TIMEOUT_SECONDS=${INTENT_CLIENT_TIMEOUT_SECONDS:-15}
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -128,6 +132,8 @@ services:
       docker-sandbox:
         condition: service_started
       research-optimizer:
+        condition: service_healthy
+      intent-recognition:
         condition: service_healthy
     networks:
       - research-assistant-network

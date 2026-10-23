@@ -368,7 +368,21 @@ func (a *CoderAgent) generateAndExecuteCodeTask(ctx context.Context, task *model
 	}
 
 	logToContext(ctx, "[%s] 直接代码执行任务：先生成代码，再复用沙箱运行", a.Name)
-	code, err := a.CodeOnlyChain.Invoke(ctx, task.Description)
+	prompt := strings.TrimSpace(task.Description)
+	if prompt == "" {
+		prompt = task.Name
+	}
+	if len(task.Inputs) > 0 {
+		if payload, err := json.Marshal(task.Inputs); err == nil {
+			text := string(payload)
+			const maxInputChars = 12000
+			if len(text) > maxInputChars {
+				text = text[:maxInputChars] + "..."
+			}
+			prompt += "\n\n上游输入（只读，供绘图/分析使用）：\n" + text
+		}
+	}
+	code, err := a.CodeOnlyChain.Invoke(ctx, prompt)
 	if err != nil {
 		task.Status = models.StatusFailed
 		task.Error = fmt.Sprintf("代码生成失败: %v", err)
@@ -1326,7 +1340,12 @@ func shouldRunDirectCodeExecution(task *models.Task) bool {
 		return false
 	}
 	taskType := strings.ToLower(strings.TrimSpace(task.Type))
-	return taskType == "code_execution"
+	switch taskType {
+	case "code_execution", "render_plot", "result_visualization":
+		return true
+	default:
+		return false
+	}
 }
 
 func inferSandboxTaskKind(task *models.Task) string {

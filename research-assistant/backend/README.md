@@ -116,6 +116,10 @@ backend/
 | `OPENAI_API_KEY` | 必填，OpenAI-compatible API Key |
 | `OPENAI_BASE_URL` | API Base URL |
 | `OPENAI_MODEL_NAME` | 模型名称 |
+| `INTENT_SERVICE_URL` | 可选意图识别服务地址；为空时只使用规则路由 |
+| `INTENT_ROUTER_MODE` | `rule` / `llm` / `hybrid` / `shadow`；Compose 默认 `hybrid` |
+| `INTENT_LLM_CONFIDENCE_THRESHOLD` | 模型结果最低置信度，低于阈值回退规则 |
+| `INTENT_CLIENT_TIMEOUT_SECONDS` | 调用意图服务的单次超时秒数 |
 | `SANDBOX_URL` | 沙箱服务地址 |
 | `SANDBOX_API_TOKEN` | 沙箱 Bearer Token |
 | `PLAN_STORE_PATH` | 计划快照目录（`<path>.d`）与小型 JSONL 索引/事件日志的基准路径 |

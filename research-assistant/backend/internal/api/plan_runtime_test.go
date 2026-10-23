@@ -406,3 +406,84 @@ func TestPlanRuntimeExecutesTaskFromStoredPlanAndIgnoresClientInputs(t *testing.
 		t.Fatalf("client-controlled inputs leaked into task execution: %s", body)
 	}
 }
+
+func TestPlanRuntimeHybridRouterDowngradesPlotRequest(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("INTENT_ROUTER_MODE", "hybrid")
+	t.Setenv("INTENT_LLM_CONFIDENCE_THRESHOLD", "0.6")
+	t.Setenv("INTENT_CLIENT_TIMEOUT_SECONDS", "2")
+
+	var receivedText string
+	intentServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/predict" {
+			t.Errorf("intent path=%s, want /predict", r.URL.Path)
+		}
+		var payload struct {
+			Text string `json:"text"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Errorf("decode intent request: %v", err)
+		}
+		receivedText = payload.Text
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"intent_type":"Framework_Evaluation","confidence":0.93,"entities":{},"reasoning":"model chose framework","model":"test-model","latency_ms":1,"attempts":1}`))
+	}))
+	defer intentServer.Close()
+	t.Setenv("INTENT_SERVICE_URL", intentServer.URL)
+
+	gin.SetMode(gin.TestMode)
+	planStore := store.NewMemoryPlanStore()
+	eventBus := events.NewBus()
+	planScheduler := scheduler.NewScheduler(planStore, scheduler.NewDefaultTaskExecutor(), eventBus, 1)
+	runtime := newPlanRuntime(planner.NewPlanner(), planStore, planScheduler, eventBus)
+	router := gin.New()
+	runtime.register(router.Group("/api"))
+
+	request := httptest.NewRequest(http.MethodPost, "/api/plan", bytes.NewBufferString(`{"intent":"帮我画一个正弦函数和余弦函数的对比图"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set(userIDHeaderName, "hybrid-router-user")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	var created struct {
+		PlanGraph     models.PlanGraph     `json:"plan_graph"`
+		IntentContext models.IntentContext `json:"intent_context"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if receivedText != "帮我画一个正弦函数和余弦函数的对比图" {
+		t.Fatalf("intent service received %q", receivedText)
+	}
+	if created.IntentContext.IntentType != "Code_Execution" {
+		t.Fatalf("intent=%s, want Code_Execution", created.IntentContext.IntentType)
+	}
+	if created.IntentContext.Entities["needs_plot"] != true {
+		t.Fatalf("needs_plot=%#v", created.IntentContext.Entities["needs_plot"])
+	}
+	var plotNode *models.TaskNode
+	for _, node := range created.PlanGraph.Nodes {
+		if node != nil && node.Type == "render_plot" {
+			plotNode = node
+			break
+		}
+	}
+	if plotNode == nil {
+		t.Fatalf("plot node missing from plan: %#v", created.PlanGraph.Nodes)
+	}
+	if plotNode.AssignedTo != "coder_agent" {
+		t.Fatalf("plot node assigned to %s, want coder_agent", plotNode.AssignedTo)
+	}
+	hasPlotImage := false
+	for _, artifact := range plotNode.OutputArtifacts {
+		if artifact == "plot_image" {
+			hasPlotImage = true
+			break
+		}
+	}
+	if !hasPlotImage {
+		t.Fatalf("plot node outputs=%#v, want plot_image", plotNode.OutputArtifacts)
+	}
+}

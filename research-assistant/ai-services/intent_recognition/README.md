@@ -10,12 +10,23 @@
 {"intent_type":"Paper_Reproduction","confidence":0.9,"entities":{"paper_title":"Apriori"}}
 ```
 
-- `POST /predict`：`{"text":"...","context":"可选"}` -> `intent_type/confidence/entities/model/latency_ms/attempts`
+- `POST /predict`：`{"text":"...","context":"可选"}` -> `intent_type/confidence/entities/reasoning/model/latency_ms/attempts`
 - `GET /health`：返回 `ok`、`configured`、`model`、`base_url`
 
 允许的 `intent_type`：`General`、`Code_Execution`、`Paper_Reproduction`、`Framework_Evaluation`、`AutoResearch`、`Custom_Benchmark`、`Literature_Review`、`Data_Analysis`。
 
 服务内置指数退避重试（默认 3 次）与单次超时（默认 60s）；没有关键词 mock fallback。未配置 `OPENAI_API_KEY` 时 `/predict` 返回 503。
+
+## 主后端混合路由
+
+`research-assistant` 后端通过 `INTENT_ROUTER_MODE` 使用本服务：
+
+- `rule`：仅规则（默认 fallback）
+- `llm`：仅模型，失败回退规则
+- `hybrid`：规则快路径 + 模型语义分类 + 后校验（Compose 默认）
+- `shadow`：只记录模型与规则分歧，不改变执行
+
+相关变量：`INTENT_SERVICE_URL`、`INTENT_LLM_CONFIDENCE_THRESHOLD`、`INTENT_CLIENT_TIMEOUT_SECONDS`。规则快路径处理明确论文复现、AutoResearch、Custom_Benchmark 和高风险任务；其余请求调用本服务；模型超时或低置信度回退规则。后校验会把“无框架实体的绘图请求”从 `Framework_Evaluation` 降级为 `Code_Execution`，并保留 `needs_plot=true`。
 
 ## 运行
 

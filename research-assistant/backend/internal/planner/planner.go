@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	intentpkg "research-assistant-backend/internal/intent"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
 	"strconv"
@@ -1046,6 +1047,7 @@ func buildFrameworkEvaluationNodesV2(intent models.IntentContext) []*models.Task
 		"\u8fd0\u884c",
 		"\u5b9e\u9a8c",
 	)
+	needsPlot := boolEntity(intent.Entities, "needs_plot") || intentpkg.ContainsPlotIntent(context)
 
 	t1 := newNode("Research Candidate Frameworks", "framework_research", "librarian_agent", nil, nil, []string{"framework_research_report"}, true, context)
 	if !needsBenchmark {
@@ -1061,6 +1063,10 @@ func buildFrameworkEvaluationNodesV2(intent models.IntentContext) []*models.Task
 		}
 		report := newNode("Generate Selection Recommendation", "framework_recommendation", "data_agent", dependencies, requiredArtifacts, []string{"evaluation_report"}, false, context)
 		nodes = append(nodes, report)
+		if needsPlot {
+			plot := newNode("Render Framework Comparison Chart", "render_plot", "coder_agent", []string{report.ID}, []string{"evaluation_report"}, []string{"plot_image"}, true, context)
+			nodes = append(nodes, plot)
+		}
 		return nodes
 	}
 
@@ -1085,6 +1091,10 @@ func buildFrameworkEvaluationNodesV2(intent models.IntentContext) []*models.Task
 	}
 	report := newNode("Generate Benchmark Report", "framework_report", "data_agent", runDependencies, runArtifacts, []string{"evaluation_report"}, false, context)
 	nodes = append(nodes, report)
+	if needsPlot {
+		plot := newNode("Render Framework Comparison Chart", "render_plot", "coder_agent", []string{report.ID}, []string{"evaluation_report"}, []string{"plot_image"}, true, context)
+		nodes = append(nodes, plot)
+	}
 	return nodes
 }
 
@@ -1094,13 +1104,7 @@ func buildPaperReproductionNodesV2(intent models.IntentContext) []*models.TaskNo
 	needsAblation := boolEntity(intent.Entities, "needs_ablation") || hasAny(normalized,
 		"ablation", "消融", "参数敏感性", "模块移除", "随机种子", "seed stability", "运行成本对照",
 	)
-	needsPlot := boolEntity(intent.Entities, "needs_plot") || hasAny(normalized,
-		"plot",
-		"\u753b\u56fe",
-		"\u56fe\u8868",
-		"\u66f2\u7ebf",
-		"\u53ef\u89c6\u5316",
-	)
+	needsPlot := boolEntity(intent.Entities, "needs_plot") || intentpkg.ContainsPlotIntent(context)
 	needsFix := boolEntity(intent.Entities, "needs_fix") || hasAny(normalized,
 		"debug",
 		"fix",
@@ -1176,7 +1180,7 @@ func buildPaperReproductionNodesV2(intent models.IntentContext) []*models.TaskNo
 		lastArtifact = "rerun_metrics"
 	}
 	if needsPlot {
-		visualize := newNode("Visualize Reproduction Results", "result_visualization", "data_agent", []string{lastID}, []string{lastArtifact}, []string{"result_plot"}, true, context)
+		visualize := newNode("Visualize Reproduction Results", "result_visualization", "coder_agent", []string{lastID}, []string{lastArtifact}, []string{"result_plot"}, true, context)
 		nodes = append(nodes, visualize)
 		lastID = visualize.ID
 	}
@@ -1312,13 +1316,7 @@ func workspaceUploadReferences(value any) any {
 func buildCodeExecutionNodesV2(intent models.IntentContext) []*models.TaskNode {
 	context := intent.RawIntent
 	normalized := strings.ToLower(context)
-	needsPlot := boolEntity(intent.Entities, "needs_plot") || hasAny(normalized,
-		"plot",
-		"matplotlib",
-		"\u753b\u56fe",
-		"\u56fe\u8868",
-		"\u66f2\u7ebf",
-	)
+	needsPlot := boolEntity(intent.Entities, "needs_plot") || intentpkg.ContainsPlotIntent(context)
 	needsAnalysis := boolEntity(intent.Entities, "needs_report") || hasAny(normalized,
 		"analyze",
 		"analysis",
@@ -1340,7 +1338,7 @@ func buildCodeExecutionNodesV2(intent models.IntentContext) []*models.TaskNode {
 	lastArtifact := "execution_result"
 
 	if needsPlot {
-		t6 := newNode("Render Output Plot", "render_plot", "data_agent", []string{lastID}, []string{lastArtifact}, []string{"plot_image"}, true, context)
+		t6 := newNode("Render Output Plot", "render_plot", "coder_agent", []string{lastID}, []string{lastArtifact}, []string{"plot_image"}, true, context)
 		nodes = append(nodes, t6)
 		lastID = t6.ID
 		lastArtifact = "plot_image"
@@ -1585,6 +1583,7 @@ func exactTaskNameTranslations() map[string]string {
 		"Validate AutoResearch Candidate":                               "验收 AutoResearch 候选",
 		"Summarize AutoResearch Evidence":                               "汇总 AutoResearch 证据",
 		"Research Candidate Frameworks":                                 "调研候选框架",
+		"Render Framework Comparison Chart":                             "渲染框架对比图",
 		"Generate Selection Recommendation":                             "生成选型建议",
 		"Generate Benchmark Report":                                     "生成基准测试报告",
 		"Design Shared RAG Benchmark Protocol":                          "设计共享 RAG 评测协议",
@@ -1636,6 +1635,9 @@ func validateAgentPlannedNodes(intent models.IntentContext, nodes []*models.Task
 	}
 	if intent.IntentType != "Framework_Evaluation" {
 		return nil
+	}
+	if boolEntity(intent.Entities, "needs_plot") && !hasPlotNode(nodes) {
+		return fmt.Errorf("framework evaluation plan requested plotting but has no plot node")
 	}
 
 	normalized := strings.ToLower(intent.RawIntent)
@@ -1937,8 +1939,24 @@ func validateCriticalNodeContracts(intent models.IntentContext, nodes []*models.
 			return fmt.Errorf("custom benchmark plan is missing one or more trusted benchmark nodes")
 		}
 	}
+	if boolEntity(intent.Entities, "needs_plot") && !hasPlotNode(nodes) {
+		return fmt.Errorf("%s plan requested plotting but has no plot node", intent.IntentType)
+	}
 
 	return nil
+}
+
+func hasPlotNode(nodes []*models.TaskNode) bool {
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		switch node.Type {
+		case "render_plot", "result_visualization":
+			return true
+		}
+	}
+	return false
 }
 
 func containsArtifact(values []string, artifact string) bool {

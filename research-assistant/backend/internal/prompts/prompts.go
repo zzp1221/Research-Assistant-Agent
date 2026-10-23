@@ -368,6 +368,9 @@ func CoderSystemPromptForTask(intentType string, taskType string, taskName strin
 	task := strings.ToLower(strings.TrimSpace(taskType))
 	text := strings.ToLower(strings.Join([]string{taskName, description}, "\n"))
 
+	if task == "render_plot" || task == "result_visualization" {
+		return CoderSystemPrompt
+	}
 	if intent == "paper_reproduction" || task == "repo_prepare" || task == "fix_and_rerun" || strings.Contains(text, "paper_reproduction") || strings.Contains(text, "论文复现") {
 		return CoderPaperReproductionSystemPrompt
 	}

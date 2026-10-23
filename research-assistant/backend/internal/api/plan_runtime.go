@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"research-assistant-backend/internal/events"
+	intentpkg "research-assistant-backend/internal/intent"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/planner"
 	"research-assistant-backend/internal/scheduler"
@@ -28,10 +29,11 @@ import (
 const planStreamEventName = "plan_event"
 
 type planRuntime struct {
-	planner   *planner.Planner
-	store     store.PlanStore
-	scheduler *scheduler.Scheduler
-	events    *events.Bus
+	planner        *planner.Planner
+	store          store.PlanStore
+	scheduler      *scheduler.Scheduler
+	events         *events.Bus
+	intentResolver *intentpkg.Resolver
 
 	mu      sync.Mutex
 	running map[string]context.CancelFunc
@@ -39,11 +41,12 @@ type planRuntime struct {
 
 func newPlanRuntime(p *planner.Planner, planStore store.PlanStore, runner *scheduler.Scheduler, eventBus *events.Bus) *planRuntime {
 	return &planRuntime{
-		planner:   p,
-		store:     planStore,
-		scheduler: runner,
-		events:    eventBus,
-		running:   map[string]context.CancelFunc{},
+		planner:        p,
+		store:          planStore,
+		scheduler:      runner,
+		events:         eventBus,
+		intentResolver: intentpkg.NewResolverFromEnv(),
+		running:        map[string]context.CancelFunc{},
 	}
 }
 
@@ -100,7 +103,8 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 
 	userID := resolveUserID(c)
 	sessionID := resolveSessionID(c)
-	intentContext := buildRuleIntentContext(payload.Intent)
+	ruleContext := buildRuleIntentContext(payload.Intent)
+	intentContext := r.intentResolver.Resolve(c.Request.Context(), payload.Intent, ruleContext)
 	attachments, err := resolvePlanUploads(userID, payload.Attachments)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -615,6 +619,10 @@ func buildRuleIntentContext(rawIntent string) models.IntentContext {
 			context.Entities["autoresearch_spec_path"] = match[1]
 		}
 	}
+	if intentpkg.ContainsPlotIntent(rawIntent) {
+		context.Entities["needs_plot"] = true
+		context.Entities["output_mode"] = "plot"
+	}
 	if intentType == "Paper_Reproduction" {
 		for key, value := range collectPaperSearchFields(context, rawIntent) {
 			context.Entities[key] = value
@@ -622,9 +630,6 @@ func buildRuleIntentContext(rawIntent string) models.IntentContext {
 		if containsAny(rawIntent, []string{"smoke", "最小实验", "最小验证", "快速验证"}) {
 			context.Entities["smoke_reproduction"] = true
 			context.Constraints["reproduction_mode"] = "smoke"
-		}
-		if containsAny(rawIntent, []string{"plot", "画图", "图表", "可视化"}) {
-			context.Entities["needs_plot"] = true
 		}
 		if containsAny(rawIntent, []string{"debug", "fix", "修复", "排查", "不一致", "重跑"}) {
 			context.Entities["needs_fix"] = true

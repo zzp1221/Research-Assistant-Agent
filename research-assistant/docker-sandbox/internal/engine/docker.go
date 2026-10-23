@@ -210,6 +210,16 @@ func (e *NativeDockerEngine) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+func (e *NativeDockerEngine) readPlotImageFromContainer(ctx context.Context, id string) []string {
+	cmd := exec.CommandContext(ctx, dockerCommand(), "exec", id, "cat", "/workspace/output_plot.png")
+	data, err := cmd.Output()
+	if err != nil || len(data) == 0 {
+		return nil
+	}
+	_ = exec.CommandContext(ctx, dockerCommand(), "exec", id, "rm", "-f", "/workspace/output_plot.png").Run()
+	return []string{base64.StdEncoding.EncodeToString(data)}
+}
+
 func (e *NativeDockerEngine) ExecutePython(ctx context.Context, id string, code string) (*ExecutionResponse, error) {
 	if err := e.validateSandboxContainer(ctx, id); err != nil {
 		return nil, err
@@ -250,6 +260,9 @@ func (e *NativeDockerEngine) ExecutePython(ctx context.Context, id string, code 
 			}
 		}
 	}
+	if len(response.Images) == 0 {
+		response.Images = e.readPlotImageFromContainer(ctx, id)
+	}
 
 	return response, nil
 }
@@ -276,6 +289,9 @@ func (e *NativeDockerEngine) ExecutePythonStream(ctx context.Context, id string,
 				os.Remove(plotPath)
 			}
 		}
+	}
+	if len(response.Images) == 0 {
+		response.Images = e.readPlotImageFromContainer(ctx, id)
 	}
 
 	return response, emit(ExecutionStreamEvent{

@@ -22,6 +22,13 @@ func TestDetectIntentType_FrameworkEvaluationExample(t *testing.T) {
 	}
 }
 
+func TestDetectIntentType_PurePlotBeatsComparisonKeyword(t *testing.T) {
+	intent := "帮我画一个正弦函数和余弦函数的对比图"
+	if got := apiinternal.DetectIntentType(intent); got != "Code_Execution" {
+		t.Fatalf("DetectIntentType() = %q, want %q", got, "Code_Execution")
+	}
+}
+
 func TestDetectIntentType_DoesNotMisclassifyGenericQuestion(t *testing.T) {
 	intent := "介绍一下多智能体系统的基本概念"
 	if got := apiinternal.DetectIntentType(intent); got != "General" {
