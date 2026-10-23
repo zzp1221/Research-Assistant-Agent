@@ -114,8 +114,8 @@ backend/
 | 变量 | 说明 |
 |---|---|
 | `OPENAI_API_KEY` | 必填，OpenAI-compatible API Key |
-| `OPENAI_BASE_URL` | API Base URL |
-| `OPENAI_MODEL_NAME` | 模型名称 |
+| `OPENAI_BASE_URL` | API Base URL（官方 DeepSeek 为 `https://api.deepseek.com/v1`） |
+| `OPENAI_MODEL_NAME` | 模型名称（官方示例 `deepseek-flash`） |
 | `INTENT_SERVICE_URL` | 可选意图识别服务地址；为空时只使用规则路由 |
 | `INTENT_ROUTER_MODE` | `rule` / `llm` / `hybrid` / `shadow`；Compose 默认 `hybrid` |
 | `INTENT_LLM_CONFIDENCE_THRESHOLD` | 模型结果最低置信度，低于阈值回退规则 |

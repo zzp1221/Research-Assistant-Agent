@@ -169,8 +169,8 @@ Windows 用户请使用 Docker Compose；`scripts/windows/start-backend.ps1` 会
 | 变量 | 必填 | 说明 |
 |---|---:|---|
 | `OPENAI_API_KEY` | 是 | OpenAI-compatible API 密钥 |
-| `OPENAI_BASE_URL` | 否 | 默认示例为 DashScope compatible endpoint |
-| `OPENAI_MODEL_NAME` | 否 | 默认示例为 `qwen3-coder-plus` |
+| `OPENAI_BASE_URL` | 否 | 默认示例为官方 DeepSeek `https://api.deepseek.com/v1` |
+| `OPENAI_MODEL_NAME` | 否 | 默认示例为 `deepseek-flash` |
 | `INTENT_SERVICE_URL` | 否 | 可选 LLM 意图服务；Compose 默认 `http://intent-recognition:8000` |
 | `INTENT_ROUTER_MODE` | 否 | `rule` / `llm` / `hybrid` / `shadow`；Compose 默认 `hybrid` |
 | `INTENT_LLM_CONFIDENCE_THRESHOLD` | 否 | 模型结果最低置信度，低于阈值回退规则 |
