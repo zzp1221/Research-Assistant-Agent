@@ -10,7 +10,7 @@
 | Frontend | `frontend/` | 5173（开发）/ 80（容器） | React 工作台、DAG 可视化、PDF 与执行结果展示 |
 | Docker Sandbox | `docker-sandbox/` | 8082 | 容器创建、命令执行、文件与运行时生命周期管理 |
 | Research Optimizer | `research-optimizer/` | 8090 | 数据特征、候选优先级与 SQLite 跨任务经验 |
-| AI Services | `ai-services/` | 8000（可选） | 实验性意图识别/训练脚本；当前 `main.py` 为关键词 mock，不参与 Compose |
+| AI Services | `ai-services/` | 18000（可选） | 真实 LLM 意图识别服务 + BERT/Qwen 训练脚本；`intent-recognition` 为 Compose 可选服务 |
 
 ## 架构与流程
 

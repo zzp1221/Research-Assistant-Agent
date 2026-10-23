@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"research-assistant-backend/internal/llmclient"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
 	"strings"
@@ -52,7 +53,7 @@ func newPlannerAgent() *plannerAgent {
 		modelName = "deepseek-chat"
 	}
 
-	chatModel, err := openai.NewChatModel(context.Background(), &openai.ChatModelConfig{
+	chatModel, err := llmclient.NewChatModel(context.Background(), &openai.ChatModelConfig{
 		BaseURL: baseURL,
 		APIKey:  apiKey,
 		Model:   modelName,

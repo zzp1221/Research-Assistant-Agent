@@ -449,7 +449,7 @@ func (a *BenchmarkAgent) executeHiddenValidation(ctx context.Context, task *mode
 	if hiddenRunRaw == "" || json.Unmarshal([]byte(hiddenRunRaw), &hiddenRun) != nil {
 		return failBenchmarkTask(task, fmt.Errorf("benchmark_hidden_run_manifest input is invalid"))
 	}
-	if hiddenRun.Status != "ok" || hiddenRun.DatasetSHA256 != split.Splits["test"].SHA256 || hiddenRun.SampleCount != split.Splits["test"].RowCount {
+	if !benchmarkRunStatusOK(hiddenRun.Status) || hiddenRun.DatasetSHA256 != split.Splits["test"].SHA256 || hiddenRun.SampleCount != split.Splits["test"].RowCount {
 		return failBenchmarkTask(task, fmt.Errorf("hidden run manifest does not match the frozen test split"))
 	}
 	predictions, err := readBenchmarkHiddenPredictions(predictionsPath)

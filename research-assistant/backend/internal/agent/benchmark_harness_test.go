@@ -293,6 +293,44 @@ func TestValidateBenchmarkPredictionOutputRequiresFrozenFeatureIDs(t *testing.T)
 	}
 }
 
+func TestValidateBenchmarkPredictionOutputAcceptsSuccessStatus(t *testing.T) {
+	workspace := t.TempDir()
+	datasetRelative := ".research-assistant/benchmark/dataset/success_features.jsonl"
+	datasetPath := filepath.Join(workspace, filepath.FromSlash(datasetRelative))
+	if err := os.MkdirAll(filepath.Dir(datasetPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	features := []byte("{\"__benchmark_id\":\"expected-a\",\"review\":\"one\"}\n{\"__benchmark_id\":\"expected-b\",\"review\":\"two\"}\n")
+	if err := os.WriteFile(datasetPath, features, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	checksum, err := sha256File(datasetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := models.DatasetManifest{
+		Version: "benchmark.dataset/v1", Name: "success_features.jsonl", Format: "jsonl",
+		RelativePath: datasetRelative, SHA256: checksum, RowCount: 2, InputColumn: "review",
+		SuggestedTask: "classification",
+	}
+	outputRelative := ".research-assistant/benchmark/preflight_input_only_success"
+	outputDirectory := filepath.Join(workspace, filepath.FromSlash(outputRelative))
+	if err := os.MkdirAll(outputDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runManifest, _ := json.Marshal(models.BenchmarkRunManifest{Status: "success", DatasetSHA256: checksum, SampleCount: 2})
+	if err := os.WriteFile(filepath.Join(outputDirectory, "run_manifest.json"), runManifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	predictions := []byte("{\"id\":\"expected-a\",\"prediction\":\"positive\"}\n{\"id\":\"expected-b\",\"prediction\":\"negative\"}\n")
+	if err := os.WriteFile(filepath.Join(outputDirectory, "predictions.jsonl"), predictions, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validateBenchmarkPredictionOutputDirectory(workspace, outputRelative, manifest, 2, "preflight_input_only"); err != nil {
+		t.Fatalf("expected status=success to pass prediction validation, got %v", err)
+	}
+}
+
 func TestBenchmarkHarnessRejectsDatasetMutation(t *testing.T) {
 	workspace, manifest, spec, code := benchmarkHarnessFixture(t)
 	manifestJSON, _ := json.Marshal(manifest)

@@ -1,65 +1,58 @@
 # intent_recognition
 
-意图识别实验服务与双路由训练工程。它包含一个 FastAPI mock 服务、BERT/Qwen 训练脚本，以及固定的 train/dev/test 数据集。
-
-## 目录
-
-```text
-intent_recognition/
-├── main.py                  FastAPI 服务（当前为关键词 mock）
-├── requirements.txt         服务依赖
-├── data/dual_router_v1/
-│   ├── train.jsonl          训练集
-│   ├── dev.jsonl            验证集
-│   ├── test.jsonl           测试集
-│   └── manifest.json        数据来源、版本与统计
-└── training/
-    ├── build_dataset.py     数据构建与清洗
-    ├── common.py            共享工具
-    ├── train_bert.py        CPU BERT/BGE 分类器
-    ├── train_qwen_lora.py   GPU Qwen LoRA 生成式路由
-    └── requirements.txt     训练依赖
-```
+真实 LLM 驱动的意图识别服务 + 双路由训练工程。
 
 ## 服务
 
+`main.py` 调用 OpenAI-compatible chat completions（默认 DeepSeek），要求模型返回严格 JSON：
+
+```json
+{"intent_type":"Paper_Reproduction","confidence":0.9,"entities":{"paper_title":"Apriori"}}
+```
+
+- `POST /predict`：`{"text":"...","context":"可选"}` -> `intent_type/confidence/entities/model/latency_ms/attempts`
+- `GET /health`：返回 `ok`、`configured`、`model`、`base_url`
+
+允许的 `intent_type`：`General`、`Code_Execution`、`Paper_Reproduction`、`Framework_Evaluation`、`AutoResearch`、`Custom_Benchmark`、`Literature_Review`、`Data_Analysis`。
+
+服务内置指数退避重试（默认 3 次）与单次超时（默认 60s）；没有关键词 mock fallback。未配置 `OPENAI_API_KEY` 时 `/predict` 返回 503。
+
+## 运行
+
 ```bash
 pip install -r requirements.txt
+export OPENAI_API_KEY=...
+export OPENAI_BASE_URL=https://api.deepseek.com/v1
+export OPENAI_MODEL_NAME=deepseek-chat
 python main.py
 ```
 
-默认监听 `:8000`：
+Docker：
 
-- `POST /predict`：`{"text": "..."}` -> `{"intent_type": "...", "confidence": 0.95, "entities": {}}`
-- `GET /health`：`{"status": "ok"}`
+```bash
+docker build -t research-assistant-intent .
+docker run --rm -p 18000:8000 --env-file ../backend.env research-assistant-intent
+```
 
-当前 `main.py` 使用关键词规则模拟推理，未加载真实模型。接入 BERT/Qwen 前不要把它当作生产分类器。
+## 测试
 
-## 数据
-
-`data/dual_router_v1/` 使用 JSONL，每行至少包含文本与标签字段。`manifest.json` 记录数据版本、来源、split 数量和字段说明。训练脚本通过 `common.py` 统一读取和校验。
+```bash
+python -m unittest test_service.py -v
+```
 
 ## 训练
 
 ```bash
 cd training
 pip install -r requirements.txt
-
 python build_dataset.py
 python train_bert.py
 python train_qwen_lora.py
 ```
 
-- `train_bert.py`：CPU 友好的编码器分类方案，适合低延迟部署。
-- `train_qwen_lora.py`：GPU LoRA 生成式路由，输出结构化意图 JSON。
-- 训练产物默认写入脚本同级的输出目录，具体参数见各脚本的 argparse。
-
-## 评测
-
-训练脚本会在 dev/test 上输出分类指标和混淆矩阵。由于数据和模型规模有限，结果只用于工程验证，不代表通用意图识别能力。
+训练数据位于 `data/dual_router_v1/`，字段与 split 说明见 `manifest.json`。
 
 ## 边界
 
-- 该目录不参与默认 Docker Compose。
-- 训练依赖较大，默认不进入 `make test`。
-- 主后端已有 LLM 意图分类器；本服务是可选实验路径。
+- 训练脚本需要额外依赖与 GPU/CPU 环境，默认不参与 `make test`。
+- 该服务是可选路径，主后端默认使用规则意图路由。

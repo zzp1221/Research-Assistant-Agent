@@ -28,7 +28,30 @@ export default function PdfViewerSurface(props: PdfViewerSurfaceProps) {
   const { pdfUrl, documentInfo, onPageChange, translation, onAskAI, onAssist } = props;
   // defaultLayoutPlugin() uses React hooks internally; it must be called at the
   // component top level, never inside useMemo or a conditional.
-  const defaultLayoutPluginInstance = defaultLayoutPlugin();
+  // Keep the viewer toolbar intentionally small. The default toolbar renders
+  // popover triggers as divs with aria-expanded and a zoom button whose visible
+  // text is not part of its accessible name, both of which fail axe. The
+  // workbench exposes translation through its own panel, so the built-in
+  // sidebar and search/more-actions popovers are unnecessary here.
+  const defaultLayoutPluginInstance = defaultLayoutPlugin({
+    sidebarTabs: () => [],
+    renderToolbar: (Toolbar) => (
+      <Toolbar>
+        {(toolbarSlot) => (
+          <div className="flex items-center gap-2 border-b border-line bg-surface px-3 py-1 text-[11px] text-muted">
+            {toolbarSlot.GoToPreviousPage({})}
+            {toolbarSlot.CurrentPageInput()}
+            <span>/</span>
+            {toolbarSlot.NumberOfPages({})}
+            {toolbarSlot.GoToNextPage({})}
+            <span className="mx-1 h-3 w-px bg-line" />
+            {toolbarSlot.ZoomOut({})}
+            {toolbarSlot.ZoomIn({})}
+          </div>
+        )}
+      </Toolbar>
+    ),
+  });
   const aiTranslationPluginInstance = useAITranslationPlugin({ onAskAI, onAssist });
 
   return (

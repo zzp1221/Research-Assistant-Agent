@@ -465,7 +465,7 @@ func validateBenchmarkPredictionOutputDirectory(workspacePath, outputRelative st
 	if err := json.Unmarshal(manifestRaw, &runManifest); err != nil {
 		return models.BenchmarkHarnessReport{}, err
 	}
-	if runManifest.Status != "ok" || runManifest.DatasetSHA256 != manifest.SHA256 || runManifest.SampleCount <= 0 || runManifest.SampleCount > limit || runManifest.SampleCount != manifest.RowCount {
+	if !benchmarkRunStatusOK(runManifest.Status) || runManifest.DatasetSHA256 != manifest.SHA256 || runManifest.SampleCount <= 0 || runManifest.SampleCount > limit || runManifest.SampleCount != manifest.RowCount {
 		return models.BenchmarkHarnessReport{}, fmt.Errorf("hidden run manifest violates the frozen test contract")
 	}
 	predictionsPath := filepath.Join(outputPath, "predictions.jsonl")

@@ -180,6 +180,90 @@ func TestRecoverInterruptedPlansInvalidatesExecutionLease(t *testing.T) {
 	}
 }
 
+func TestFilePlanStoreCompactsSnapshotsAndLog(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plans.json")
+	store, err := NewFilePlanStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := testPlan("compact-plan")
+	plan.Artifacts["big"] = models.Artifact{Key: "big", Type: "text", Value: strings.Repeat("a", 1<<20)}
+	if err := store.SavePlan(plan); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 10; i++ {
+		if err := store.UpdatePlan(plan.ID, func(current *models.PlanGraph) error {
+			current.Nodes[0].Result = strings.Repeat("r", 256*1024)
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size() > 64*1024 {
+		t.Fatalf("compact log grew to %d bytes, want <64KB", info.Size())
+	}
+	snapshots, err := filepath.Glob(path + ".d/*.json")
+	if err != nil || len(snapshots) != 1 {
+		t.Fatalf("expected exactly one plan snapshot, got %#v (%v)", snapshots, err)
+	}
+	snapshotInfo, err := os.Stat(snapshots[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshotInfo.Size() < 1<<20 {
+		t.Fatalf("snapshot unexpectedly small: %d", snapshotInfo.Size())
+	}
+	reopened, err := NewFilePlanStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := reopened.GetPlan(plan.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Nodes[0].Result) != 256*1024 {
+		t.Fatalf("snapshot lost node result: %d", len(loaded.Nodes[0].Result))
+	}
+}
+
+func TestFilePlanStoreMigratesLegacyAppendOnlyLog(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plans.json")
+	plan := testPlan("legacy-log-plan")
+	plan.Nodes[0].Name = "before"
+	first, _ := json.Marshal(fileLogRecord{Kind: "plan", Plan: plan})
+	plan.Nodes[0].Name = "after"
+	second, _ := json.Marshal(fileLogRecord{Kind: "plan", Plan: plan})
+	if err := os.WriteFile(path, append(append(first, byte(10)), append(second, byte(10))...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewFilePlanStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.GetPlan(plan.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Nodes[0].Name != "after" {
+		t.Fatalf("latest legacy plan not migrated: %q", loaded.Nodes[0].Name)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size() > 4096 {
+		t.Fatalf("new compact log is %d bytes, want <4KB", info.Size())
+	}
+	matches, err := filepath.Glob(path + ".legacy-*.gz")
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("legacy log was not compressed: %#v (%v)", matches, err)
+	}
+}
+
 func testPlan(id string) *models.PlanGraph {
 	now := time.Now()
 	return &models.PlanGraph{

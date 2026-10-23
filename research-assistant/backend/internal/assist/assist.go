@@ -15,9 +15,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"research-assistant-backend/internal/appconfig"
+	"research-assistant-backend/internal/llmclient"
 )
 
 const (
@@ -155,7 +155,7 @@ func callLLM(ctx context.Context, cfg appconfig.LLMConfig, mode string, req Requ
 		return nil, fmt.Errorf("encode LLM request: %w", err)
 	}
 
-	client := &http.Client{Timeout: 90 * time.Second}
+	client := llmclient.NewHTTPClient(llmclient.DefaultConfig())
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, chatCompletionsURL(cfg.BaseURL), bytes.NewReader(encoded))
 	if err != nil {
 		return nil, fmt.Errorf("create LLM request: %w", err)

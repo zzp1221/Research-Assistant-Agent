@@ -64,6 +64,32 @@ services:
     networks:
       - research-assistant-network
 
+  # 2b. Optional AI intent recognition service (real LLM, not mock)
+  intent-recognition:
+    build:
+      context: ./ai-services/intent_recognition
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    ports:
+      - "127.0.0.1:${INTENT_SERVICE_HOST_PORT:-18000}:8000"
+    env_file:
+      - ./backend.env
+    environment:
+      - INTENT_SERVICE_PORT=8000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 512m
+    networks:
+      - research-assistant-network
+
   # 3. Go 后端调度引擎
   backend:
     build:

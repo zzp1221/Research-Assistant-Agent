@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"research-assistant-backend/internal/appconfig"
+	"research-assistant-backend/internal/llmclient"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
 
@@ -45,7 +46,7 @@ func (a *DataAgent) initEinoChain() {
 		log.Fatalf("加载 LLM 配置失败: %v", err)
 	}
 
-	chatModel, err := openai.NewChatModel(context.Background(), &openai.ChatModelConfig{
+	chatModel, err := llmclient.NewChatModel(context.Background(), &openai.ChatModelConfig{
 		BaseURL: llmCfg.BaseURL,
 		APIKey:  llmCfg.APIKey,
 		Model:   llmCfg.Model,

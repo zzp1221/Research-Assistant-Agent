@@ -154,7 +154,7 @@ func TestBenchmarkAgentBuildsLeakageSafeContractAndRecomputesHiddenMetrics(t *te
 		t.Fatal(err)
 	}
 	hiddenRun, _ := json.Marshal(models.BenchmarkRunManifest{
-		Status: "ok", DatasetSHA256: split.Splits["test"].SHA256, SampleCount: split.Splits["test"].RowCount,
+		Status: "success", DatasetSHA256: split.Splits["test"].SHA256, SampleCount: split.Splits["test"].RowCount,
 	})
 	validationTask := &models.Task{Type: "benchmark_validate", Inputs: map[string]any{
 		"workspace_path": workspace, "benchmark_contract": contractArtifacts["benchmark_contract"],

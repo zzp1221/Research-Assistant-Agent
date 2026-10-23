@@ -80,7 +80,7 @@ backend/
 
 ### store
 
-`PlanStore` 接口有两个实现：内存存储与文件存储。文件存储是 append-only JSONL 日志，每行记录一次 plan 快照或一个事件；启动时回放，崩溃最多留下被忽略的截断尾行，旧 JSON 快照会自动轮转为 `.legacy-*`。
+`PlanStore` 接口有两个实现：内存存储与文件存储。文件存储采用“按计划原子快照 + 小型 append-only JSONL 索引/事件日志”：每个计划写入 `PLAN_STORE_PATH + ".d/<plan-id>.json"`，`PLAN_STORE_PATH` 只追加 `plan_saved`/`plan_updated`/`event` 小记录。启动时加载快照并回放事件；旧的全量快照 JSONL 会自动迁移为快照文件并压缩为 `.legacy-*.gz`，避免历史 O(n²) 写放大。
 
 ### sandbox
 
@@ -118,7 +118,7 @@ backend/
 | `OPENAI_MODEL_NAME` | 模型名称 |
 | `SANDBOX_URL` | 沙箱服务地址 |
 | `SANDBOX_API_TOKEN` | 沙箱 Bearer Token |
-| `PLAN_STORE_PATH` | append-only JSONL 计划/事件日志路径 |
+| `PLAN_STORE_PATH` | 计划快照目录（`<path>.d`）与小型 JSONL 索引/事件日志的基准路径 |
 | `UPLOAD_ROOT` / `UPLOAD_MAX_MB` | 上传目录与大小限制 |
 | `BENCHMARK_PRIVATE_ROOT` | 隐藏标签与 evaluator 目录，不应挂载进沙箱 |
 | `RESEARCH_OPTIMIZER_URL` / `RESEARCH_OPTIMIZER_API_TOKEN` | Python 优化器 |
@@ -126,6 +126,9 @@ backend/
 | `REQUIRE_API_AUTH` | `true` 时 token 为空将 fail-closed；Compose 强制为 `true` |
 | `CORS_ALLOWED_ORIGINS` | 允许的前端 Origin |
 | `PLAN_MAX_TASK_ATTEMPTS` / `PLAN_MAX_DURATION_SECONDS` | 任务与时长预算 |
+| `LLM_MAX_ATTEMPTS` | LLM HTTP 最大尝试次数（默认 3，1–8） |
+| `LLM_ATTEMPT_TIMEOUT_SECONDS` | LLM 单次尝试超时秒数（默认 180） |
+| `LLM_RETRY_BASE_MS` / `LLM_RETRY_MAX_MS` | 指数退避初始/最大毫秒数（默认 500/8000） |
 | `REQUIRE_PLAN_APPROVAL` | 是否强制人工审批 |
 | `LOG_MODEL_OUTPUT` | 是否把模型输出写入进程日志 |
 
