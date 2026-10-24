@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/planner"
 	"research-assistant-backend/internal/workspace"
 	"strings"
 	"time"
@@ -45,6 +46,7 @@ type RoutedTaskExecutor struct {
 	General        AgentRunner
 	ResearchCoding AgentRunner
 	Benchmark      AgentRunner
+	Answer         AgentRunner
 }
 
 func NewRoutedTaskExecutor(librarian, data, coder AgentRunner, specialized ...AgentRunner) *RoutedTaskExecutor {
@@ -62,12 +64,23 @@ func NewRoutedTaskExecutor(librarian, data, coder AgentRunner, specialized ...Ag
 	if len(specialized) > 2 {
 		executor.General = specialized[2]
 	}
+	if len(specialized) > 3 {
+		executor.Answer = specialized[3]
+	}
 	return executor
 }
 
 func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanGraph, task *models.TaskNode) (*models.TaskExecutionResult, error) {
 	if task == nil {
 		return nil, fmt.Errorf("task is nil")
+	}
+
+	inputs, inputErr := (&planner.ContextBinder{}).BuildInputs(plan, task)
+	if inputErr != nil {
+		return &models.TaskExecutionResult{
+			Status: models.StatusFailed,
+			Error:  inputErr.Error(),
+		}, nil
 	}
 
 	runtimeTask := &models.Task{
@@ -84,7 +97,7 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		Priority:          task.Priority,
 		RetryLimit:        task.RetryLimit,
 		RunCount:          task.RunCount,
-		Inputs:            buildTaskInputs(plan, task),
+		Inputs:            inputs,
 		Metadata: map[string]any{
 			"plan_id":   plan.ID,
 			"tenant_id": plan.OwnerID,
@@ -211,28 +224,18 @@ func (e *RoutedTaskExecutor) resolveRunner(assignedTo string) (AgentRunner, erro
 		if e.Benchmark != nil {
 			return e.Benchmark, nil
 		}
+	case "answer_agent":
+		if e.Answer != nil {
+			return e.Answer, nil
+		}
 	}
 	return nil, fmt.Errorf("no agent runner configured for %s", assignedTo)
 }
 
 func buildTaskInputs(plan *models.PlanGraph, task *models.TaskNode) map[string]any {
-	inputs := map[string]any{}
-	if plan == nil || task == nil {
-		return inputs
-	}
-
-	// 先合并节点自身声明的结构化输入，供特定后端节点直接消费。
-	for key, value := range task.Inputs {
-		if value == nil {
-			continue
-		}
-		inputs[key] = value
-	}
-
-	for _, key := range task.RequiredArtifacts {
-		if artifact, ok := plan.Artifacts[key]; ok {
-			inputs[key] = artifact.Value
-		}
+	inputs, _ := (&planner.ContextBinder{}).BuildInputs(plan, task)
+	if inputs == nil {
+		return map[string]any{}
 	}
 	return inputs
 }
@@ -355,6 +358,8 @@ func buildArtifacts(node *models.TaskNode, runtimeTask *models.Task) []models.Ar
 		artifacts = append(artifacts, models.Artifact{
 			Key:            key,
 			Type:           artifactType,
+			Kind:           artifactKindFor(key),
+			EvidenceClass:  artifactEvidenceClassFor(key),
 			ProducerTaskID: node.ID,
 			Value:          value,
 			Metadata: map[string]any{
@@ -426,7 +431,7 @@ func inferArtifactType(key string, runtimeTask *models.Task) string {
 	_ = runtimeTask
 	lowerKey := strings.ToLower(key)
 	switch {
-	case lowerKey == "claim_rubric" || lowerKey == "claim_evidence_graph" || lowerKey == "research_spec" || lowerKey == "research_validation_report" || strings.Contains(lowerKey, "benchmark_contract") || strings.Contains(lowerKey, "split_manifest") || strings.Contains(lowerKey, "trial_ledger") || strings.Contains(lowerKey, "best_candidate"):
+	case lowerKey == "paper_metadata" || lowerKey == "claim_rubric" || lowerKey == "claim_evidence_graph" || lowerKey == "research_spec" || lowerKey == "research_validation_report" || strings.Contains(lowerKey, "benchmark_contract") || strings.Contains(lowerKey, "split_manifest") || strings.Contains(lowerKey, "trial_ledger") || strings.Contains(lowerKey, "best_candidate"):
 		return "json"
 	case strings.Contains(lowerKey, "plot") || strings.Contains(lowerKey, "image"):
 		return "image_base64"
@@ -444,6 +449,40 @@ func inferArtifactType(key string, runtimeTask *models.Task) string {
 		return "dependency_spec"
 	default:
 		return "text"
+	}
+}
+
+func artifactKindFor(key string) string {
+	lower := strings.ToLower(key)
+	switch {
+	case lower == "paper_metadata":
+		return "paper_metadata"
+	case lower == "paper_summary":
+		return "paper_summary"
+	case strings.Contains(lower, "plot") || strings.Contains(lower, "image"):
+		return "plot"
+	case strings.Contains(lower, "metrics"):
+		return "metrics"
+	case lower == "general_response" || lower == "final_answer":
+		return "answer"
+	case strings.Contains(lower, "report"):
+		return "report"
+	default:
+		return ""
+	}
+}
+
+func artifactEvidenceClassFor(key string) string {
+	lower := strings.ToLower(key)
+	switch {
+	case lower == "paper_metadata" || lower == "paper_summary" || lower == "parsed_paper":
+		return "paper_derived"
+	case strings.Contains(lower, "run_metrics") || strings.Contains(lower, "comparison_report") || strings.Contains(lower, "result_plot"):
+		return "execution_derived"
+	case strings.Contains(lower, "report") || lower == "general_response":
+		return "llm_inference"
+	default:
+		return ""
 	}
 }
 

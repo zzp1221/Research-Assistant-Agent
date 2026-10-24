@@ -14,7 +14,7 @@ import { useGraphExecutionViewModel } from './viewModels/useGraphExecutionViewMo
 import { ExecutionSidebar } from '../features/execution/ExecutionSidebar';
 import { GraphPanel } from '../features/plan-graph/GraphPanel';
 import { buildGraphLayout } from '../features/plan-graph/buildGraphLayout';
-import type { IntentContext } from '../contracts/api';
+import type { IntentContext, MissingRequirement, RuntimeAction } from '../contracts/api';
 import { isPdfAttachment } from '../features/pdf-viewer/pdfAttachment';
 
 interface ResearchAssistantAppShellProps {
@@ -133,6 +133,15 @@ interface ResearchAssistantWorkspaceContentProps {
     intentContext: IntentContext | null;
     activePlanId: string | null;
     activePlanStatus: string | null;
+    activePlanOutcome: string | null;
+    activePlanMissingRequirements: MissingRequirement[];
+    activePlanRuntimeActions: RuntimeAction[];
+    activePlanRuntimePolicyMode: string | null;
+    runtimePermissionMode: 'confirm_important' | 'full_access';
+    showFullAccessConfirm: boolean;
+    handleRuntimePermissionModeChange: (mode: 'confirm_important' | 'full_access') => void;
+    handleConfirmFullAccess: () => void;
+    handleCancelFullAccess: () => void;
     isLoggedIn: boolean;
     userId: string | null;
     loginInput: string;
@@ -159,6 +168,10 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
     intentContext: chatFlow.intentContext,
     activePlanId: chatFlow.activePlanId,
     activePlanStatus: chatFlow.activePlanStatus,
+    activePlanOutcome: chatFlow.activePlanOutcome,
+    activePlanMissingRequirements: chatFlow.activePlanMissingRequirements,
+    activePlanRuntimeActions: chatFlow.activePlanRuntimeActions,
+    activePlanRuntimePolicyMode: chatFlow.activePlanRuntimePolicyMode,
     layout,
     logsEndRef,
   });
@@ -184,6 +197,8 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
         pendingAttachments: chatFlow.pendingAttachments,
         uploadingAttachments: chatFlow.uploadingAttachments,
         attachmentError: chatFlow.attachmentError,
+        runtimePermissionMode: chatFlow.runtimePermissionMode,
+        showFullAccessConfirm: chatFlow.showFullAccessConfirm,
         isLoggedIn: chatFlow.isLoggedIn,
         userId: chatFlow.userId,
         loginInput: chatFlow.loginInput,
@@ -201,6 +216,9 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
         onAttachFiles: chatFlow.handleAttachFiles,
         onRemoveAttachment: chatFlow.handleRemoveAttachment,
         onOpenAttachment: pdfFlow.openPdfFromUpload,
+        onRuntimePermissionModeChange: chatFlow.handleRuntimePermissionModeChange,
+        onConfirmFullAccess: chatFlow.handleConfirmFullAccess,
+        onCancelFullAccess: chatFlow.handleCancelFullAccess,
       }}
       pdfActions={{
         onOpenPdf: () => {
@@ -315,6 +333,7 @@ export default function ResearchAssistantApp() {
         handleExecuteTask: runtime.handleExecuteTask,
         handleRunAllTasks: runtime.handleRunAllTasks,
         handleApproveAndRun: runtime.handleApproveAndRun,
+        handleRuntimeActionDecision: runtime.handleRuntimeActionDecision,
         handleCancelPlan: runtime.handleCancelPlan,
         handleRetryFailedPlan: runtime.handleRetryFailedPlan,
         setDisplayMode: runtime.setDisplayMode,
@@ -352,6 +371,15 @@ export default function ResearchAssistantApp() {
           intentContext: chatFlow.intentContext,
           activePlanId: chatFlow.activePlanId,
           activePlanStatus: chatFlow.activePlanStatus,
+          activePlanOutcome: chatFlow.activePlanGraph?.outcome ?? null,
+          activePlanMissingRequirements: chatFlow.activePlanGraph?.missing_requirements ?? [],
+          activePlanRuntimeActions: chatFlow.activePlanGraph?.runtime_actions ?? [],
+          activePlanRuntimePolicyMode: chatFlow.activePlanGraph?.runtime_policy?.mode ?? null,
+          runtimePermissionMode: chatFlow.runtimePermissionMode,
+          showFullAccessConfirm: chatFlow.showFullAccessConfirm,
+          handleRuntimePermissionModeChange: chatFlow.handleRuntimePermissionModeChange,
+          handleConfirmFullAccess: chatFlow.handleConfirmFullAccess,
+          handleCancelFullAccess: chatFlow.handleCancelFullAccess,
           isLoggedIn: chatFlow.isLoggedIn,
           userId: chatFlow.userId,
           loginInput: chatFlow.loginInput,

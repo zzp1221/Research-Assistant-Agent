@@ -120,6 +120,7 @@ export interface GraphTask {
   lease_owner?: string;
   lease_expires_at?: string;
   timeout_seconds?: number;
+  runtime_action_ids?: string[];
   contract: {
     version: string;
     input_artifacts: string[];
@@ -151,11 +152,49 @@ export interface GraphEdge {
   type: string;
 }
 
+export interface MissingRequirement {
+  kind: string;
+  name?: string;
+  detail?: string;
+  remediation?: string;
+}
+
+export interface RuntimeAction {
+  id: string;
+  plan_id: string;
+  task_id: string;
+  node_type: string;
+  kind: string;
+  title: string;
+  details?: Record<string, unknown>;
+  risk?: string;
+  estimated_bytes?: number;
+  estimated_sec?: number;
+  status: 'pending' | 'approved' | 'rejected' | 'expired' | string;
+  requested_at: string;
+  decided_at?: string;
+  decided_by?: string;
+  decision_note?: string;
+  auto_approved?: boolean;
+}
+
+export interface RuntimePolicy {
+  mode: 'confirm_important' | 'full_access' | string;
+  hard_limits?: Record<string, unknown>;
+  acknowledged_at?: string;
+}
+
 export interface PlanGraph {
   id: string;
   user_intent: string;
   intent_type: string;
   status: string;
+  outcome?: string;
+  outcome_reason?: string;
+  missing_requirements?: MissingRequirement[];
+  runtime_policy?: RuntimePolicy;
+  runtime_actions?: RuntimeAction[];
+  environment_manifest?: Record<string, unknown>;
   owner_id?: string;
   session_id?: string;
   trace_id: string;

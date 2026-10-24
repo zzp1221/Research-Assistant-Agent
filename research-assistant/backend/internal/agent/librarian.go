@@ -2,12 +2,15 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"research-assistant-backend/internal/appconfig"
+	"research-assistant-backend/internal/documents"
 	"research-assistant-backend/internal/llmclient"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
+	"strings"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/compose"
@@ -20,6 +23,7 @@ type LibrarianAgent struct {
 	SystemPrompt string
 	EinoChain    compose.Runnable[string, string]
 	ChatModel    *openai.ChatModel
+	Documents    *documents.Store
 }
 
 type librarianContextKey string
@@ -98,6 +102,45 @@ func (a *LibrarianAgent) ExecuteTask(ctx context.Context, task *models.Task, sha
 	if task != nil && len(task.Inputs) > 0 {
 		input = fmt.Sprintf("%s\n\n上游输入:\n%v", task.Description, task.Inputs)
 	}
+	var loadedDocument *documents.Document
+	if task != nil && (task.Type == "paper_parse" || task.Type == "general_research") && a.Documents != nil {
+		documentID := strings.TrimSpace(fmt.Sprint(task.Inputs["document_id"]))
+		if documentID != "" && documentID != "<nil>" {
+			ownerID := metadataString(task, "tenant_id")
+			document, err := a.Documents.GetDocument(ctx, ownerID, documentID)
+			if err != nil {
+				task.Status = models.StatusFailed
+				task.Error = err.Error()
+				return err
+			}
+			loadedDocument = document
+			var contextBuilder strings.Builder
+			if len(document.Pages) > 0 {
+				contextBuilder.WriteString(fmt.Sprintf("[p.1]\n%s", document.Pages[0].Text))
+			}
+			chunks, searchErr := a.Documents.Search(ctx, ownerID, documentID, task.Description+" method experiment limitation conclusion innovation contribution", 10)
+			if searchErr == nil {
+				for _, chunk := range chunks {
+					if contextBuilder.Len() > 0 {
+						contextBuilder.WriteString("\n\n")
+					}
+					fmt.Fprintf(&contextBuilder, "[p.%d §%s]\n%s", chunk.Page, chunk.Section, chunk.Text)
+				}
+			}
+			contextText := contextBuilder.String()
+			const maxDocumentChars = 24000
+			if len(contextText) > maxDocumentChars {
+				contextText = contextText[:maxDocumentChars] + "\n...[truncated]"
+			}
+			if strings.TrimSpace(contextText) == "" {
+				contextText = documents.FullText(document)
+				if len(contextText) > maxDocumentChars {
+					contextText = contextText[:maxDocumentChars] + "\n...[truncated]"
+				}
+			}
+			input += "\n\n论文检索片段（带页码/章节，供分析/引用）：\n" + contextText
+		}
+	}
 	intentType := sharedContextValue(sharedContext, "intent_type")
 	ctx = context.WithValue(ctx, librarianSystemPromptContextKey, prompts.LibrarianSystemPromptForTask(intentType, task.Type, task.Name, task.Description))
 
@@ -111,6 +154,33 @@ func (a *LibrarianAgent) ExecuteTask(ctx context.Context, task *models.Task, sha
 
 	task.Result = output
 	task.Status = models.StatusCompleted
+	if task.Type == "paper_parse" {
+		metadata := models.PaperMetadata{}
+		if raw, ok := task.Inputs["paper_metadata"]; ok {
+			switch value := raw.(type) {
+			case map[string]any:
+				encoded, _ := json.Marshal(value)
+				_ = json.Unmarshal(encoded, &metadata)
+			case string:
+				_ = json.Unmarshal([]byte(value), &metadata)
+			}
+		}
+		if strings.TrimSpace(metadata.Title) == "" && loadedDocument != nil {
+			if extracted, err := documents.ExtractMetadata(loadedDocument); err == nil {
+				metadata = extracted
+			}
+		}
+		metadataJSON, _ := json.Marshal(metadata)
+		task.StructuredData = string(metadataJSON)
+		if task.Metadata == nil {
+			task.Metadata = map[string]any{}
+		}
+		task.Metadata["artifact_values"] = map[string]any{
+			"parsed_paper":   output,
+			"paper_metadata": string(metadataJSON),
+			"paper_summary":  output,
+		}
+	}
 	logToContext(ctx, "[%s] 任务完成: %s", a.Name, task.Name)
 	return nil
 }

@@ -5,6 +5,7 @@ import type {
   PlanEvent,
   PlanGraph,
   PlanResponse,
+  RuntimeAction,
 	UploadedFile,
 } from '../../contracts/api';
 import { DIRECT_EXECUTION_EVENTS, PLAN_STREAM_EVENT_NAME } from '../../contracts/events';
@@ -20,8 +21,19 @@ const buildIdentityHeaders = (identity: RequestIdentity) => ({
   'X-Session-Id': identity.sessionId,
 });
 
-export const createPlan = async (intent: string, identity: RequestIdentity, attachments: string[] = []): Promise<PlanResponse> => {
-  const response = await httpClient.post<PlanResponse>('/api/plan', { intent, attachments }, { headers: buildIdentityHeaders(identity) });
+export const createPlan = async (
+  intent: string,
+  identity: RequestIdentity,
+  attachments: string[] = [],
+  runtimePermissionMode: 'confirm_important' | 'full_access' = 'confirm_important',
+  runtimePermissionAcknowledged = false,
+): Promise<PlanResponse> => {
+  const response = await httpClient.post<PlanResponse>('/api/plan', {
+    intent,
+    attachments,
+    runtime_permission_mode: runtimePermissionMode,
+    runtime_permission_acknowledged: runtimePermissionAcknowledged,
+  }, { headers: buildIdentityHeaders(identity) });
   return response.data;
 };
 
@@ -57,6 +69,28 @@ export const chat = async (message: string, identity: RequestIdentity): Promise<
 export const executePlan = async (planId: string, identity: RequestIdentity): Promise<ExecutePlanResponse> => {
 	const response = await httpClient.post<ExecutePlanResponse>(`/api/plans/${planId}/execute`, {}, { headers: buildIdentityHeaders(identity) });
 	return response.data;
+};
+
+export const getRuntimeActions = async (planId: string, identity: RequestIdentity): Promise<RuntimeAction[]> => {
+  const response = await httpClient.get<{ actions: RuntimeAction[] }>(`/api/plans/${planId}/runtime-actions`, {
+    headers: buildIdentityHeaders(identity),
+  });
+  return response.data.actions ?? [];
+};
+
+export const decideRuntimeAction = async (
+  planId: string,
+  actionId: string,
+  decision: 'approve' | 'reject',
+  identity: RequestIdentity,
+  note = '',
+): Promise<RuntimeAction> => {
+  const response = await httpClient.post<{ action: RuntimeAction }>(
+    `/api/plans/${planId}/runtime-actions/${actionId}/decision`,
+    { decision, note },
+    { headers: buildIdentityHeaders(identity) },
+  );
+  return response.data.action;
 };
 
 export const approvePlan = async (planId: string, identity: RequestIdentity): Promise<ExecutePlanResponse> => {

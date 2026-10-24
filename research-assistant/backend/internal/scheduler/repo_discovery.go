@@ -133,13 +133,15 @@ func executeRepoDiscovery(ctx context.Context, runtimeTask *models.Task) error {
 			fallbackUsed = true
 			candidates = append(candidates, githubCandidates...)
 		}
-		if len(githubCandidates) == 0 {
-			curated := curatedRepoFallbackCandidates(query)
-			if len(curated) > 0 {
-				fallbackUsed = true
-				candidates = append(candidates, curated...)
-			}
-		}
+	}
+
+	// Curated entries are a labelled trusted fallback. Append them regardless
+	// of whether Papers/GitHub search returned candidates: search results often
+	// contain unrelated repositories that fail trusted-selection.
+	curated := curatedRepoFallbackCandidates(query)
+	if len(curated) > 0 {
+		fallbackUsed = true
+		candidates = append(candidates, curated...)
 	}
 
 	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].ScoreHint > candidates[j].ScoreHint })
@@ -261,7 +263,22 @@ func buildRepoDiscoveryQuery(runtimeTask *models.Task) string {
 		}
 	}
 
-	// 2) 再从 parsed_paper 里提取 arXiv ID 或 Title
+	// 2) 优先使用结构化的 paper_metadata（paper_parse 产物）
+	if runtimeTask != nil && runtimeTask.Inputs != nil {
+		if v, ok := runtimeTask.Inputs["paper_metadata"]; ok {
+			var metadata models.PaperMetadata
+			if err := json.Unmarshal([]byte(fmt.Sprint(v)), &metadata); err == nil {
+				if title := normalizeSearchQuery(metadata.Title, maxPaperSearchQueryLen); title != "" {
+					return title
+				}
+				if id := strings.TrimSpace(metadata.ArxivID); id != "" {
+					return id
+				}
+			}
+		}
+	}
+
+	// 3) 再从 parsed_paper 里提取 arXiv ID 或 Title
 	if runtimeTask != nil && runtimeTask.Inputs != nil {
 		if v, ok := runtimeTask.Inputs["parsed_paper"]; ok {
 			s := fmt.Sprint(v)

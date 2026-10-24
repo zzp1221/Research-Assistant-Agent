@@ -272,6 +272,32 @@ func (s *SandboxService) DeleteSandbox(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+func (s *SandboxService) Capabilities(c *gin.Context) {
+	c.JSON(http.StatusOK, s.dkEngine.Capabilities(c.Request.Context()))
+}
+
+type ensureImageRequest struct {
+	Image string `json:"image" binding:"required"`
+}
+
+func (s *SandboxService) EnsureImage(c *gin.Context) {
+	var req ensureImageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	info, err := s.dkEngine.EnsureImage(c.Request.Context(), req.Image)
+	if err != nil {
+		status := http.StatusBadGateway
+		if strings.Contains(err.Error(), "image_not_allowed") {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, info)
+}
+
 func (s *SandboxService) ExecutePython(c *gin.Context) {
 	id := c.Param("id")
 	var req ExecuteRequest
@@ -495,6 +521,8 @@ func runEngine() {
 	api := r.Group("/api/v1", sandboxAuthMiddleware())
 	{
 		api.GET("/health", svc.Health)
+		api.GET("/capabilities", svc.Capabilities)
+		api.POST("/images/ensure", svc.EnsureImage)
 		api.POST("/sandboxes", svc.CreateSandbox)
 		api.DELETE("/sandboxes/:id", svc.DeleteSandbox)
 		api.POST("/sandboxes/:id/python", svc.ExecutePython)

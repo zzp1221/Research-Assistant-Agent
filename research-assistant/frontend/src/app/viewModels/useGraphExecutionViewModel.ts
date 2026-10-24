@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { RefObject } from 'react';
 import type { Edge, Node, OnEdgesChange, OnNodesChange } from '@xyflow/react';
-import type { IntentContext } from '../../contracts/api';
+import type { IntentContext, MissingRequirement, RuntimeAction } from '../../contracts/api';
 import { useResearchAssistantRuntimeContext } from '../context/ResearchAssistantRuntimeContext';
 import { uiText } from '../constants/uiText';
 import type { useResearchAssistantLayoutState } from '../hooks/useResearchAssistantLayoutState';
@@ -14,12 +14,16 @@ interface UseGraphExecutionViewModelOptions {
   intentContext: IntentContext | null;
   activePlanId: string | null;
 	activePlanStatus: string | null;
+  activePlanOutcome?: string | null;
+  activePlanMissingRequirements?: MissingRequirement[];
+  activePlanRuntimeActions?: RuntimeAction[];
+  activePlanRuntimePolicyMode?: string | null;
   layout: ReturnType<typeof useResearchAssistantLayoutState>;
   logsEndRef: RefObject<HTMLDivElement | null>;
 }
 
 export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOptions) {
-	const { nodes, edges, onNodesChange, onEdgesChange, intentContext, activePlanId, activePlanStatus, layout, logsEndRef } = options;
+	const { nodes, edges, onNodesChange, onEdgesChange, intentContext, activePlanId, activePlanStatus, activePlanOutcome, activePlanMissingRequirements, activePlanRuntimeActions, activePlanRuntimePolicyMode, layout, logsEndRef } = options;
   const runtime = useResearchAssistantRuntimeContext();
 
   return useMemo(() => {
@@ -30,6 +34,12 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
       onEdgesChange,
       onNodeClick: runtime.actions.onNodeClick,
       intentContext,
+      outcome: activePlanOutcome ?? null,
+      missingRequirements: activePlanMissingRequirements ?? [],
+      runtimeActions: activePlanRuntimeActions ?? [],
+      runtimePermissionMode: activePlanRuntimePolicyMode ?? null,
+      onRuntimeActionDecision: (actionId: string, decision: 'approve' | 'reject') =>
+        void runtime.actions.handleRuntimeActionDecision(activePlanId, actionId, decision),
       runAllText: uiText.runAll,
       graphTitle: uiText.graphTitle,
       graphHint: uiText.graphHint,
@@ -73,5 +83,5 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
       showExecutionResizeHandle,
       executionSidebarProps,
     };
-	}, [activePlanId, activePlanStatus, edges, intentContext, layout.sidebarWidth, logsEndRef, nodes, onEdgesChange, onNodesChange, runtime]);
+	}, [activePlanId, activePlanStatus, activePlanOutcome, activePlanMissingRequirements, activePlanRuntimeActions, activePlanRuntimePolicyMode, edges, intentContext, layout.sidebarWidth, logsEndRef, nodes, onEdgesChange, onNodesChange, runtime]);
 }

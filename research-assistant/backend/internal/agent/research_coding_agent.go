@@ -65,6 +65,8 @@ func (a *ResearchCodingAgent) ExecuteTask(ctx context.Context, task *models.Task
 		return a.executeAutoResearchValidation(ctx, task)
 	case "paper_code_execute", "fix_and_rerun":
 		return a.executePaperCodeTask(ctx, task, sharedContext)
+	case "reproduction_spec":
+		return a.executeReproductionSpec(ctx, task)
 	default:
 		return failResearchCodingTask(task, fmt.Errorf("unsupported research coding task type %q", task.Type))
 	}

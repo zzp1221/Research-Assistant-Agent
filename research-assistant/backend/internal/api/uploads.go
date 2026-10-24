@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"research-assistant-backend/internal/documents"
+	uploadspkg "research-assistant-backend/internal/uploads"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -180,6 +181,7 @@ func resolvePlanUploads(ownerID string, uploadIDs []string) ([]map[string]any, e
 	}
 	resolved := make([]map[string]any, 0, len(uploadIDs))
 	seen := map[string]struct{}{}
+	pdfCount := 0
 	for _, uploadID := range uploadIDs {
 		uploadID = strings.TrimSpace(uploadID)
 		if uploadID == "" {
@@ -200,6 +202,7 @@ func resolvePlanUploads(ownerID string, uploadIDs []string) ([]map[string]any, e
 			"size":         metadata.Size,
 			"sha256":       metadata.SHA256,
 			"storage_path": metadata.StoredPath,
+			"role":         attachmentRole(metadata.Name),
 		}
 		if isTextUpload(filepath.Ext(metadata.Name)) {
 			if raw, readErr := os.ReadFile(metadata.StoredPath); readErr == nil {
@@ -211,9 +214,17 @@ func resolvePlanUploads(ownerID string, uploadIDs []string) ([]map[string]any, e
 		} else if strings.ToLower(filepath.Ext(metadata.Name)) == ".pdf" {
 			// Feed the extracted paper text to the planner instead of only a
 			// file path: agents otherwise have no way to read the PDF.
+			pdfCount++
+			item["document_id"] = metadata.ID
+			if pdfCount == 1 {
+				item["role"] = "paper"
+			} else {
+				item["role"] = "supplementary"
+			}
 			if document, loadErr := documents.Load(filepath.Dir(metadata.StoredPath)); loadErr == nil && document.HasText() {
 				item["text_excerpt"] = documents.Excerpt(document)
 				item["page_count"] = document.PageCount
+				item["char_count"] = document.Characters
 			}
 		}
 		resolved = append(resolved, item)
@@ -260,15 +271,24 @@ func uploadResponseFromMetadata(metadata uploadMetadata) uploadResponse {
 }
 
 func uploadDirectory(ownerID, uploadID string) string {
-	ownerHash := sha256.Sum256([]byte(ownerID))
-	return filepath.Join(uploadRoot(), hex.EncodeToString(ownerHash[:16]), uploadID)
+	return uploadspkg.Directory(ownerID, uploadID)
 }
 
 func uploadRoot() string {
-	if configured := strings.TrimSpace(os.Getenv("UPLOAD_ROOT")); configured != "" {
-		return filepath.Clean(configured)
+	return uploadspkg.Root()
+}
+
+func attachmentRole(name string) string {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".pdf":
+		return "paper"
+	case ".csv", ".tsv", ".jsonl":
+		return "dataset"
+	case ".json", ".yaml", ".yml", ".toml":
+		return "config"
+	default:
+		return "supplementary"
 	}
-	return filepath.Join(os.TempDir(), "research-assistant-uploads")
 }
 
 func sanitizeUploadName(name string) string {

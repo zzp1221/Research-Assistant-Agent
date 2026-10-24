@@ -459,6 +459,12 @@ func (a *CoderAgent) executeSandboxTask(ctx context.Context, task *models.Task) 
 		return a.prepareRuntime(ctx, task)
 	case "install_dependencies":
 		return a.installDependencies(ctx, task)
+	case "runtime_probe":
+		return a.runtimeProbe(ctx, task)
+	case "image_prepare":
+		return a.imagePrepare(ctx, task)
+	case "runtime_validate":
+		return a.runtimeValidate(ctx, task)
 	case "execute_code":
 		return a.executeCodeInSandbox(ctx, task)
 	default:
@@ -483,7 +489,17 @@ func (a *CoderAgent) prepareRuntime(ctx context.Context, task *models.Task) erro
 	}
 
 	mountPath := strings.TrimSpace(extractTaskInputLike(task, "workspace_path"))
-	sandboxImage, runtimeReason := sandboxImageForWorkspace(configuredSandboxImage(), mountPath)
+	sandboxImage := strings.TrimSpace(extractTaskInputLike(task, "runtime_image"))
+	runtimeReason := ""
+	if sandboxImage == "" {
+		if spec, specErr := runtimeSpecFromTask(task); specErr == nil && strings.TrimSpace(spec.BaseImage) != "" {
+			sandboxImage = strings.TrimSpace(spec.BaseImage)
+			runtimeReason = "reproduction_runtime_spec"
+		}
+	}
+	if sandboxImage == "" {
+		sandboxImage, runtimeReason = sandboxImageForWorkspace(configuredSandboxImage(), mountPath)
+	}
 	if runtimeReason != "" {
 		logToContext(ctx, "[%s] Runtime image selected from repository metadata: %s (%s)", a.Name, sandboxImage, runtimeReason)
 	}
@@ -527,6 +543,11 @@ func (a *CoderAgent) installDependencies(ctx context.Context, task *models.Task)
 		task.Error = fmt.Sprintf("invalid dependency_spec: %v", parseErr)
 		task.Result = strings.TrimSpace(rawDependencySpec)
 		return fmt.Errorf("%s", task.Error)
+	}
+	if len(dependencies) == 0 {
+		if spec, specErr := runtimeSpecFromTask(task); specErr == nil {
+			dependencies = dependencySpecsFromSpec(spec)
+		}
 	}
 	if len(dependencies) == 0 {
 		task.Result = "no external dependencies detected"
@@ -1398,6 +1419,12 @@ func inferSandboxTaskKind(task *models.Task) string {
 		return "prepare_runtime"
 	case "install_dependencies", "dependency_install":
 		return "install_dependencies"
+	case "runtime_probe":
+		return "runtime_probe"
+	case "image_prepare":
+		return "image_prepare"
+	case "runtime_validate":
+		return "runtime_validate"
 	case "execute_code", "baseline_run", "run_benchmark":
 		return "execute_code"
 	}

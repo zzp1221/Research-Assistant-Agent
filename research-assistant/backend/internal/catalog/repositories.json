@@ -26,7 +26,9 @@
       "match_terms": [
         "apriori",
         "association rule mining",
-        "frequent itemset"
+        "association rules",
+        "frequent itemset",
+        "fast algorithms for mining association rules"
       ],
       "method_terms": [
         "apriori"

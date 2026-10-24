@@ -28,6 +28,12 @@ type EventPublisher interface {
 	Publish(planID string, event models.PlanEvent)
 }
 
+// PlanFinalizer computes the semantic plan outcome before the scheduler writes
+// a terminal status. It must not change TaskStatus.
+type PlanFinalizer interface {
+	Finalize(ctx context.Context, plan *models.PlanGraph) error
+}
+
 // NoopEventPublisher is used until the SSE/event bus layer is wired in.
 type NoopEventPublisher struct{}
 
@@ -43,6 +49,7 @@ type Scheduler struct {
 	publisher     EventPublisher
 	maxConcurrent int
 	onTerminal    func(context.Context, *models.PlanGraph)
+	finalizer     PlanFinalizer
 }
 
 func NewScheduler(planStore store.PlanStore, executor TaskExecutor, publisher EventPublisher, maxConcurrent int) *Scheduler {
@@ -68,6 +75,10 @@ func (s *Scheduler) SetOnTerminal(fn func(context.Context, *models.PlanGraph)) {
 	s.onTerminal = fn
 }
 
+func (s *Scheduler) SetFinalizer(finalizer PlanFinalizer) {
+	s.finalizer = finalizer
+}
+
 func (s *Scheduler) CancelPlan(planID, reason string) error {
 	now := time.Now()
 	if reason == "" {
@@ -85,7 +96,7 @@ func (s *Scheduler) CancelPlan(planID, reason string) error {
 				continue
 			}
 			switch task.Status {
-			case models.StatusPending, models.StatusReady, models.StatusInProgress, models.StatusBlocked:
+			case models.StatusPending, models.StatusReady, models.StatusInProgress, models.StatusBlocked, models.StatusAwaitingApproval:
 				task.Status = models.StatusCanceled
 				task.Error = reason
 				task.ExecutionID = ""
@@ -116,6 +127,9 @@ func (s *Scheduler) RetryTask(planID, taskID string) error {
 		}
 		if task.Status == models.StatusInProgress {
 			return fmt.Errorf("cannot retry a task that is currently running")
+		}
+		if task.Status == models.StatusAwaitingApproval {
+			return fmt.Errorf("task is awaiting runtime approval; decide or cancel the action first")
 		}
 		if task.Status != models.StatusFailed && task.Status != models.StatusBlocked && task.Status != models.StatusCanceled {
 			return fmt.Errorf("task cannot be retried from status %s", task.Status)
@@ -243,6 +257,10 @@ executionLoop:
 		availableSlots := s.maxConcurrent - countInProgress(plan)
 		ready := s.findReadyNodes(plan, availableSlots)
 		if len(ready) == 0 {
+			if hasAwaitingApproval(plan) {
+				time.Sleep(200 * time.Millisecond)
+				continue
+			}
 			if allTerminal(plan) {
 				finalStatus := models.StatusCompleted
 				if err := s.store.UpdatePlan(planID, func(current *models.PlanGraph) error {
@@ -252,11 +270,29 @@ executionLoop:
 					if !allTerminal(current) {
 						return ErrPlanStateChanged
 					}
+					outcome := models.OutcomeCompleted
 					if hasFailure(current) {
 						finalStatus = models.StatusFailed
+						outcome = models.OutcomeFailed
+					}
+					if s.finalizer != nil && finalStatus == models.StatusCompleted {
+						if finalizeErr := s.finalizer.Finalize(ctx, current); finalizeErr != nil {
+							finalStatus = models.StatusFailed
+							outcome = models.OutcomeFailed
+							current.OutcomeReason = finalizeErr.Error()
+						} else {
+							outcome = current.Outcome
+							if outcome == "" {
+								outcome = models.OutcomeCompleted
+							}
+						}
+					}
+					if finalStatus == models.StatusFailed && outcome == "" {
+						outcome = models.OutcomeFailed
 					}
 					now := time.Now()
 					current.Status = finalStatus
+					current.Outcome = outcome
 					current.Usage.FinishedAt = &now
 					current.UpdatedAt = now
 					fillMeta(current)
@@ -275,9 +311,15 @@ executionLoop:
 				if finalStatus == models.StatusFailed {
 					eventType = "plan_failed"
 				}
+				latest, _ := s.store.GetPlan(planID)
+				outcome := models.OutcomeCompleted
+				if latest != nil && latest.Outcome != "" {
+					outcome = latest.Outcome
+				}
 				s.publishAndStore(planID, models.PlanEvent{
 					PlanID:    planID,
 					EventType: eventType,
+					Payload:   map[string]any{"outcome": string(outcome)},
 					Timestamp: time.Now(),
 				})
 				if s.onTerminal != nil {
@@ -494,6 +536,16 @@ func (s *Scheduler) findReadyNodes(plan *models.PlanGraph, availableSlots int) [
 
 func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*models.TaskNode) error {
 	for _, task := range ready {
+		action, pending, err := s.prepareRuntimeGate(planID, task.ID)
+		if err != nil {
+			return err
+		}
+		if pending {
+			return nil
+		}
+		if action != nil && action.Status == models.RuntimeActionRejected {
+			return nil
+		}
 		executionID, leaseOwner, executionEpoch, err := s.markTaskStarted(planID, task.ID)
 		if err != nil {
 			return err
@@ -760,6 +812,13 @@ func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner strin
 		if strings.TrimSpace(result.ImageBase64) != "" {
 			task.ImageBase64 = result.ImageBase64
 		}
+		for _, artifact := range result.Artifacts {
+			key := strings.TrimSpace(artifact.Key)
+			if key == "" || (strings.TrimSpace(artifact.Value) == "" && strings.TrimSpace(artifact.Location) == "") {
+				continue
+			}
+			plan.Artifacts[key] = artifact
+		}
 		task.ExecutionID = ""
 		task.LeaseOwner = ""
 		task.LeaseExpiresAt = nil
@@ -858,6 +917,9 @@ func (s *Scheduler) finishPlanTerminal(planID string, status models.TaskStatus, 
 		}
 		changed = true
 		plan.Status = status
+		if status == models.StatusFailed {
+			plan.Outcome = models.OutcomeFailed
+		}
 		plan.Usage.FinishedAt = &now
 		plan.UpdatedAt = now
 		for _, task := range plan.Nodes {
@@ -1077,7 +1139,7 @@ func allTerminal(plan *models.PlanGraph) bool {
 			continue
 		}
 		switch node.Status {
-		case models.StatusPending, models.StatusReady, models.StatusInProgress:
+		case models.StatusPending, models.StatusReady, models.StatusInProgress, models.StatusAwaitingApproval:
 			return false
 		}
 	}

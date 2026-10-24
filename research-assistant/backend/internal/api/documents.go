@@ -66,6 +66,8 @@ func documentSummary(document *documents.Document) map[string]any {
 func registerDocumentRoutes(apiGroup *gin.RouterGroup) {
 	apiGroup.GET("/uploads/:id/document", getUploadDocument)
 	apiGroup.GET("/uploads/:id/document/pages/:page", getUploadDocumentPage)
+	apiGroup.GET("/uploads/:id/document/search", getUploadDocumentSearch)
+	apiGroup.GET("/uploads/:id/document/sections/:section", getUploadDocumentSection)
 	apiGroup.POST("/uploads/:id/assist", postUploadAssist)
 	apiGroup.GET("/uploads/:id/translation-jobs", listTranslationJobs)
 	apiGroup.POST("/uploads/:id/translation-jobs", createTranslationJob)
@@ -125,6 +127,50 @@ func getUploadDocumentPage(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"upload_id": metadata.ID, "page": document.Pages[page-1]})
+}
+
+func getUploadDocumentSearch(c *gin.Context) {
+	metadata, ok := ownedUpload(c)
+	if !ok {
+		return
+	}
+	query := strings.TrimSpace(c.Query("q"))
+	if len([]rune(query)) > 500 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "query is too long"})
+		return
+	}
+	topK := 8
+	if raw := strings.TrimSpace(c.Query("top_k")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 20 {
+			topK = parsed
+		}
+	}
+	store := documents.NewStore("")
+	results, err := store.Search(c.Request.Context(), resolveUserID(c), metadata.ID, query, topK)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"upload_id": metadata.ID, "query": query, "results": results})
+}
+
+func getUploadDocumentSection(c *gin.Context) {
+	metadata, ok := ownedUpload(c)
+	if !ok {
+		return
+	}
+	section := strings.TrimSpace(c.Param("section"))
+	if section == "" || len([]rune(section)) > 200 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "section is required and must be short"})
+		return
+	}
+	store := documents.NewStore("")
+	text, err := store.ReadSection(c.Request.Context(), resolveUserID(c), metadata.ID, section)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"upload_id": metadata.ID, "section": section, "text": text})
 }
 
 type assistPayload struct {

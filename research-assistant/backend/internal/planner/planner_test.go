@@ -414,8 +414,14 @@ func TestGeneralSummaryPlanStillPassesValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Nodes) != 2 || plan.Nodes[0].Type != "general_research" || plan.Nodes[1].Type != "general_synthesis" {
+	if len(plan.Nodes) != 2 || plan.Nodes[0].Type != "paper_parse" || plan.Nodes[1].Type != "general_synthesis" {
 		t.Fatalf("unexpected general summary plan: %#v", plan.Nodes)
+	}
+	if plan.Nodes[1].AssignedTo != "answer_agent" {
+		t.Fatalf("general synthesis assigned to %s, want answer_agent", plan.Nodes[1].AssignedTo)
+	}
+	if len(plan.Nodes[0].InputBindings) == 0 {
+		t.Fatalf("paper_parse must declare document_id/paper_metadata input bindings")
 	}
 	if err := validateCriticalNodeContracts(models.IntentContext{IntentType: "General", Entities: map[string]any{}}, plan.Nodes); err != nil {
 		t.Fatalf("general summary plan failed validation: %v", err)

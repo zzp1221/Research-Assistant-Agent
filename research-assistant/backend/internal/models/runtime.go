@@ -9,6 +9,8 @@ type TaskContract struct {
 	Version         string   `json:"version"`
 	InputArtifacts  []string `json:"input_artifacts"`
 	OutputArtifacts []string `json:"output_artifacts"`
+	InputSchema     string   `json:"input_schema,omitempty"`
+	OutputSchema    string   `json:"output_schema,omitempty"`
 	AllowedTools    []string `json:"allowed_tools,omitempty"`
 }
 

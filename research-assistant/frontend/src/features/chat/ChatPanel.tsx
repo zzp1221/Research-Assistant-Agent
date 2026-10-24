@@ -1,5 +1,6 @@
 import type { ChatMessage, UploadedFile } from '../../contracts/api';
 import { ChatComposer } from './ChatComposer';
+import { FullAccessConfirmDialog } from './FullAccessConfirmDialog';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatSessionManager } from './ChatSessionManager';
 
@@ -11,6 +12,8 @@ interface ChatPanelState {
 	pendingAttachments: UploadedFile[];
 	uploadingAttachments: boolean;
 	attachmentError: string;
+  runtimePermissionMode: 'confirm_important' | 'full_access';
+  showFullAccessConfirm: boolean;
   isLoggedIn: boolean;
   userId: string | null;
   loginInput: string;
@@ -35,6 +38,9 @@ interface ChatActions {
 	onAttachFiles: (files: File[]) => void;
 	onRemoveAttachment: (uploadId: string) => void;
 	onOpenAttachment: (attachment: UploadedFile) => void;
+	onRuntimePermissionModeChange: (mode: 'confirm_important' | 'full_access') => void;
+	onConfirmFullAccess: () => void;
+	onCancelFullAccess: () => void;
 }
 
 interface PdfActions {
@@ -95,6 +101,13 @@ export function ChatPanel(props: ChatPanelProps) {
 		onAttachFiles={chatActions.onAttachFiles}
 		onRemoveAttachment={chatActions.onRemoveAttachment}
 		onOpenAttachment={chatActions.onOpenAttachment}
+        runtimePermissionMode={state.runtimePermissionMode}
+        onRuntimePermissionModeChange={chatActions.onRuntimePermissionModeChange}
+      />
+      <FullAccessConfirmDialog
+        open={state.showFullAccessConfirm}
+        onCancel={chatActions.onCancelFullAccess}
+        onConfirm={chatActions.onConfirmFullAccess}
       />
     </div>
   );

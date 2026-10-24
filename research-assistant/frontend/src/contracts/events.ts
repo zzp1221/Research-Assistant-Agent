@@ -11,6 +11,8 @@ export const PLAN_EVENTS = {
   PLAN_COMPLETED: 'plan_completed',
   PLAN_FAILED: 'plan_failed',
 	PLAN_CANCELED: 'plan_canceled',
+	RUNTIME_ACTION_REQUESTED: 'runtime_action_requested',
+	RUNTIME_ACTION_RESOLVED: 'runtime_action_resolved',
 } as const;
 
 export const DIRECT_EXECUTION_EVENTS = {

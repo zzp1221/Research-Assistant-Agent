@@ -248,6 +248,72 @@ func (s *SandboxClient) streamExecution(ctx context.Context, sandboxID string, s
 	return finalResponse, nil
 }
 
+// SandboxCapabilities mirrors the docker-sandbox capabilities endpoint.
+type SandboxCapabilities struct {
+	DockerAvailable     bool     `json:"docker_available"`
+	ServerVersion       string   `json:"server_version,omitempty"`
+	GPURequest          string   `json:"gpu_request,omitempty"`
+	GPURuntimeAvailable bool     `json:"gpu_runtime_available"`
+	CPUCount            int      `json:"cpu_count"`
+	MemoryTotalBytes    int64    `json:"memory_total_bytes"`
+	DiskFreeBytes       int64    `json:"disk_free_bytes"`
+	ImageAllowlist      []string `json:"image_allowlist"`
+	NetworkMode         string   `json:"network_mode"`
+}
+
+type SandboxImageInfo struct {
+	Image     string `json:"image"`
+	Digest    string `json:"digest"`
+	SizeBytes int64  `json:"size_bytes"`
+	Pulled    bool   `json:"pulled"`
+}
+
+func (s *SandboxClient) Capabilities(ctx context.Context) (*SandboxCapabilities, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.BaseURL+"/api/v1/capabilities", nil)
+	if err != nil {
+		return nil, err
+	}
+	s.authorize(req)
+	resp, err := s.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("sandbox capabilities failed (Status %d): %s", resp.StatusCode, string(body))
+	}
+	var caps SandboxCapabilities
+	if err := json.NewDecoder(resp.Body).Decode(&caps); err != nil {
+		return nil, err
+	}
+	return &caps, nil
+}
+
+func (s *SandboxClient) EnsureImage(ctx context.Context, image string) (*SandboxImageInfo, error) {
+	payload, _ := json.Marshal(map[string]string{"image": image})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.BaseURL+"/api/v1/images/ensure", bytes.NewBuffer(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	s.authorize(req)
+	resp, err := s.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("sandbox image ensure failed (Status %d): %s", resp.StatusCode, string(body))
+	}
+	var info SandboxImageInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return nil, err
+	}
+	return &info, nil
+}
+
 func (s *SandboxClient) authorize(req *http.Request) {
 	if strings.TrimSpace(s.Token) != "" {
 		req.Header.Set("Authorization", "Bearer "+s.Token)
