@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -120,14 +119,6 @@ func readMemoryTotal() int64 {
 		return kb * 1024
 	}
 	return 0
-}
-
-func diskFreeBytes(path string) int64 {
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(path, &stat); err != nil {
-		return 0
-	}
-	return int64(stat.Bavail) * int64(stat.Bsize)
 }
 
 func truncateOutput(value string, limit int) string {
