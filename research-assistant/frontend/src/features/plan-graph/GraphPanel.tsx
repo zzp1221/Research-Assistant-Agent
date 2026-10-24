@@ -1,7 +1,7 @@
 import { lazy, memo, Suspense } from 'react';
 import type { Edge, Node, OnEdgesChange, OnNodesChange } from '@xyflow/react';
-import { CheckCircle2, GitBranch, LoaderCircle, Play, RotateCcw, ShieldCheck, Square } from 'lucide-react';
-import type { IntentContext, MissingRequirement } from '../../contracts/api';
+import { CheckCircle2, GitBranch, LoaderCircle, Play, RotateCcw, ShieldAlert, ShieldCheck, Square } from 'lucide-react';
+import type { IntentContext, MissingRequirement, RuntimeAction } from '../../contracts/api';
 import type { Task } from '../../contracts/api';
 
 const GraphCanvas = lazy(() => import('./GraphCanvas'));
@@ -15,6 +15,9 @@ interface GraphPanelProps {
   intentContext: IntentContext | null;
   outcome?: string | null;
   missingRequirements?: MissingRequirement[];
+  runtimeActions?: RuntimeAction[];
+  runtimePermissionMode?: string | null;
+  onRuntimeActionDecision?: (actionId: string, decision: 'approve' | 'reject') => void;
   runAllText: string;
   graphTitle: string;
   graphHint: string;
@@ -62,6 +65,9 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
     intentContext,
     outcome,
     missingRequirements,
+    runtimeActions,
+    runtimePermissionMode,
+    onRuntimeActionDecision,
     runAllText,
     graphTitle,
     graphHint,
@@ -82,6 +88,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
   const experimentParallelism = typeof experimentSearchTask?.Inputs?.experiment_max_parallel_trials === 'number'
     ? experimentSearchTask.Inputs.experiment_max_parallel_trials
     : 4;
+  const pendingRuntimeActions = (runtimeActions ?? []).filter((action) => action.status === 'pending');
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col bg-paper">
@@ -99,6 +106,11 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
               {outcome && (
                 <span className="shrink-0 rounded-[3px] border border-accent/30 bg-accent-soft px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-accent-ink">
                   {outcome}
+                </span>
+              )}
+              {runtimePermissionMode && (
+                <span className={`shrink-0 rounded-[3px] border px-1.5 py-0.5 text-[10.5px] font-medium ${runtimePermissionMode === 'full_access' ? 'border-flag/30 bg-flag-soft text-flag' : 'border-line bg-surface-muted text-ink-soft'}`}>
+                  {runtimePermissionMode === 'full_access' ? '完全权限' : '重要操作需确认'}
                 </span>
               )}
             </div>
@@ -181,6 +193,30 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
           </div>
         </div>
       </header>
+
+      {pendingRuntimeActions.length > 0 && (
+        <div className="shrink-0 border-b border-warn/30 bg-warn-soft px-5 py-2.5">
+          <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-warn">
+            <ShieldAlert className="h-3.5 w-3.5" />
+            需要运行权限确认
+          </div>
+          <div className="space-y-1.5">
+            {pendingRuntimeActions.map((action) => (
+              <div key={action.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[5px] border border-warn/20 bg-surface px-2.5 py-1.5 text-[11.5px]">
+                <div className="min-w-0">
+                  <span className="font-medium text-ink">{action.title}</span>
+                  <span className="ml-1 text-muted">({action.kind})</span>
+                  {action.risk && <span className="ml-1 text-[10.5px] uppercase text-warn">{action.risk}</span>}
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button type="button" onClick={() => onRuntimeActionDecision?.(action.id, 'approve')} className="rounded-[4px] bg-accent px-2 py-1 text-[11px] font-semibold text-white hover:bg-accent-strong">允许一次</button>
+                  <button type="button" onClick={() => onRuntimeActionDecision?.(action.id, 'reject')} className="rounded-[4px] border border-flag/30 px-2 py-1 text-[11px] font-medium text-flag hover:bg-flag-soft">拒绝</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="relative min-h-0 flex-1">
         {nodes.length === 0 && (

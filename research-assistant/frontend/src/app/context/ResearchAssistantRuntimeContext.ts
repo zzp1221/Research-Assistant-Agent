@@ -14,6 +14,7 @@ export interface ResearchAssistantRuntimeContextValue {
     handleExecuteTask: ResearchAssistantRuntimeApi['handleExecuteTask'];
     handleRunAllTasks: ResearchAssistantRuntimeApi['handleRunAllTasks'];
 	handleApproveAndRun: ResearchAssistantRuntimeApi['handleApproveAndRun'];
+	handleRuntimeActionDecision: ResearchAssistantRuntimeApi['handleRuntimeActionDecision'];
 	handleCancelPlan: ResearchAssistantRuntimeApi['handleCancelPlan'];
 	handleRetryFailedPlan: ResearchAssistantRuntimeApi['handleRetryFailedPlan'];
     setDisplayMode: ResearchAssistantRuntimeApi['setDisplayMode'];

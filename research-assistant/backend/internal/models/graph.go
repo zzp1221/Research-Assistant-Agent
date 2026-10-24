@@ -29,6 +29,7 @@ type TaskNode struct {
 	RequiredArtifacts []string       `json:"required_artifacts"`
 	OutputArtifacts   []string       `json:"output_artifacts"`
 	InputBindings     []InputBinding `json:"input_bindings,omitempty"`
+	RuntimeActionIDs  []string       `json:"runtime_action_ids,omitempty"`
 	Outcome           PlanOutcome    `json:"outcome,omitempty"`
 	Parallelizable    bool           `json:"parallelizable"`
 	Priority          int            `json:"priority"`
@@ -73,36 +74,40 @@ type GraphMeta struct {
 
 // PlanGraph is the executable DAG representation used by the refactored plan flow.
 type PlanGraph struct {
-	ID                  string               `json:"id"`
-	UserIntent          string               `json:"user_intent"`
-	IntentType          string               `json:"intent_type"`
-	Status              TaskStatus           `json:"status"`
-	Outcome             PlanOutcome          `json:"outcome,omitempty"`
-	OutcomeReason       string               `json:"outcome_reason,omitempty"`
-	MissingRequirements []MissingRequirement `json:"missing_requirements,omitempty"`
-	OwnerID             string               `json:"owner_id,omitempty"`
-	SessionID           string               `json:"session_id,omitempty"`
-	TraceID             string               `json:"trace_id"`
-	Approval            ApprovalState        `json:"approval"`
-	Budget              RunBudget            `json:"budget"`
-	Usage               RunUsage             `json:"usage"`
-	Context             *ResearchContext     `json:"context,omitempty"`
-	Nodes               []*TaskNode          `json:"nodes"`
-	Edges               []*TaskEdge          `json:"edges"`
-	Artifacts           map[string]Artifact  `json:"artifacts"`
-	Meta                GraphMeta            `json:"meta"`
-	CreatedAt           time.Time            `json:"created_at"`
-	UpdatedAt           time.Time            `json:"updated_at"`
+	ID                  string                 `json:"id"`
+	UserIntent          string                 `json:"user_intent"`
+	IntentType          string                 `json:"intent_type"`
+	Status              TaskStatus             `json:"status"`
+	Outcome             PlanOutcome            `json:"outcome,omitempty"`
+	OutcomeReason       string                 `json:"outcome_reason,omitempty"`
+	MissingRequirements []MissingRequirement   `json:"missing_requirements,omitempty"`
+	OwnerID             string                 `json:"owner_id,omitempty"`
+	SessionID           string                 `json:"session_id,omitempty"`
+	TraceID             string                 `json:"trace_id"`
+	Approval            ApprovalState          `json:"approval"`
+	Budget              RunBudget              `json:"budget"`
+	Usage               RunUsage               `json:"usage"`
+	Context             *ResearchContext       `json:"context,omitempty"`
+	RuntimePolicy       RuntimePolicy          `json:"runtime_policy,omitempty"`
+	RuntimeActions      []RuntimeActionRequest `json:"runtime_actions,omitempty"`
+	EnvironmentManifest *EnvironmentManifest   `json:"environment_manifest,omitempty"`
+	Nodes               []*TaskNode            `json:"nodes"`
+	Edges               []*TaskEdge            `json:"edges"`
+	Artifacts           map[string]Artifact    `json:"artifacts"`
+	Meta                GraphMeta              `json:"meta"`
+	CreatedAt           time.Time              `json:"created_at"`
+	UpdatedAt           time.Time              `json:"updated_at"`
 }
 
 // TaskExecutionResult is the normalized scheduler-facing result of one task execution.
 type TaskExecutionResult struct {
-	Status         TaskStatus `json:"status"`
-	Result         string     `json:"result,omitempty"`
-	Code           string     `json:"code,omitempty"`
-	StructuredData string     `json:"structured_data,omitempty"`
-	ImageBase64    string     `json:"image_base64,omitempty"`
-	Error          string     `json:"error,omitempty"`
-	Logs           []string   `json:"logs,omitempty"`
-	Artifacts      []Artifact `json:"artifacts,omitempty"`
+	Status         TaskStatus            `json:"status"`
+	Result         string                `json:"result,omitempty"`
+	Code           string                `json:"code,omitempty"`
+	StructuredData string                `json:"structured_data,omitempty"`
+	ImageBase64    string                `json:"image_base64,omitempty"`
+	Error          string                `json:"error,omitempty"`
+	Logs           []string              `json:"logs,omitempty"`
+	Artifacts      []Artifact            `json:"artifacts,omitempty"`
+	RuntimeAction  *RuntimeActionRequest `json:"runtime_action,omitempty"`
 }

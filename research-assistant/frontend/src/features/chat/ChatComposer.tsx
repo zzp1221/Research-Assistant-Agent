@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { ChevronDown, ChevronUp, Eye, FileText, Loader2, Paperclip, Send, Sparkles, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Eye, FileText, Loader2, Paperclip, Send, ShieldCheck, Sparkles, X } from 'lucide-react';
 import type { UploadedFile } from '../../contracts/api';
 import { isPdfAttachment } from '../pdf-viewer/pdfAttachment';
 
@@ -17,6 +17,8 @@ interface ChatComposerProps {
   onAttachFiles: (files: File[]) => void;
   onRemoveAttachment: (uploadId: string) => void;
   onOpenAttachment: (attachment: UploadedFile) => void;
+  runtimePermissionMode?: 'confirm_important' | 'full_access';
+  onRuntimePermissionModeChange?: (mode: 'confirm_important' | 'full_access') => void;
 }
 
 const suggestions = [
@@ -31,6 +33,7 @@ export function ChatComposer(props: ChatComposerProps) {
   const {
     prompt, loading, isLoggedIn, showSuggestions, pendingAttachments, uploadingAttachments, attachmentError,
     setPrompt, setShowSuggestions, onSendMessage, onAttachFiles, onRemoveAttachment, onOpenAttachment,
+    runtimePermissionMode = 'confirm_important', onRuntimePermissionModeChange = () => undefined,
   } = props;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -103,6 +106,36 @@ export function ChatComposer(props: ChatComposerProps) {
           {attachmentError && <span className="w-full text-[11.5px] text-flag">{attachmentError}</span>}
         </div>
       )}
+
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[6px] border border-line bg-surface-muted px-2.5 py-1.5">
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-ink-soft">
+          <ShieldCheck className="h-3.5 w-3.5 text-accent" />
+          运行权限
+        </span>
+        <div className="flex items-center gap-1" role="group" aria-label="运行权限">
+          <button
+            type="button"
+            onClick={() => onRuntimePermissionModeChange('confirm_important')}
+            className={`rounded-[4px] px-2 py-1 text-[11px] font-medium transition-colors ${runtimePermissionMode === 'confirm_important' ? 'bg-accent text-white' : 'text-muted hover:bg-surface hover:text-ink'}`}
+            aria-pressed={runtimePermissionMode === 'confirm_important'}
+          >
+            重要操作需确认
+          </button>
+          <button
+            type="button"
+            onClick={() => onRuntimePermissionModeChange('full_access')}
+            className={`rounded-[4px] px-2 py-1 text-[11px] font-medium transition-colors ${runtimePermissionMode === 'full_access' ? 'bg-accent text-white' : 'text-muted hover:bg-surface hover:text-ink'}`}
+            aria-pressed={runtimePermissionMode === 'full_access'}
+          >
+            完全权限
+          </button>
+        </div>
+      </div>
+      <p className="mb-1.5 px-1 text-[10.5px] leading-4 text-faint">
+        {runtimePermissionMode === 'full_access'
+          ? '自动执行拉镜像、装依赖、下载数据与 GPU 操作；仍受镜像白名单和资源上限约束。'
+          : '拉取镜像、安装依赖、下载数据集/模型、使用 GPU 前会暂停并请求你的确认。'}
+      </p>
 
       <input
         ref={fileInputRef}

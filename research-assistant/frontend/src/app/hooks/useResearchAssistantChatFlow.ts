@@ -182,6 +182,9 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
 	const [pendingAttachments, setPendingAttachments] = useState<UploadedFile[]>([]);
 	const [uploadingAttachments, setUploadingAttachments] = useState(false);
 	const [attachmentError, setAttachmentError] = useState('');
+  const [runtimePermissionMode, setRuntimePermissionMode] = useState<'confirm_important' | 'full_access'>('confirm_important');
+  const [fullAccessAcknowledged, setFullAccessAcknowledged] = useState(false);
+  const [showFullAccessConfirm, setShowFullAccessConfirm] = useState(false);
   const [loginInput, setLoginInput] = useState(() => loadPersistedChatState().userId ?? '');
   const [guestUserId] = useState(() => createId('guest'));
 
@@ -411,10 +414,13 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
 
     try {
       if (isTaskRequest) {
-		const response = await createPlan(userPrompt, {
-		  userId: requestUserId,
-		  sessionId: requestSessionId,
-		}, attachmentIDs);
+		const response = await createPlan(
+          userPrompt,
+          { userId: requestUserId, sessionId: requestSessionId },
+          attachmentIDs,
+          runtimePermissionMode,
+          runtimePermissionMode === 'full_access' && fullAccessAcknowledged,
+        );
         const generatedPlanGraph = response.plan_graph;
         const returnedIntentContext = response.intent_context;
         if (!generatedPlanGraph) throw new Error('Backend did not return plan_graph');
@@ -452,7 +458,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     } finally {
       setLoading(false);
     }
-	}, [appendMessageToSession, guestUserId, loading, onPlanReady, pendingAttachments, persistedState.activeSessionId, persistedState.userId, prompt, updateSessionPlanState, uploadingAttachments]);
+	}, [appendMessageToSession, fullAccessAcknowledged, guestUserId, loading, onPlanReady, pendingAttachments, persistedState.activeSessionId, persistedState.userId, prompt, runtimePermissionMode, updateSessionPlanState, uploadingAttachments]);
 
   return {
     prompt,
@@ -481,6 +487,23 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     handleCreateSession,
     handleSwitchSession,
     handleSendMessage,
+    runtimePermissionMode,
+    showFullAccessConfirm,
+    handleRuntimePermissionModeChange: (mode: 'confirm_important' | 'full_access') => {
+      if (mode === 'full_access') {
+        setShowFullAccessConfirm(true);
+        return;
+      }
+      setRuntimePermissionMode('confirm_important');
+      setFullAccessAcknowledged(false);
+      setShowFullAccessConfirm(false);
+    },
+    handleConfirmFullAccess: () => {
+      setRuntimePermissionMode('full_access');
+      setFullAccessAcknowledged(true);
+      setShowFullAccessConfirm(false);
+    },
+    handleCancelFullAccess: () => setShowFullAccessConfirm(false),
 	handleAttachFiles,
 	handleRemoveAttachment,
 	refreshActivePlan,

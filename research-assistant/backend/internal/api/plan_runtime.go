@@ -87,6 +87,8 @@ func (r *planRuntime) register(apiGroup *gin.RouterGroup) {
 	apiGroup.POST("/plans/:id/execute", r.executePlan)
 	apiGroup.POST("/plans/:id/cancel", r.cancelPlan)
 	apiGroup.POST("/plans/:id/approve", r.approvePlan)
+	apiGroup.GET("/plans/:id/runtime-actions", r.getRuntimeActions)
+	apiGroup.POST("/plans/:id/runtime-actions/:actionId/decision", r.decideRuntimeAction)
 	apiGroup.POST("/plans/:id/tasks/:taskId/retry", r.retryTask)
 	apiGroup.POST("/plans/:id/tasks/:taskId/reassign", r.reassignTask)
 	apiGroup.POST("/plans/:id/tasks/:taskId/execute", r.executeTask)
@@ -104,6 +106,11 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 
 	userID := resolveUserID(c)
 	sessionID := resolveSessionID(c)
+	runtimePolicy, policyErr := buildRuntimePolicy(payload, userID)
+	if policyErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": policyErr.Error()})
+		return
+	}
 	ruleContext := buildRuleIntentContext(payload.Intent)
 	intentContext := r.intentResolver.Resolve(c.Request.Context(), payload.Intent, ruleContext)
 	attachments, err := resolvePlanUploads(userID, payload.Attachments)
@@ -162,6 +169,7 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 			return
 		}
 	}
+	plan.RuntimePolicy = runtimePolicy
 	configurePlanGovernance(plan, intentContext, userID, sessionID)
 	if err := r.store.SavePlan(plan); err != nil {
 		log.Printf("Error saving plan graph: %v", err)

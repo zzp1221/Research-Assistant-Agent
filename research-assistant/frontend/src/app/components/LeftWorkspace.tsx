@@ -78,6 +78,8 @@ interface LeftWorkspaceChatProps {
     pendingAttachments: UploadedFile[];
     uploadingAttachments: boolean;
     attachmentError: string;
+    runtimePermissionMode: 'confirm_important' | 'full_access';
+    showFullAccessConfirm: boolean;
     isLoggedIn: boolean;
     userId: string | null;
     loginInput: string;
@@ -101,6 +103,9 @@ interface LeftWorkspaceChatProps {
     onAttachFiles: (files: File[]) => void;
     onRemoveAttachment: (uploadId: string) => void;
     onOpenAttachment: (attachment: UploadedFile) => void;
+    onRuntimePermissionModeChange: (mode: 'confirm_important' | 'full_access') => void;
+    onConfirmFullAccess: () => void;
+    onCancelFullAccess: () => void;
   };
   pdfActions: {
     onOpenPdf: () => void;

@@ -98,6 +98,7 @@ func (a *ResearchCodingAgent) executePaperCodeTask(ctx context.Context, task *mo
 	if task.Type == "fix_and_rerun" {
 		mode = "result_gap_debug"
 	}
+	runCommand := paperRunCommand(task)
 	report := paperCodeDebugReport{
 		Version:   "research.coding.debug/v1",
 		Mode:      mode,
@@ -136,7 +137,7 @@ func (a *ResearchCodingAgent) executePaperCodeTask(ctx context.Context, task *mo
 	}
 
 	for runNumber := 1; runNumber <= paperDebugMaxRuns; runNumber++ {
-		attempt, runErr := a.runPaperCodeOnce(ctx, runtimeSession, workspacePath, entryRelative)
+		attempt, runErr := a.runPaperCodeOnce(ctx, runtimeSession, workspacePath, entryRelative, runCommand)
 		attempt.Run = runNumber
 		report.Runs = append(report.Runs, attempt)
 		if runErr == nil {
@@ -181,7 +182,7 @@ func (a *ResearchCodingAgent) executePaperCodeTask(ctx context.Context, task *mo
 	return failPaperCodeDebugTask(task, workspacePath, backups, &report, fmt.Errorf("paper code debug run budget exhausted"))
 }
 
-func (a *ResearchCodingAgent) runPaperCodeOnce(ctx context.Context, runtimeSession, workspacePath, entryRelative string) (paperCodeRunAttempt, error) {
+func (a *ResearchCodingAgent) runPaperCodeOnce(ctx context.Context, runtimeSession, workspacePath, entryRelative string, runCommand []string) (paperCodeRunAttempt, error) {
 	attempt := paperCodeRunAttempt{ExitCode: -1}
 	before, err := paperDebugSourceFingerprint(workspacePath)
 	if err != nil {
@@ -191,6 +192,13 @@ func (a *ResearchCodingAgent) runPaperCodeOnce(ctx context.Context, runtimeSessi
 	attempt.SourceFingerprintBefore = before
 
 	command := fmt.Sprintf("cd /workspace && PYTHONPATH=/workspace:${PYTHONPATH:-} python3 %s", shellEscape(filepath.ToSlash(entryRelative)))
+	if len(runCommand) > 0 {
+		parts := make([]string, 0, len(runCommand))
+		for _, part := range runCommand {
+			parts = append(parts, shellEscape(part))
+		}
+		command = "cd /workspace && PYTHONPATH=/workspace:${PYTHONPATH:-} " + strings.Join(parts, " ")
+	}
 	response, runErr := a.Sandbox.ExecCommandStream(ctx, runtimeSession, []string{"bash", "-lc", command}, func(stream, line string) {
 		logToContext(ctx, "[%s] paper debug %s: %s", a.Name, stream, line)
 	})
@@ -632,4 +640,16 @@ func truncatePaperDebugText(value string, limit int) string {
 		return value
 	}
 	return value[:limit] + "...[truncated]"
+}
+
+func paperRunCommand(task *models.Task) []string {
+	raw := inputJSONString(task, "reproduction_runtime_spec")
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var spec models.ReproductionRuntimeSpec
+	if json.Unmarshal([]byte(raw), &spec) != nil {
+		return nil
+	}
+	return spec.RunCommand
 }

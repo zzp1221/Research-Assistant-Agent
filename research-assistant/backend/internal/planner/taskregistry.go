@@ -232,6 +232,30 @@ var taskTypeRegistry = map[string]TaskTypeSpec{
 		ExecutionKind: ExecutionReal,
 		Description:   "create/reuse persistent sandbox runtime",
 	},
+	"reproduction_spec": {
+		AllowedAgents:           []string{"research_coding_agent"},
+		ExecutionKind:           ExecutionReal,
+		RequiredOutputArtifacts: []string{"reproduction_runtime_spec"},
+		Description:             "derive typed runtime spec from paper/repository inputs",
+	},
+	"runtime_probe": {
+		AllowedAgents:           []string{"sandbox_agent"},
+		ExecutionKind:           ExecutionReal,
+		RequiredOutputArtifacts: []string{"runtime_capabilities", "missing_requirements"},
+		Description:             "probe sandbox host capabilities and fail closed on missing GPU/disk/image",
+	},
+	"image_prepare": {
+		AllowedAgents:           []string{"sandbox_agent"},
+		ExecutionKind:           ExecutionReal,
+		RequiredOutputArtifacts: []string{"runtime_image", "image_digest"},
+		Description:             "ensure runtime image exists and record digest",
+	},
+	"runtime_validate": {
+		AllowedAgents:           []string{"sandbox_agent"},
+		ExecutionKind:           ExecutionReal,
+		RequiredOutputArtifacts: []string{"environment_manifest", "runtime_validation_report"},
+		Description:             "validate imports/run command and emit EnvironmentManifest",
+	},
 	"render_plot": {
 		AllowedAgents:           []string{"coder_agent"},
 		ExecutionKind:           ExecutionReal,

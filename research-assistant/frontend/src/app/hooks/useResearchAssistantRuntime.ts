@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { Node } from '@xyflow/react';
 import type { ChatMessage, ExecuteTaskResultEvent, NodeExecutionState, PlanGraph, Task } from '../../contracts/api';
 import { PLAN_EVENTS, isPlanTerminalEvent, pickImageBase64 } from '../../contracts/events';
-import { approvePlan, cancelPlan, createPlanEventSource, executePlan, executePlanTaskStream, retryTask } from '../../services/api/researchAssistantApi';
+import { approvePlan, cancelPlan, createPlanEventSource, decideRuntimeAction, executePlan, executePlanTaskStream, retryTask } from '../../services/api/researchAssistantApi';
 import { usePlanHistoryHydrator } from './usePlanHistoryHydrator';
 import type { RequestIdentity } from '../../services/api/researchAssistantApi';
 import { getTaskStyleByStatus } from '../../features/shared/agentVisuals';
@@ -295,6 +295,14 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
                 })
               : node));
           }
+          if (event.event_type === PLAN_EVENTS.RUNTIME_ACTION_REQUESTED) {
+            const action = event.payload?.action as { title?: string; kind?: string } | undefined;
+            appendChatMessage({ role: 'system', text: `需要你的运行权限确认：${action?.title || action?.kind || '重要操作'}。请在右侧计划面板允许或拒绝。` });
+            void refreshPlanState?.();
+          }
+          if (event.event_type === PLAN_EVENTS.RUNTIME_ACTION_RESOLVED) {
+            void refreshPlanState?.();
+          }
           if (event.event_type === PLAN_EVENTS.TASK_FAILED && event.task_id) {
             const errorText = String(event.payload?.error || 'Task failed');
             patchNodeState(event.task_id, (prev) => ({
@@ -506,6 +514,27 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
 		[appendChatMessage, connectPlanStream, executionState.isExecuting, identity],
 	);
 
+	const handleRuntimeActionDecision = useCallback(
+		async (planId: string | null, actionId: string, decision: 'approve' | 'reject') => {
+			if (!planId) return;
+			try {
+				const action = await decideRuntimeAction(planId, actionId, decision, identity);
+				appendChatMessage({
+					role: 'system',
+					text: decision === 'approve' ? `已允许运行操作：${action.title}。` : `已拒绝运行操作：${action.title}，计划已停止。`,
+				});
+				await refreshPlanState?.();
+				if (decision === 'approve') {
+					await connectPlanStream(planId);
+				}
+			} catch (error) {
+				console.error(error);
+				appendChatMessage({ role: 'system', text: '运行权限审批失败，请刷新计划状态后重试。' });
+			}
+		},
+		[appendChatMessage, connectPlanStream, identity, refreshPlanState],
+	);
+
 	const handleCancelPlan = useCallback(
 		async (activePlanId: string | null) => {
 			if (!activePlanId) return;
@@ -616,6 +645,7 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
     handleExecuteTask,
     handleRunAllTasks,
 	handleApproveAndRun,
+	handleRuntimeActionDecision,
 	handleCancelPlan,
 	handleRetryFailedPlan,
     appendSelectedTaskLog,

@@ -96,7 +96,7 @@ func (s *Scheduler) CancelPlan(planID, reason string) error {
 				continue
 			}
 			switch task.Status {
-			case models.StatusPending, models.StatusReady, models.StatusInProgress, models.StatusBlocked:
+			case models.StatusPending, models.StatusReady, models.StatusInProgress, models.StatusBlocked, models.StatusAwaitingApproval:
 				task.Status = models.StatusCanceled
 				task.Error = reason
 				task.ExecutionID = ""
@@ -127,6 +127,9 @@ func (s *Scheduler) RetryTask(planID, taskID string) error {
 		}
 		if task.Status == models.StatusInProgress {
 			return fmt.Errorf("cannot retry a task that is currently running")
+		}
+		if task.Status == models.StatusAwaitingApproval {
+			return fmt.Errorf("task is awaiting runtime approval; decide or cancel the action first")
 		}
 		if task.Status != models.StatusFailed && task.Status != models.StatusBlocked && task.Status != models.StatusCanceled {
 			return fmt.Errorf("task cannot be retried from status %s", task.Status)
@@ -254,6 +257,10 @@ executionLoop:
 		availableSlots := s.maxConcurrent - countInProgress(plan)
 		ready := s.findReadyNodes(plan, availableSlots)
 		if len(ready) == 0 {
+			if hasAwaitingApproval(plan) {
+				time.Sleep(200 * time.Millisecond)
+				continue
+			}
 			if allTerminal(plan) {
 				finalStatus := models.StatusCompleted
 				if err := s.store.UpdatePlan(planID, func(current *models.PlanGraph) error {
@@ -529,6 +536,16 @@ func (s *Scheduler) findReadyNodes(plan *models.PlanGraph, availableSlots int) [
 
 func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*models.TaskNode) error {
 	for _, task := range ready {
+		action, pending, err := s.prepareRuntimeGate(planID, task.ID)
+		if err != nil {
+			return err
+		}
+		if pending {
+			return nil
+		}
+		if action != nil && action.Status == models.RuntimeActionRejected {
+			return nil
+		}
 		executionID, leaseOwner, executionEpoch, err := s.markTaskStarted(planID, task.ID)
 		if err != nil {
 			return err
@@ -794,6 +811,13 @@ func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner strin
 		}
 		if strings.TrimSpace(result.ImageBase64) != "" {
 			task.ImageBase64 = result.ImageBase64
+		}
+		for _, artifact := range result.Artifacts {
+			key := strings.TrimSpace(artifact.Key)
+			if key == "" || (strings.TrimSpace(artifact.Value) == "" && strings.TrimSpace(artifact.Location) == "") {
+				continue
+			}
+			plan.Artifacts[key] = artifact
 		}
 		task.ExecutionID = ""
 		task.LeaseOwner = ""
@@ -1115,7 +1139,7 @@ func allTerminal(plan *models.PlanGraph) bool {
 			continue
 		}
 		switch node.Status {
-		case models.StatusPending, models.StatusReady, models.StatusInProgress:
+		case models.StatusPending, models.StatusReady, models.StatusInProgress, models.StatusAwaitingApproval:
 			return false
 		}
 	}

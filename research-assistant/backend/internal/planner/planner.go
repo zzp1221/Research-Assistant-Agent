@@ -1095,16 +1095,20 @@ func buildPaperReproductionNodesV2(intent models.IntentContext) []*models.TaskNo
 	t3 := newNode("Prepare Workspace", "repo_prepare", "coder_agent", repoPrepareDependencies, repoPrepareArtifacts, []string{"workspace_path", "code_file_path", "generated_code", "repo_manifest", "reproduction_mode_report"}, false, context)
 	t3.Inputs = buildPaperReproductionInputs(intent)
 	t4 := newNode("Resolve "+paperTitle+" Dependencies", "resolve_dependencies", "coder_agent", []string{t3.ID}, []string{"workspace_path", "code_file_path", "generated_code", "repo_manifest"}, []string{"dependency_spec"}, false, context)
-	t5 := newNode("Setup Runtime Environment", "prepare_runtime", "sandbox_agent", []string{t4.ID}, []string{"workspace_path", "dependency_spec"}, []string{"runtime_session"}, false, context)
-	t6 := newNode("Install "+paperTitle+" Dependencies", "install_dependencies", "sandbox_agent", []string{t5.ID}, []string{"runtime_session", "dependency_spec"}, []string{"prepared_runtime", "dependency_install_report"}, false, context)
-	t7 := newNode("Execute And Debug Baseline", "paper_code_execute", "research_coding_agent", []string{t6.ID}, []string{"workspace_path", "code_file_path", "generated_code", "prepared_runtime", "repo_manifest"}, []string{"run_metrics", "paper_debug_report", "paper_patch_manifest"}, false, context)
-	t8 := newNode("Compare With Paper Claims", "paper_compare", "data_agent", []string{t7.ID}, []string{"run_metrics", "paper_debug_report", "parsed_paper", "repo_manifest", "reproduction_mode_report"}, []string{"comparison_report"}, false, context)
+	t4b := newNode("Derive Reproduction Runtime Spec", "reproduction_spec", "research_coding_agent", []string{t4.ID}, []string{"paper_metadata", "repo_manifest", "dependency_spec", "parsed_paper"}, []string{"reproduction_runtime_spec"}, false, context)
+	t4c := newNode("Probe Sandbox Runtime Capabilities", "runtime_probe", "sandbox_agent", []string{t4b.ID}, []string{"reproduction_runtime_spec"}, []string{"runtime_capabilities", "missing_requirements"}, false, context)
+	t4d := newNode("Prepare Runtime Image", "image_prepare", "sandbox_agent", []string{t4c.ID}, []string{"reproduction_runtime_spec"}, []string{"runtime_image", "image_digest"}, false, context)
+	t5 := newNode("Setup Runtime Environment", "prepare_runtime", "sandbox_agent", []string{t4d.ID}, []string{"workspace_path", "reproduction_runtime_spec", "runtime_image"}, []string{"runtime_session"}, false, context)
+	t6 := newNode("Install "+paperTitle+" Dependencies", "install_dependencies", "sandbox_agent", []string{t5.ID}, []string{"runtime_session", "dependency_spec", "reproduction_runtime_spec"}, []string{"prepared_runtime", "dependency_install_report"}, false, context)
+	t6b := newNode("Validate Reproduction Runtime", "runtime_validate", "sandbox_agent", []string{t6.ID}, []string{"prepared_runtime", "reproduction_runtime_spec", "runtime_image", "image_digest"}, []string{"environment_manifest", "runtime_validation_report"}, false, context)
+	t7 := newNode("Execute And Debug Baseline", "paper_code_execute", "research_coding_agent", []string{t6b.ID}, []string{"workspace_path", "code_file_path", "generated_code", "prepared_runtime", "repo_manifest", "reproduction_runtime_spec", "environment_manifest"}, []string{"run_metrics", "paper_debug_report", "paper_patch_manifest"}, false, context)
+	t8 := newNode("Compare With Paper Claims", "paper_compare", "data_agent", []string{t7.ID}, []string{"run_metrics", "paper_debug_report", "parsed_paper", "repo_manifest", "reproduction_mode_report", "environment_manifest"}, []string{"comparison_report"}, false, context)
 
 	nodes := []*models.TaskNode{t1, claimRubric, t2}
 	if ablationDesign != nil {
 		nodes = append(nodes, ablationDesign)
 	}
-	nodes = append(nodes, t3, t4, t5, t6, t7, t8)
+	nodes = append(nodes, t3, t4, t4b, t4c, t4d, t5, t6, t6b, t7, t8)
 	lastID := t8.ID
 	lastArtifact := "comparison_report"
 
@@ -1133,6 +1137,9 @@ func buildPaperReproductionNodesV2(intent models.IntentContext) []*models.TaskNo
 		"parsed_paper",
 		"repo_manifest",
 		"reproduction_mode_report",
+		"reproduction_runtime_spec",
+		"environment_manifest",
+		"runtime_validation_report",
 		"dependency_install_report",
 		"run_metrics",
 		"paper_debug_report",

@@ -24,8 +24,10 @@ import (
 )
 
 type RequestPayload struct {
-	Intent      string   `json:"intent" binding:"required"`
-	Attachments []string `json:"attachments,omitempty"`
+	Intent                        string   `json:"intent" binding:"required"`
+	Attachments                   []string `json:"attachments,omitempty"`
+	RuntimePermissionMode         string   `json:"runtime_permission_mode,omitempty"`
+	RuntimePermissionAcknowledged bool     `json:"runtime_permission_acknowledged,omitempty"`
 }
 
 type ChatPayload struct {
