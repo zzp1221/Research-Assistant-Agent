@@ -377,13 +377,7 @@ cd research-assistant/docker-sandbox
 go test ./...
 ```
 
-### 3.5 开发产物与报告
-
-- `plan.md`、`spec.md`、`tasks.md` 是开发过程中的计划/规格/任务记录，默认不进入版本库。
-- `reports/` 下的验收报告、E2E JSON、截图和下载的 PDF fixture 属于本地运行产物；`.gitignore` 只保留 `reports/README.md` 作为目录说明。
-- 需要长期保留的架构说明放在 `docs/`，需要长期保留的测试证据请先脱敏再移入文档，而不是直接提交原始运行日志。
-
-### 3.6 模块说明
+### 3.5 模块说明
 
 - [docs](docs/README.md)：架构图、流程图与项目级文档
 - [research-assistant](research-assistant/README.md)：产品主实现与启动方式
