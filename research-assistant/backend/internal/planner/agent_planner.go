@@ -222,6 +222,13 @@ func normalizePlannerTaskType(bp plannerNodeBlueprint) string {
 		strings.Join(normalizeTokens(bp.OutputArtifacts), " "),
 	}, " ")
 
+	// The registry is the single source of truth for known task types. This
+	// preserves the blueprint's canonical type before the agent-specific
+	// fallback mapping below; dead types are intentionally not accepted.
+	if spec, ok := lookupTaskTypeSpec(strings.TrimSpace(bp.Type)); ok && spec.ExecutionKind != ExecutionDead {
+		return strings.TrimSpace(bp.Type)
+	}
+
 	switch bp.AssignedTo {
 	case "benchmark_agent":
 		if containsAny(context, "benchmark_dataset_audit", "audit dataset", "dataset audit") {

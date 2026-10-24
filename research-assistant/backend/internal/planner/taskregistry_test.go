@@ -201,3 +201,15 @@ func TestTaskRegistryDynamicFrameworkFit(t *testing.T) {
 		t.Fatalf("framework_fit_7 allowed agents=%v", spec.AllowedAgents)
 	}
 }
+
+func TestValidatePlanGraphRejectsUnregisteredNode(t *testing.T) {
+	plan := &models.PlanGraph{
+		ID:        "plan-registry-test",
+		Nodes:     []*models.TaskNode{{ID: "node-1", Type: "unknown_task", AssignedTo: "data_agent", Status: models.StatusPending}},
+		Edges:     []*models.TaskEdge{},
+		Artifacts: map[string]models.Artifact{},
+	}
+	if err := validatePlanGraph(plan); err == nil {
+		t.Fatal("validatePlanGraph accepted an unregistered task node")
+	}
+}
