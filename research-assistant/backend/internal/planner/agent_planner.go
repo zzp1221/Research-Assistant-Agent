@@ -134,6 +134,7 @@ func materializePlannerNodes(blueprints []plannerNodeBlueprint, intent models.In
 		)
 		node.Description = buildPlannerNodeDescription(intent.RawIntent, bp)
 		node.Priority = bp.Priority
+		attachPlannerContextBindings(node, intent)
 		refToID[ref] = node.ID
 		nodes = append(nodes, node)
 	}
@@ -167,7 +168,7 @@ func buildPlannerNodeDescription(rawIntent string, bp plannerNodeBlueprint) stri
 
 func normalizeAssignedTo(value string) string {
 	switch strings.TrimSpace(value) {
-	case "librarian_agent", "coder_agent", "sandbox_agent", "data_agent", "benchmark_agent", "research_coding_agent", "general_agent":
+	case "librarian_agent", "coder_agent", "sandbox_agent", "data_agent", "benchmark_agent", "research_coding_agent", "general_agent", "answer_agent":
 		return value
 	default:
 		return "general_agent"
@@ -354,6 +355,39 @@ func normalizePlannerTaskType(bp plannerNodeBlueprint) string {
 	}
 }
 
+func attachPlannerContextBindings(node *models.TaskNode, intent models.IntentContext) {
+	if node == nil {
+		return
+	}
+	switch node.Type {
+	case "paper_parse":
+		node.InputBindings = appendMissingBinding(node.InputBindings, models.InputBinding{
+			Target: "document_id", Source: models.BindingSource{Kind: "context_document"}, Required: false,
+		})
+		node.InputBindings = appendMissingBinding(node.InputBindings, models.InputBinding{
+			Target: "paper_metadata", Source: models.BindingSource{Kind: "context_paper"}, Required: false,
+		})
+		node.OutputArtifacts = ensureArtifacts(node.OutputArtifacts, "parsed_paper", "paper_metadata", "paper_summary")
+	case "repo_discovery":
+		if intent.IntentType == "Paper_Reproduction" {
+			node.RequiredArtifacts = ensureArtifacts(node.RequiredArtifacts, "paper_metadata")
+		}
+	case "general_synthesis":
+		if intent.Entities != nil && intent.Entities["paper_metadata"] != nil {
+			node.RequiredArtifacts = ensureArtifacts(node.RequiredArtifacts, "paper_summary", "paper_metadata")
+		}
+	}
+}
+
+func appendMissingBinding(bindings []models.InputBinding, binding models.InputBinding) []models.InputBinding {
+	for _, existing := range bindings {
+		if existing.Target == binding.Target {
+			return bindings
+		}
+	}
+	return append(bindings, binding)
+}
+
 func normalizeToken(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	replacer := strings.NewReplacer("-", " ", "_", " ", "/", " ", "(", " ", ")", " ", ",", " ", ".", " ", "\n", " ")
@@ -393,8 +427,10 @@ func normalizePlannerAssignedTo(bp plannerNodeBlueprint) string {
 		return "sandbox_agent"
 	case "framework_research", "paper_parse", "claim_rubric_extract", "general_research":
 		return "librarian_agent"
-	case "framework_recommendation", "ablation_design", "paper_compare", "claim_evidence_build", "verify_result", "general_synthesis":
+	case "framework_recommendation", "ablation_design", "paper_compare", "claim_evidence_build", "verify_result":
 		return "data_agent"
+	case "general_synthesis":
+		return "answer_agent"
 	case "general_process":
 		return "general_agent"
 	default:
@@ -415,6 +451,10 @@ func applyPlannerNodeDefaults(bp plannerNodeBlueprint) plannerNodeBlueprint {
 	case "benchmark_contract_freeze":
 		bp.RequiredArtifacts = ensureArtifacts(bp.RequiredArtifacts, "workspace_path", "benchmark_dataset_audit", "benchmark_split_manifest")
 		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, "benchmark_contract", "benchmark_metric_contract", "benchmark_reward_contract", "benchmark_evaluator_manifest")
+	case "paper_parse":
+		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, "parsed_paper", "paper_metadata", "paper_summary")
+	case "general_synthesis":
+		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, "general_response")
 	case "claim_rubric_extract":
 		bp.RequiredArtifacts = ensureArtifacts(bp.RequiredArtifacts, "parsed_paper")
 		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, "claim_rubric", "claim_rubric_report")

@@ -14,6 +14,15 @@ const ChatSystemPrompt = `你是一个专业的 AI 科研助理。你的任务�
 		2. 如果用户只是普通的咨询，则直接回答。
 		3. 你提供的代码应该是 Python 格式。`
 
+const AnswerSystemPrompt = `你是研究助理的最终回答器。你的任务是直接回答用户的问题，而不是评估上游材料或生成“执行评估报告”。
+
+请严格遵守以下规则：
+1. 直接给出答案，先结论后论据；不要输出“实验目标/执行过程/核心指标分析”这类报告模板。
+2. 必须基于输入中的 research_context、paper_metadata、paper_summary、background_context 回答；有论文内容时引用页码或章节（例如 [p.3 §2.2]）。
+3. 不得编造论文标题、作者、页码、实验数值或引用；材料不足时明确说明缺什么。
+4. 如果用户要求分析论文，输出主要创新点、方法要点和主要局限性；如果用户只是普通提问，直接回答即可。
+5. 不要建议用 mock/fake 结果替代真实论文或实验结论。`
+
 const DataSystemPrompt = `你是一名资深的 AI 科研数据分析师。你的任务是根据代码执行结果、实验日志、指标数据或上游分析材料，生成结构化、专业、可读的 Markdown 评估报告。
 
 请遵循以下格式生成报告：
@@ -196,6 +205,15 @@ const LibrarianFrameworkResearchSystemPrompt = `你是一名专业的技术框�
 4. 如果是 RAG/Agent 框架对比，要强调同数据、同指标、同运行约束；真实模型效果和离线 mock 流程评测必须分开说明。
 5. 直接输出正文，不要加寒暄前缀。`
 
+const LibrarianPaperAnalysisSystemPrompt = `你是一名专业的论文分析员。你的任务是分析用户上传论文的主要创新点、方法结构与局限性，为科研人员提供直接、可核验的文献分析。
+
+请严格遵守以下规则：
+1. 不要编写任何 Python 代码或 Shell 脚本。
+2. 输出结构化 Markdown 分析，必须包含：论文标题与核心问题、主要创新点、方法/算法结构、实验与证据、主要局限性、适用边界。
+3. 每条创新点或局限性尽量标注页码/章节引用（例如 [p.3 §2.2]）；没有依据时明确写“未在提供文本中找到依据”，不得编造。
+4. 不要输出“执行评估报告”“对上游材料的复核”这类元报告；直接回答用户问题。
+5. 不要建议用 mock/fake 替代论文核心方法。`
+
 const LibrarianPaperParseSystemPrompt = `你是一名专业的论文复现分析员。你的任务是解析目标论文的方法、实验设置和复现路径，为真实复现实验提供依据。
 
 请严格遵守以下规则：
@@ -210,6 +228,9 @@ func LibrarianSystemPromptForTask(intentType string, taskType string, taskName s
 	task := strings.ToLower(strings.TrimSpace(taskType))
 	text := strings.ToLower(strings.Join([]string{taskName, description}, "\n"))
 
+	if task == "paper_parse" && intent == "general" {
+		return LibrarianPaperAnalysisSystemPrompt
+	}
 	if intent == "paper_reproduction" || task == "paper_parse" || strings.Contains(text, "paper_reproduction") || strings.Contains(text, "论文复现") || strings.Contains(text, "parse paper") {
 		return LibrarianPaperParseSystemPrompt
 	}
@@ -686,7 +707,7 @@ Your job is to output a valid task DAG in strict JSON.
 
 Rules:
 1. Output JSON only. No markdown, no comments.
-2. Allowed assigned_to values: librarian_agent, coder_agent, sandbox_agent, data_agent, benchmark_agent, research_coding_agent, general_agent.
+2. Allowed assigned_to values: librarian_agent, coder_agent, sandbox_agent, data_agent, benchmark_agent, research_coding_agent, general_agent, answer_agent.
 3. Allowed task type values are the canonical runtime types below. Do not invent new task types:
    framework_research, framework_recommendation,
    generate_code, resolve_dependencies, prepare_runtime, install_dependencies, execute_code, paper_code_execute,

@@ -75,6 +75,7 @@ func RegisterPlanRuntimeRoutes(
 	eventBus := events.NewBus()
 	executor := scheduler.NewRoutedTaskExecutor(librarian, data, coder, specialized...)
 	runner := scheduler.NewScheduler(planStore, executor, eventBus, 2)
+	runner.SetFinalizer(&planner.PlanFinalizer{})
 	runtime := newPlanRuntime(p, planStore, runner, eventBus)
 	runtime.register(apiGroup)
 }
@@ -125,11 +126,41 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 			delete(intentContext.Entities, "experiment_adapter")
 		}
 	}
+	researchContext, contextErr := buildResearchContext(userID, sessionID, payload.Intent, attachments, intentContext.IntentType)
+	if contextErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": contextErr.Error(),
+			"missing_requirements": []models.MissingRequirement{{
+				Kind:        "paper_metadata",
+				Name:        "paper",
+				Detail:      contextErr.Error(),
+				Remediation: "请提供可提取文本的论文 PDF，或在请求中明确给出论文标题。",
+			}},
+		})
+		return
+	}
+	if researchContext.Paper != nil {
+		intentContext.Entities["paper_metadata"] = paperMetadataMap(researchContext.Paper)
+		existingTitle, _ := intentContext.Entities["paper_title"].(string)
+		if strings.TrimSpace(existingTitle) == "" {
+			intentContext.Entities["paper_title"] = researchContext.Paper.Title
+		}
+		if existingQuery, _ := intentContext.Entities["paper_search_query"].(string); strings.TrimSpace(existingQuery) == "" {
+			intentContext.Entities["paper_search_query"] = researchContext.Paper.Title
+		}
+	}
 	plan, err := r.planner.BuildPlan(c.Request.Context(), intentContext)
 	if err != nil {
 		log.Printf("Error generating plan graph: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate plan"})
 		return
+	}
+	if len(attachments) > 0 {
+		plan.Context = researchContext
+		if err := planner.ValidatePlanContextCoverage(plan, researchContext); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "missing_requirements": plan.MissingRequirements})
+			return
+		}
 	}
 	configurePlanGovernance(plan, intentContext, userID, sessionID)
 	if err := r.store.SavePlan(plan); err != nil {
@@ -141,7 +172,7 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 	response := gin.H{
 		"message":        "Plan generated successfully",
 		"plan_graph":     plan,
-		"intent_context": intentContext,
+		"intent_context": publicIntentContext(intentContext),
 		"session_id":     sessionID,
 		"anon_user_id":   userID,
 		"user_id":        userID,

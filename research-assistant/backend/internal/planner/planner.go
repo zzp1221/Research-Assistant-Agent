@@ -107,25 +107,15 @@ func (p *Planner) BuildPlan(ctx context.Context, intent models.IntentContext) (*
 	return plan, nil
 }
 
-// buildFallbackNodes selects the deterministic template for one intent type.
+// buildFallbackNodes selects the deterministic template through the
+// PlanBuilder registry. The switch dispatch is intentionally removed so new
+// intent branches cannot silently copy template wiring.
 func buildFallbackNodes(intent models.IntentContext) []*models.TaskNode {
-	switch intent.IntentType {
-	case "Framework_Evaluation":
-		return buildFrameworkEvaluationNodesV2(intent)
-	case "Paper_Reproduction":
-		return buildPaperReproductionNodesV2(intent)
-	case "Code_Execution":
-		return buildCodeExecutionNodesV2(intent)
-	case "Custom_Benchmark":
-		return buildCustomDatasetBenchmarkNodes(intent)
-	case "AutoResearch":
-		if isDatasetExperimentIntent(intent) {
-			return buildDatasetExperimentNodes(intent)
-		}
-		return buildAutoResearchNodes(intent)
-	default:
-		return buildGeneralNodesV2(intent)
+	nodes, err := buildRegisteredNodes(context.Background(), intent)
+	if err == nil && len(nodes) > 0 {
+		return nodes
 	}
+	return buildGeneralNodesV2(intent)
 }
 
 func newNode(name, taskType, agent string, deps, requiredArtifacts, outputArtifacts []string, parallelizable bool, context string) *models.TaskNode {
@@ -160,6 +150,8 @@ func newNode(name, taskType, agent string, deps, requiredArtifacts, outputArtifa
 			Version:         models.TaskContractVersion,
 			InputArtifacts:  append([]string(nil), requiredArtifacts...),
 			OutputArtifacts: append([]string(nil), outputArtifacts...),
+			InputSchema:     "task.input/v1",
+			OutputSchema:    "task.output/v1",
 			AllowedTools:    allowedToolsForAgent(agent),
 		},
 		Inputs:    map[string]any{},
@@ -1062,7 +1054,11 @@ func buildPaperReproductionNodesV2(intent models.IntentContext) []*models.TaskNo
 	)
 	paperTitle := stringEntity(intent.Entities, "paper_title", "Paper")
 
-	t1 := newNode("Parse "+paperTitle+" & Extract Method", "paper_parse", "librarian_agent", nil, nil, []string{"parsed_paper"}, true, context)
+	t1 := newNode("Parse "+paperTitle+" & Extract Method", "paper_parse", "librarian_agent", nil, nil, []string{"parsed_paper", "paper_metadata", "paper_summary"}, true, context)
+	t1.InputBindings = []models.InputBinding{
+		{Target: "document_id", Source: models.BindingSource{Kind: "context_document"}, Required: false},
+		{Target: "paper_metadata", Source: models.BindingSource{Kind: "context_paper"}, Required: false},
+	}
 	if uploadedFiles, ok := intent.Entities["uploaded_files"]; ok {
 		t1.Inputs["uploaded_files"] = uploadedFiles
 	}
@@ -1077,6 +1073,7 @@ func buildPaperReproductionNodesV2(intent models.IntentContext) []*models.TaskNo
 		context,
 	)
 	t2 := newRepoDiscoveryNode([]string{t1.ID}, context, intent)
+	t2.RequiredArtifacts = append(t2.RequiredArtifacts, "paper_metadata")
 	repoPrepareDependencies := []string{t2.ID}
 	repoPrepareArtifacts := []string{"repo_url", "candidate_repositories", "repo_validation_report"}
 	var ablationDesign *models.TaskNode
@@ -1300,21 +1297,19 @@ func buildCodeExecutionNodesV2(intent models.IntentContext) []*models.TaskNode {
 func buildGeneralNodesV2(intent models.IntentContext) []*models.TaskNode {
 	context := intent.RawIntent
 	normalized := strings.ToLower(context)
-	if hasAny(normalized,
-		"\u8bba\u6587",
-		"paper",
-		"\u603b\u7ed3",
-		"summary",
-		"\u7efc\u8ff0",
-		"report",
-		"\u62a5\u544a",
-		"\u8d21\u732e",
-		"\u5c40\u9650",
-		"rag",
-		"query rewrite",
-	) {
+	paperAnalysis := hasAny(normalized, "\u8bba\u6587", "paper", "\u6587\u732e", "\u8d21\u732e", "\u5c40\u9650") || intent.Entities["paper_metadata"] != nil
+	if paperAnalysis {
+		t1 := newNode("Parse Paper & Extract Method", "paper_parse", "librarian_agent", nil, nil, []string{"parsed_paper", "paper_metadata", "paper_summary"}, true, context)
+		t1.InputBindings = []models.InputBinding{
+			{Target: "document_id", Source: models.BindingSource{Kind: "context_document"}, Required: false},
+			{Target: "paper_metadata", Source: models.BindingSource{Kind: "context_paper"}, Required: false},
+		}
+		t2 := newNode("Synthesize Response", "general_synthesis", "answer_agent", []string{t1.ID}, []string{"paper_summary", "paper_metadata"}, []string{"general_response"}, false, context)
+		return []*models.TaskNode{t1, t2}
+	}
+	if hasAny(normalized, "\u603b\u7ed3", "summary", "\u7efc\u8ff0", "report", "\u62a5\u544a", "rag", "query rewrite") {
 		t1 := newNode("Collect Background Context", "general_research", "librarian_agent", nil, nil, []string{"background_context"}, true, context)
-		t2 := newNode("Synthesize Response", "general_synthesis", "data_agent", []string{t1.ID}, []string{"background_context"}, []string{"general_response"}, false, context)
+		t2 := newNode("Synthesize Response", "general_synthesis", "answer_agent", []string{t1.ID}, []string{"background_context"}, []string{"general_response"}, false, context)
 		return []*models.TaskNode{t1, t2}
 	}
 
@@ -1432,6 +1427,10 @@ func buildRepoDiscoveryInputs(intent models.IntentContext) map[string]any {
 	}
 	if title := stringEntity(intent.Entities, "paper_title", ""); title != "" {
 		inputs["paper_title"] = title
+	} else if metadata, ok := intent.Entities["paper_metadata"].(map[string]any); ok {
+		if title := strings.TrimSpace(fmt.Sprint(metadata["title"])); title != "" {
+			inputs["paper_title"] = title
+		}
 	}
 	if query := stringEntity(intent.Entities, "paper_search_query", ""); query != "" {
 		inputs["paper_search_query"] = query
@@ -1573,6 +1572,19 @@ func validateAgentPlannedNodes(intent models.IntentContext, nodes []*models.Task
 	}
 	if err := validateCriticalNodeContracts(intent, nodes); err != nil {
 		return err
+	}
+	if intent.Entities != nil && intent.Entities["paper_metadata"] != nil &&
+		(intent.IntentType == "General" || intent.IntentType == "Paper_Reproduction") {
+		hasPaperParse := false
+		for _, node := range nodes {
+			if node != nil && node.Type == "paper_parse" {
+				hasPaperParse = true
+				break
+			}
+		}
+		if !hasPaperParse {
+			return fmt.Errorf("paper context requires a paper_parse node")
+		}
 	}
 	if intent.IntentType != "Framework_Evaluation" {
 		return nil

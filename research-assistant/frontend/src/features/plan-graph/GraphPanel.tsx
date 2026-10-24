@@ -1,7 +1,7 @@
 import { lazy, memo, Suspense } from 'react';
 import type { Edge, Node, OnEdgesChange, OnNodesChange } from '@xyflow/react';
 import { CheckCircle2, GitBranch, LoaderCircle, Play, RotateCcw, ShieldCheck, Square } from 'lucide-react';
-import type { IntentContext } from '../../contracts/api';
+import type { IntentContext, MissingRequirement } from '../../contracts/api';
 import type { Task } from '../../contracts/api';
 
 const GraphCanvas = lazy(() => import('./GraphCanvas'));
@@ -13,6 +13,8 @@ interface GraphPanelProps {
   onEdgesChange: OnEdgesChange<Edge>;
   onNodeClick: (_: unknown, node: Node) => void;
   intentContext: IntentContext | null;
+  outcome?: string | null;
+  missingRequirements?: MissingRequirement[];
   runAllText: string;
   graphTitle: string;
   graphHint: string;
@@ -58,6 +60,8 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
     onEdgesChange,
     onNodeClick,
     intentContext,
+    outcome,
+    missingRequirements,
     runAllText,
     graphTitle,
     graphHint,
@@ -92,10 +96,20 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
                   {intentLabel}
                 </span>
               )}
+              {outcome && (
+                <span className="shrink-0 rounded-[3px] border border-accent/30 bg-accent-soft px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-accent-ink">
+                  {outcome}
+                </span>
+              )}
             </div>
             <p className="mt-1 max-w-3xl truncate text-[11.5px] leading-4 text-muted" title={subtitle}>
               {subtitle}
             </p>
+            {missingRequirements && missingRequirements.length > 0 && (
+              <p className="mt-1 max-w-3xl truncate text-[11px] leading-4 text-flag" title={missingRequirements.map((item) => item.detail || item.kind).join('；')}>
+                缺少：{missingRequirements.map((item) => item.name || item.kind).join('、')}
+              </p>
+            )}
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
               <span className="tabular-nums">{nodes.length} 个步骤</span>
               <span className="h-2.5 w-px bg-line" />

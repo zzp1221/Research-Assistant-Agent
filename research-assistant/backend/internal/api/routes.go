@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"regexp"
 	"research-assistant-backend/internal/agent"
+	"research-assistant-backend/internal/documents"
 	intentpkg "research-assistant-backend/internal/intent"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/planner"
@@ -93,8 +94,10 @@ func SetupRoutes(r *gin.Engine) {
 	benchmarkAgent := agent.NewBenchmarkAgent()
 	optimizerURL := strings.TrimSpace(os.Getenv("RESEARCH_OPTIMIZER_URL"))
 	librarianAgent := agent.NewLibrarianAgent()
+	librarianAgent.Documents = documents.NewStore("")
 	dataAgent := agent.NewDataAgent()
 	chatAgent := agent.NewChatAgent(coderAgent)
+	answerAgent := agent.NewAnswerAgent()
 
 	apiGroup := r.Group("/api")
 	apiGroup.Use(APIAuthMiddleware())
@@ -104,7 +107,7 @@ func SetupRoutes(r *gin.Engine) {
 			c.Status(204)
 		})
 
-		RegisterPlanRuntimeRoutes(apiGroup, p, librarianAgent, dataAgent, coderAgent, researchCodingAgent, benchmarkAgent, chatAgent)
+		RegisterPlanRuntimeRoutes(apiGroup, p, librarianAgent, dataAgent, coderAgent, researchCodingAgent, benchmarkAgent, chatAgent, answerAgent)
 		RegisterUploadRoutes(apiGroup)
 
 		apiGroup.GET("/hello", func(c *gin.Context) {
@@ -335,7 +338,7 @@ func DetectIntentType(intent string) string {
 
 	// 论文复现类需要优先于“对比/评估”类判断。
 	// 论文复现需求常包含“与论文指标对比”等词，如果先命中“对比”会被误路由到框架评测。
-	reproKeywords := []string{"复现", "reproduce", "replicate", "论文", "paper", "papers with code", "arxiv", "实现算法"}
+	reproKeywords := []string{"复现", "reproduce", "replicate", "论文复现", "paper reproduction", "papers with code", "arxiv", "实现算法", "复现代码"}
 	if containsAny(intent, reproKeywords) {
 		return "Paper_Reproduction"
 	}
@@ -357,9 +360,14 @@ func DetectIntentType(intent string) string {
 		return "Framework_Evaluation"
 	}
 
+	// 论文分析类不能被“分析”这个宽泛词误判为代码执行。
+	if containsAny(intent, []string{"分析一下这篇论文", "论文的主要创新点", "论文的局限性", "文献分析", "分析这篇论文"}) {
+		return "General"
+	}
+
 	// 代码执行类
 	codeKeywords := []string{
-		"计算", "代码", "运行", "执行", "画图", "分析", "写一个", "生成代码",
+		"计算", "代码", "运行", "执行", "画图", "写一个", "生成代码",
 		"跑一下", "plot", "matplotlib", "numpy", "python",
 	}
 	if containsAny(intent, codeKeywords) {

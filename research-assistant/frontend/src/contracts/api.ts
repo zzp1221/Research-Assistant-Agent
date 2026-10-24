@@ -151,11 +151,21 @@ export interface GraphEdge {
   type: string;
 }
 
+export interface MissingRequirement {
+  kind: string;
+  name?: string;
+  detail?: string;
+  remediation?: string;
+}
+
 export interface PlanGraph {
   id: string;
   user_intent: string;
   intent_type: string;
   status: string;
+  outcome?: string;
+  outcome_reason?: string;
+  missing_requirements?: MissingRequirement[];
   owner_id?: string;
   session_id?: string;
   trace_id: string;

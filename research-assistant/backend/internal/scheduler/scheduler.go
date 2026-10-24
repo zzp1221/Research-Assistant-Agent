@@ -28,6 +28,12 @@ type EventPublisher interface {
 	Publish(planID string, event models.PlanEvent)
 }
 
+// PlanFinalizer computes the semantic plan outcome before the scheduler writes
+// a terminal status. It must not change TaskStatus.
+type PlanFinalizer interface {
+	Finalize(ctx context.Context, plan *models.PlanGraph) error
+}
+
 // NoopEventPublisher is used until the SSE/event bus layer is wired in.
 type NoopEventPublisher struct{}
 
@@ -43,6 +49,7 @@ type Scheduler struct {
 	publisher     EventPublisher
 	maxConcurrent int
 	onTerminal    func(context.Context, *models.PlanGraph)
+	finalizer     PlanFinalizer
 }
 
 func NewScheduler(planStore store.PlanStore, executor TaskExecutor, publisher EventPublisher, maxConcurrent int) *Scheduler {
@@ -66,6 +73,10 @@ func NewScheduler(planStore store.PlanStore, executor TaskExecutor, publisher Ev
 
 func (s *Scheduler) SetOnTerminal(fn func(context.Context, *models.PlanGraph)) {
 	s.onTerminal = fn
+}
+
+func (s *Scheduler) SetFinalizer(finalizer PlanFinalizer) {
+	s.finalizer = finalizer
 }
 
 func (s *Scheduler) CancelPlan(planID, reason string) error {
@@ -252,11 +263,29 @@ executionLoop:
 					if !allTerminal(current) {
 						return ErrPlanStateChanged
 					}
+					outcome := models.OutcomeCompleted
 					if hasFailure(current) {
 						finalStatus = models.StatusFailed
+						outcome = models.OutcomeFailed
+					}
+					if s.finalizer != nil && finalStatus == models.StatusCompleted {
+						if finalizeErr := s.finalizer.Finalize(ctx, current); finalizeErr != nil {
+							finalStatus = models.StatusFailed
+							outcome = models.OutcomeFailed
+							current.OutcomeReason = finalizeErr.Error()
+						} else {
+							outcome = current.Outcome
+							if outcome == "" {
+								outcome = models.OutcomeCompleted
+							}
+						}
+					}
+					if finalStatus == models.StatusFailed && outcome == "" {
+						outcome = models.OutcomeFailed
 					}
 					now := time.Now()
 					current.Status = finalStatus
+					current.Outcome = outcome
 					current.Usage.FinishedAt = &now
 					current.UpdatedAt = now
 					fillMeta(current)
@@ -275,9 +304,15 @@ executionLoop:
 				if finalStatus == models.StatusFailed {
 					eventType = "plan_failed"
 				}
+				latest, _ := s.store.GetPlan(planID)
+				outcome := models.OutcomeCompleted
+				if latest != nil && latest.Outcome != "" {
+					outcome = latest.Outcome
+				}
 				s.publishAndStore(planID, models.PlanEvent{
 					PlanID:    planID,
 					EventType: eventType,
+					Payload:   map[string]any{"outcome": string(outcome)},
 					Timestamp: time.Now(),
 				})
 				if s.onTerminal != nil {
@@ -858,6 +893,9 @@ func (s *Scheduler) finishPlanTerminal(planID string, status models.TaskStatus, 
 		}
 		changed = true
 		plan.Status = status
+		if status == models.StatusFailed {
+			plan.Outcome = models.OutcomeFailed
+		}
 		plan.Usage.FinishedAt = &now
 		plan.UpdatedAt = now
 		for _, task := range plan.Nodes {

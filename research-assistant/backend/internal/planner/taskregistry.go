@@ -24,10 +24,31 @@ const (
 	ExecutionDead ExecutionKind = "dead"
 )
 
+type OutputKind string
+
+const (
+	OutputFinalAnswer    OutputKind = "final_answer"
+	OutputEvidenceReport OutputKind = "evidence_report"
+	OutputMetrics        OutputKind = "metrics"
+	OutputBenchmark      OutputKind = "benchmark_report"
+	OutputPlan           OutputKind = "plan"
+	OutputArtifactRef    OutputKind = "artifact_ref"
+)
+
+type EvidenceClass string
+
+const (
+	EvidenceExecution EvidenceClass = "execution_derived"
+	EvidencePaper     EvidenceClass = "paper_derived"
+	EvidenceLLM       EvidenceClass = "llm_inference"
+)
+
 // TaskTypeSpec is the single source of truth for a planner task type.
 type TaskTypeSpec struct {
 	AllowedAgents           []string
 	ExecutionKind           ExecutionKind
+	OutputKind              OutputKind
+	EvidenceClass           EvidenceClass
 	RequiredOutputArtifacts []string
 	Description             string
 }
@@ -146,6 +167,8 @@ var taskTypeRegistry = map[string]TaskTypeSpec{
 	"framework_report": {
 		AllowedAgents: []string{"data_agent"},
 		ExecutionKind: ExecutionLLM,
+		OutputKind:    OutputEvidenceReport,
+		EvidenceClass: EvidenceExecution,
 		Description:   "LLM benchmark/comparison report; report-only",
 	},
 	"framework_research": {
@@ -156,17 +179,24 @@ var taskTypeRegistry = map[string]TaskTypeSpec{
 	"general_process": {
 		AllowedAgents: []string{"general_agent"},
 		ExecutionKind: ExecutionLLM,
+		OutputKind:    OutputFinalAnswer,
+		EvidenceClass: EvidenceLLM,
 		Description:   "general chat answer through ChatAgent",
 	},
 	"general_research": {
 		AllowedAgents: []string{"librarian_agent"},
 		ExecutionKind: ExecutionLLM,
+		OutputKind:    OutputEvidenceReport,
+		EvidenceClass: EvidenceLLM,
 		Description:   "LLM background research report; no dedicated retrieval tool",
 	},
 	"general_synthesis": {
-		AllowedAgents: []string{"data_agent"},
-		ExecutionKind: ExecutionLLM,
-		Description:   "LLM final synthesis report",
+		AllowedAgents:           []string{"answer_agent"},
+		ExecutionKind:           ExecutionLLM,
+		OutputKind:              OutputFinalAnswer,
+		EvidenceClass:           EvidenceLLM,
+		RequiredOutputArtifacts: []string{"general_response"},
+		Description:             "direct user-facing answer through AnswerAgent",
 	},
 	"generate_code": {
 		AllowedAgents: []string{"coder_agent"},
@@ -186,12 +216,16 @@ var taskTypeRegistry = map[string]TaskTypeSpec{
 	"paper_compare": {
 		AllowedAgents: []string{"data_agent"},
 		ExecutionKind: ExecutionLLM,
+		OutputKind:    OutputEvidenceReport,
+		EvidenceClass: EvidenceExecution,
 		Description:   "LLM comparison report; not a numeric comparator",
 	},
 	"paper_parse": {
 		AllowedAgents: []string{"librarian_agent"},
 		ExecutionKind: ExecutionLLM,
-		Description:   "LLM paper analysis from supplied text; not a structured PDF parser",
+		OutputKind:    OutputArtifactRef,
+		EvidenceClass: EvidencePaper,
+		Description:   "LLM paper analysis plus paper_metadata/paper_summary; not a standalone structured PDF parser",
 	},
 	"prepare_runtime": {
 		AllowedAgents: []string{"sandbox_agent"},
@@ -228,6 +262,8 @@ var taskTypeRegistry = map[string]TaskTypeSpec{
 	"verify_result": {
 		AllowedAgents: []string{"data_agent"},
 		ExecutionKind: ExecutionLLM,
+		OutputKind:    OutputEvidenceReport,
+		EvidenceClass: EvidenceExecution,
 		Description:   "LLM summarization/verification report; no programmatic verifier",
 	},
 	// Dead types kept only to reject old blueprints. Do not add them to planner

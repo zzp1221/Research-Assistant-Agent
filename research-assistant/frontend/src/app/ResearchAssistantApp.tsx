@@ -14,7 +14,7 @@ import { useGraphExecutionViewModel } from './viewModels/useGraphExecutionViewMo
 import { ExecutionSidebar } from '../features/execution/ExecutionSidebar';
 import { GraphPanel } from '../features/plan-graph/GraphPanel';
 import { buildGraphLayout } from '../features/plan-graph/buildGraphLayout';
-import type { IntentContext } from '../contracts/api';
+import type { IntentContext, MissingRequirement } from '../contracts/api';
 import { isPdfAttachment } from '../features/pdf-viewer/pdfAttachment';
 
 interface ResearchAssistantAppShellProps {
@@ -133,6 +133,8 @@ interface ResearchAssistantWorkspaceContentProps {
     intentContext: IntentContext | null;
     activePlanId: string | null;
     activePlanStatus: string | null;
+    activePlanOutcome: string | null;
+    activePlanMissingRequirements: MissingRequirement[];
     isLoggedIn: boolean;
     userId: string | null;
     loginInput: string;
@@ -159,6 +161,8 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
     intentContext: chatFlow.intentContext,
     activePlanId: chatFlow.activePlanId,
     activePlanStatus: chatFlow.activePlanStatus,
+    activePlanOutcome: chatFlow.activePlanOutcome,
+    activePlanMissingRequirements: chatFlow.activePlanMissingRequirements,
     layout,
     logsEndRef,
   });
@@ -352,6 +356,8 @@ export default function ResearchAssistantApp() {
           intentContext: chatFlow.intentContext,
           activePlanId: chatFlow.activePlanId,
           activePlanStatus: chatFlow.activePlanStatus,
+          activePlanOutcome: chatFlow.activePlanGraph?.outcome ?? null,
+          activePlanMissingRequirements: chatFlow.activePlanGraph?.missing_requirements ?? [],
           isLoggedIn: chatFlow.isLoggedIn,
           userId: chatFlow.userId,
           loginInput: chatFlow.loginInput,
