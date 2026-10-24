@@ -141,7 +141,7 @@ func newNode(name, taskType, agent string, deps, requiredArtifacts, outputArtifa
 
 	now := time.Now()
 	displayName := bilingualTaskName(name)
-	return &models.TaskNode{
+	node := &models.TaskNode{
 		ID:                uuid.New().String(),
 		Name:              displayName,
 		Type:              taskType,
@@ -166,6 +166,16 @@ func newNode(name, taskType, agent string, deps, requiredArtifacts, outputArtifa
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+	// Fail fast when a template asks for an unregistered task type, a dead type,
+	// or an agent that is not allowed for that type. A fake node must never reach
+	// the scheduler.
+	if err := validateTaskNode(node); err != nil {
+		// Keep constructing the node so the caller can fall back cleanly; the
+		// plan-level validator will reject it instead of crashing the process.
+		node.Error = err.Error()
+		log.Printf("planner built invalid task node %q: %v", displayName, err)
+	}
+	return node
 }
 
 func allowedToolsForAgent(agent string) []string {
@@ -885,6 +895,9 @@ func validatePlanGraph(plan *models.PlanGraph) error {
 	if plan == nil {
 		return fmt.Errorf("plan graph is nil")
 	}
+	if err := validateTaskRegistry(plan.Nodes); err != nil {
+		return err
+	}
 
 	nodeMap := make(map[string]*models.TaskNode, len(plan.Nodes))
 	inDegree := make(map[string]int, len(plan.Nodes))
@@ -1287,14 +1300,6 @@ func buildCodeExecutionNodesV2(intent models.IntentContext) []*models.TaskNode {
 func buildGeneralNodesV2(intent models.IntentContext) []*models.TaskNode {
 	context := intent.RawIntent
 	normalized := strings.ToLower(context)
-	if stringEntity(intent.Entities, "paper_task", "") == "summary" {
-		title := stringEntity(intent.Entities, "paper_title", "Paper")
-		t1 := newNode("Read "+title+" Context", "paper_context", "librarian_agent", nil, nil, []string{"paper_context"}, true, context)
-		t2 := newNode("Summarize Contributions", "paper_contributions", "data_agent", []string{t1.ID}, []string{"paper_context"}, []string{"paper_contributions"}, true, context)
-		t3 := newNode("List Limitations And Risks", "paper_limitations", "data_agent", []string{t1.ID}, []string{"paper_context"}, []string{"paper_limitations"}, true, context)
-		t4 := newNode("Compose Paper Summary", "paper_summary", "data_agent", []string{t2.ID, t3.ID}, []string{"paper_contributions", "paper_limitations"}, []string{"general_response"}, false, context)
-		return []*models.TaskNode{t1, t2, t3, t4}
-	}
 	if hasAny(normalized,
 		"\u8bba\u6587",
 		"paper",
@@ -1633,6 +1638,9 @@ func validateAgentPlannedNodes(intent models.IntentContext, nodes []*models.Task
 }
 
 func validateCriticalNodeContracts(intent models.IntentContext, nodes []*models.TaskNode) error {
+	if err := validateTaskRegistry(nodes); err != nil {
+		return err
+	}
 	if intent.IntentType != "Code_Execution" && intent.IntentType != "Framework_Evaluation" && intent.IntentType != "Paper_Reproduction" && intent.IntentType != "AutoResearch" && intent.IntentType != "Custom_Benchmark" && intent.IntentType != "General" {
 		return nil
 	}
@@ -1890,10 +1898,6 @@ func validateCriticalNodeContracts(intent models.IntentContext, nodes []*models.
 					hasFinalAnswer = true
 				}
 			case "general_synthesis":
-				if containsArtifact(node.OutputArtifacts, "general_response") {
-					hasFinalAnswer = true
-				}
-			case "paper_summary":
 				if containsArtifact(node.OutputArtifacts, "general_response") {
 					hasFinalAnswer = true
 				}
