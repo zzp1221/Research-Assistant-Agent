@@ -1,4 +1,4 @@
-import { lazy, memo, Suspense } from 'react';
+import { lazy, memo, Suspense, useRef, useState } from 'react';
 import type { Edge, Node, OnEdgesChange, OnNodesChange } from '@xyflow/react';
 import { CheckCircle2, GitBranch, LoaderCircle, Play, RotateCcw, ShieldAlert, ShieldCheck, Square } from 'lucide-react';
 import type { IntentContext, MissingRequirement, RuntimeAction } from '../../contracts/api';
@@ -17,7 +17,7 @@ interface GraphPanelProps {
   missingRequirements?: MissingRequirement[];
   runtimeActions?: RuntimeAction[];
   runtimePermissionMode?: string | null;
-  onRuntimeActionDecision?: (actionId: string, decision: 'approve' | 'reject') => void;
+  onRuntimeActionDecision?: (actionId: string, decision: 'approve' | 'reject') => Promise<boolean | void> | boolean | void;
   runAllText: string;
   graphTitle: string;
   graphHint: string;
@@ -40,6 +40,38 @@ const intentLabels: Record<string, string> = {
 };
 
 const terminalNodeStatuses = new Set(['completed', 'failed', 'skipped', 'canceled']);
+
+const formatRuntimeActionBytes = (bytes?: number): string => {
+  if (!bytes || bytes <= 0) return '';
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+};
+
+const describeRuntimeAction = (action: RuntimeAction): string => {
+  const details = action.details ?? {};
+  const parts: string[] = [];
+  if (typeof details.image === 'string' && details.image.trim() !== '') {
+    const registry = typeof details.registry === 'string' && details.registry !== 'docker.io' ? ` (${details.registry})` : '';
+    parts.push(`镜像 ${details.image}${registry}`);
+  }
+  if (Array.isArray(details.packages) && details.packages.length > 0) {
+    parts.push(`依赖 ${details.packages.map(String).join('、')}`);
+  }
+  if (typeof details.gpu_type === 'string' && details.gpu_type.trim() !== '') {
+    parts.push(`GPU ${details.gpu_type}`);
+  }
+  if (typeof details.cuda === 'string' && details.cuda.trim() !== '') {
+    parts.push(`CUDA ${details.cuda}`);
+  }
+  if (details.network_access === true) {
+    parts.push('运行阶段访问网络');
+  }
+  const estimatedBytes = formatRuntimeActionBytes(action.estimated_bytes);
+  if (estimatedBytes) parts.push(`预计下载 ${estimatedBytes}`);
+  if (typeof action.estimated_sec === 'number' && action.estimated_sec > 0) parts.push(`预计 ${action.estimated_sec}s`);
+  return parts.join(' · ');
+};
 
 function GraphCanvasSkeleton() {
   return (
@@ -89,6 +121,23 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
     ? experimentSearchTask.Inputs.experiment_max_parallel_trials
     : 4;
   const pendingRuntimeActions = (runtimeActions ?? []).filter((action) => action.status === 'pending');
+  const [runtimeDecision, setRuntimeDecision] = useState<{ actionId: string; decision: 'approve' | 'reject' } | null>(null);
+  const runtimeDecisionLockRef = useRef(false);
+  const runtimeDecisionBusy = runtimeDecision !== null;
+
+  const handleRuntimeActionDecision = async (actionId: string, decision: 'approve' | 'reject') => {
+    if (runtimeDecisionLockRef.current) return;
+    runtimeDecisionLockRef.current = true;
+    setRuntimeDecision({ actionId, decision });
+    try {
+      await onRuntimeActionDecision?.(actionId, decision);
+    } catch {
+      // The runtime hook already reports approval failures in the chat.
+    } finally {
+      runtimeDecisionLockRef.current = false;
+      setRuntimeDecision(null);
+    }
+  };
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col bg-paper">
@@ -201,19 +250,42 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
             需要运行权限确认
           </div>
           <div className="space-y-1.5">
-            {pendingRuntimeActions.map((action) => (
-              <div key={action.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[5px] border border-warn/20 bg-surface px-2.5 py-1.5 text-[11.5px]">
-                <div className="min-w-0">
-                  <span className="font-medium text-ink">{action.title}</span>
-                  <span className="ml-1 text-muted">({action.kind})</span>
-                  {action.risk && <span className="ml-1 text-[10.5px] uppercase text-warn">{action.risk}</span>}
+            {pendingRuntimeActions.map((action) => {
+              const detailsText = describeRuntimeAction(action);
+              const isThisActionBusy = runtimeDecision?.actionId === action.id;
+              return (
+                <div key={action.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[5px] border border-warn/20 bg-surface px-2.5 py-1.5 text-[11.5px]">
+                  <div className="min-w-0">
+                    <div>
+                      <span className="font-medium text-ink">{action.title}</span>
+                      <span className="ml-1 text-muted">({action.kind})</span>
+                      {action.risk && <span className="ml-1 text-[10.5px] uppercase text-warn">{action.risk}</span>}
+                    </div>
+                    {detailsText && <p className="mt-0.5 max-w-[42rem] break-words text-[10.5px] leading-4 text-muted" title={detailsText}>{detailsText}</p>}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={runtimeDecisionBusy}
+                      aria-busy={isThisActionBusy && runtimeDecision?.decision === 'approve'}
+                      onClick={() => void handleRuntimeActionDecision(action.id, 'approve')}
+                      className="rounded-[4px] bg-accent px-2 py-1 text-[11px] font-semibold text-white hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isThisActionBusy && runtimeDecision?.decision === 'approve' ? '提交中…' : '允许一次'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={runtimeDecisionBusy}
+                      aria-busy={isThisActionBusy && runtimeDecision?.decision === 'reject'}
+                      onClick={() => void handleRuntimeActionDecision(action.id, 'reject')}
+                      className="rounded-[4px] border border-flag/30 px-2 py-1 text-[11px] font-medium text-flag hover:bg-flag-soft disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isThisActionBusy && runtimeDecision?.decision === 'reject' ? '提交中…' : '拒绝'}
+                    </button>
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <button type="button" onClick={() => onRuntimeActionDecision?.(action.id, 'approve')} className="rounded-[4px] bg-accent px-2 py-1 text-[11px] font-semibold text-white hover:bg-accent-strong">允许一次</button>
-                  <button type="button" onClick={() => onRuntimeActionDecision?.(action.id, 'reject')} className="rounded-[4px] border border-flag/30 px-2 py-1 text-[11px] font-medium text-flag hover:bg-flag-soft">拒绝</button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

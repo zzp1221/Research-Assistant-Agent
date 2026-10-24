@@ -39,7 +39,7 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
       runtimeActions: activePlanRuntimeActions ?? [],
       runtimePermissionMode: activePlanRuntimePolicyMode ?? null,
       onRuntimeActionDecision: (actionId: string, decision: 'approve' | 'reject') =>
-        void runtime.actions.handleRuntimeActionDecision(activePlanId, actionId, decision),
+        runtime.actions.handleRuntimeActionDecision(activePlanId, actionId, decision),
       runAllText: uiText.runAll,
       graphTitle: uiText.graphTitle,
       graphHint: uiText.graphHint,

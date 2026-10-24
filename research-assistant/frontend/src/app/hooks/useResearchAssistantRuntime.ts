@@ -514,9 +514,11 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
 		[appendChatMessage, connectPlanStream, executionState.isExecuting, identity],
 	);
 
+	const runtimeDecisionInFlightRef = useRef(false);
 	const handleRuntimeActionDecision = useCallback(
-		async (planId: string | null, actionId: string, decision: 'approve' | 'reject') => {
-			if (!planId) return;
+		async (planId: string | null, actionId: string, decision: 'approve' | 'reject'): Promise<boolean> => {
+			if (!planId || runtimeDecisionInFlightRef.current) return false;
+			runtimeDecisionInFlightRef.current = true;
 			try {
 				const action = await decideRuntimeAction(planId, actionId, decision, identity);
 				appendChatMessage({
@@ -527,9 +529,13 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
 				if (decision === 'approve') {
 					await connectPlanStream(planId);
 				}
+				return true;
 			} catch (error) {
 				console.error(error);
 				appendChatMessage({ role: 'system', text: '运行权限审批失败，请刷新计划状态后重试。' });
+				return false;
+			} finally {
+				runtimeDecisionInFlightRef.current = false;
 			}
 		},
 		[appendChatMessage, connectPlanStream, identity, refreshPlanState],

@@ -32,7 +32,9 @@ function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || !graphExecutionViewModel.executionSidebarProps) return;
+      if (event.key !== 'Escape') return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      if (!graphExecutionViewModel.executionSidebarProps) return;
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
       graphExecutionViewModel.executionSidebarProps.onClose();
