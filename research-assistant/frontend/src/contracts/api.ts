@@ -224,6 +224,8 @@ export interface PlanGraph {
     blocked_nodes: number;
     in_progress_nodes: number;
     ready_nodes: number;
+    planner_source?: 'agent' | 'template' | string;
+    planner_fallback_reason?: string;
   };
 }
 

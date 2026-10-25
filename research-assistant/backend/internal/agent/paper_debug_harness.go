@@ -355,6 +355,13 @@ func paperDebugWorkspaceEntry(task *models.Task) (string, string, string, error)
 	return filepath.Clean(workspacePath), path, relative, nil
 }
 
+// workspaceRelativeEntry resolves a host path (absolute or workspace-relative)
+// to a workspace-relative slash path and validates it cannot escape the
+// workspace. It is shared by the paper debugger and reproduction_spec.
+func workspaceRelativeEntry(workspacePath, candidate string) (string, string, error) {
+	return paperDebugExistingPythonPath(workspacePath, candidate)
+}
+
 func paperDebugExistingPythonPath(workspacePath, candidate string) (string, string, error) {
 	workspacePath = filepath.Clean(workspacePath)
 	candidate = strings.TrimSpace(candidate)

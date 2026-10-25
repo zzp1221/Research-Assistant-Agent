@@ -70,7 +70,10 @@ func TestStripInlinePipInstallKeepsPythonSyntaxValid(t *testing.T) {
 
 func TestPipInstallArgsUsesConfiguredIndex(t *testing.T) {
 	t.Setenv("PIP_INDEX_URL", "https://mirrors.example/simple/")
-	args := pipInstallArgs("numpy==2.1.3")
+	args, err := pipInstallArgs("numpy==2.1.3")
+	if err != nil {
+		t.Fatal(err)
+	}
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "--index-url https://mirrors.example/simple/") || !strings.HasSuffix(joined, "numpy==2.1.3") {
 		t.Fatalf("unexpected pip args: %s", joined)
@@ -90,5 +93,11 @@ func TestMinimumSupportedPythonMinor(t *testing.T) {
 		if actual := minimumSupportedPythonMinor(constraint); actual != expected {
 			t.Fatalf("minimumSupportedPythonMinor(%q)=%d, want %d", constraint, actual, expected)
 		}
+	}
+}
+
+func TestPipInstallArgsRejectsEmptyPackageList(t *testing.T) {
+	if _, err := pipInstallArgs("  "); err == nil {
+		t.Fatal("empty pip install must be rejected")
 	}
 }

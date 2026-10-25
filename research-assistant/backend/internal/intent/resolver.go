@@ -49,34 +49,34 @@ func NewResolverFromEnv() *Resolver {
 
 func (r *Resolver) Resolve(ctx context.Context, raw string, rule models.IntentContext) models.IntentContext {
 	if r == nil {
-		return rule
+		return postValidate(rule)
 	}
 	mode := strings.ToLower(strings.TrimSpace(r.Mode))
 	if mode == "" || mode == ModeRule {
-		return rule
+		return postValidate(rule)
 	}
 	if mode == ModeShadow {
 		r.runShadow(raw, rule)
-		return rule
+		return postValidate(rule)
 	}
 	if mode != ModeLLM && mode != ModeHybrid {
 		log.Printf("[intent] unknown INTENT_ROUTER_MODE=%q, using rule context", r.Mode)
-		return rule
+		return postValidate(rule)
 	}
 	if mode == ModeHybrid && r.ruleAuthoritative(raw, rule) {
 		rule.Metadata = ensureMetadata(rule.Metadata)
 		rule.Metadata["intent_router_mode"] = "rule_fast_path"
-		return rule
+		return postValidate(rule)
 	}
 	if r.Classifier == nil {
 		log.Printf("[intent] %s mode requested but INTENT_SERVICE_URL is empty; using rule context", mode)
-		return rule
+		return postValidate(rule)
 	}
 
 	classified, err := r.Classifier.Classify(ctx, raw)
 	if err != nil {
 		log.Printf("[intent] LLM classifier failed, falling back to rule: %v", err)
-		return rule
+		return postValidate(rule)
 	}
 	if classified == nil || classified.Confidence < r.Threshold {
 		confidence := 0.0
@@ -84,7 +84,7 @@ func (r *Resolver) Resolve(ctx context.Context, raw string, rule models.IntentCo
 			confidence = classified.Confidence
 		}
 		log.Printf("[intent] LLM confidence %.2f below threshold %.2f, using rule context", confidence, r.Threshold)
-		return rule
+		return postValidate(rule)
 	}
 	return mergeAndValidate(rule, *classified, mode)
 }
@@ -123,13 +123,16 @@ func mergeAndValidate(rule models.IntentContext, classified Classification, mode
 	llmType := normalizeIntentType(classified.IntentType)
 	if llmType == "" {
 		log.Printf("[intent] unsupported LLM intent_type=%q, using rule context", classified.IntentType)
-		return rule
+		return postValidate(rule)
 	}
 	// High-risk intents must be supported by a rule signal; the model cannot
 	// upgrade a generic request into an expensive AutoResearch/Benchmark plan.
+	// The rule context is post-validated first so its own misclassification is
+	// repaired before the comparison.
 	if (llmType == "AutoResearch" || llmType == "Custom_Benchmark") && rule.IntentType != llmType {
-		log.Printf("[intent] model proposed high-risk intent %s without rule support, keeping rule intent %s", llmType, rule.IntentType)
-		return rule
+		validatedRule := postValidate(rule)
+		log.Printf("[intent] model proposed high-risk intent %s without rule support, keeping rule intent %s", llmType, validatedRule.IntentType)
+		return validatedRule
 	}
 
 	merged := rule
@@ -149,7 +152,14 @@ func mergeAndValidate(rule models.IntentContext, classified Classification, mode
 	for key, value := range classified.Entities {
 		merged.Entities[key] = value
 	}
-	return postValidate(merged)
+	merged = postValidate(merged)
+	// A custom benchmark without uploaded data is just a code-execution task;
+	// do not let the model route it into the expensive benchmark pipeline.
+	if merged.IntentType == "Custom_Benchmark" && !hasUploadedFiles(merged.Entities) {
+		merged.IntentType = "Code_Execution"
+		appendReasoning(&merged, "custom benchmark without uploaded data downgraded to Code_Execution")
+	}
+	return merged
 }
 
 func postValidate(ctx models.IntentContext) models.IntentContext {
@@ -178,8 +188,15 @@ func postValidate(ctx models.IntentContext) models.IntentContext {
 			ctx.IntentType = "Code_Execution"
 			appendReasoning(&ctx, "no framework entity for a plotting request; downgraded to Code_Execution")
 		} else if len(frameworks) == 0 && !ContainsFrameworkContext(ctx.RawIntent) {
-			ctx.IntentType = "General"
-			appendReasoning(&ctx, "generic comparison without framework context; downgraded to General")
+			// A generic "compare performance" request over code is a code task,
+			// never a framework benchmark (D3).
+			if ContainsBenchmarkIntent(ctx.RawIntent) && ContainsCodeIntent(ctx.RawIntent) {
+				ctx.IntentType = "Code_Execution"
+				appendReasoning(&ctx, "generic performance comparison over code; downgraded to Code_Execution")
+			} else {
+				ctx.IntentType = "General"
+				appendReasoning(&ctx, "generic comparison without framework context; downgraded to General")
+			}
 		}
 	case "Code_Execution":
 		if len(frameworks) > 0 && ContainsBenchmarkIntent(ctx.RawIntent) {
@@ -193,6 +210,9 @@ func postValidate(ctx models.IntentContext) models.IntentContext {
 		} else if len(frameworks) > 0 && ContainsComparisonIntent(ctx.RawIntent) {
 			ctx.IntentType = "Framework_Evaluation"
 			appendReasoning(&ctx, "framework entities plus comparison signal; upgraded to Framework_Evaluation")
+		} else if ContainsBenchmarkIntent(ctx.RawIntent) && ContainsCodeIntent(ctx.RawIntent) {
+			ctx.IntentType = "Code_Execution"
+			appendReasoning(&ctx, "performance comparison over code; upgraded to Code_Execution")
 		}
 	}
 	return ctx
@@ -244,6 +264,19 @@ func containsStrongPaperSignal(text string) bool {
 		if strings.Contains(lower, keyword) {
 			return true
 		}
+	}
+	return false
+}
+
+func hasUploadedFiles(entities map[string]any) bool {
+	if entities == nil {
+		return false
+	}
+	switch value := entities["uploaded_files"].(type) {
+	case []map[string]any:
+		return len(value) > 0
+	case []any:
+		return len(value) > 0
 	}
 	return false
 }

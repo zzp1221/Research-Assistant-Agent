@@ -25,6 +25,7 @@
 
 ## 其他文档
 
+- [缺陷修复文档（2026-10-25）](defect-remediation-2026-10-25.md)：D1–D10 的「为什么修 / 哪里有问题 / 怎么修」，含落地顺序与验收清单
 - [根 README](../README.md)：项目定位、快速开始、API 摘要与运行边界
 - [research-assistant/README.md](../research-assistant/README.md)：产品主实现
 - [research-assistant/docs/phase1.md](../research-assistant/docs/phase1.md)：PDF 阅读、划词翻译与结果可读性

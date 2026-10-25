@@ -1,0 +1,60 @@
+                      Fast Algorithms                   for Mining              Association           Rules
+
+                                   Rakesh Agrawal                         Ramakrishnan      S&ant*
+
+                                             IBM Almaden Research Center
+                                          650 Harry Road, San Jose, CA 95120
+
+
+
+Abstract                                                                  tires and auto accessoriesalso get automotive services
+We consider the problem of discovering association rules                  done. Finding all such rules is valuable for cross-
+between items in a large database of sales transactions.                  marketing and attached mailing applications. Other
+We present two new algorithms for solving thii problem                    applications include catalog design, add-on sales,
+that are fundamentally     different from the known algo-                 store layout, and customer segmentation based on
+rithms. Empirical evaluation shows that these algorithms                  buying patterns. The databases involved in these
+outperform the known algorithms by factors ranging from                   applications are very large. It is imperative, therefore,
+three for small problems to more than an order of mag-                    to have fast algorithms for this task.
+nitude for large problems.      We also show how the best
+features of the two proposedalgorithms can be combined                       The following is a formal statement of the problem
+into a hybrid algorithm, called AprioriHybrid.          Scale-up          [4]: Let Z = {ir,iz, . . . , im} be a set of literals,
+experiments show that AprioriHybrid        scales linearly with           called items. Let 2) be a set of transactions, where
+the number of transactions.       AprioriHybrid    also has ex-           each transaction T is a set of items such that T c
+cellent scale-up properties with respect to the transaction               Z. Associated with each transaction is a unique
+size and the number of items in the database.                             identifier, called its TID. We say that a transaction
+                                                                          T contains X, a set of some items in Z, if X c T.
+1 Introduction                                                            An association rzle is an implication of the form
+Progress in bar-code technology has made it possi-                        X q Y, where X C Z, Y c 2, and X rl Y = 0.
+ble for retail organizations to collect and store mas-                    The rule X a Y holds in the transaction set ‘D with
+sive amounts of sales data, referred to as the basket                      confidence c if c% of transactions in D that contain
+data. A record in such data typically consists of the                     X also contain Y. The rule X _ Y has support s
+transaction date and the items bought in the trans-                       in the transaction set V if s% of transactions in V
+action. Successful organizations view such databases                      contain X U Y. Our rules are somewhat more general
+as important pieces of the marketing infrastructure.                      than in [4] in that we allow a consequent to have more
+They are interested in instituting information-driven                     than one item.
+marketing processes, managed by database technol-                            Given a set of transactions ‘D, the problem of min-
+ogy, that enable marketers to develop and implement                       ing association rules is to generate all association rules
+customized marketing programs and strategies [S].                         that have support and confidence greater than the
+   The problem of mining association rules over basket                    user-specified minimum support (called minsup) and
+data was introduced in [4]. An example of such a                          minimum confidence (called minconf) respectively.
+rule might be that 98% of customers that purchase                         Our discussion is neutral with respect to the repre-
+                                                                          sentation of V. For example, V could be a data file,
+   *Visiting from the Department of Computer Science, Uni-
+versity of Wisconsin, Madison.
+                                                                          a relational table, or the result of a relational expres-
+      Permission to copy without fee all or part of this material         sion.
+ is granted provided that the copies are not made OT distributed             An algorithm for finding all association rules,
+for direct commercial advantage, the VLDB copyright notice
+ and the title of the publication and itr date appear, and notice         henceforth referred to as the AIS algorithm, was pre-
+ is given that copying is by permission of the Very Large Data            sented in [4]. Another algorithm for this task, called
+ Base Endowment.      To copq otherwise, or to republish, nquins          the SETM algorithm, has been proposed in [13]. In
+ a fee and/or special permisrion from the Endowment.
+                                                                          this paper, we present two new algorithms, Apriori
+Proceedings of the 20th VLDB              Conference                       and AprioriTid, that differ fundamentally from these
+Santiago, Chile, 1994                                                      algorithms. We present experimental results showing
+
+
+
+
+                                                                    487
+

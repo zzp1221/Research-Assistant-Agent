@@ -14,6 +14,7 @@ import (
 	"research-assistant-backend/internal/documents"
 	intentpkg "research-assistant-backend/internal/intent"
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/paperid"
 	"research-assistant-backend/internal/planner"
 	"research-assistant-backend/internal/sandbox"
 	"research-assistant-backend/internal/scheduler"
@@ -35,7 +36,6 @@ type ChatPayload struct {
 }
 
 var (
-	routePaperArxivIDRe       = regexp.MustCompile(`\b\d{4}\.\d{4,5}\b`)
 	routeGitHubRepoURLRe      = regexp.MustCompile(`https?://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\.git)?`)
 	routeRepositoryRevisionRe = regexp.MustCompile(`(?i)(?:commit|revision|提交|版本)\s*(?:[:：=]|为|是)?\s*([a-f0-9]{64}|[a-f0-9]{40})\b`)
 )
@@ -351,15 +351,18 @@ func DetectIntentType(intent string) string {
 		return "Code_Execution"
 	}
 
-	// 框架对比评测类关键词（扩展版）
-	evalKeywords := []string{
-		"对比", "比较", "评估", "选型", "哪个好", "哪个更", "区别", "异同",
-		"rag", "langchain", "llamaindex", "llama_index", "haystack",
-		"dspy", "autogen", "crewai", "langgraph", "framework",
-		"框架", "测试两", "比一比", "pk", "vs",
-	}
-	if containsAny(intent, evalKeywords) {
+	// Framework_Evaluation needs a real framework name; generic comparison
+	// words ("对比", "性能") are not enough (D3).
+	frameworks := intentpkg.DetectKnownFrameworks(intent)
+	if len(frameworks) > 0 &&
+		(intentpkg.ContainsComparisonIntent(intent) || intentpkg.ContainsBenchmarkIntent(intent)) {
 		return "Framework_Evaluation"
+	}
+
+	// A performance comparison over code is a code-execution task, not a
+	// framework benchmark.
+	if intentpkg.ContainsBenchmarkIntent(intent) && intentpkg.ContainsCodeIntent(intent) {
+		return "Code_Execution"
 	}
 
 	// 论文分析类不能被“分析”这个宽泛词误判为代码执行。
@@ -367,12 +370,7 @@ func DetectIntentType(intent string) string {
 		return "General"
 	}
 
-	// 代码执行类
-	codeKeywords := []string{
-		"计算", "代码", "运行", "执行", "画图", "写一个", "生成代码",
-		"跑一下", "plot", "matplotlib", "numpy", "python",
-	}
-	if containsAny(intent, codeKeywords) {
+	if intentpkg.ContainsCodeIntent(intent) {
 		return "Code_Execution"
 	}
 
@@ -491,7 +489,7 @@ func collectPaperSearchFields(intentCtx models.IntentContext, rawIntent string) 
 	}
 
 	if _, ok := fields["paper_arxiv_id"]; !ok {
-		if arxivID := routePaperArxivIDRe.FindString(rawIntent); arxivID != "" {
+		if arxivID := paperid.Find(rawIntent); arxivID != "" {
 			fields["paper_arxiv_id"] = arxivID
 		}
 	}

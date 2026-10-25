@@ -70,6 +70,9 @@ func buildResearchContext(ownerID, sessionID, rawIntent string, attachments []ma
 		}
 		if title := extractQuotedPaperTitle(rawIntent); title != "" {
 			metadata.Title = title
+			metadata.Source = "user"
+			metadata.Confidence = 1.0
+			metadata.Warnings = nil
 		}
 		ctx.Paper = &metadata
 	}

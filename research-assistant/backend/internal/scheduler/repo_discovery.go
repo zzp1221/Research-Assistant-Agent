@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"research-assistant-backend/internal/catalog"
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/paperid"
 	"sort"
 	"strings"
 	"time"
@@ -26,9 +27,10 @@ import (
 // - 该 API 并非所有论文都带 repo 信息：如果找不到 github 链接，会返回空 repo_url，并在 report 里说明原因。
 
 var (
-	arxivIDRe   = regexp.MustCompile(`\b\d{4}\.\d{4,5}\b`)
-	githubURLRe = regexp.MustCompile(`https?://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\.git)?`)
-	yearTailRe  = regexp.MustCompile(`\b(19|20)\d{2}\b`)
+	arxivIDRe             = paperid.ArxivIDPattern
+	githubURLRe           = regexp.MustCompile(`https?://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\.git)?`)
+	yearTailRe            = regexp.MustCompile(`\b(19|20)\d{2}\b`)
+	minRepoSelectionScore = 50
 )
 
 const maxPaperSearchQueryLen = 240
@@ -81,7 +83,7 @@ func executeRepoDiscovery(ctx context.Context, runtimeTask *models.Task) error {
 			Source:      "user_preference",
 			ScoreHint:   1_000_000,
 		}
-		completeRepoDiscoveryTask(runtimeTask, query, []repoCandidate{candidate}, preferredRepoURL, false, false, "")
+		completeRepoDiscoveryTask(runtimeTask, query, []repoCandidate{candidate}, preferredRepoURL, "source=user_preference", false, "")
 		return nil
 	}
 	if strings.TrimSpace(query) == "" {
@@ -125,53 +127,92 @@ func executeRepoDiscovery(ctx context.Context, runtimeTask *models.Task) error {
 		})
 	}
 
-	selected := firstSelectedRepo(candidates)
-	fallbackUsed := false
-	if selected == "" {
-		githubCandidates, ghErr := githubRepoSearch(ctx, httpClient, buildGitHubFallbackQueries(query), limit)
-		if ghErr == nil && len(githubCandidates) > 0 {
-			fallbackUsed = true
-			candidates = append(candidates, githubCandidates...)
+	// An arXiv id is a precise lookup key but a poor repository-matching query;
+	// fall back to the paper title for scoring and GitHub search.
+	selectionQuery := query
+	if arxivIDRe.MatchString(query) {
+		if title := strings.TrimSpace(taskInputValue(runtimeTask, "paper_title")); title != "" {
+			selectionQuery = cleanPaperTitle(title)
+		} else {
+			for _, candidate := range candidates {
+				if strings.TrimSpace(candidate.Title) != "" {
+					selectionQuery = cleanPaperTitle(candidate.Title)
+					break
+				}
+			}
 		}
 	}
 
 	// Curated entries are a labelled trusted fallback. Append them regardless
 	// of whether Papers/GitHub search returned candidates: search results often
-	// contain unrelated repositories that fail trusted-selection.
+	// contain unrelated repositories that fail trusted selection.
+	fallbackUsed := false
 	curated := curatedRepoFallbackCandidates(query)
 	if len(curated) > 0 {
 		fallbackUsed = true
 		candidates = append(candidates, curated...)
 	}
 
-	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].ScoreHint > candidates[j].ScoreHint })
-	strictTrustedSelection := arxivIDRe.FindString(query) == ""
-	if strictTrustedSelection {
-		selected = firstTrustedRepo(query, candidates)
-	} else {
-		selected = firstSelectedRepo(candidates)
+	// A single scored selection replaces the old "firstSelectedRepo then
+	// firstTrustedRepo" pair, which could pick an unrelated repository and then
+	// reject it, blocking the GitHub fallback forever.
+	selected, selectionReason := selectRepo(selectionQuery, candidates)
+	if selected == "" {
+		githubCandidates, ghErr := githubRepoSearch(ctx, httpClient, buildGitHubFallbackQueries(selectionQuery), limit)
+		if ghErr != nil {
+			hfSearchError = joinNonEmpty(hfSearchError, "github search: "+ghErr.Error())
+		} else if len(githubCandidates) > 0 {
+			fallbackUsed = true
+			candidates = append(candidates, githubCandidates...)
+			selected, selectionReason = selectRepo(selectionQuery, candidates)
+		}
 	}
-	completeRepoDiscoveryTask(runtimeTask, query, candidates, selected, fallbackUsed, strictTrustedSelection, hfSearchError)
+	completeRepoDiscoveryTask(runtimeTask, query, candidates, selected, selectionReason, fallbackUsed, hfSearchError)
 	return nil
 }
 
-func completeRepoDiscoveryTask(runtimeTask *models.Task, query string, candidates []repoCandidate, selected string, fallbackUsed, strictTrustedSelection bool, searchError string) {
+func joinNonEmpty(values ...string) string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			out = append(out, value)
+		}
+	}
+	return strings.Join(out, "; ")
+}
+
+func completeRepoDiscoveryTask(runtimeTask *models.Task, query string, candidates []repoCandidate, selected, selectionReason string, fallbackUsed bool, searchError string) {
 	candidateJSON, _ := json.Marshal(candidates)
-	report := buildRepoDiscoveryReport(query, candidates, selected, fallbackUsed, strictTrustedSelection, searchError)
+	report := buildRepoDiscoveryReport(query, candidates, selected, selectionReason, fallbackUsed, searchError)
 	if runtimeTask.Metadata == nil {
 		runtimeTask.Metadata = map[string]any{}
 	}
-	runtimeTask.Metadata["artifact_values"] = map[string]any{
+	artifacts := map[string]any{
 		"candidate_repositories": string(candidateJSON),
 		"repo_validation_report": report,
-		"repo_url":               selected,
 	}
-	runtimeTask.Result = selected
-	if strings.TrimSpace(runtimeTask.Result) == "" {
-		// 没有 repo_url 时也要返回可读结果，避免前端显示空白。
+	if strings.TrimSpace(selected) != "" {
+		artifacts["repo_url"] = selected
+		runtimeTask.Result = selected
+		runtimeTask.Status = models.StatusCompleted
+	} else {
+		// Fail closed: "no trusted repository" is a user-actionable blocked state,
+		// never an empty artifact finished as completed.
+		missing := []models.MissingRequirement{{
+			Kind:        "repo_url",
+			Name:        "repository",
+			Detail:      fmt.Sprintf("未找到可信仓库（query=%q）", query),
+			Remediation: "请提供论文的 GitHub 仓库 URL，或补充 arXiv ID 后重试。",
+		}}
+		missingJSON, _ := json.Marshal(missing)
+		artifacts["missing_requirements"] = string(missingJSON)
+		runtimeTask.Metadata["missing_requirements"] = missing
 		runtimeTask.Result = report
+		runtimeTask.Status = models.StatusBlocked
+		runtimeTask.Error = "repo_discovery: no trusted repository found for query " + query
 	}
-	runtimeTask.Status = models.StatusCompleted
+	runtimeTask.Metadata["artifact_values"] = artifacts
+	runtimeTask.Metadata["repo_selection_reason"] = selectionReason
 }
 
 func hfPaperSearch(ctx context.Context, client *http.Client, base, query string, limit int) ([]hfPaperSearchItem, error) {
@@ -250,7 +291,7 @@ func buildRepoDiscoveryQuery(runtimeTask *models.Task) string {
 	// 1) 优先使用路由阶段已经提取好的结构化检索字段，避免再次从长文本里猜。
 	if runtimeTask != nil && runtimeTask.Inputs != nil {
 		if id := strings.TrimSpace(taskInputValue(runtimeTask, "paper_arxiv_id")); id != "" {
-			return id
+			return paperid.StripVersion(id)
 		}
 		if title := normalizeSearchQuery(taskInputValue(runtimeTask, "paper_title"), maxPaperSearchQueryLen); title != "" {
 			return title
@@ -282,7 +323,7 @@ func buildRepoDiscoveryQuery(runtimeTask *models.Task) string {
 	if runtimeTask != nil && runtimeTask.Inputs != nil {
 		if v, ok := runtimeTask.Inputs["parsed_paper"]; ok {
 			s := fmt.Sprint(v)
-			if id := arxivIDRe.FindString(s); id != "" {
+			if id := paperid.Find(s); id != "" {
 				return id
 			}
 			if title := extractTitleHeuristic(s); title != "" {
@@ -296,7 +337,7 @@ func buildRepoDiscoveryQuery(runtimeTask *models.Task) string {
 	if runtimeTask != nil {
 		desc = runtimeTask.Description
 	}
-	if id := arxivIDRe.FindString(desc); id != "" {
+	if id := paperid.Find(desc); id != "" {
 		return id
 	}
 	if title := extractTitleHeuristic(desc); title != "" {
@@ -420,92 +461,140 @@ func repoScoreHint(query, title string, repos []string) int {
 	return score
 }
 
-func buildRepoDiscoveryReport(query string, candidates []repoCandidate, selected string, fallbackUsed bool, strictTrustedSelection bool, hfSearchError string) string {
-	var b strings.Builder
-	b.WriteString("仓库检索报告 / Repository Discovery Report\n")
-	b.WriteString("Query: ")
-	b.WriteString(query)
-	b.WriteString("\n")
-	b.WriteString("Source: Papers with Code (via HuggingFace Papers API)")
-	if fallbackUsed {
-		b.WriteString(" -> GitHub Search fallback")
+func buildRepoDiscoveryReport(query string, candidates []repoCandidate, selected, selectionReason string, fallbackUsed bool, searchError string) string {
+	type reportCandidate struct {
+		PaperID   string   `json:"paper_id,omitempty"`
+		Title     string   `json:"title"`
+		RepoName  string   `json:"repo_name,omitempty"`
+		RepoURLs  []string `json:"repo_urls"`
+		Source    string   `json:"source"`
+		ScoreHint int      `json:"score_hint"`
 	}
-	b.WriteString("\n")
-	if strings.TrimSpace(hfSearchError) != "" {
-		b.WriteString("Papers API warning: ")
-		b.WriteString(hfSearchError)
-		b.WriteString("\n")
+	report := struct {
+		Version      string            `json:"version"`
+		Query        string            `json:"query"`
+		Candidates   []reportCandidate `json:"candidates"`
+		Selected     string            `json:"selected"`
+		Reason       string            `json:"reason"`
+		FallbackUsed bool              `json:"fallback_used"`
+		SearchError  string            `json:"search_error,omitempty"`
+	}{
+		Version:      "repo.discovery/v2",
+		Query:        query,
+		Selected:     selected,
+		Reason:       selectionReason,
+		FallbackUsed: fallbackUsed,
+		SearchError:  searchError,
+		Candidates:   make([]reportCandidate, 0, len(candidates)),
 	}
-	b.WriteString(fmt.Sprintf("Candidates: %d\n", len(candidates)))
-	if selected != "" {
-		b.WriteString("Selected repo_url: ")
-		b.WriteString(selected)
-		b.WriteString("\n")
-	} else {
-		b.WriteString("Selected repo_url: (not found)\n")
-		if strictTrustedSelection && len(candidates) > 0 {
-			b.WriteString("Reason: 候选仓库存在，但在无 arXiv ID 场景下，没有候选通过可信仓库过滤（仓库名/描述未命中论文标题核心词）。\n")
+	if strings.TrimSpace(report.Reason) == "" {
+		if selected == "" {
+			report.Reason = "no candidate passed the trusted repository scoring threshold"
 		} else {
-			b.WriteString("Reason: API 返回的论文信息里未包含 GitHub 仓库链接，或检索未命中。\n")
+			report.Reason = "selected by scored repository matching"
 		}
 	}
-	return b.String()
-}
-
-func firstSelectedRepo(candidates []repoCandidate) string {
-	for _, c := range candidates {
-		if len(c.RepoURLs) > 0 {
-			return c.RepoURLs[0]
-		}
+	for _, candidate := range candidates {
+		report.Candidates = append(report.Candidates, reportCandidate{
+			PaperID:   candidate.PaperID,
+			Title:     candidate.Title,
+			RepoName:  candidate.RepoName,
+			RepoURLs:  candidate.RepoURLs,
+			Source:    candidate.Source,
+			ScoreHint: candidate.ScoreHint,
+		})
 	}
-	return ""
+	payload, _ := json.MarshalIndent(report, "", "  ")
+	return string(payload)
 }
 
-func firstTrustedRepo(query string, candidates []repoCandidate) string {
-	for _, c := range candidates {
-		if len(c.RepoURLs) == 0 {
+// selectRepo is the single repository-selection entry point. It scores every
+// candidate once and returns the best trusted URL plus an explainable reason.
+func selectRepo(query string, candidates []repoCandidate) (string, string) {
+	type scoredCandidate struct {
+		url    string
+		score  int
+		reason string
+	}
+	best := scoredCandidate{}
+	tokens := significantTokens(cleanPaperTitle(query))
+	curatedPaths := curatedRepoPaths(query)
+
+	for _, candidate := range candidates {
+		if len(candidate.RepoURLs) == 0 {
 			continue
 		}
-		if !isTrustedRepoCandidate(query, c) {
-			continue
-		}
-		return c.RepoURLs[0]
-	}
-	return ""
-}
-
-func isTrustedRepoCandidate(query string, candidate repoCandidate) bool {
-	if strings.EqualFold(strings.TrimSpace(candidate.Source), "curated_fallback") {
-		return true
-	}
-	lowerText := strings.ToLower(candidateSearchText(candidate))
-	for _, entry := range catalog.MatchRepositories(query) {
-		for _, repoURL := range entry.RepoURLs {
-			repoPath := strings.ToLower(strings.TrimPrefix(repoURL, "https://github.com/"))
-			if repoPath != "" && strings.Contains(lowerText, repoPath) {
-				return true
+		for _, rawURL := range candidate.RepoURLs {
+			repoURL := normalizeGitHubRepoURL(rawURL)
+			if repoURL == "" || !githubURLRe.MatchString(repoURL) || githubURLRe.FindString(repoURL) != repoURL {
+				continue
+			}
+			score, reason := scoreRepoCandidate(query, tokens, curatedPaths, candidate, repoURL)
+			if score > best.score {
+				best = scoredCandidate{url: repoURL, score: score, reason: reason}
 			}
 		}
 	}
-	tokens := significantTokens(cleanPaperTitle(query))
-	if len(tokens) == 0 {
-		return false
+	if best.url == "" || best.score < minRepoSelectionScore {
+		return "", ""
 	}
-	if lowerText == "" {
-		return false
+	return best.url, best.reason
+}
+
+func scoreRepoCandidate(query string, tokens []string, curatedPaths map[string]struct{}, candidate repoCandidate, repoURL string) (int, string) {
+	lowerText := strings.ToLower(candidateSearchText(candidate))
+	repoPath := strings.ToLower(strings.TrimPrefix(repoURL, "https://github.com/"))
+	score := 0
+	reasons := make([]string, 0, 5)
+
+	if strings.EqualFold(strings.TrimSpace(candidate.Source), "user_preference") {
+		return 1000, "source=user_preference (explicit user choice)"
 	}
+	if _, ok := curatedPaths[repoPath]; ok {
+		// Curated entries bypass the threshold: they are labelled data, not guesses.
+		return 100, "source=curated_catalog; repo=" + repoPath
+	}
+
 	matched := 0
 	for _, token := range tokens {
 		if strings.Contains(lowerText, token) {
 			matched++
 		}
 	}
-	switch {
-	case len(tokens) >= 4:
-		return matched >= 2
-	default:
-		return matched >= 1
+	if len(tokens) > 0 {
+		ratio := float64(matched) / float64(len(tokens))
+		score += int(ratio * 50)
+		reasons = append(reasons, fmt.Sprintf("matched_tokens=%d/%d", matched, len(tokens)))
 	}
+	for _, token := range tokens {
+		if strings.Contains(repoPath, token) {
+			score += 20
+			reasons = append(reasons, "repo_name_contains="+token)
+			break
+		}
+	}
+	switch {
+	case candidate.Stars >= 10000:
+		score += 10
+	case candidate.Stars >= 3000:
+		score += 8
+	case candidate.Stars >= 500:
+		score += 5
+	case candidate.Stars >= 50:
+		score += 2
+	}
+	switch strings.ToLower(strings.TrimSpace(candidate.Source)) {
+	case "user_preference":
+		score += 1000
+	case "curated_fallback":
+		score += 100
+	case "papers_with_code(hf)":
+		score += 5
+	case "github_search":
+		score += 3
+	}
+	reasons = append(reasons, "source="+candidate.Source, fmt.Sprintf("score=%d", score))
+	return score, strings.Join(reasons, "; ")
 }
 
 func candidateSearchText(candidate repoCandidate) string {
@@ -527,6 +616,19 @@ func candidateSearchText(candidate repoCandidate) string {
 		}
 	}
 	return strings.Join(parts, " ")
+}
+
+func curatedRepoPaths(query string) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, entry := range catalog.MatchRepositories(query) {
+		for _, repoURL := range entry.RepoURLs {
+			path := strings.ToLower(strings.TrimPrefix(strings.TrimSuffix(repoURL, ".git"), "https://github.com/"))
+			if path != "" {
+				out[path] = struct{}{}
+			}
+		}
+	}
+	return out
 }
 
 func buildGitHubFallbackQueries(title string) []string {

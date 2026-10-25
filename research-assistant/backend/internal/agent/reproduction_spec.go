@@ -40,13 +40,34 @@ func (a *ResearchCodingAgent) executeReproductionSpec(ctx context.Context, task 
 		baseImage = "python:3.11-bullseye"
 	}
 	entry := filepath.Base(strings.TrimSpace(manifest.SelectedCodeFile))
+	entryRelative := entry
 	if entry == "" || entry == "." {
 		entry = "research-assistant_repro_smoke.py"
+		entryRelative = entry
 	}
-	runCommand := []string{"python3", entry}
+	if selected := strings.TrimSpace(manifest.SelectedCodeFile); selected != "" && strings.TrimSpace(manifest.WorkspacePath) != "" {
+		relative, _, err := workspaceRelativeEntry(manifest.WorkspacePath, selected)
+		if err != nil {
+			if filepath.IsAbs(selected) {
+				// An absolute entry outside the workspace is a security error, not
+				// a legacy basename we can guess.
+				return failResearchCodingTask(task, fmt.Errorf("reproduction entry rejected: %w", err))
+			}
+		} else {
+			entryRelative = relative
+			entry = filepath.Base(relative)
+		}
+	}
+	runCommand := []string{"python3", filepath.ToSlash(entryRelative)}
+	pythonPath := []string{}
 	if manifest.ReproEntryKind == "apriori_frequent_itemsets" {
 		runCommand = []string{"python3", "apriori.py", "-f", "INTEGRATED-DATASET.csv", "-s", "0.15", "-c", "0.6"}
 		entry = "apriori.py"
+		entryRelative = "apriori.py"
+	} else if dir := filepath.ToSlash(filepath.Dir(entryRelative)); dir != "." && dir != "" {
+		// Keep /workspace as the working directory so repository-relative data
+		// paths still resolve, and add the entry directory to PYTHONPATH.
+		pythonPath = append(pythonPath, "/workspace/"+dir)
 	}
 	spec := models.ReproductionRuntimeSpec{
 		Version:            "reproduction.runtime/v1",
@@ -57,6 +78,8 @@ func (a *ResearchCodingAgent) executeReproductionSpec(ctx context.Context, task 
 		PythonDependencies: dependencies,
 		RunCommand:         runCommand,
 		Entrypoint:         entry,
+		EntrypointRelative: entryRelative,
+		PythonPath:         pythonPath,
 		WorkingDir:         "/workspace",
 		NetworkAccess:      false,
 		DiskGB:             1,

@@ -135,6 +135,21 @@ func (f *PlanFinalizer) Finalize(ctx context.Context, plan *models.PlanGraph) er
 			return nil
 		}
 	}
+	// Claim evidence is the scientific validity gate: a degraded or empty
+	// graph must never be presented as a successful reproduction. This check
+	// runs before the smoke shortcut so smoke cannot mask it (D6).
+	if graph := claimEvidenceGraph(plan); graph != nil {
+		if graph.Status != "assessed" {
+			plan.Outcome = models.OutcomeNeedsReview
+			plan.OutcomeReason = "claim evidence graph is " + graph.Status + ": " + graph.StatusReason
+			return nil
+		}
+		if graph.Summary.Verified == 0 && len(graph.Claims) > 0 {
+			plan.Outcome = models.OutcomeNeedsReview
+			plan.OutcomeReason = "no claim was verified against evidence"
+			return nil
+		}
+	}
 	if plan.IntentType == "Framework_Evaluation" && isMockFrameworkPlan(plan) {
 		plan.Outcome = models.OutcomeMock
 		plan.OutcomeReason = "framework evaluation is an offline mock benchmark"
@@ -161,6 +176,26 @@ func (f *PlanFinalizer) Finalize(ctx context.Context, plan *models.PlanGraph) er
 	}
 	plan.Outcome = models.OutcomeCompleted
 	return nil
+}
+
+// claimEvidenceGraph decodes the persisted claim evidence graph, if any.
+func claimEvidenceGraph(plan *models.PlanGraph) *models.ClaimEvidenceGraph {
+	if plan == nil {
+		return nil
+	}
+	artifact, ok := plan.Artifacts["claim_evidence_graph"]
+	if !ok {
+		return nil
+	}
+	raw := strings.TrimSpace(artifact.EffectiveValue())
+	if raw == "" {
+		return nil
+	}
+	var graph models.ClaimEvidenceGraph
+	if err := json.Unmarshal([]byte(raw), &graph); err != nil {
+		return nil
+	}
+	return &graph
 }
 
 func isSmokePlan(plan *models.PlanGraph) bool {

@@ -126,13 +126,14 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 			}, nil
 		}
 		return &models.TaskExecutionResult{
-			Status:         runtimeTask.Status,
-			Result:         runtimeTask.Result,
-			Code:           runtimeTask.Code,
-			StructuredData: runtimeTask.StructuredData,
-			ImageBase64:    runtimeTask.ImageBase64,
-			Error:          runtimeTask.Error,
-			Artifacts:      buildArtifacts(task, runtimeTask),
+			Status:              runtimeTask.Status,
+			Result:              runtimeTask.Result,
+			Code:                runtimeTask.Code,
+			StructuredData:      runtimeTask.StructuredData,
+			ImageBase64:         runtimeTask.ImageBase64,
+			Error:               runtimeTask.Error,
+			Artifacts:           buildArtifacts(task, runtimeTask),
+			MissingRequirements: missingRequirementsFromTask(runtimeTask),
 		}, nil
 	}
 	if task.Type == "repo_prepare" {
@@ -144,13 +145,14 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 			}, nil
 		}
 		return &models.TaskExecutionResult{
-			Status:         runtimeTask.Status,
-			Result:         runtimeTask.Result,
-			Code:           runtimeTask.Code,
-			StructuredData: runtimeTask.StructuredData,
-			ImageBase64:    runtimeTask.ImageBase64,
-			Error:          runtimeTask.Error,
-			Artifacts:      buildArtifacts(task, runtimeTask),
+			Status:              runtimeTask.Status,
+			Result:              runtimeTask.Result,
+			Code:                runtimeTask.Code,
+			StructuredData:      runtimeTask.StructuredData,
+			ImageBase64:         runtimeTask.ImageBase64,
+			Error:               runtimeTask.Error,
+			Artifacts:           buildArtifacts(task, runtimeTask),
+			MissingRequirements: missingRequirementsFromTask(runtimeTask),
 		}, nil
 	}
 
@@ -187,14 +189,37 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 	}
 
 	return &models.TaskExecutionResult{
-		Status:         status,
-		Result:         runtimeTask.Result,
-		Code:           runtimeTask.Code,
-		StructuredData: runtimeTask.StructuredData,
-		ImageBase64:    runtimeTask.ImageBase64,
-		Error:          runtimeTask.Error,
-		Artifacts:      buildArtifacts(task, runtimeTask),
+		Status:              status,
+		Result:              runtimeTask.Result,
+		Code:                runtimeTask.Code,
+		StructuredData:      runtimeTask.StructuredData,
+		ImageBase64:         runtimeTask.ImageBase64,
+		Error:               runtimeTask.Error,
+		Artifacts:           buildArtifacts(task, runtimeTask),
+		MissingRequirements: missingRequirementsFromTask(runtimeTask),
 	}, nil
+}
+
+// missingRequirementsFromTask reads the actionable missing-requirement list an
+// agent stored on the runtime task.
+func missingRequirementsFromTask(runtimeTask *models.Task) []models.MissingRequirement {
+	if runtimeTask == nil || runtimeTask.Metadata == nil {
+		return nil
+	}
+	raw, ok := runtimeTask.Metadata["missing_requirements"]
+	if !ok || raw == nil {
+		return nil
+	}
+	switch value := raw.(type) {
+	case []models.MissingRequirement:
+		return value
+	case string:
+		var parsed []models.MissingRequirement
+		if json.Unmarshal([]byte(value), &parsed) == nil {
+			return parsed
+		}
+	}
+	return nil
 }
 
 func (e *RoutedTaskExecutor) resolveRunner(assignedTo string) (AgentRunner, error) {

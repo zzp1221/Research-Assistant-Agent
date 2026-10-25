@@ -8,6 +8,7 @@ import (
 	"regexp"
 	intentpkg "research-assistant-backend/internal/intent"
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/paperid"
 	"research-assistant-backend/internal/prompts"
 	"strconv"
 	"strings"
@@ -50,23 +51,34 @@ func (p *Planner) BuildPlan(ctx context.Context, intent models.IntentContext) (*
 
 	var nodes []*models.TaskNode
 	var err error
+	plannerSource := "template"
+	plannerFallbackReason := ""
 	if isDatasetExperimentIntent(intent) {
 		nodes = buildDatasetExperimentNodes(intent)
 	} else if isCustomDatasetBenchmarkIntent(intent) {
 		nodes = buildCustomDatasetBenchmarkNodes(intent)
 	} else if isAutoResearchIntent(intent) {
 		nodes = buildAutoResearchNodes(intent)
+	} else if intent.IntentType == "General" && isPaperAnalysisIntent(intent) {
+		// D10: General + paper analysis always uses the deterministic builder so
+		// the same prompt cannot produce 3/5/2-node plans on different runs.
+		nodes = buildGeneralNodesV2(intent)
 	} else if p.agent != nil {
 		nodes, err = p.agent.BuildNodes(ctx, intent)
 		if err != nil {
+			plannerFallbackReason = err.Error()
 			logPlannerFallback(intent, err)
 		} else if validationErr := validateAgentPlannedNodes(intent, nodes); validationErr != nil {
+			plannerFallbackReason = validationErr.Error()
 			logPlannerFallback(intent, validationErr)
 			nodes = nil
+		} else {
+			plannerSource = "agent"
 		}
 	}
 	if len(nodes) == 0 {
 		nodes = buildFallbackNodes(intent)
+		plannerSource = "template"
 	}
 
 	edges := buildEdgesFromNodes(nodes)
@@ -84,6 +96,8 @@ func (p *Planner) BuildPlan(ctx context.Context, intent models.IntentContext) (*
 			plan.Budget.MaxDurationSec = wallSeconds + 900
 		}
 	}
+	plan.Meta.PlannerSource = plannerSource
+	plan.Meta.PlannerFallbackReason = plannerFallbackReason
 	fillGraphMeta(plan)
 
 	// A planner-agent blueprint can pass its own contract checks yet still leave
@@ -99,6 +113,8 @@ func (p *Planner) BuildPlan(ctx context.Context, intent models.IntentContext) (*
 				fillInitialStatuses(nodes)
 				plan.Nodes = nodes
 				plan.Edges = edges
+				plan.Meta.PlannerSource = "template"
+				plan.Meta.PlannerFallbackReason = err.Error()
 				fillGraphMeta(plan)
 			}
 		}
@@ -427,7 +443,7 @@ func buildAutoResearchNodes(intent models.IntentContext) []*models.TaskNode {
 		"coder_agent",
 		[]string{discover.ID},
 		[]string{"repo_url", "candidate_repositories", "repo_validation_report"},
-		[]string{"workspace_path", "code_file_path", "generated_code", "repo_manifest", "reproduction_mode_report"},
+		[]string{"workspace_path", "code_file_path", "generated_code", "repo_manifest", "reproduction_mode_report", "dataset_shape_profile"},
 		false,
 		context,
 	)
@@ -602,7 +618,7 @@ func buildCustomDatasetBenchmarkNodes(intent models.IntentContext) []*models.Tas
 		"coder_agent",
 		[]string{discover.ID},
 		[]string{"repo_url", "candidate_repositories", "repo_validation_report"},
-		[]string{"workspace_path", "code_file_path", "generated_code", "repo_manifest", "reproduction_mode_report"},
+		[]string{"workspace_path", "code_file_path", "generated_code", "repo_manifest", "reproduction_mode_report", "dataset_shape_profile"},
 		false,
 		context,
 	)
@@ -862,7 +878,9 @@ func fillInitialStatuses(nodes []*models.TaskNode) {
 
 func fillGraphMeta(plan *models.PlanGraph) {
 	meta := models.GraphMeta{
-		TotalNodes: len(plan.Nodes),
+		TotalNodes:            len(plan.Nodes),
+		PlannerSource:         plan.Meta.PlannerSource,
+		PlannerFallbackReason: plan.Meta.PlannerFallbackReason,
 	}
 
 	for _, node := range plan.Nodes {
@@ -907,6 +925,9 @@ func validatePlanGraph(plan *models.PlanGraph) error {
 	artifactProducers := map[string]string{}
 	for _, node := range plan.Nodes {
 		for _, key := range node.OutputArtifacts {
+			if existing, exists := artifactProducers[key]; exists && existing != node.ID {
+				return fmt.Errorf("artifact %q has multiple producers: %s and %s", key, existing, node.ID)
+			}
 			artifactProducers[key] = node.ID
 		}
 	}
@@ -935,8 +956,12 @@ func validatePlanGraph(plan *models.PlanGraph) error {
 			}
 		}
 		for _, key := range node.RequiredArtifacts {
-			if _, ok := artifactProducers[key]; !ok {
+			producer, ok := artifactProducers[key]
+			if !ok {
 				return fmt.Errorf("required artifact has no producer for node %s: %s", node.ID, key)
+			}
+			if producer == node.ID {
+				return fmt.Errorf("node %s (%s) requires its own output %q", node.ID, node.Type, key)
 			}
 		}
 	}
@@ -1092,7 +1117,7 @@ func buildPaperReproductionNodesV2(intent models.IntentContext) []*models.TaskNo
 		repoPrepareDependencies = append(repoPrepareDependencies, ablationDesign.ID)
 		repoPrepareArtifacts = append(repoPrepareArtifacts, "ablation_plan", "selected_ablation_configs")
 	}
-	t3 := newNode("Prepare Workspace", "repo_prepare", "coder_agent", repoPrepareDependencies, repoPrepareArtifacts, []string{"workspace_path", "code_file_path", "generated_code", "repo_manifest", "reproduction_mode_report"}, false, context)
+	t3 := newNode("Prepare Workspace", "repo_prepare", "coder_agent", repoPrepareDependencies, repoPrepareArtifacts, []string{"workspace_path", "code_file_path", "generated_code", "repo_manifest", "reproduction_mode_report", "dataset_shape_profile"}, false, context)
 	t3.Inputs = buildPaperReproductionInputs(intent)
 	t4 := newNode("Resolve "+paperTitle+" Dependencies", "resolve_dependencies", "coder_agent", []string{t3.ID}, []string{"workspace_path", "code_file_path", "generated_code", "repo_manifest"}, []string{"dependency_spec"}, false, context)
 	t4b := newNode("Derive Reproduction Runtime Spec", "reproduction_spec", "research_coding_agent", []string{t4.ID}, []string{"paper_metadata", "repo_manifest", "dependency_spec", "parsed_paper"}, []string{"reproduction_runtime_spec"}, false, context)
@@ -1304,15 +1329,20 @@ func buildCodeExecutionNodesV2(intent models.IntentContext) []*models.TaskNode {
 func buildGeneralNodesV2(intent models.IntentContext) []*models.TaskNode {
 	context := intent.RawIntent
 	normalized := strings.ToLower(context)
-	paperAnalysis := hasAny(normalized, "\u8bba\u6587", "paper", "\u6587\u732e", "\u8d21\u732e", "\u5c40\u9650") || intent.Entities["paper_metadata"] != nil
+	paperAnalysis := isPaperAnalysisIntent(intent)
 	if paperAnalysis {
+		// D10: fixed four-node shape for General + paper analysis. The claim
+		// rubric stays exclusive to Paper_Reproduction, so general analysis uses
+		// research -> verify -> answer without claim extraction.
 		t1 := newNode("Parse Paper & Extract Method", "paper_parse", "librarian_agent", nil, nil, []string{"parsed_paper", "paper_metadata", "paper_summary"}, true, context)
 		t1.InputBindings = []models.InputBinding{
 			{Target: "document_id", Source: models.BindingSource{Kind: "context_document"}, Required: false},
 			{Target: "paper_metadata", Source: models.BindingSource{Kind: "context_paper"}, Required: false},
 		}
-		t2 := newNode("Synthesize Response", "general_synthesis", "answer_agent", []string{t1.ID}, []string{"paper_summary", "paper_metadata"}, []string{"general_response"}, false, context)
-		return []*models.TaskNode{t1, t2}
+		t2 := newNode("Collect Paper Background", "general_research", "librarian_agent", []string{t1.ID}, []string{"paper_summary", "paper_metadata"}, []string{"background_context"}, true, context)
+		t3 := newNode("Verify And Summarize Result", "verify_result", "data_agent", []string{t2.ID}, []string{"background_context", "paper_summary"}, []string{"verification_report"}, true, context)
+		t4 := newNode("Synthesize Response", "general_synthesis", "answer_agent", []string{t3.ID}, []string{"verification_report", "paper_summary", "paper_metadata"}, []string{"general_response"}, false, context)
+		return []*models.TaskNode{t1, t2, t3, t4}
 	}
 	if hasAny(normalized, "\u603b\u7ed3", "summary", "\u7efc\u8ff0", "report", "\u62a5\u544a", "rag", "query rewrite") {
 		t1 := newNode("Collect Background Context", "general_research", "librarian_agent", nil, nil, []string{"background_context"}, true, context)
@@ -1324,6 +1354,20 @@ func buildGeneralNodesV2(intent models.IntentContext) []*models.TaskNode {
 	t2 := newNode("Collect Background Context", "general_research", "librarian_agent", []string{t1.ID}, []string{"intent_scope", "assumption_log"}, []string{"research_notes"}, true, context)
 	t3 := newNode("Process Request", "general_process", "general_agent", []string{t1.ID, t2.ID}, []string{"intent_scope", "research_notes"}, []string{"final_answer"}, false, context)
 	return []*models.TaskNode{t1, t2, t3}
+}
+
+// isPaperAnalysisIntent reports whether a General request is a paper analysis
+// (as opposed to a generic chat). It is intentionally independent of the
+// planner model so the plan shape is deterministic.
+func isPaperAnalysisIntent(intent models.IntentContext) bool {
+	if intent.IntentType != "General" {
+		return false
+	}
+	if intent.Entities["paper_metadata"] != nil {
+		return true
+	}
+	normalized := strings.ToLower(intent.RawIntent)
+	return hasAny(normalized, "\u8bba\u6587", "paper", "\u6587\u732e", "\u8d21\u732e", "\u5c40\u9650")
 }
 
 func hasAny(s string, keywords ...string) bool {
@@ -1430,13 +1474,21 @@ func buildRepoDiscoveryInputs(intent models.IntentContext) map[string]any {
 		inputs["preferred_repo_url"] = repoURL
 	}
 	if arxivID := stringEntity(intent.Entities, "paper_arxiv_id", ""); arxivID != "" {
-		inputs["paper_arxiv_id"] = arxivID
+		inputs["paper_arxiv_id"] = paperid.StripVersion(arxivID)
 	}
 	if title := stringEntity(intent.Entities, "paper_title", ""); title != "" {
 		inputs["paper_title"] = title
-	} else if metadata, ok := intent.Entities["paper_metadata"].(map[string]any); ok {
-		if title := strings.TrimSpace(fmt.Sprint(metadata["title"])); title != "" {
-			inputs["paper_title"] = title
+	}
+	if metadata, ok := intent.Entities["paper_metadata"].(map[string]any); ok {
+		if _, exists := inputs["paper_title"]; !exists {
+			if title := strings.TrimSpace(fmt.Sprint(metadata["title"])); title != "" {
+				inputs["paper_title"] = title
+			}
+		}
+		if _, exists := inputs["paper_arxiv_id"]; !exists {
+			if arxivID := strings.TrimSpace(fmt.Sprint(metadata["arxiv_id"])); arxivID != "" && arxivID != "<nil>" {
+				inputs["paper_arxiv_id"] = paperid.StripVersion(arxivID)
+			}
 		}
 	}
 	if query := stringEntity(intent.Entities, "paper_search_query", ""); query != "" {
@@ -1579,6 +1631,16 @@ func validateAgentPlannedNodes(intent models.IntentContext, nodes []*models.Task
 	}
 	if err := validateCriticalNodeContracts(intent, nodes); err != nil {
 		return err
+	}
+	if intent.IntentType == "General" {
+		for _, node := range nodes {
+			if node == nil {
+				continue
+			}
+			if strings.HasPrefix(node.Type, "claim_") {
+				return fmt.Errorf("General plans must not contain claim nodes (%s); claim rubric belongs to Paper_Reproduction", node.Type)
+			}
+		}
 	}
 	if intent.Entities != nil && intent.Entities["paper_metadata"] != nil &&
 		(intent.IntentType == "General" || intent.IntentType == "Paper_Reproduction") {

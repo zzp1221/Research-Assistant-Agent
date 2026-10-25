@@ -204,14 +204,16 @@ var taskTypeRegistry = map[string]TaskTypeSpec{
 		Description:   "LLM code generation; execution happens in execute_code",
 	},
 	"install_dependencies": {
-		AllowedAgents: []string{"sandbox_agent"},
-		ExecutionKind: ExecutionReal,
-		Description:   "install dependencies in sandbox",
+		AllowedAgents:           []string{"sandbox_agent"},
+		ExecutionKind:           ExecutionReal,
+		RequiredOutputArtifacts: []string{"prepared_runtime", "dependency_install_report"},
+		Description:             "install dependencies in sandbox",
 	},
 	"paper_code_execute": {
-		AllowedAgents: []string{"research_coding_agent"},
-		ExecutionKind: ExecutionReal,
-		Description:   "execute and debug paper baseline in sandbox",
+		AllowedAgents:           []string{"research_coding_agent"},
+		ExecutionKind:           ExecutionReal,
+		RequiredOutputArtifacts: []string{"run_metrics", "paper_debug_report"},
+		Description:             "execute and debug paper baseline in sandbox",
 	},
 	"paper_compare": {
 		AllowedAgents: []string{"data_agent"},
@@ -268,9 +270,10 @@ var taskTypeRegistry = map[string]TaskTypeSpec{
 		Description:   "real Papers with Code / GitHub repository discovery",
 	},
 	"repo_prepare": {
-		AllowedAgents: []string{"coder_agent"},
-		ExecutionKind: ExecutionReal,
-		Description:   "real repository clone and workspace preparation",
+		AllowedAgents:           []string{"coder_agent"},
+		ExecutionKind:           ExecutionReal,
+		RequiredOutputArtifacts: []string{"workspace_path", "code_file_path", "generated_code", "repo_manifest", "dataset_shape_profile"},
+		Description:             "real repository clone and workspace preparation",
 	},
 	"resolve_dependencies": {
 		AllowedAgents: []string{"coder_agent"},

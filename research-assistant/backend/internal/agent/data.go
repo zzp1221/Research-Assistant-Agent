@@ -26,6 +26,8 @@ type dataContextKey string
 
 const dataSystemPromptContextKey dataContextKey = "data_system_prompt"
 
+const dataUserPromptContextKey dataContextKey = "data_user_prompt"
+
 func NewDataAgent() *DataAgent {
 	agent := &DataAgent{
 		Name:         "data_agent",
@@ -64,9 +66,13 @@ func (a *DataAgent) initEinoChain() {
 		if prompt, ok := ctx.Value(dataSystemPromptContextKey).(string); ok && prompt != "" {
 			systemPrompt = prompt
 		}
+		userPrompt := prompts.DataReportUserPrompt(input)
+		if prompt, ok := ctx.Value(dataUserPromptContextKey).(string); ok && prompt != "" {
+			userPrompt = prompt
+		}
 		messages := []*schema.Message{
 			{Role: schema.System, Content: systemPrompt},
-			{Role: schema.User, Content: prompts.DataReportUserPrompt(input)},
+			{Role: schema.User, Content: userPrompt},
 		}
 		return messages, nil
 	}))
@@ -106,6 +112,9 @@ func (a *DataAgent) ExecuteTask(ctx context.Context, task *models.Task, sharedCo
 	}
 	intentType := sharedContextValue(sharedContext, "intent_type")
 	ctx = context.WithValue(ctx, dataSystemPromptContextKey, prompts.DataSystemPromptForTask(intentType, task.Type, task.Name, task.Description))
+	if task.Type == "verify_result" {
+		ctx = context.WithValue(ctx, dataUserPromptContextKey, prompts.AnswerPromptInput(input))
+	}
 
 	output, err := a.EinoChain.Invoke(ctx, input)
 	if err != nil {

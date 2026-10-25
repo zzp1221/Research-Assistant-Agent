@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -524,6 +525,26 @@ func (a *CoderAgent) prepareRuntime(ctx context.Context, task *models.Task) erro
 	return nil
 }
 
+func (a *CoderAgent) completeWithoutDependencies(task *models.Task, runtimeSession, reason string) error {
+	if task == nil {
+		return fmt.Errorf("task is nil")
+	}
+	if strings.TrimSpace(reason) == "" {
+		reason = "no external dependencies detected"
+	}
+	task.Result = reason
+	task.Status = models.StatusCompleted
+	task.Error = ""
+	if task.Metadata == nil {
+		task.Metadata = map[string]any{}
+	}
+	task.Metadata["artifact_values"] = buildArtifactValueMap(task, map[string]string{
+		"prepared_runtime":          runtimeSession,
+		"dependency_install_report": reason,
+	})
+	return nil
+}
+
 func (a *CoderAgent) installDependencies(ctx context.Context, task *models.Task) error {
 	runtimeSession := chooseNonEmpty(extractTaskInputLike(task, "runtime_session"), extractTaskInputLike(task, "runtime_env"))
 	if strings.TrimSpace(runtimeSession) == "" {
@@ -550,16 +571,7 @@ func (a *CoderAgent) installDependencies(ctx context.Context, task *models.Task)
 		}
 	}
 	if len(dependencies) == 0 {
-		task.Result = "no external dependencies detected"
-		task.Status = models.StatusCompleted
-		if task.Metadata == nil {
-			task.Metadata = map[string]any{}
-		}
-		task.Metadata["artifact_values"] = buildArtifactValueMap(task, map[string]string{
-			"prepared_runtime":          runtimeSession,
-			"dependency_install_report": "no external dependencies detected",
-		})
-		return nil
+		return a.completeWithoutDependencies(task, runtimeSession, "no external dependencies detected")
 	}
 
 	dependencies = filterFrameworkBenchmarkDependencies(task, dependencies)
@@ -567,16 +579,7 @@ func (a *CoderAgent) installDependencies(ctx context.Context, task *models.Task)
 	dependencies = filterFrameworkBenchmarkDependencies(task, dependencies)
 	dependencies = filterStandardLibraryDependencies(dependencies)
 	if len(dependencies) == 0 {
-		task.Result = "no external dependencies detected"
-		task.Status = models.StatusCompleted
-		if task.Metadata == nil {
-			task.Metadata = map[string]any{}
-		}
-		task.Metadata["artifact_values"] = buildArtifactValueMap(task, map[string]string{
-			"prepared_runtime":          runtimeSession,
-			"dependency_install_report": "no external dependencies detected",
-		})
-		return nil
+		return a.completeWithoutDependencies(task, runtimeSession, "no external dependencies detected")
 	}
 
 	// ReAct 依赖恢复：优先让模型根据 pip 日志给出结构化动作，
@@ -584,7 +587,12 @@ func (a *CoderAgent) installDependencies(ctx context.Context, task *models.Task)
 	maxAttempts := 3
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		logToContext(ctx, "[%s] Installing dependencies in sandbox %s (attempt %d/%d): %s", a.Name, runtimeSession, attempt, maxAttempts, strings.Join(dependencies, ", "))
-		cmd := pipInstallArgs(dependencies...)
+		cmd, argsErr := pipInstallArgs(dependencies...)
+		if argsErr != nil {
+			task.Status = models.StatusFailed
+			task.Error = argsErr.Error()
+			return argsErr
+		}
 		res, err := a.Sandbox.ExecCommandStream(ctx, runtimeSession, cmd, func(stream string, line string) {
 			logToContext(ctx, "[%s] pip %s: %s", a.Name, stream, line)
 		})
@@ -636,6 +644,9 @@ func (a *CoderAgent) installDependencies(ctx context.Context, task *models.Task)
 				dependencies = nextDependencies
 				runtimeSession = nextRuntimeSession
 				logToContext(ctx, "[%s] ReAct repair applied: action=%s, reason=%s", a.Name, plan.Action, plan.Reason)
+				if len(dependencies) == 0 {
+					return a.completeWithoutDependencies(task, runtimeSession, "no external dependencies detected after removing packages")
+				}
 				continue
 			}
 			if applyErr != nil {
@@ -657,6 +668,9 @@ func (a *CoderAgent) installDependencies(ctx context.Context, task *models.Task)
 			dependencies = nextDependencies
 			runtimeSession = nextRuntimeSession
 			logToContext(ctx, "[%s] Rule-based dependency fallback applied: %s", a.Name, fallbackReason)
+			if len(dependencies) == 0 {
+				return a.completeWithoutDependencies(task, runtimeSession, "no external dependencies detected after removing packages")
+			}
 			continue
 		}
 
@@ -947,12 +961,28 @@ func mustJSON(value any) string {
 	return string(encoded)
 }
 
-var pythonStandardLibraryModules = map[string]struct{}{
-	"abc": {}, "argparse": {}, "asyncio": {}, "base64": {}, "collections": {}, "contextlib": {}, "copy": {}, "csv": {}, "dataclasses": {}, "datetime": {}, "functools": {},
-	"hashlib": {}, "io": {}, "itertools": {}, "json": {}, "logging": {}, "math": {}, "os": {}, "pathlib": {}, "random": {},
-	"re": {}, "statistics": {}, "string": {}, "subprocess": {}, "sys": {}, "tempfile": {}, "time": {}, "typing": {}, "uuid": {}, "warnings": {},
-	// 标准库：避免被误判为 PyPI 包（例如 `shutil` 不是第三方依赖，pip 永远装不上）
-	"__future__": {}, "codecs": {}, "glob": {}, "inspect": {}, "shutil": {}, "tarfile": {}, "urllib": {},
+// stdlibModulesData is generated from python:3.11-bullseye with
+//
+//	python3 -c "import sys; print('\n'.join(sorted(sys.stdlib_module_names)))"
+//
+// Keeping it as a data file prevents the hand-maintained 37-module list from
+// drifting from the sandbox interpreter again (D4).
+//
+//go:embed stdlib_modules.txt
+var stdlibModulesData string
+
+var pythonStandardLibraryModules = loadStandardLibraryModules()
+
+func loadStandardLibraryModules() map[string]struct{} {
+	out := make(map[string]struct{}, 320)
+	for _, line := range strings.Split(stdlibModulesData, "\n") {
+		name := strings.ToLower(strings.TrimSpace(line))
+		if name == "" {
+			continue
+		}
+		out[name] = struct{}{}
+	}
+	return out
 }
 
 var pythonImportPackageMap = map[string]string{
@@ -1118,7 +1148,11 @@ func (a *CoderAgent) installMissingPythonModule(ctx context.Context, sandboxID s
 
 	// 运行期兜底：依赖识别漏掉模块时，在当前 prepared_runtime 内最小补装一次。
 	logToContext(ctx, "[%s] Missing module detected at runtime: %s -> %s, retrying with pip install", a.Name, missingModule, pkg)
-	res, err := a.Sandbox.ExecCommandStream(ctx, sandboxID, pipInstallArgs(pkg), func(stream string, line string) {
+	pipArgs, pipArgsErr := pipInstallArgs(pkg)
+	if pipArgsErr != nil {
+		return false, pipArgsErr
+	}
+	res, err := a.Sandbox.ExecCommandStream(ctx, sandboxID, pipArgs, func(stream string, line string) {
 		logToContext(ctx, "[%s] pip %s: %s", a.Name, stream, line)
 	})
 	if err != nil {
@@ -1775,12 +1809,21 @@ func filterStandardLibraryDependencies(items []string) []string {
 	return filtered
 }
 
-func pipInstallArgs(packages ...string) []string {
+func pipInstallArgs(packages ...string) ([]string, error) {
+	cleaned := make([]string, 0, len(packages))
+	for _, pkg := range packages {
+		if trimmed := strings.TrimSpace(pkg); trimmed != "" {
+			cleaned = append(cleaned, trimmed)
+		}
+	}
+	if len(cleaned) == 0 {
+		return nil, fmt.Errorf("pip install requires at least one package")
+	}
 	args := []string{"python3", "-m", "pip", "install", "--default-timeout", defaultPipTimeoutSec}
 	if indexURL := strings.TrimSpace(os.Getenv("PIP_INDEX_URL")); indexURL != "" {
 		args = append(args, "--index-url", indexURL)
 	}
-	return append(args, packages...)
+	return append(args, cleaned...), nil
 }
 
 func configuredSandboxImage() string {

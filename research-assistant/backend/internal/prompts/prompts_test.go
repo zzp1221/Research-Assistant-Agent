@@ -41,3 +41,9 @@ func TestTaskPromptIsolation(t *testing.T) {
 		t.Fatalf("paper librarian prompt is not isolated")
 	}
 }
+
+func TestVerifyResultUsesAnswerPrompt(t *testing.T) {
+	if got := DataSystemPromptForTask("Code_Execution", "verify_result", "Verify", "验证结果"); got != AnswerSystemPrompt {
+		t.Fatalf("verify_result must reuse AnswerSystemPrompt")
+	}
+}

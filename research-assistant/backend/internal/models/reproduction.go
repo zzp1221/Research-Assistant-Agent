@@ -96,6 +96,8 @@ type ReproductionRuntimeSpec struct {
 	ModelRefs          []ModelRef    `json:"model_refs,omitempty"`
 	RunCommand         []string      `json:"run_command,omitempty"`
 	Entrypoint         string        `json:"entrypoint,omitempty"`
+	EntrypointRelative string        `json:"entrypoint_relative,omitempty"`
+	PythonPath         []string      `json:"python_path,omitempty"`
 	WorkingDir         string        `json:"working_dir,omitempty"`
 	NetworkAccess      bool          `json:"network_access,omitempty"`
 	DiskGB             float64       `json:"disk_gb,omitempty"`

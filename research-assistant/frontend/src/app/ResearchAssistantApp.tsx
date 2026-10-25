@@ -139,6 +139,8 @@ interface ResearchAssistantWorkspaceContentProps {
     activePlanMissingRequirements: MissingRequirement[];
     activePlanRuntimeActions: RuntimeAction[];
     activePlanRuntimePolicyMode: string | null;
+    activePlanPlannerSource: string | null;
+    activePlanPlannerFallbackReason: string | null;
     runtimePermissionMode: 'confirm_important' | 'full_access';
     showFullAccessConfirm: boolean;
     handleRuntimePermissionModeChange: (mode: 'confirm_important' | 'full_access') => void;
@@ -174,6 +176,8 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
     activePlanMissingRequirements: chatFlow.activePlanMissingRequirements,
     activePlanRuntimeActions: chatFlow.activePlanRuntimeActions,
     activePlanRuntimePolicyMode: chatFlow.activePlanRuntimePolicyMode,
+    activePlanPlannerSource: chatFlow.activePlanPlannerSource,
+    activePlanPlannerFallbackReason: chatFlow.activePlanPlannerFallbackReason,
     layout,
     logsEndRef,
   });
@@ -377,6 +381,8 @@ export default function ResearchAssistantApp() {
           activePlanMissingRequirements: chatFlow.activePlanGraph?.missing_requirements ?? [],
           activePlanRuntimeActions: chatFlow.activePlanGraph?.runtime_actions ?? [],
           activePlanRuntimePolicyMode: chatFlow.activePlanGraph?.runtime_policy?.mode ?? null,
+          activePlanPlannerSource: chatFlow.activePlanGraph?.meta?.planner_source ?? null,
+          activePlanPlannerFallbackReason: chatFlow.activePlanGraph?.meta?.planner_fallback_reason ?? null,
           runtimePermissionMode: chatFlow.runtimePermissionMode,
           showFullAccessConfirm: chatFlow.showFullAccessConfirm,
           handleRuntimePermissionModeChange: chatFlow.handleRuntimePermissionModeChange,

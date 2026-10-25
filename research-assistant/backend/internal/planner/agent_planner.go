@@ -372,6 +372,13 @@ func attachPlannerContextBindings(node *models.TaskNode, intent models.IntentCon
 		if intent.IntentType == "Paper_Reproduction" {
 			node.RequiredArtifacts = ensureArtifacts(node.RequiredArtifacts, "paper_metadata")
 		}
+		// Agent blueprints do not carry planner-side constants; without these
+		// deterministic inputs repo_discovery would search for the task
+		// description instead of the paper title/arXiv id (D2).
+		if len(node.Inputs) == 0 {
+			node.Inputs = buildRepoDiscoveryInputs(intent)
+		}
+		node.Description = buildRepoDiscoveryDescription(intent.RawIntent)
 	case "general_synthesis":
 		if intent.Entities != nil && intent.Entities["paper_metadata"] != nil {
 			node.RequiredArtifacts = ensureArtifacts(node.RequiredArtifacts, "paper_summary", "paper_metadata")
@@ -439,7 +446,39 @@ func normalizePlannerAssignedTo(bp plannerNodeBlueprint) string {
 }
 
 func applyPlannerNodeDefaults(bp plannerNodeBlueprint) plannerNodeBlueprint {
+	// The registry is the single source of truth for required output artifacts.
+	// Hand-written switch branches below must not redefine them (D5).
+	if spec, ok := lookupTaskTypeSpec(bp.Type); ok {
+		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, spec.RequiredOutputArtifacts...)
+	}
 	switch bp.Type {
+	case "generate_code":
+		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, "generated_code")
+	case "resolve_dependencies":
+		bp.RequiredArtifacts = ensureArtifacts(bp.RequiredArtifacts, "generated_code")
+		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, "dependency_spec")
+	case "prepare_runtime":
+		bp.RequiredArtifacts = ensureArtifacts(bp.RequiredArtifacts, "dependency_spec")
+		// prepared_runtime belongs to install_dependencies; a duplicate producer
+		// makes the plan fail at completion time (D5).
+		bp.OutputArtifacts = removeArtifact(bp.OutputArtifacts, "prepared_runtime")
+		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, "runtime_session")
+		// A node must never require its own output.
+		bp.RequiredArtifacts = removeArtifact(bp.RequiredArtifacts, "runtime_session")
+	case "install_dependencies":
+		bp.RequiredArtifacts = ensureArtifacts(bp.RequiredArtifacts, "runtime_session", "dependency_spec")
+		bp.OutputArtifacts = removeArtifact(bp.OutputArtifacts, "runtime_session")
+		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, "prepared_runtime", "dependency_install_report")
+		bp.RequiredArtifacts = removeArtifact(bp.RequiredArtifacts, "prepared_runtime")
+		bp.RequiredArtifacts = removeArtifact(bp.RequiredArtifacts, "dependency_install_report")
+	case "execute_code":
+		bp.RequiredArtifacts = ensureArtifacts(bp.RequiredArtifacts, "generated_code", "prepared_runtime")
+		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, "execution_result")
+	case "verify_result":
+		// general_response is owned by general_synthesis; verify_result emits
+		// the verification report consumed by the final answer (D5/D9).
+		bp.OutputArtifacts = removeArtifact(bp.OutputArtifacts, "general_response")
+		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, "verification_report")
 	case "benchmark_dataset_audit":
 		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, "dataset_manifest", "benchmark_dataset_audit")
 	case "benchmark_split_materialize":
@@ -498,15 +537,24 @@ func applyPlannerNodeDefaults(bp plannerNodeBlueprint) plannerNodeBlueprint {
 		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, "experiment_validation_report", "experiment_best_metrics")
 	case "render_plot", "result_visualization":
 		bp.AssignedTo = "coder_agent"
-		if len(bp.OutputArtifacts) == 0 {
-			key := "plot_image"
-			if bp.Type == "result_visualization" {
-				key = "result_plot"
-			}
-			bp.OutputArtifacts = []string{key}
+		key := "plot_image"
+		if bp.Type == "result_visualization" {
+			key = "result_plot"
 		}
+		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, key)
 	}
 	return bp
+}
+
+func removeArtifact(current []string, unwanted string) []string {
+	out := make([]string, 0, len(current))
+	for _, item := range current {
+		if item == unwanted {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 func ensureArtifacts(current []string, required ...string) []string {

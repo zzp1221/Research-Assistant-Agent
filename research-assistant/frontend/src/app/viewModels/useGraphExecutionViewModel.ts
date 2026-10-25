@@ -18,12 +18,14 @@ interface UseGraphExecutionViewModelOptions {
   activePlanMissingRequirements?: MissingRequirement[];
   activePlanRuntimeActions?: RuntimeAction[];
   activePlanRuntimePolicyMode?: string | null;
+  activePlanPlannerSource?: string | null;
+  activePlanPlannerFallbackReason?: string | null;
   layout: ReturnType<typeof useResearchAssistantLayoutState>;
   logsEndRef: RefObject<HTMLDivElement | null>;
 }
 
 export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOptions) {
-	const { nodes, edges, onNodesChange, onEdgesChange, intentContext, activePlanId, activePlanStatus, activePlanOutcome, activePlanMissingRequirements, activePlanRuntimeActions, activePlanRuntimePolicyMode, layout, logsEndRef } = options;
+	const { nodes, edges, onNodesChange, onEdgesChange, intentContext, activePlanId, activePlanStatus, activePlanOutcome, activePlanMissingRequirements, activePlanRuntimeActions, activePlanRuntimePolicyMode, activePlanPlannerSource, activePlanPlannerFallbackReason, layout, logsEndRef } = options;
   const runtime = useResearchAssistantRuntimeContext();
 
   return useMemo(() => {
@@ -38,6 +40,8 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
       missingRequirements: activePlanMissingRequirements ?? [],
       runtimeActions: activePlanRuntimeActions ?? [],
       runtimePermissionMode: activePlanRuntimePolicyMode ?? null,
+      plannerSource: activePlanPlannerSource ?? null,
+      plannerFallbackReason: activePlanPlannerFallbackReason ?? null,
       onRuntimeActionDecision: (actionId: string, decision: 'approve' | 'reject') =>
         runtime.actions.handleRuntimeActionDecision(activePlanId, actionId, decision),
       runAllText: uiText.runAll,
@@ -83,5 +87,5 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
       showExecutionResizeHandle,
       executionSidebarProps,
     };
-	}, [activePlanId, activePlanStatus, activePlanOutcome, activePlanMissingRequirements, activePlanRuntimeActions, activePlanRuntimePolicyMode, edges, intentContext, layout.sidebarWidth, logsEndRef, nodes, onEdgesChange, onNodesChange, runtime]);
+	}, [activePlanId, activePlanStatus, activePlanOutcome, activePlanMissingRequirements, activePlanRuntimeActions, activePlanRuntimePolicyMode, activePlanPlannerSource, activePlanPlannerFallbackReason, edges, intentContext, layout.sidebarWidth, logsEndRef, nodes, onEdgesChange, onNodesChange, runtime]);
 }

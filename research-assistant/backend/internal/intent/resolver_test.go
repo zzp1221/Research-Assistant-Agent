@@ -142,3 +142,38 @@ func TestGeneralPlotRequestPromotesToCodeExecution(t *testing.T) {
 		t.Fatalf("needs_plot=%#v", got.Entities["needs_plot"])
 	}
 }
+func TestClassifierFailureStillRunsPostValidate(t *testing.T) {
+	classifier := &fakeClassifier{err: errors.New("gateway down")}
+	resolver := &Resolver{Mode: ModeHybrid, Threshold: 0.6, Classifier: classifier}
+	rule := ruleContext("Framework_Evaluation", "对比一下python中二分法和摩尔排序的性能")
+	got := resolver.Resolve(context.Background(), "对比一下python中二分法和摩尔排序的性能", rule)
+	if got.IntentType == "Framework_Evaluation" {
+		t.Fatalf("rule fallback bypassed postValidate: %s", got.IntentType)
+	}
+}
+
+func TestRuleModeRunsPostValidate(t *testing.T) {
+	resolver := &Resolver{Mode: ModeRule}
+	rule := ruleContext("Framework_Evaluation", "帮我画一个正弦函数和余弦函数的对比图")
+	got := resolver.Resolve(context.Background(), "帮我画一个正弦函数和余弦函数的对比图", rule)
+	if got.IntentType != "Code_Execution" {
+		t.Fatalf("rule mode did not post-validate: %s", got.IntentType)
+	}
+	if got.Entities["needs_plot"] != true {
+		t.Fatalf("needs_plot not set: %#v", got.Entities)
+	}
+}
+
+func TestLLMFrameworkEvaluationCannotOverrideCodePerformance(t *testing.T) {
+	classifier := &fakeClassifier{result: &Classification{
+		IntentType: "Framework_Evaluation",
+		Confidence: 0.92,
+		Entities:   map[string]any{},
+	}}
+	resolver := &Resolver{Mode: ModeHybrid, Threshold: 0.6, Classifier: classifier}
+	raw := "对比一下python中二分法和摩尔排序的性能"
+	got := resolver.Resolve(context.Background(), raw, ruleContext("Code_Execution", raw))
+	if got.IntentType != "Code_Execution" {
+		t.Fatalf("intent_type=%s, want Code_Execution", got.IntentType)
+	}
+}
