@@ -17,6 +17,13 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
+const risks = [
+  { key: '镜像', value: '按白名单拉取固定 digest 的镜像' },
+  { key: '依赖', value: '在沙箱内自动安装 Python / 系统依赖' },
+  { key: '数据', value: '下载论文引用的公开数据集与模型权重' },
+  { key: '算力', value: '按计划声明使用 GPU 与网络访问' },
+];
+
 export function FullAccessConfirmDialog({ open, onCancel, onConfirm }: FullAccessConfirmDialogProps) {
   const [acknowledged, setAcknowledged] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -102,7 +109,7 @@ export function FullAccessConfirmDialog({ open, onCancel, onConfirm }: FullAcces
 
   return createPortal(
     <div
-      className="fixed inset-0 flex items-center justify-center bg-ink/35 p-4"
+      className="fixed inset-0 flex items-center justify-center bg-ink/45 p-4"
       style={{ zIndex: 2000 }}
       role="presentation"
       onMouseDown={(event) => {
@@ -119,15 +126,15 @@ export function FullAccessConfirmDialog({ open, onCancel, onConfirm }: FullAcces
         aria-labelledby="full-access-title"
         aria-describedby="full-access-description"
         tabIndex={-1}
-        className="w-full max-w-md rounded-[10px] border border-line bg-surface p-5 shadow-xl outline-none"
+        className="ra-fade-up w-full max-w-md border border-line-strong bg-surface outline-none shadow-float"
       >
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-2">
-            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-flag" />
+        <div className="flex items-start justify-between gap-3 border-b border-line bg-surface-muted px-4 py-3">
+          <div className="flex items-start gap-2.5">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-flag" />
             <div>
-              <h2 id="full-access-title" className="font-serif text-[17px] font-semibold text-ink">启用完全权限</h2>
-              <p id="full-access-description" className="mt-1 text-[12px] leading-5 text-muted">
-                系统会自动拉取镜像、安装依赖、下载公开数据/模型并使用 GPU（如需要）。仍受镜像白名单、磁盘与运行时长上限约束。
+              <h2 id="full-access-title" className="font-display text-[15px] font-semibold text-ink">启用完全权限</h2>
+              <p id="full-access-description" className="mt-0.5 text-[12.5px] leading-5 text-muted">
+                当前计划将不再逐项请求确认。以下操作会自动执行，仍受镜像白名单、磁盘与运行时长上限约束。
               </p>
             </div>
           </div>
@@ -136,30 +143,48 @@ export function FullAccessConfirmDialog({ open, onCancel, onConfirm }: FullAcces
             type="button"
             onClick={() => { setAcknowledged(false); onCancel(); }}
             aria-label="关闭完全权限确认"
-            className="rounded-[4px] p-1 text-muted hover:bg-surface-muted hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+            className="flex h-6 w-6 items-center justify-center text-muted transition-colors hover:bg-surface-strong hover:text-ink"
           >
-            <X className="h-4 w-4" />
+            <X className="h-3.5 w-3.5" />
           </button>
         </div>
-        <label className="mt-4 flex items-start gap-2 rounded-[6px] border border-flag/25 bg-flag-soft px-3 py-2 text-[12px] leading-5 text-ink-soft">
-          <input
-            type="checkbox"
-            checked={acknowledged}
-            onChange={(event) => setAcknowledged(event.target.checked)}
-            className="mt-1 h-3.5 w-3.5 accent-[var(--accent)]"
-          />
-          <span>我理解并允许系统在当前计划中自动执行上述操作；仅在我信任该论文仓库时使用。</span>
-        </label>
-        <div className="mt-4 flex justify-end gap-2">
-          <button type="button" onClick={() => { setAcknowledged(false); onCancel(); }} className="h-8 rounded-[5px] border border-line px-3 text-[12.5px] font-medium text-ink-soft hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">取消</button>
-          <button
-            type="button"
-            disabled={!acknowledged}
-            onClick={() => { setAcknowledged(false); onConfirm(); }}
-            className="h-8 rounded-[5px] bg-accent px-3 text-[12.5px] font-semibold text-white hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-line disabled:text-faint focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-          >
-            确认完全权限
-          </button>
+
+        <dl className="grid grid-cols-[68px_minmax(0,1fr)] border-b border-line">
+          {risks.map((risk) => (
+            <div key={risk.key} className="contents">
+              <dt className="border-b border-line/70 px-4 py-2 font-mono text-[11px] tracking-[0.08em] text-faint">{risk.key}</dt>
+              <dd className="border-b border-line/70 px-3 py-2 text-[12.5px] leading-5 text-ink-soft">{risk.value}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <div className="p-4">
+          <label className="flex items-start gap-2 border border-flag/25 bg-flag-soft px-2.5 py-2 text-[12px] leading-5 text-ink-soft">
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              onChange={(event) => setAcknowledged(event.target.checked)}
+              className="mt-1 h-3.5 w-3.5 accent-[var(--color-accent)]"
+            />
+            <span>我理解并允许系统在当前计划中自动执行上述操作；仅在我信任该论文仓库时使用。</span>
+          </label>
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => { setAcknowledged(false); onCancel(); }}
+              className="h-7 border border-line-strong px-3 text-[12.5px] font-medium text-ink-soft transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              disabled={!acknowledged}
+              onClick={() => { setAcknowledged(false); onConfirm(); }}
+              className="h-7 bg-accent px-3 text-[12.5px] font-semibold text-white transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-surface-strong disabled:text-faint focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              确认完全权限
+            </button>
+          </div>
         </div>
       </div>
     </div>,

@@ -71,8 +71,8 @@ export function ExperimentSearchNodeLabel({ task, status, step }: ExperimentSear
           <span className="truncate text-[12.5px] font-semibold text-ink">多策略异步搜索</span>
         </div>
         <div className="flex shrink-0 items-center gap-1.5 text-[9.5px] font-semibold">
-          <span className="rounded-[3px] border border-plum/25 bg-plum-soft px-1.5 py-0.5 text-plum">ToT {totBranches} branches</span>
-          <span className="rounded-[3px] border border-accent/25 bg-accent-soft px-1.5 py-0.5 text-accent-ink">Agent ×{parallelism}</span>
+          <span className="rounded-[2px] border border-plum/25 bg-plum-soft px-1.5 py-0.5 text-plum">ToT {totBranches} branches</span>
+          <span className="rounded-[2px] border border-accent/25 bg-accent-soft px-1.5 py-0.5 text-accent-ink">Agent ×{parallelism}</span>
           <span className={status === 'failed' ? 'text-flag' : status === 'completed' ? 'text-ok' : 'text-warn'}>{statusText[status] ?? status}</span>
         </div>
       </div>
@@ -105,7 +105,7 @@ export function ExperimentSearchNodeLabel({ task, status, step }: ExperimentSear
             const state = branchState(rootTrial, targetStopped, running, index);
             const StateIcon = state.icon;
             return (
-              <div key={strategy} className="min-w-0 rounded-[4px] border border-line bg-surface px-2.5 py-2">
+              <div key={strategy} className="min-w-0 rounded-[2px] border border-line bg-surface px-2.5 py-2">
                 <div className="flex items-center justify-between gap-1.5">
                   <span className="truncate font-mono text-[9.5px] font-semibold text-ink-soft" title={strategy}>{shortStrategyName(strategy)}</span>
                   <StateIcon className={`h-3 w-3 shrink-0 ${state.tone} ${state.label === 'Running' ? 'animate-spin' : ''}`} />

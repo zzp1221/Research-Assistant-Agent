@@ -16,12 +16,12 @@ const categoryLabels: Record<string, string> = {
 
 function BranchStatus({ candidate, plan }: { candidate: AblationCandidateView; plan: AblationPlanView }) {
   if (plan.selectedIds.has(candidate.id)) {
-    return <span className="inline-flex items-center gap-1 rounded-md border border-ok/25 bg-ok-soft px-2 py-1 text-[11px] font-semibold text-ok"><CheckCircle2 className="h-3.5 w-3.5" />入选</span>;
+    return <span className="inline-flex items-center gap-1 rounded-[2px] border border-ok/25 bg-ok-soft px-2 py-1 text-[11px] font-semibold text-ok"><CheckCircle2 className="h-3.5 w-3.5" />入选</span>;
   }
   if (plan.expandedParentIds.has(candidate.id)) {
-    return <span className="inline-flex items-center gap-1 rounded-md border border-accent/25 bg-accent-soft px-2 py-1 text-[11px] font-semibold text-accent-ink"><GitBranch className="h-3.5 w-3.5" />已扩展</span>;
+    return <span className="inline-flex items-center gap-1 rounded-[2px] border border-accent/25 bg-accent-soft px-2 py-1 text-[11px] font-semibold text-accent-ink"><GitBranch className="h-3.5 w-3.5" />已扩展</span>;
   }
-  return <span className="inline-flex items-center gap-1 rounded-md border border-line bg-surface-muted px-2 py-1 text-[11px] font-semibold text-muted"><Scissors className="h-3.5 w-3.5" />剪枝</span>;
+  return <span className="inline-flex items-center gap-1 rounded-[2px] border border-line bg-surface-muted px-2 py-1 text-[11px] font-semibold text-muted"><Scissors className="h-3.5 w-3.5" />剪枝</span>;
 }
 
 function BranchRow({ candidate, plan, child = false }: { candidate: AblationCandidateView; plan: AblationPlanView; child?: boolean }) {
@@ -31,7 +31,7 @@ function BranchRow({ candidate, plan, child = false }: { candidate: AblationCand
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <BranchStatus candidate={candidate} plan={plan} />
-            <span className="rounded-md bg-paper-deep px-2 py-1 text-[10px] font-semibold text-muted">L{candidate.depth}</span>
+            <span className="rounded-[2px] bg-paper-deep px-2 py-1 text-[10px] font-semibold text-muted">L{candidate.depth}</span>
             <span className="text-xs font-semibold text-ink">{candidate.title}</span>
           </div>
           <div className="mt-1 text-[10px] font-medium text-accent-ink">{categoryLabels[candidate.category] || candidate.category}</div>

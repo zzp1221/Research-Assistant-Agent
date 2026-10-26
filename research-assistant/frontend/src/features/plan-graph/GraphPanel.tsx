@@ -1,6 +1,6 @@
-import { lazy, memo, Suspense, useRef, useState } from 'react';
+import { lazy, memo, Suspense, useEffect, useRef, useState } from 'react';
 import type { Edge, Node, OnEdgesChange, OnNodesChange } from '@xyflow/react';
-import { CheckCircle2, GitBranch, LoaderCircle, Play, RotateCcw, ShieldAlert, ShieldCheck, Square } from 'lucide-react';
+import { GitBranch, Play, RotateCcw, ShieldAlert, ShieldCheck, Square } from 'lucide-react';
 import type { IntentContext, MissingRequirement, RuntimeAction } from '../../contracts/api';
 import type { Task } from '../../contracts/api';
 
@@ -29,6 +29,7 @@ interface GraphPanelProps {
   onApproveAndRun: () => void;
   onCancel: () => void;
   onRetryFailed: () => void;
+  onOpenTask?: (taskId: string) => void;
 }
 
 const intentLabels: Record<string, string> = {
@@ -39,6 +40,16 @@ const intentLabels: Record<string, string> = {
   AutoResearch: '自动研究',
   Custom_Benchmark: '数据评测',
   General: '通用任务',
+};
+
+const outcomeLabels: Record<string, string> = {
+  completed: '完成',
+  partial: '部分完成',
+  smoke: '冒烟',
+  mock: '模拟',
+  blocked: '阻塞',
+  failed: '失败',
+  needs_review: '待复核',
 };
 
 const terminalNodeStatuses = new Set(['completed', 'failed', 'skipped', 'canceled']);
@@ -75,15 +86,55 @@ const describeRuntimeAction = (action: RuntimeAction): string => {
   return parts.join(' · ');
 };
 
+const nodeStep = (node: Node) => (typeof node.data.step === 'number' ? node.data.step : undefined);
+
+const nodeStatusGlyph = (status: string) => {
+  switch (status) {
+    case 'completed':
+      return '●';
+    case 'in_progress':
+      return '◐';
+    case 'failed':
+      return '✕';
+    case 'blocked':
+      return '▲';
+    case 'awaiting_approval':
+      return '⚠';
+    case 'ready':
+      return '◔';
+    case 'canceled':
+    case 'skipped':
+      return '—';
+    default:
+      return '○';
+  }
+};
+
+const nodeStatusColor = (status: string) => {
+  switch (status) {
+    case 'completed':
+      return 'text-ok';
+    case 'in_progress':
+    case 'awaiting_approval':
+      return 'text-warn';
+    case 'failed':
+      return 'text-flag';
+    case 'ready':
+      return 'text-accent';
+    default:
+      return 'text-faint';
+  }
+};
+
 function GraphCanvasSkeleton() {
   return (
-    <div className="absolute inset-0 flex items-center justify-center bg-paper" aria-busy="true" aria-label="正在加载计划画布">
+    <div className="instrument-grid absolute inset-0 flex items-center justify-center" aria-busy="true" aria-label="正在加载计划画布">
       <div className="flex items-center gap-2" aria-hidden="true">
-        <span className="h-12 w-20 animate-pulse rounded-[5px] border border-line bg-surface" />
-        <span className="h-px w-8 border-t border-dashed border-line-strong" />
-        <span className="h-12 w-20 animate-pulse rounded-[5px] border border-accent/30 bg-accent-soft" />
-        <span className="h-px w-8 border-t border-dashed border-line-strong" />
-        <span className="h-12 w-20 animate-pulse rounded-[5px] border border-line bg-surface" />
+        <span className="h-10 w-20 animate-pulse border border-line bg-surface" />
+        <span className="h-px w-8 bg-line-strong" />
+        <span className="h-10 w-20 animate-pulse border border-accent/40 bg-accent-soft" />
+        <span className="h-px w-8 bg-line-strong" />
+        <span className="h-10 w-20 animate-pulse border border-line bg-surface" />
       </div>
     </div>
   );
@@ -113,6 +164,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
     onApproveAndRun,
     onCancel,
     onRetryFailed,
+    onOpenTask,
   } = props;
   const completedCount = nodes.filter((node) => node.data.status === 'completed').length;
   const runningCount = nodes.filter((node) => node.data.status === 'in_progress').length;
@@ -120,14 +172,12 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
   const pendingCount = nodes.filter((node) => node.data.task && !terminalNodeStatuses.has(String(node.data.status))).length;
   const intentLabel = intentContext ? intentLabels[intentContext.intent_type] ?? intentContext.intent_type : null;
   const subtitle = intentContext?.raw_intent || graphHint;
-  const experimentSearchTask = nodes.map((node) => node.data.task as Task | undefined).find((task) => task?.Type === 'experiment_run');
-  const experimentParallelism = typeof experimentSearchTask?.Inputs?.experiment_max_parallel_trials === 'number'
-    ? experimentSearchTask.Inputs.experiment_max_parallel_trials
-    : 4;
   const pendingRuntimeActions = (runtimeActions ?? []).filter((action) => action.status === 'pending');
   const [runtimeDecision, setRuntimeDecision] = useState<{ actionId: string; decision: 'approve' | 'reject' } | null>(null);
   const runtimeDecisionLockRef = useRef(false);
   const runtimeDecisionBusy = runtimeDecision !== null;
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [showPlanInfo, setShowPlanInfo] = useState(false);
 
   const handleRuntimeActionDecision = async (actionId: string, decision: 'approve' | 'reject') => {
     if (runtimeDecisionLockRef.current) return;
@@ -143,72 +193,66 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
     }
   };
 
+  const selectNode = (nodeId: string) => {
+    setSelectedNodeId(nodeId);
+    const node = nodes.find((candidate) => candidate.id === nodeId);
+    if (node) onNodeClick(null, node);
+  };
+
+  const activeIndex = nodes.findIndex((node) => node.id === selectedNodeId);
+  const handleIndexKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft' && event.key !== 'Home' && event.key !== 'End') return;
+    if (nodes.length === 0) return;
+    event.preventDefault();
+    const current = activeIndex < 0 ? 0 : activeIndex;
+    const next = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? nodes.length - 1
+        : (current + (event.key === 'ArrowRight' ? 1 : -1) + nodes.length) % nodes.length;
+    const target = nodes[next];
+    if (!target) return;
+    selectNode(target.id);
+    const container = event.currentTarget;
+    window.requestAnimationFrame(() => {
+      container.querySelectorAll<HTMLButtonElement>('button')[next]?.focus();
+    });
+  };
+
+  useEffect(() => {
+    if (selectedNodeId && !nodes.some((node) => node.id === selectedNodeId)) setSelectedNodeId(null);
+  }, [nodes, selectedNodeId]);
+
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col bg-paper">
-      <header className="shrink-0 border-b border-line bg-surface px-5 py-3">
+      <header className="shrink-0 border-b border-line bg-surface px-4 py-3">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
-              <GitBranch className="h-4 w-4 shrink-0 text-accent" />
-              <h2 className="truncate text-[14px] font-semibold tracking-[-0.01em] text-ink">{graphTitle}</h2>
+              <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted" />
+              <h2 className="truncate font-display text-[15px] font-semibold tracking-[-0.01em] text-ink">{graphTitle}</h2>
               {intentLabel && (
-                <span className="shrink-0 rounded-[3px] border border-line bg-surface-muted px-1.5 py-0.5 text-[10.5px] font-medium text-ink-soft">
+                <span className="instrument-num shrink-0 border border-line bg-surface-muted px-1.5 py-0.5 text-[11px] font-medium text-ink-soft">
                   {intentLabel}
                 </span>
               )}
               {outcome && (
-                <span className="shrink-0 rounded-[3px] border border-accent/30 bg-accent-soft px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-accent-ink">
-                  {outcome}
+                <span className="instrument-num shrink-0 border border-line px-1.5 py-0.5 text-[11px] font-semibold text-ink-soft">
+                  {outcomeLabels[outcome] ?? outcome}
                 </span>
               )}
               {plannerSource === 'template' && (
                 <span
-                  className="shrink-0 rounded-[3px] border border-warn/30 bg-warn-soft px-1.5 py-0.5 text-[10.5px] font-medium text-warn"
+                  className="instrument-num shrink-0 border border-warn/30 bg-warn-soft px-1.5 py-0.5 text-[11px] font-medium text-warn"
                   title={plannerFallbackReason || '该计划由模板规划生成'}
                 >
                   模板规划
                 </span>
               )}
-              {runtimePermissionMode && (
-                <span className={`shrink-0 rounded-[3px] border px-1.5 py-0.5 text-[10.5px] font-medium ${runtimePermissionMode === 'full_access' ? 'border-flag/30 bg-flag-soft text-flag' : 'border-line bg-surface-muted text-ink-soft'}`}>
-                  {runtimePermissionMode === 'full_access' ? '完全权限' : '重要操作需确认'}
-                </span>
-              )}
             </div>
-            <p className="mt-1 max-w-3xl truncate text-[11.5px] leading-4 text-muted" title={subtitle}>
+            <p className="mt-1 max-w-3xl truncate text-[12.5px] leading-5 text-muted" title={subtitle}>
               {subtitle}
             </p>
-            {missingRequirements && missingRequirements.length > 0 && (
-              <p className="mt-1 max-w-3xl truncate text-[11px] leading-4 text-flag" title={missingRequirements.map((item) => item.detail || item.kind).join('；')}>
-                缺少：{missingRequirements.map((item) => item.name || item.kind).join('、')}
-              </p>
-            )}
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
-              <span className="tabular-nums">{nodes.length} 个步骤</span>
-              <span className="h-2.5 w-px bg-line" />
-              <span className="inline-flex items-center gap-1 text-ok">
-                <CheckCircle2 className="h-3 w-3" />
-                {completedCount}/{nodes.length} 完成
-              </span>
-              {runningCount > 0 && (
-                <span className="inline-flex items-center gap-1 text-warn">
-                  <LoaderCircle className="h-3 w-3 animate-spin" />
-                  {runningCount} 运行中
-                </span>
-              )}
-              {failedCount > 0 && <span className="inline-flex items-center gap-1 font-medium text-flag">{failedCount} 失败</span>}
-              {experimentSearchTask && (
-                <>
-                  <span className="h-2.5 w-px bg-line" />
-                  <span className="inline-flex items-center gap-1 rounded-[3px] bg-plum-soft px-1.5 py-0.5 font-medium text-plum">
-                    ToT 设计与环境异步
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-[3px] bg-accent-soft px-1.5 py-0.5 font-medium text-accent-ink">
-                    Search Agent ×{experimentParallelism}
-                  </span>
-                </>
-              )}
-            </div>
           </div>
 
           <div className="flex shrink-0 items-center gap-2 pt-0.5">
@@ -217,16 +261,16 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
                 type="button"
                 onClick={onCancel}
                 title="取消计划"
-                className="inline-flex h-8 items-center gap-1.5 rounded-[5px] border border-flag/30 bg-surface px-3 text-[12.5px] font-semibold text-flag transition-colors hover:bg-flag-soft active:scale-[0.98]"
+                className="inline-flex h-7 items-center gap-1.5 border border-flag/40 bg-surface px-2.5 text-[12.5px] font-semibold text-flag transition-colors hover:bg-flag-soft active:translate-y-px"
               >
-                <Square className="h-3 w-3 fill-current" />
-                取消
+                <Square className="h-2.5 w-2.5 fill-current" />
+                取消计划
               </button>
             ) : requiresApproval ? (
               <button
                 type="button"
                 onClick={onApproveAndRun}
-                className="inline-flex h-8 items-center gap-1.5 rounded-[5px] bg-accent px-3 text-[12.5px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-strong active:scale-[0.98]"
+                className="inline-flex h-7 items-center gap-1.5 bg-accent px-2.5 text-[12.5px] font-semibold text-white transition-colors hover:bg-accent-strong active:translate-y-px"
               >
                 <ShieldCheck className="h-3.5 w-3.5" />
                 审批并运行
@@ -235,7 +279,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
               <button
                 type="button"
                 onClick={onRetryFailed}
-                className="inline-flex h-8 items-center gap-1.5 rounded-[5px] border border-warn/30 bg-surface px-3 text-[12.5px] font-semibold text-warn transition-colors hover:bg-warn-soft active:scale-[0.98]"
+                className="inline-flex h-7 items-center gap-1.5 border border-warn/40 bg-surface px-2.5 text-[12.5px] font-semibold text-warn transition-colors hover:bg-warn-soft active:translate-y-px"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 重试失败节点
@@ -244,55 +288,112 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
               <button
                 type="button"
                 onClick={onRunAll}
-                disabled={pendingCount === 0}
-                className="inline-flex h-8 items-center gap-1.5 rounded-[5px] bg-accent px-3 text-[12.5px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-strong active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-line disabled:text-faint disabled:shadow-none"
+                disabled={pendingCount === 0 || pendingRuntimeActions.length > 0}
+                title={pendingRuntimeActions.length > 0 ? '先处理运行权限确认' : undefined}
+                className="inline-flex h-7 items-center gap-1.5 bg-accent px-2.5 text-[12.5px] font-semibold text-white transition-colors hover:bg-accent-strong active:translate-y-px disabled:cursor-not-allowed disabled:bg-surface-strong disabled:text-faint"
               >
-                <Play className="h-3.5 w-3.5 fill-current" />
+                <Play className="h-3 w-3 fill-current" />
                 {runAllText}
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setShowPlanInfo((value) => !value)}
+              aria-expanded={showPlanInfo}
+              className="flex h-7 w-7 items-center justify-center border border-line bg-surface text-muted transition-colors hover:border-line-strong hover:text-ink"
+              title="计划信息"
+              aria-label="计划信息"
+            >
+              ⋯
+            </button>
           </div>
         </div>
+
+        {showPlanInfo && (
+          <div className="ra-fade-up mt-2 grid grid-cols-2 gap-x-6 gap-y-1 border-t border-line pt-2 text-[12px] sm:grid-cols-4">
+            <span className="text-faint">意图类型</span>
+            <span className="text-ink-soft">{intentLabel ?? '未识别'}</span>
+            <span className="text-faint">规划来源</span>
+            <span className="text-ink-soft">{plannerSource === 'template' ? '模板规划' : plannerSource === 'agent' ? 'Agent 规划' : '未知'}</span>
+            <span className="text-faint">运行权限</span>
+            <span className="text-ink-soft">{runtimePermissionMode === 'full_access' ? '完全权限' : '确认模式'}</span>
+            <span className="text-faint">结果状态</span>
+            <span className="text-ink-soft">{outcome ? outcomeLabels[outcome] ?? outcome : '尚未产出'}</span>
+          </div>
+        )}
       </header>
 
+      <dl className="research-assistant-meta-strip grid shrink-0 grid-cols-5 border-b border-line bg-surface">
+        <div className="border-r border-line px-3.5 py-2">
+          <dt className="instrument-kicker">步骤</dt>
+          <dd className="instrument-num mt-0.5 text-[12.5px] text-ink">{nodes.length}</dd>
+        </div>
+        <div className="border-r border-line px-3.5 py-2">
+          <dt className="instrument-kicker">已完成</dt>
+          <dd className="instrument-num mt-0.5 text-[12.5px] text-ink">
+            <span className="text-ok">{completedCount}</span>
+            <span className="text-faint"> / {nodes.length}</span>
+          </dd>
+        </div>
+        <div className="border-r border-line px-3.5 py-2">
+          <dt className="instrument-kicker">进行中</dt>
+          <dd className="instrument-num mt-0.5 text-[12.5px] text-ink">{runningCount}</dd>
+        </div>
+        <div className="border-r border-line px-3.5 py-2">
+          <dt className="instrument-kicker">待处理</dt>
+          <dd className="mt-0.5 text-[12.5px] text-ink">
+            {pendingRuntimeActions.length > 0
+              ? <span className="font-semibold text-warn">{pendingRuntimeActions.length} 项授权</span>
+              : failedCount > 0
+                ? <span className="font-semibold text-flag">{failedCount} 个失败</span>
+                : <span className="text-muted">无</span>}
+          </dd>
+        </div>
+        <div className="px-3.5 py-2">
+          <dt className="instrument-kicker">权限</dt>
+          <dd className="mt-0.5 text-[12.5px] text-ink-soft">{runtimePermissionMode === 'full_access' ? '完全权限' : '确认模式'}</dd>
+        </div>
+      </dl>
+
       {pendingRuntimeActions.length > 0 && (
-        <div className="shrink-0 border-b border-warn/30 bg-warn-soft px-5 py-2.5">
+        <div className="shrink-0 border-b border-line bg-warn-soft px-4 py-2.5">
           <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-warn">
             <ShieldAlert className="h-3.5 w-3.5" />
             需要运行权限确认
+            <span className="instrument-num ml-1 font-normal text-muted">{pendingRuntimeActions.length} 项</span>
           </div>
           <div className="space-y-1.5">
             {pendingRuntimeActions.map((action) => {
               const detailsText = describeRuntimeAction(action);
               const isThisActionBusy = runtimeDecision?.actionId === action.id;
               return (
-                <div key={action.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[5px] border border-warn/20 bg-surface px-2.5 py-1.5 text-[11.5px]">
+                <div key={action.id} className="flex flex-wrap items-center justify-between gap-2 border border-warn/25 border-l-2 border-l-warn bg-surface px-2.5 py-1.5">
                   <div className="min-w-0">
-                    <div>
-                      <span className="font-medium text-ink">{action.title}</span>
-                      <span className="ml-1 text-muted">({action.kind})</span>
-                      {action.risk && <span className="ml-1 text-[10.5px] uppercase text-warn">{action.risk}</span>}
+                    <div className="flex flex-wrap items-baseline gap-x-2 text-[12.5px]">
+                      <span className="font-semibold text-ink">{action.title}</span>
+                      <span className="instrument-num text-[11px] text-faint">{action.kind}</span>
+                      {action.risk && <span className="instrument-num text-[11px] uppercase text-warn">{action.risk}</span>}
                     </div>
-                    {detailsText && <p className="mt-0.5 max-w-[42rem] break-words text-[10.5px] leading-4 text-muted" title={detailsText}>{detailsText}</p>}
+                    {detailsText && <p className="mt-0.5 max-w-[42rem] break-words text-[11.5px] leading-4 text-muted" title={detailsText}>{detailsText}</p>}
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <button
                       type="button"
                       disabled={runtimeDecisionBusy}
-                      aria-busy={isThisActionBusy && runtimeDecision?.decision === 'approve'}
-                      onClick={() => void handleRuntimeActionDecision(action.id, 'approve')}
-                      className="rounded-[4px] bg-accent px-2 py-1 text-[11px] font-semibold text-white hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-busy={isThisActionBusy && runtimeDecision?.decision === 'reject'}
+                      onClick={() => void handleRuntimeActionDecision(action.id, 'reject')}
+                      className="h-6 border border-flag/40 bg-surface px-2 text-[11.5px] font-medium text-flag transition-colors hover:bg-flag-soft disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {isThisActionBusy && runtimeDecision?.decision === 'approve' ? '提交中…' : '允许一次'}
+                      {isThisActionBusy && runtimeDecision?.decision === 'reject' ? '提交中…' : '拒绝'}
                     </button>
                     <button
                       type="button"
                       disabled={runtimeDecisionBusy}
-                      aria-busy={isThisActionBusy && runtimeDecision?.decision === 'reject'}
-                      onClick={() => void handleRuntimeActionDecision(action.id, 'reject')}
-                      className="rounded-[4px] border border-flag/30 px-2 py-1 text-[11px] font-medium text-flag hover:bg-flag-soft disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-busy={isThisActionBusy && runtimeDecision?.decision === 'approve'}
+                      onClick={() => void handleRuntimeActionDecision(action.id, 'approve')}
+                      className="h-6 bg-accent px-2 text-[11.5px] font-semibold text-white transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {isThisActionBusy && runtimeDecision?.decision === 'reject' ? '提交中…' : '拒绝'}
+                      {isThisActionBusy && runtimeDecision?.decision === 'approve' ? '提交中…' : '允许一次'}
                     </button>
                   </div>
                 </div>
@@ -302,21 +403,41 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
         </div>
       )}
 
+      {missingRequirements && missingRequirements.length > 0 && (
+        <div className="shrink-0 border-b border-line bg-flag-soft px-4 py-2">
+          <p className="text-[12px] font-semibold text-flag">缺少必要条件</p>
+          <ul className="mt-1 space-y-0.5">
+            {missingRequirements.map((item, index) => (
+              <li key={`${item.kind}-${index}`} className="text-[12px] leading-5 text-ink-soft">
+                <span className="font-medium">{item.name || item.kind}</span>
+                {item.detail ? <span className="text-muted"> — {item.detail}</span> : null}
+                {item.remediation ? <span className="text-faint"> · 建议：{item.remediation}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="relative min-h-0 flex-1">
         {nodes.length === 0 && (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-8">
-            <div className="max-w-sm text-center">
-              <div className="mx-auto mb-6 flex items-center justify-center" aria-hidden="true">
-                <span className="h-10 w-16 rounded-[4px] border border-line bg-surface shadow-[var(--shadow-card)]" />
-                <span className="mx-2 w-7 border-t border-dashed border-line-strong" />
-                <span className="h-10 w-16 rounded-[4px] border border-accent/35 bg-accent-soft shadow-[var(--shadow-card)]" />
-                <span className="mx-2 w-7 border-t border-dashed border-line-strong" />
-                <span className="h-10 w-16 rounded-[4px] border border-line bg-surface shadow-[var(--shadow-card)]" />
+          <div className="instrument-grid absolute inset-0 z-10 flex items-center justify-center p-8">
+            <div className="max-w-sm">
+              <div className="flex items-end gap-1.5" aria-hidden="true">
+                <span className="block h-8 w-14 border border-line bg-surface" />
+                <span className="mb-3 h-px w-5 bg-line-strong" />
+                <span className="block h-8 w-14 border border-accent/50 bg-accent-soft" />
+                <span className="mb-3 h-px w-5 bg-line-strong" />
+                <span className="block h-8 w-14 border border-line bg-surface" />
               </div>
-              <p className="font-serif text-[17px] font-semibold tracking-[-0.01em] text-ink">还没有执行图</p>
-              <p className="mx-auto mt-2 max-w-[17rem] text-[12px] leading-6 text-muted">
-                在左侧描述你的研究目标，系统会生成可执行的 DAG，并在右侧展示节点与实时状态。
+              <p className="mt-5 text-[14px] font-semibold text-ink">尚无运行</p>
+              <p className="mt-1 text-[12.5px] leading-5 text-muted">
+                在左侧描述研究目标。系统会生成可执行的执行图，节点状态、日志与产物都在此处呈现。
               </p>
+              <ul className="mt-3 border-t border-line">
+                <li className="border-b border-line py-1.5 text-[12px] text-ink-soft"><span className="instrument-num mr-2 text-faint">01</span>复现论文核心方法并跑通最小测试</li>
+                <li className="border-b border-line py-1.5 text-[12px] text-ink-soft"><span className="instrument-num mr-2 text-faint">02</span>对两个 RAG 框架做冻结指标评测</li>
+                <li className="border-b border-line py-1.5 text-[12px] text-ink-soft"><span className="instrument-num mr-2 text-faint">03</span>核查论文主张与证据链</li>
+              </ul>
             </div>
           </div>
         )}
@@ -331,7 +452,53 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
             />
           </Suspense>
         )}
+
+        {isExecuting && (
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden bg-surface-strong" aria-hidden="true">
+            <div className="ra-pulse h-full w-1/3 bg-accent" />
+          </div>
+        )}
       </div>
+
+      {nodes.length > 0 && (
+        <div
+          className="research-assistant-node-index flex shrink-0 items-stretch border-t border-line bg-surface"
+          role="toolbar"
+          aria-label="节点索引"
+          aria-orientation="horizontal"
+          onKeyDown={handleIndexKeyDown}
+        >
+          {nodes.map((node, index) => {
+            const status = String(node.data.status);
+            const task = node.data.task as Task | undefined;
+            const isSelected = selectedNodeId === node.id;
+            return (
+              <button
+                key={node.id}
+                type="button"
+                onClick={() => selectNode(node.id)}
+                onDoubleClick={() => onOpenTask?.(node.id)}
+                aria-label={`${(nodeStep(node) ?? index + 1).toString().padStart(2, '0')} ${task?.Name ?? node.id}，${status}`}
+                className={`relative flex min-w-0 flex-1 flex-col gap-1 border-r border-line px-2.5 py-2 text-left transition-colors last:border-r-0 hover:bg-surface-muted ${isSelected ? 'bg-surface-strong' : ''}`}
+                aria-current={isSelected ? 'true' : undefined}
+              >
+                {isSelected && <span className="absolute inset-x-0 top-0 h-0.5 bg-accent" aria-hidden="true" />}
+                <span className="flex items-center gap-1.5">
+                  <span className="instrument-num text-[11px] text-faint">{(nodeStep(node) ?? index + 1).toString().padStart(2, '0')}</span>
+                  <span className={`text-[11px] font-semibold ${nodeStatusColor(status)}`} aria-hidden="true">{nodeStatusGlyph(status)}</span>
+                </span>
+                <span className="line-clamp-2 text-[11.5px] font-medium leading-[1.35] text-ink-soft">{task?.Name ?? node.id}</span>
+                <span className="mt-auto block h-0.5 w-full bg-surface-strong" aria-hidden="true">
+                  <span
+                    className={`block h-full ${status === 'completed' ? 'bg-ok' : status === 'in_progress' || status === 'awaiting_approval' ? 'bg-warn' : status === 'failed' ? 'bg-flag' : 'bg-transparent'}`}
+                    style={{ width: status === 'completed' ? '100%' : status === 'in_progress' || status === 'awaiting_approval' ? '48%' : '0%' }}
+                  />
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 });

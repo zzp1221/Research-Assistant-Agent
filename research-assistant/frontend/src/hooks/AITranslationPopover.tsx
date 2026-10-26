@@ -1,6 +1,6 @@
 import { useLayoutEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, X, Loader2, MessageSquare } from 'lucide-react';
+import { X, Loader2, MessageSquare } from 'lucide-react';
 import type { AssistResponse } from '../contracts/api';
 
 export type AssistMode = 'translate' | 'explain';
@@ -107,49 +107,48 @@ export function AITranslationPopover(props: AITranslationPopoverProps) {
         zIndex: 1000,
         ...(anchor.placement === 'below' ? { top: anchor.top } : { bottom: anchor.bottom }),
       }}
-      className="ra-fade-up flex flex-col overflow-hidden rounded-[7px] border border-line bg-surface shadow-[var(--shadow-float)]"
+      className="ra-fade-up flex flex-col overflow-hidden border border-line-strong bg-surface shadow-float"
     >
-      <div className={`flex items-center justify-between px-3 py-2 text-white ${mode === 'translate' ? 'bg-accent' : 'bg-plum'}`}>
-        <span className="flex items-center gap-1.5 text-[11px] font-semibold">
-          <Sparkles className="h-3 w-3" />
-          {mode === 'translate' ? 'AI 翻译' : 'AI 解释'}
-          <span className="rounded-[2px] bg-white/15 px-1.5 py-0.5 text-[9.5px] font-normal">第 {pageIndex + 1} 页</span>
+      <div className="flex items-center justify-between border-b border-line bg-surface-muted px-2.5 py-1.5">
+        <span className="flex items-center gap-1.5">
+          <span className="instrument-kicker">{mode === 'translate' ? '段落翻译' : '段落解释'}</span>
+          <span className="instrument-num text-[11px] text-faint">第 {pageIndex + 1} 页</span>
         </span>
-        <button onClick={onClose} className="text-white/75 transition-colors hover:text-white" aria-label="关闭">
-          <X className="h-4 w-4" />
+        <button onClick={onClose} className="flex h-5 w-5 items-center justify-center text-muted transition-colors hover:bg-surface-strong hover:text-ink" aria-label="关闭">
+          <X className="h-3.5 w-3.5" />
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-surface p-3 text-[12px] leading-6 text-ink-soft">
-        <div className="mb-2 rounded-[4px] border border-line bg-surface-muted p-2 font-serif text-[11px] italic leading-5 text-muted">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-surface p-3 text-[12.5px] leading-6 text-ink-soft">
+        <div className="mb-2 border border-line bg-surface-muted p-2 font-serif text-[11.5px] italic leading-5 text-muted">
           “{selectedText.substring(0, 120)}{selectedText.length > 120 ? '…' : ''}”
         </div>
 
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-5 text-accent">
+          <div className="flex flex-col items-center justify-center gap-2 py-5 text-muted">
             <Loader2 className="h-5 w-5 animate-spin" />
-            <span className="ra-pulse text-[11px]">{mode === 'translate' ? '正在翻译论文段落…' : '正在阅读并解释…'}</span>
+            <span className="ra-pulse text-[12px]">{mode === 'translate' ? '正在翻译论文段落…' : '正在阅读并解释…'}</span>
           </div>
         ) : error ? (
-          <p className="rounded-[4px] border border-flag/25 bg-flag-soft p-2 text-[11px] text-flag">{error}</p>
+          <p className="border border-flag/25 bg-flag-soft p-2 text-[11.5px] text-flag">{error}</p>
         ) : answer ? (
           <div className="space-y-2">
             <p className="whitespace-pre-wrap text-[12.5px] leading-6 text-ink-soft">{answer.result}</p>
             {answer.bullets && answer.bullets.length > 0 && (
-              <ul className="list-disc space-y-1 pl-4 text-[11px] leading-5 text-muted">
+              <ul className="list-disc space-y-1 pl-4 text-[11.5px] leading-5 text-muted">
                 {answer.bullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
               </ul>
             )}
             {answer.terms && answer.terms.length > 0 && (
               <div className="flex flex-wrap gap-1 border-t border-line pt-2">
                 {answer.terms.map((term) => (
-                  <span key={`${term.source}-${term.target}`} className="rounded-[3px] bg-paper-deep px-1.5 py-0.5 text-[9.5px] text-muted" title={term.note}>
+                  <span key={`${term.source}-${term.target}`} className="bg-surface-strong px-1.5 py-0.5 text-[11px] text-muted" title={term.note}>
                     {term.source} → {term.target}
                   </span>
                 ))}
               </div>
             )}
-            <p className="text-[9.5px] text-faint">
+            <p className="text-[11px] text-faint">
               {answer.cached ? '来自缓存 · ' : ''}{answer.model}
             </p>
           </div>
@@ -162,7 +161,7 @@ export function AITranslationPopover(props: AITranslationPopoverProps) {
             onAskAI(selectedText);
             onClose();
           }}
-          className="flex items-center justify-center gap-2 border-t border-line bg-accent-soft py-2 text-[10.5px] font-semibold text-accent-ink transition-colors hover:bg-accent-soft/70"
+          className="flex items-center justify-center gap-2 border-t border-line bg-accent-soft py-2 text-[11.5px] font-semibold text-accent-ink transition-colors hover:bg-accent-soft/70"
         >
           <MessageSquare className="h-3 w-3" />
           针对此段落向 Research Assistant Agent 追问

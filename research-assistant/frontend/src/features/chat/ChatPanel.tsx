@@ -9,9 +9,9 @@ interface ChatPanelState {
   loading: boolean;
   prompt: string;
   showSuggestions: boolean;
-	pendingAttachments: UploadedFile[];
-	uploadingAttachments: boolean;
-	attachmentError: string;
+  pendingAttachments: UploadedFile[];
+  uploadingAttachments: boolean;
+  attachmentError: string;
   runtimePermissionMode: 'confirm_important' | 'full_access';
   showFullAccessConfirm: boolean;
   isLoggedIn: boolean;
@@ -35,12 +35,12 @@ interface ChatActions {
   onLogin: () => void;
   onCreateSession: () => void;
   onSwitchSession: (sessionId: string) => void;
-	onAttachFiles: (files: File[]) => void;
-	onRemoveAttachment: (uploadId: string) => void;
-	onOpenAttachment: (attachment: UploadedFile) => void;
-	onRuntimePermissionModeChange: (mode: 'confirm_important' | 'full_access') => void;
-	onConfirmFullAccess: () => void;
-	onCancelFullAccess: () => void;
+  onAttachFiles: (files: File[]) => void;
+  onRemoveAttachment: (uploadId: string) => void;
+  onOpenAttachment: (attachment: UploadedFile) => void;
+  onRuntimePermissionModeChange: (mode: 'confirm_important' | 'full_access') => void;
+  onConfirmFullAccess: () => void;
+  onCancelFullAccess: () => void;
 }
 
 interface PdfActions {
@@ -89,18 +89,19 @@ export function ChatPanel(props: ChatPanelProps) {
       />
       <ChatComposer
         prompt={state.prompt}
+        hasConversation={state.chatHistory.some((message) => message.role === 'user')}
         loading={state.loading}
         isLoggedIn={state.isLoggedIn}
         showSuggestions={state.showSuggestions}
-		pendingAttachments={state.pendingAttachments}
-		uploadingAttachments={state.uploadingAttachments}
-		attachmentError={state.attachmentError}
+        pendingAttachments={state.pendingAttachments}
+        uploadingAttachments={state.uploadingAttachments}
+        attachmentError={state.attachmentError}
         setPrompt={chatActions.setPrompt}
         setShowSuggestions={chatActions.setShowSuggestions}
         onSendMessage={chatActions.onSendMessage}
-		onAttachFiles={chatActions.onAttachFiles}
-		onRemoveAttachment={chatActions.onRemoveAttachment}
-		onOpenAttachment={chatActions.onOpenAttachment}
+        onAttachFiles={chatActions.onAttachFiles}
+        onRemoveAttachment={chatActions.onRemoveAttachment}
+        onOpenAttachment={chatActions.onOpenAttachment}
         runtimePermissionMode={state.runtimePermissionMode}
         onRuntimePermissionModeChange={chatActions.onRuntimePermissionModeChange}
       />

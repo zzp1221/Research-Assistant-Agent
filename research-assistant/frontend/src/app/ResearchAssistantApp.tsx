@@ -17,16 +17,69 @@ import { buildGraphLayout } from '../features/plan-graph/buildGraphLayout';
 import type { IntentContext, MissingRequirement, RuntimeAction } from '../contracts/api';
 import { isPdfAttachment } from '../features/pdf-viewer/pdfAttachment';
 
+interface InstrumentRailProps {
+  planTitle: string | null;
+  planId: string | null;
+  stepCount: number;
+  completedCount: number;
+  isExecuting: boolean;
+  permissionMode: string | null;
+  account: string;
+}
+
+function InstrumentRail(props: InstrumentRailProps) {
+  const { planTitle, planId, stepCount, completedCount, isExecuting, permissionMode, account } = props;
+  return (
+    <div className="research-assistant-rail instrument-rail flex h-11 shrink-0 items-center gap-0 pl-4 text-rail-ink">
+      <div className="flex items-center gap-2.5 border-r border-white/12 pr-4">
+        <span className="relative block h-4 w-4 border-[1.5px] border-rail-ink" aria-hidden="true">
+          <span className="absolute left-[3px] top-[3px] block h-1.5 w-1.5 bg-rail-ink" />
+          <span className="absolute bottom-[3px] right-[3px] block h-1 w-1 border border-rail-ink" />
+        </span>
+        <span className="font-display text-[13px] font-semibold tracking-[0.01em]">Research Assistant</span>
+        <span className="font-mono text-[11px] tracking-[0.06em] text-rail-muted">仪器台</span>
+      </div>
+      <div className="rail-context ml-4 flex min-w-0 items-center gap-2 font-mono text-[11.5px] text-rail-muted">
+        {planTitle ? (
+          <>
+            <span className="truncate text-rail-ink">{planTitle}</span>
+            <span className="text-white/20">/</span>
+            <span className="shrink-0">{planId}</span>
+            <span className="text-white/20">/</span>
+            <span className="shrink-0 tabular-nums">{completedCount}÷{stepCount} 节点</span>
+          </>
+        ) : (
+          <span>尚无运行 · 在左侧描述研究目标</span>
+        )}
+      </div>
+      <div className="ml-auto flex h-full items-center">
+        <span className="flex h-full items-center gap-2 border-l border-white/10 px-4 font-mono text-[11.5px] text-rail-muted">
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${isExecuting ? 'ra-pulse bg-[#d9a441]' : completedCount > 0 && stepCount > 0 ? 'bg-[#69a985]' : 'bg-white/30'}`}
+            aria-hidden="true"
+          />
+          {isExecuting ? '计划运行中' : stepCount > 0 ? '已就绪' : '空闲'}
+        </span>
+        <span className="hidden h-full items-center border-l border-white/10 px-4 font-mono text-[11.5px] text-rail-muted sm:flex">
+          {permissionMode === 'full_access' ? '完全权限' : '确认模式'}
+        </span>
+        <span className="flex h-full items-center border-l border-white/10 px-4 font-mono text-[11.5px] text-rail-ink">{account}</span>
+      </div>
+    </div>
+  );
+}
+
 interface ResearchAssistantAppShellProps {
   layout: ReturnType<typeof useResearchAssistantLayoutState>;
   leftWorkspace: ReactNode;
   graphExecutionViewModel: ReturnType<typeof useGraphExecutionViewModel>;
   mobilePane: 'chat' | 'graph';
   onMobilePaneChange: (pane: 'chat' | 'graph') => void;
+  accountLabel: string;
 }
 
 function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
-  const { layout, leftWorkspace, graphExecutionViewModel, mobilePane, onMobilePaneChange } = props;
+  const { layout, leftWorkspace, graphExecutionViewModel, mobilePane, onMobilePaneChange, accountLabel } = props;
   const graphNodeCount = graphExecutionViewModel.graphPanelProps.nodes.length;
   const isResizing = layout.isResizing || layout.isResizingSidebar;
 
@@ -43,12 +96,26 @@ function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [graphExecutionViewModel.executionSidebarProps]);
 
+  const graphProps = graphExecutionViewModel.graphPanelProps;
+  const stepCount = graphProps.nodes.length;
+  const completedCount = graphProps.nodes.filter((node) => node.data.status === 'completed').length;
+
   return (
     <div
-      className="research-assistant-app-shell flex h-[100dvh] overflow-hidden bg-paper font-sans text-ink"
+      className="research-assistant-app-shell flex h-[100dvh] flex-col overflow-hidden bg-paper font-sans text-ink"
       data-mobile-pane={mobilePane}
       data-resizing={isResizing ? 'true' : 'false'}
     >
+      <InstrumentRail
+        planTitle={graphProps.intentContext?.raw_intent ?? null}
+        planId={graphProps.intentContext ? 'PLAN' : null}
+        stepCount={stepCount}
+        completedCount={completedCount}
+        isExecuting={graphProps.isExecuting}
+        permissionMode={graphProps.runtimePermissionMode ?? null}
+        account={accountLabel}
+      />
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
       <div className="research-assistant-mobile-tabbar">
         <button
           type="button"
@@ -108,6 +175,7 @@ function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
         )}
 
         {graphExecutionViewModel.executionSidebarProps && <ExecutionSidebar {...graphExecutionViewModel.executionSidebarProps} />}
+      </div>
       </div>
     </div>
   );
@@ -250,6 +318,7 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
       graphExecutionViewModel={graphExecutionViewModel}
       mobilePane={mobilePane}
       onMobilePaneChange={onMobilePaneChange}
+      accountLabel={chatFlow.userId ?? '游客'}
     />
   );
 }

@@ -2,41 +2,50 @@
 @plugin "@tailwindcss/typography";
 
 /*
- * Research Assistant — "Manuscript" design system
- * A quiet, paper-like workspace for reading, planning and running experiments.
+ * Research Assistant — "Instrument" design system
+ * A calibrated research instrument: state is always readable, every action
+ * returns a receipt, decoration carries no information.
  */
 @theme {
-  --font-sans: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei",
-    "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
-  --font-serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Songti SC",
-    "SimSun", "Noto Serif SC", serif;
-  --font-mono: "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", "Menlo", monospace;
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", "Noto Sans SC", "Microsoft YaHei UI",
+    "Microsoft YaHei", "PingFang SC", sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", "Noto Sans SC", "Microsoft YaHei UI",
+    sans-serif;
+  --font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, "SimSun", serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, "SFMono-Regular", "Liberation Mono",
+    Menlo, monospace;
 
-  --color-paper: #f5f2ea;
-  --color-paper-deep: #ece7db;
-  --color-surface: #fffdf8;
-  --color-surface-muted: #f9f6ee;
-  --color-ink: #1e1c18;
-  --color-ink-soft: #3f3b34;
-  --color-muted: #6e685d;
-  --color-faint: #746d60;
-  --color-line: #e2dcce;
-  --color-line-strong: #c9c2b1;
-  --color-accent: #2c5a4d;
-  --color-accent-strong: #21463c;
-  --color-accent-soft: #e6eee8;
-  --color-accent-ink: #1c3a31;
-  --color-flag: #a5483a;
-  --color-flag-soft: #f6e7e3;
-  --color-warn: #8a5a12;
-  --color-warn-soft: #f5ecd9;
-  --color-ok: #2f6b4f;
-  --color-ok-soft: #e8f1eb;
-  --color-plum: #6b5a7a;
-  --color-plum-soft: #eee9f1;
+  --color-paper: #edf0f2;
+  --color-paper-deep: #e2e7ea;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f5f7f8;
+  --color-surface-strong: #e7ebee;
+  --color-ink: #0f1418;
+  --color-ink-soft: #39434b;
+  --color-muted: #5d6975;
+  --color-faint: #5f6b76;
+  --color-line: #d6dde2;
+  --color-line-strong: #b8c2ca;
+  --color-accent: #1b4d6b;
+  --color-accent-strong: #143c55;
+  --color-accent-soft: #e3edf3;
+  --color-accent-ink: #10364c;
+  --color-flag: #9e2f26;
+  --color-flag-soft: #f7e9e7;
+  --color-warn: #8a5a0b;
+  --color-warn-soft: #f7efdd;
+  --color-ok: #2c6a4a;
+  --color-ok-soft: #e7f0ea;
+  --color-plum: #554a6b;
+  --color-plum-soft: #ece9f1;
+  --color-rail: #0f1418;
+  --color-rail-2: #1a2229;
+  --color-rail-ink: #dfe6ea;
+  --color-rail-muted: #97a5ae;
 
-  --shadow-card: 0 1px 2px rgb(61 52 36 / 0.05), 0 10px 26px -18px rgb(61 52 36 / 0.22);
-  --shadow-float: 0 2px 6px rgb(61 52 36 / 0.06), 0 18px 42px -24px rgb(61 52 36 / 0.28);
+  --radius-none: 0px;
+  --shadow-card: 0 1px 0 rgb(15 20 24 / 0.04);
+  --shadow-float: 0 10px 28px -18px rgb(15 20 24 / 0.45), 0 1px 0 rgb(15 20 24 / 0.06);
 }
 
 @layer base {
@@ -55,7 +64,8 @@
     background: var(--color-paper);
     color: var(--color-ink);
     font-family: var(--font-sans);
-    font-size: 14px;
+    font-size: 13.5px;
+    line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -66,6 +76,7 @@
   kbd,
   samp {
     font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
   }
 
   * {
@@ -73,13 +84,13 @@
   }
 
   ::selection {
-    background: #d8e6dc;
+    background: #d5e5ee;
     color: var(--color-accent-ink);
   }
 
   :focus-visible {
     outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
+    outline-offset: 1px;
   }
 
   button,
@@ -89,20 +100,28 @@
     font: inherit;
   }
 
+  /* Flat, rectangular controls everywhere — including legacy views. */
+  button,
+  input,
+  textarea,
+  select {
+    border-radius: 2px;
+  }
+
   *::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
 
   *::-webkit-scrollbar-thumb {
-    background: #c9c2b1;
+    background: #b8c2ca;
     border: 3px solid transparent;
-    border-radius: 10px;
+    border-radius: 6px;
     background-clip: content-box;
   }
 
   *::-webkit-scrollbar-thumb:hover {
-    background: #a9a192;
+    background: #97a5ae;
     border: 3px solid transparent;
     background-clip: content-box;
   }
@@ -112,16 +131,55 @@
   }
 }
 
-/* ---------- Workspace shell ---------- */
+/* ---------- Shared instrument primitives ---------- */
+
+.instrument-rail {
+  background: var(--color-rail);
+  color: var(--color-rail-ink);
+}
+
+.instrument-kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+.instrument-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.instrument-grid {
+  background-color: #fbfcfd;
+  background-image:
+    linear-gradient(to right, rgb(120 135 145 / 0.13) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(120 135 145 / 0.13) 1px, transparent 1px),
+    linear-gradient(to right, rgb(120 135 145 / 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(120 135 145 / 0.06) 1px, transparent 1px);
+  background-size:
+    24px 24px,
+    24px 24px,
+    8px 8px,
+    8px 8px;
+}
+
+.instrument-hairline {
+  border-color: var(--color-line);
+}
+
+/* ---------- React Flow skin ---------- */
 
 .research-assistant-task-node {
   text-align: initial;
 }
 
 .research-assistant-task-node .react-flow__handle {
-  width: 6px;
-  height: 6px;
-  border: 1.5px solid var(--color-line-strong);
+  width: 5px;
+  height: 5px;
+  border: 1px solid var(--color-line-strong);
   background: var(--color-surface);
 }
 
@@ -132,31 +190,31 @@
 .react-flow__node.selected {
   box-shadow:
     0 0 0 2px var(--color-accent),
-    0 12px 30px -18px rgb(44 90 77 / 0.45) !important;
+    0 6px 14px -12px rgb(15 20 24 / 0.4) !important;
 }
 
 .react-flow__node:focus-visible {
   outline: 2px solid var(--color-accent);
-  outline-offset: 3px;
+  outline-offset: 2px;
 }
 
 .react-flow__controls {
   overflow: hidden;
   border: 1px solid var(--color-line);
-  border-radius: 6px;
-  box-shadow: var(--shadow-card);
+  border-radius: 2px;
+  box-shadow: none;
 }
 
 .react-flow__controls-button {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-line);
   color: var(--color-ink-soft);
 }
 
 .react-flow__controls-button:hover {
-  background: var(--color-accent-soft);
+  background: var(--color-surface-muted);
 }
 
 .react-flow__controls-button svg {
@@ -164,13 +222,13 @@
 }
 
 .react-flow__attribution {
-  background: transparent;
-  color: var(--color-faint);
-  font-size: 9px;
+  background: transparent !important;
+  color: #5f6b76 !important;
+  font-size: 10px !important;
 }
 
 .react-flow__attribution a {
-  color: var(--color-faint);
+  color: #5f6b76 !important;
 }
 
 /* ---------- PDF viewer skin ---------- */
@@ -182,16 +240,13 @@
 }
 
 .rpv-default-layout__sidebar {
-  background: var(--color-paper) !important;
+  background: var(--color-surface-muted) !important;
   border-right: 1px solid var(--color-line) !important;
 }
 
-.rpv-default-layout__body {
-  background: var(--color-paper-deep) !important;
-}
-
+.rpv-default-layout__body,
 .rpv-core__viewer {
-  background: var(--color-paper-deep) !important;
+  background: #e6ebee !important;
 }
 
 .rpv-default-layout__toolbar .rpv-toolbar__item {
@@ -203,7 +258,7 @@
 }
 
 .rpv-core__page-layer::after {
-  box-shadow: 0 1px 3px rgb(61 52 36 / 0.16) !important;
+  box-shadow: 0 0 0 1px rgb(15 20 24 / 0.08) !important;
 }
 
 /* ---------- Motion ---------- */
@@ -211,7 +266,7 @@
 @keyframes ra-fade-up {
   from {
     opacity: 0;
-    transform: translateY(5px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -231,15 +286,35 @@
 @keyframes ra-pulse {
   0%,
   100% {
-    opacity: 0.45;
+    opacity: 0.5;
   }
   50% {
     opacity: 1;
   }
 }
 
+@keyframes ra-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Slide without fading: a half-transparent panel would fail contrast checks
+   and make its first frame unreadable. */
+@keyframes ra-slide-in {
+  from {
+    transform: translateX(12px);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
 .ra-fade-up {
-  animation: ra-fade-up 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: ra-fade-up 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .ra-fade-in {
@@ -248,6 +323,15 @@
 
 .ra-pulse {
   animation: ra-pulse 1.4s ease-in-out infinite;
+}
+
+.ra-slide-in {
+  animation: ra-slide-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.ra-fill {
+  transform-origin: left center;
+  animation: ra-fill 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 /* ---------- Mobile ---------- */
@@ -262,44 +346,50 @@
     flex-direction: column;
   }
 
+  .research-assistant-rail {
+    height: 40px;
+    flex-basis: 40px;
+    padding-left: 12px;
+  }
+
+  .research-assistant-rail .rail-context {
+    display: none;
+  }
+
   .research-assistant-mobile-tabbar {
     display: flex;
-    flex: 0 0 50px;
+    flex: 0 0 44px;
     align-items: center;
-    gap: 6px;
-    padding: 7px 10px;
+    gap: 4px;
+    padding: 5px 8px;
     border-bottom: 1px solid var(--color-line);
     background: var(--color-surface);
   }
 
   .research-assistant-mobile-tabbar button {
     display: flex;
-    height: 36px;
+    height: 32px;
     flex: 1;
     align-items: center;
     justify-content: center;
     gap: 6px;
     border: 1px solid transparent;
-    border-radius: 6px;
+    border-radius: 2px;
     background: transparent;
     color: var(--color-muted);
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 600;
-    transition:
-      background-color 150ms ease,
-      color 150ms ease,
-      border-color 150ms ease;
   }
 
   .research-assistant-mobile-tabbar button.is-active {
-    border-color: var(--color-line);
+    border-color: var(--color-line-strong);
     background: var(--color-accent-soft);
     color: var(--color-accent-ink);
   }
 
   .research-assistant-left-workspace {
     width: 100% !important;
-    height: calc(100dvh - 50px);
+    height: calc(100dvh - 84px);
     min-height: 0;
     border-right: 0;
     box-shadow: none;
@@ -311,14 +401,14 @@
 
   .research-assistant-graph-workspace {
     width: 100%;
-    height: calc(100dvh - 50px);
+    height: calc(100dvh - 84px);
     min-height: 0;
   }
 
   .research-assistant-app-shell[data-mobile-pane='chat'] .research-assistant-graph-workspace,
   .research-assistant-app-shell[data-mobile-pane='graph'] .research-assistant-left-workspace {
     position: absolute;
-    top: 50px;
+    top: 84px;
     bottom: 0;
     visibility: hidden;
     pointer-events: none;
@@ -337,6 +427,14 @@
     inset: 0;
     width: 100% !important;
   }
+
+  .research-assistant-meta-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .research-assistant-node-index {
+    display: none !important;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -348,4 +446,11 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ---------- Focus ---------- */
+
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid #1b4d6b !important;
+  outline-offset: 2px !important;
 }

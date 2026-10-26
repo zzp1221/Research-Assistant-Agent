@@ -37,7 +37,7 @@ async function seedPlanSession(page: Page) {
 
 test('home empty state', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByText('还没有执行图')).toBeVisible();
+  await expect(page.getByText('尚无运行', { exact: true })).toBeVisible();
   await expect(page).toHaveScreenshot('home.png');
 });
 

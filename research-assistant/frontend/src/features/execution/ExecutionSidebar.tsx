@@ -128,7 +128,7 @@ function LazyEvidenceView({ rawGraph, expanded = false }: { rawGraph: string; ex
 
 function ReportMarkdown({ children }: { children: string }) {
   return (
-    <Suspense fallback={<div className="h-24 animate-pulse rounded-[4px] bg-paper-deep" aria-busy="true" aria-label="正在加载报告" />}>
+    <Suspense fallback={<div className="h-24 animate-pulse rounded-[2px] bg-paper-deep" aria-busy="true" aria-label="正在加载报告" />}>
       <MarkdownReport>{children}</MarkdownReport>
     </Suspense>
   );
@@ -137,19 +137,19 @@ function ReportMarkdown({ children }: { children: string }) {
 function PanelHeader(props: { eyebrow: string; title: string; onClose: () => void; closeLabel: string }) {
   const { eyebrow, title, onClose, closeLabel } = props;
   return (
-    <div className="flex shrink-0 items-start justify-between gap-4 border-b border-line px-5 py-3.5">
+    <div className="flex shrink-0 items-start justify-between gap-4 border-b border-line bg-surface px-4 py-2.5">
       <div className="min-w-0">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-faint">{eyebrow}</div>
-        <h2 className="mt-1 truncate font-serif text-[17px] font-semibold leading-6 tracking-[-0.01em] text-ink">{title}</h2>
+        <div className="instrument-kicker">{eyebrow}</div>
+        <h2 className="mt-0.5 truncate font-display text-[14px] font-semibold leading-5 tracking-[-0.01em] text-ink">{title}</h2>
       </div>
       <button
         type="button"
         onClick={onClose}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[5px] border border-transparent text-muted transition-colors hover:border-line hover:bg-surface-muted hover:text-ink"
+        className="flex h-7 w-7 shrink-0 items-center justify-center border border-transparent text-muted transition-colors hover:border-line-strong hover:bg-surface-muted hover:text-ink"
         title={closeLabel}
         aria-label={closeLabel}
       >
-        <X className="h-4 w-4" />
+        <X className="h-3.5 w-3.5" />
       </button>
     </div>
   );
@@ -179,7 +179,7 @@ export function ExecutionSidebar(props: ExecutionSidebarProps) {
   return (
     <div
       style={{ width }}
-      className={`research-assistant-execution-sidebar z-20 flex flex-col border-l border-line bg-surface ${
+      className={`research-assistant-execution-sidebar ra-slide-in z-20 flex flex-col border-l border-line bg-surface ${
         isExpanded ? 'absolute inset-0 shadow-[var(--shadow-float)]' : 'relative'
       }`}
     >
@@ -245,7 +245,7 @@ function ExpandedTrialView({ title, rawLedger, experiment = false, onClose }: Ex
         closeLabel="退出全屏实验视图"
       />
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <div className="min-h-full overflow-hidden rounded-[6px] border border-line bg-surface">
+        <div className="min-h-full overflow-hidden rounded-[2px] border border-line bg-surface">
           <LazyTrialView rawLedger={rawLedger} experiment={experiment} expanded />
         </div>
       </div>
@@ -264,7 +264,7 @@ function ExpandedAblationView({ title, rawPlan, onClose }: ExpandedAblationViewP
     <div className="flex min-h-0 flex-1 flex-col bg-surface">
       <PanelHeader eyebrow="Ablation Thought Tree" title={title} onClose={onClose} closeLabel="退出全屏消融树" />
       <div className="min-h-0 flex-1 overflow-hidden p-4">
-        <div className="h-full overflow-hidden rounded-[6px] border border-line bg-surface">
+        <div className="h-full overflow-hidden rounded-[2px] border border-line bg-surface">
           <LazyAblationView rawPlan={rawPlan} expanded />
         </div>
       </div>
@@ -283,7 +283,7 @@ function ExpandedEvidenceView({ title, rawGraph, onClose }: ExpandedEvidenceView
     <div className="flex min-h-0 flex-1 flex-col bg-surface">
       <PanelHeader eyebrow="Claim-to-Evidence Graph" title={title} onClose={onClose} closeLabel="退出全屏证据图" />
       <div className="min-h-0 flex-1 p-4">
-        <div className="h-full overflow-hidden rounded-[6px] border border-line bg-surface">
+        <div className="h-full overflow-hidden rounded-[2px] border border-line bg-surface">
           <LazyEvidenceView rawGraph={rawGraph} expanded />
         </div>
       </div>
@@ -304,7 +304,7 @@ function ExpandedPlotView({ executionImage, onClose }: ExpandedPlotViewProps) {
         <img
           src={`data:image/png;base64,${executionImage}`}
           alt="Full Resolution Plot"
-          className="max-h-full max-w-full rounded-[4px] border border-line bg-surface object-contain shadow-[var(--shadow-float)]"
+          className="max-h-full max-w-full rounded-[2px] border border-line bg-surface object-contain shadow-[var(--shadow-float)]"
         />
       </div>
     </div>
@@ -322,7 +322,7 @@ function ExpandedReportView({ title, executionResult, onClose }: ExpandedReportV
     <div className="flex min-h-0 flex-1 flex-col bg-surface">
       <PanelHeader eyebrow="Analysis Report" title={title} onClose={onClose} closeLabel="退出全屏报告" />
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-        <article className="mx-auto max-w-3xl font-serif text-[15px] leading-7 text-ink-soft prose prose-stone max-w-3xl prose-headings:font-serif prose-headings:text-ink prose-strong:text-ink prose-code:font-sans prose-code:text-[13px] prose-code:text-accent-ink prose-pre:rounded-[6px] prose-pre:bg-[#1d1e1a] prose-pre:text-[13px] prose-pre:text-[#e6e1d5] prose-img:rounded-[6px] prose-img:border prose-img:border-line">
+        <article className="mx-auto max-w-[68ch] font-serif text-[15px] leading-7 text-ink-soft prose prose-stone prose-headings:font-serif prose-headings:text-ink prose-strong:text-ink prose-code:font-sans prose-code:text-[13px] prose-code:text-accent-ink prose-pre:rounded-[2px] prose-pre:bg-[#12181d] prose-pre:text-[13px] prose-pre:text-[#dfe6ea] prose-img:rounded-[2px] prose-img:border prose-img:border-line">
           <ReportMarkdown>{executionResult}</ReportMarkdown>
         </article>
       </div>
@@ -419,19 +419,19 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
 
   return (
     <>
-      <div className="flex h-[58px] shrink-0 items-center justify-between gap-3 border-b border-line px-4">
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-line bg-surface px-3.5 py-2.5">
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">
-            <span>节点详情</span>
+          <div className="flex items-center gap-1.5">
+            <span className="instrument-kicker">节点详情</span>
             <span className="text-line-strong">/</span>
-            <span className="truncate">{getAgentLabel(selectedTask.AssignedTo)}</span>
+            <span className="instrument-num text-[11px] text-muted">{getAgentLabel(selectedTask.AssignedTo)}</span>
           </div>
-          <h3 className="mt-1 truncate text-[13.5px] font-semibold leading-4 text-ink" title={selectedTask.Name}>{selectedTask.Name}</h3>
+          <h3 className="mt-0.5 truncate text-[13.5px] font-semibold leading-5 text-ink" title={selectedTask.Name}>{selectedTask.Name}</h3>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[5px] border border-transparent text-muted transition-colors hover:border-line hover:bg-surface-muted hover:text-ink"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[2px] border border-transparent text-muted transition-colors hover:border-line hover:bg-surface-muted hover:text-ink"
           title="关闭节点详情"
           aria-label="关闭节点详情"
         >
@@ -440,21 +440,29 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <div className="grid grid-cols-2 gap-px border-b border-line bg-line/70">
-          <div className="bg-surface px-4 py-2.5">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-faint">负责智能体</div>
-            <div className="mt-1 flex items-center gap-1.5 text-[12px] font-medium text-ink-soft">
+        <dl className="grid grid-cols-2 border-b border-line bg-surface">
+          <div className="border-b border-r border-line px-3.5 py-2">
+            <dt className="instrument-kicker">负责智能体</dt>
+            <dd className="mt-0.5 flex items-center gap-1.5 text-[12.5px] font-medium text-ink-soft">
               {getAgentIcon(selectedTask.AssignedTo)}
               {getAgentLabel(selectedTask.AssignedTo)}
-            </div>
+            </dd>
           </div>
-          <div className="bg-surface px-4 py-2.5">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-faint">任务状态</div>
-            <div className="mt-1 text-[12px] font-medium text-ink-soft">
+          <div className="border-b border-line px-3.5 py-2">
+            <dt className="instrument-kicker">任务状态</dt>
+            <dd className="mt-0.5 text-[12.5px] font-medium text-ink-soft">
               {taskStatusLabels[selectedTask.Status] ?? selectedTask.Status}
-            </div>
+            </dd>
           </div>
-        </div>
+          <div className="border-r border-line px-3.5 py-2">
+            <dt className="instrument-kicker">任务类型</dt>
+            <dd className="instrument-num mt-0.5 text-[11.5px] text-ink-soft">{selectedTask.Type || '—'}</dd>
+          </div>
+          <div className="px-3.5 py-2">
+            <dt className="instrument-kicker">节点编号</dt>
+            <dd className="instrument-num mt-0.5 text-[11.5px] text-ink-soft">{selectedTask.ID.slice(0, 12)}</dd>
+          </div>
+        </dl>
 
         {ablationBudget && (
           <div className="grid grid-cols-3 border-b border-line bg-surface">
@@ -464,12 +472,12 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
           </div>
         )}
 
-        <div className="px-4 py-3">
+        <div className="border-b border-line px-3.5 py-2">
           <button
             onClick={onExecute}
             disabled={isExecuting || requiresApproval}
             title={requiresApproval ? '计划尚未审批，请先使用右上角“审批并运行”' : '启动当前节点'}
-            className="flex h-9 w-full items-center justify-center gap-2 rounded-[5px] bg-accent px-4 text-[12.5px] font-semibold text-white shadow-sm transition-all hover:bg-accent-strong active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-line disabled:text-faint disabled:shadow-none"
+            className="flex h-8 w-full items-center justify-center gap-1.5 border border-line-strong bg-surface px-3 text-[12px] font-semibold text-ink-soft transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink active:translate-y-px disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-muted disabled:text-faint"
           >
             {requiresApproval ? (
               <>
@@ -517,7 +525,7 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
             {(activeMode === 'report' || activeMode === 'plot' || activeMode === 'evidence' || activeMode === 'trials' || activeMode === 'ablation') && (
               <button
                 onClick={() => onChangeDisplayMode(`${activeMode}-expanded` as ExecutionDisplayMode)}
-                className="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-[4px] text-muted transition-colors hover:bg-surface-muted hover:text-accent-ink"
+                className="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-[2px] text-muted transition-colors hover:bg-surface-muted hover:text-accent-ink"
                 title="全屏查看"
                 aria-label="全屏查看"
               >
@@ -535,22 +543,22 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
         >
           {activeMode === 'logs' ? (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="mb-2 flex items-center justify-between px-1">
-                <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-faint">
+              <div className="mb-1.5 flex items-center justify-between px-0.5">
+                <span className="instrument-kicker flex items-center gap-1.5">
                   <TerminalSquare className="h-3 w-3" />
                   运行日志
                 </span>
                 <button
                   type="button"
                   onClick={() => void copyLogs()}
-                  className="flex items-center gap-1 rounded-[3px] px-1.5 py-1 text-[10px] text-faint transition-colors hover:bg-surface-muted hover:text-ink-soft"
+                  className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-faint transition-colors hover:bg-surface-muted hover:text-ink-soft"
                   aria-label="复制运行日志"
                 >
                   {copied ? <Check className="h-3 w-3 text-ok" /> : <Copy className="h-3 w-3" />}
                   {copied ? '已复制' : '复制'}
                 </button>
               </div>
-              <div className="min-h-[16rem] flex-1 overflow-y-auto rounded-[6px] border border-[#2b2c26] bg-[#191a17] px-4 py-3 font-mono text-[11px] leading-[1.75] text-[#d9d4c7] whitespace-pre-wrap break-words selection:bg-accent/40">
+              <div className="min-h-[16rem] flex-1 overflow-y-auto border border-[#1d262e] bg-[#0b1116] px-3 py-2.5 font-mono text-[11.5px] leading-[1.75] text-[#d5dee4] whitespace-pre-wrap break-words selection:bg-accent/40">
                 {executionLogs || '> 等待执行…'}
                 {executionResult && !reportAgents.has(selectedTask.AssignedTo) && (
                   <div className="mt-4 border-t border-white/10 pt-3 text-[#a9c9b5]">
@@ -562,34 +570,34 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
               </div>
             </div>
           ) : activeMode === 'trials' ? (
-            <div className="min-h-[32rem] flex-1 overflow-hidden rounded-[6px] border border-line bg-surface">
+            <div className="min-h-[32rem] flex-1 overflow-hidden rounded-[2px] border border-line bg-surface">
               <LazyTrialView rawLedger={executionStructuredData || executionResult} experiment={hasExperimentEvidence} />
             </div>
           ) : activeMode === 'ablation' ? (
-            <div className="min-h-[32rem] flex-1 overflow-hidden rounded-[6px] border border-line bg-surface">
+            <div className="min-h-[32rem] flex-1 overflow-hidden rounded-[2px] border border-line bg-surface">
               <LazyAblationView rawPlan={executionStructuredData || executionResult} />
             </div>
           ) : activeMode === 'code' ? (
-            <div className="flex-1 overflow-y-auto rounded-[6px] border border-line bg-surface-muted p-4">
-              <pre className="m-0 overflow-x-auto rounded-[4px] bg-[#1d1e1a] p-4 font-mono text-[11.5px] leading-[1.7] text-[#e6e1d5]">
+            <div className="flex-1 overflow-y-auto rounded-[2px] border border-line bg-surface-muted p-4">
+              <pre className="m-0 overflow-x-auto rounded-[2px] bg-[#1d1e1a] p-4 font-mono text-[11.5px] leading-[1.7] text-[#e6e1d5]">
                 <code>{executionCode}</code>
               </pre>
             </div>
           ) : activeMode === 'plot' ? (
-            <div className="flex min-h-[20rem] flex-1 flex-col items-center justify-center overflow-hidden rounded-[6px] border border-line bg-surface-muted p-3">
-              <img src={`data:image/png;base64,${executionImage}`} alt="Generated Plot" className="max-h-full max-w-full rounded-[3px] object-contain shadow-[var(--shadow-card)]" />
-              <div className="mt-2 text-[10px] text-faint">使用右上角按钮全屏查看</div>
+            <div className="flex min-h-[20rem] flex-1 flex-col items-center justify-center overflow-hidden rounded-[2px] border border-line bg-surface-muted p-3">
+              <img src={`data:image/png;base64,${executionImage}`} alt="Generated Plot" className="max-h-full max-w-full rounded-[2px] object-contain shadow-[var(--shadow-card)]" />
+              <div className="mt-2 text-[11px] text-faint">使用右上角按钮全屏查看</div>
             </div>
           ) : activeMode === 'evidence' ? (
-            <div className="min-h-0 flex-1 overflow-hidden rounded-[6px] border border-line bg-surface">
+            <div className="min-h-0 flex-1 overflow-hidden rounded-[2px] border border-line bg-surface">
               <LazyEvidenceView rawGraph={executionStructuredData} />
             </div>
           ) : activeMode === 'report' && hasBenchmarkEvidence ? (
-            <div className="min-h-[32rem] flex-1 overflow-hidden rounded-[6px] border border-line bg-surface">
+            <div className="min-h-[32rem] flex-1 overflow-hidden rounded-[2px] border border-line bg-surface">
               <LazyBenchmarkReport raw={executionStructuredData || executionResult} />
             </div>
           ) : (
-            <div className="flex-1 overflow-y-auto rounded-[6px] border border-line bg-surface p-5">
+            <div className="flex-1 overflow-y-auto rounded-[2px] border border-line bg-surface p-5">
               <div className="prose prose-sm max-w-none font-serif text-[14px] leading-6 text-ink-soft prose-headings:font-serif prose-headings:text-ink prose-strong:text-ink prose-code:font-sans prose-code:text-[12.5px] prose-code:text-accent-ink">
                 <ReportMarkdown>{executionResult}</ReportMarkdown>
               </div>
@@ -613,7 +621,7 @@ function TabButton(props: { active: boolean; onClick: () => void; onKeyDown?: (e
       tabIndex={active ? 0 : -1}
       onClick={onClick}
       onKeyDown={onKeyDown}
-      className={`flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-2.5 text-[11px] font-semibold transition-colors ${
+      className={`flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-2 text-[11.5px] font-semibold transition-colors ${
         active
           ? 'border-accent text-accent-ink'
           : 'border-transparent text-muted hover:border-line-strong hover:text-ink-soft'
@@ -628,9 +636,9 @@ function TabButton(props: { active: boolean; onClick: () => void; onKeyDown?: (e
 function BudgetValue({ label, value, suffix }: { label: string; value: unknown; suffix: string }) {
   const displayValue = typeof value === 'number' || typeof value === 'string' ? String(value) : '-';
   return (
-    <div className="border-r border-line px-3 py-2.5 text-center last:border-r-0">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-faint">{label}</div>
-      <div className="mt-1 font-mono text-[12.5px] font-semibold text-ink-soft">{displayValue} {suffix}</div>
+    <div className="border-r border-line px-3 py-2 text-center last:border-r-0">
+      <div className="instrument-kicker">{label}</div>
+      <div className="instrument-num mt-0.5 text-[12.5px] font-semibold text-ink-soft">{displayValue} {suffix}</div>
     </div>
   );
 }

@@ -9,8 +9,8 @@ import type { GraphTask, PlanGraph, Task } from '../../contracts/api';
 import { getTaskStyleByStatus } from '../shared/agentVisuals';
 import { createTaskNodeLabel } from './nodeLabelFactory';
 
-const NODE_WIDTH = 222;
-const NODE_HEIGHT = 88;
+const NODE_WIDTH = 216;
+const NODE_HEIGHT = 80;
 const SEARCH_NODE_WIDTH = 680;
 const SEARCH_NODE_HEIGHT = 256;
 
@@ -134,8 +134,8 @@ export const buildGraphLayout = (inputPlanGraph: PlanGraph): { nodes: Node[]; ed
   const hasExperimentSearch = sortedTasks.some((task) => task.type === 'experiment_run');
   const useCompactLongChain = maxLevel >= 5 && maxTasksInLevel <= 2;
   const compactColumns = getCompactColumnCount();
-  const compactStackGap = 100;
-  const compactRowHeight = maxTasksInLevel > 1 ? 240 : 206;
+  const compactStackGap = 96;
+  const compactRowHeight = maxTasksInLevel > 1 ? 164 : 136;
 
   const levelCounts: Record<number, number> = {};
   sortedTasks.forEach((task, taskIndex) => {
@@ -146,8 +146,8 @@ export const buildGraphLayout = (inputPlanGraph: PlanGraph): { nodes: Node[]; ed
     const styleState = getTaskStyleByStatus(task.status);
 
     let position = {
-      x: 48 + level * 276,
-      y: 48 + (stackIndex + (maxTasksInLevel - tasksPerLevel[level]) / 2) * 132,
+      x: 48 + level * 256,
+      y: 48 + (stackIndex + (maxTasksInLevel - tasksPerLevel[level]) / 2) * 124,
     };
     let sourcePosition = POSITION_RIGHT;
     let targetPosition = POSITION_LEFT;
@@ -181,8 +181,8 @@ export const buildGraphLayout = (inputPlanGraph: PlanGraph): { nodes: Node[]; ed
       const levelStackOffset = ((maxTasksInLevel - tasksPerLevel[level]) * compactStackGap) / 2;
 
       position = {
-        x: 40 + column * 252,
-        y: 32 + row * compactRowHeight + levelStackOffset + stackIndex * compactStackGap,
+        x: 40 + column * 248,
+        y: 28 + row * compactRowHeight + levelStackOffset + stackIndex * compactStackGap,
       };
       targetPosition = startsNewRow ? POSITION_TOP : row % 2 === 0 ? POSITION_LEFT : POSITION_RIGHT;
       sourcePosition = endsRow ? POSITION_BOTTOM : row % 2 === 0 ? POSITION_RIGHT : POSITION_LEFT;
@@ -207,13 +207,13 @@ export const buildGraphLayout = (inputPlanGraph: PlanGraph): { nodes: Node[]; ed
           }),
       },
       style: {
-        borderRadius: '6px',
+        borderRadius: '2px',
         backgroundColor: styleState.backgroundColor,
         border: '1px solid',
         borderColor: styleState.borderColor,
-        borderLeftWidth: '3px',
-        borderLeftColor: styleState.borderLeftColor,
-        boxShadow: '0 1px 2px rgb(61 52 36 / 0.05), 0 8px 20px -16px rgb(61 52 36 / 0.22)',
+        borderTopWidth: '2px',
+        borderTopColor: styleState.borderTopColor,
+        boxShadow: '0 1px 0 rgb(15 20 24 / 0.04)',
         cursor: 'pointer',
         overflow: 'hidden',
         padding: 0,
@@ -233,13 +233,13 @@ export const buildGraphLayout = (inputPlanGraph: PlanGraph): { nodes: Node[]; ed
       type: 'smoothstep',
       animated: targetStatus === 'in_progress',
       style: {
-        stroke: isDataEdge ? '#8a7a9a' : '#b9b2a2',
-        strokeWidth: isDataEdge ? 1.4 : 1.6,
-        strokeDasharray: isDataEdge ? '5 5' : undefined,
+        stroke: isDataEdge ? '#6f7f8c' : '#9aa8b2',
+        strokeWidth: isDataEdge ? 1.2 : 1.3,
+        strokeDasharray: isDataEdge ? '4 4' : undefined,
       },
       markerEnd: {
         type: ARROW_CLOSED,
-        color: isDataEdge ? '#8a7a9a' : '#b9b2a2',
+        color: isDataEdge ? '#6f7f8c' : '#9aa8b2',
         width: 15,
         height: 15,
       },

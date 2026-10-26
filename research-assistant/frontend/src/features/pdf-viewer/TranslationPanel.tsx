@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, ChevronLeft, ChevronRight, FileText, Loader2, Square, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, ChevronRight, Loader2, Square, XCircle } from 'lucide-react';
 import type { TranslationJob } from '../../contracts/api';
 
 export interface TranslationPanelProps {
@@ -79,18 +79,17 @@ export function TranslationPanel(props: TranslationPanelProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-line px-3">
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-ink-soft">
-          <FileText className="h-3.5 w-3.5 text-accent" />
-          全文翻译
-          {job && <span className="rounded-[3px] border border-line bg-surface-muted px-1.5 py-0.5 text-[10px] font-normal text-muted">{job.completed_pages}/{job.total_pages} 页</span>}
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-line px-2.5">
+        <div className="flex items-center gap-2">
+          <span className="instrument-kicker">全文翻译</span>
+          {job && <span className="instrument-num border border-line bg-surface-muted px-1.5 py-0.5 text-[11px] text-ink-soft">{job.completed_pages}/{job.total_pages} 页</span>}
         </div>
         <div className="flex items-center gap-1">
           {active ? (
             <button
               type="button"
               onClick={onCancel}
-              className="flex h-6 items-center gap-1 rounded-[4px] border border-flag/30 bg-surface px-2 text-[10.5px] font-semibold text-flag transition-colors hover:bg-flag-soft"
+              className="flex h-6 items-center gap-1 rounded-[2px] border border-flag/30 bg-surface px-2 text-[10.5px] font-semibold text-flag transition-colors hover:bg-flag-soft"
             >
               <Square className="h-2.5 w-2.5 fill-current" />
               取消
@@ -100,7 +99,7 @@ export function TranslationPanel(props: TranslationPanelProps) {
               type="button"
               onClick={onStart}
               disabled={isStarting}
-              className="h-6 rounded-[4px] bg-accent px-2 text-[10.5px] font-semibold text-white transition-colors hover:bg-accent-strong disabled:opacity-40"
+              className="h-6 rounded-[2px] bg-accent px-2 text-[10.5px] font-semibold text-white transition-colors hover:bg-accent-strong disabled:opacity-40"
             >
               {isStarting ? '启动中…' : finished ? '重新翻译' : '开始全文翻译'}
             </button>
@@ -108,7 +107,7 @@ export function TranslationPanel(props: TranslationPanelProps) {
           <button
             type="button"
             onClick={onClose}
-            className="flex h-6 w-6 items-center justify-center rounded-[4px] text-faint transition-colors hover:bg-surface-muted hover:text-ink-soft"
+            className="flex h-6 w-6 items-center justify-center rounded-[2px] text-faint transition-colors hover:bg-surface-muted hover:text-ink-soft"
             aria-label="关闭翻译面板"
           >
             <ChevronRight className="h-3.5 w-3.5 rotate-90" />
@@ -151,7 +150,7 @@ export function TranslationPanel(props: TranslationPanelProps) {
                   type="button"
                   onClick={() => handleOpen(page.number)}
                   title={`${page.number} · ${statusLabel(page.status)}${page.error ? ` · ${page.error}` : ''}`}
-                  className={`flex h-7 items-center justify-center rounded-[3px] border text-[10.5px] font-semibold transition-colors ${statusColor(page.status)} ${selectedPage === page.number ? 'ring-2 ring-accent/30' : ''}`}
+                  className={`flex h-7 items-center justify-center rounded-[2px] border text-[10.5px] font-semibold transition-colors ${statusColor(page.status)} ${selectedPage === page.number ? 'ring-2 ring-accent/30' : ''}`}
                 >
                   {page.status === 'running' ? <Loader2 className="h-3 w-3 animate-spin" /> : page.number}
                 </button>
