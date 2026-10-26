@@ -59,14 +59,14 @@ export const useAITranslationPlugin = (options: UseAITranslationPluginOptions) =
           transform: 'translate(0, 8px)',
           zIndex: 100,
         }}
-        className="ra-fade-up flex items-center gap-0.5 rounded-[6px] border border-line bg-surface p-1 shadow-[var(--shadow-float)]"
+        className="ra-fade-up flex items-center gap-0.5 rounded-[2px] border border-line bg-surface p-1 shadow-[var(--shadow-float)]"
       >
         <button
           onClick={() => {
             props.toggle();
             void run('translate', props.selectedText, props.selectionRegion.pageIndex + 1);
           }}
-          className="flex items-center gap-1.5 rounded-[4px] px-2.5 py-1.5 text-[11px] font-semibold text-accent-ink transition-colors hover:bg-accent-soft"
+          className="flex items-center gap-1.5 rounded-[2px] px-2.5 py-1.5 text-[11px] font-semibold text-accent-ink transition-colors hover:bg-accent-soft"
         >
           <Languages className="h-3.5 w-3.5" />
           翻译
@@ -76,7 +76,7 @@ export const useAITranslationPlugin = (options: UseAITranslationPluginOptions) =
             props.toggle();
             void run('explain', props.selectedText, props.selectionRegion.pageIndex + 1);
           }}
-          className="flex items-center gap-1.5 rounded-[4px] px-2.5 py-1.5 text-[11px] font-semibold text-plum transition-colors hover:bg-plum-soft"
+          className="flex items-center gap-1.5 rounded-[2px] px-2.5 py-1.5 text-[11px] font-semibold text-plum transition-colors hover:bg-plum-soft"
         >
           <BookOpen className="h-3.5 w-3.5" />
           解释

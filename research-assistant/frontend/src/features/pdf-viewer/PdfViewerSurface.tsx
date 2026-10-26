@@ -38,7 +38,7 @@ export default function PdfViewerSurface(props: PdfViewerSurfaceProps) {
     renderToolbar: (Toolbar) => (
       <Toolbar>
         {(toolbarSlot) => (
-          <div className="flex items-center gap-2 border-b border-line bg-surface px-3 py-1 text-[11px] text-muted">
+          <div className="flex items-center gap-2 border-b border-line bg-surface px-2.5 py-1 text-[11.5px] text-muted">
             {toolbarSlot.GoToPreviousPage({})}
             {toolbarSlot.CurrentPageInput()}
             <span>/</span>

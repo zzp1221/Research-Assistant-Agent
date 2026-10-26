@@ -23,11 +23,11 @@ export default function GraphCanvas(props: GraphCanvasProps) {
       nodesDraggable={false}
       onlyRenderVisibleElements={nodes.length > 120}
       fitView
-      fitViewOptions={{ padding: 0.16, minZoom: 0.72, maxZoom: 1.02 }}
-      minZoom={0.2}
-      className="bg-paper"
+      fitViewOptions={{ padding: 0.17, minZoom: 0.66, maxZoom: 0.98 }}
+      minZoom={0.18}
+      className="bg-[#fffefb]"
     >
-      <Background color="#d8d1c0" gap={22} size={1.2} />
+      <Background color="rgba(23,19,15,0.10)" gap={16} size={1} />
       <Controls showInteractive={false} />
     </ReactFlow>
   );

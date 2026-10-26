@@ -1,10 +1,11 @@
 import { useRef } from 'react';
-import { ChevronDown, ChevronUp, Eye, FileText, Loader2, Paperclip, Send, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Eye, FileText, HelpCircle, Loader2, Paperclip, Send, ShieldCheck, X } from 'lucide-react';
 import type { UploadedFile } from '../../contracts/api';
 import { isPdfAttachment } from '../pdf-viewer/pdfAttachment';
 
 interface ChatComposerProps {
   prompt: string;
+  hasConversation?: boolean;
   loading: boolean;
   isLoggedIn: boolean;
   showSuggestions: boolean;
@@ -29,57 +30,66 @@ const suggestions = [
   '帮我复现上传论文中的核心实验',
 ];
 
+/** The instruction block: what the author wants set, before it is typeset. */
 export function ChatComposer(props: ChatComposerProps) {
   const {
-    prompt, loading, isLoggedIn, showSuggestions, pendingAttachments, uploadingAttachments, attachmentError,
+    prompt, hasConversation = false, loading, isLoggedIn, showSuggestions, pendingAttachments, uploadingAttachments, attachmentError,
     setPrompt, setShowSuggestions, onSendMessage, onAttachFiles, onRemoveAttachment, onOpenAttachment,
     runtimePermissionMode = 'confirm_important', onRuntimePermissionModeChange = () => undefined,
   } = props;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <div className="shrink-0 border-t border-line bg-surface px-3 pb-3 pt-2">
-      <div className="mb-1.5 flex items-center justify-between px-1">
-        <button
-          type="button"
-          onClick={() => setShowSuggestions(!showSuggestions)}
-          className="group flex items-center gap-1.5 rounded-[4px] py-1 text-[10.5px] font-semibold tracking-[0.04em] text-muted transition-colors hover:text-accent-ink"
-          aria-expanded={showSuggestions}
-        >
-          <Sparkles className="h-3 w-3 text-accent/80" />
-          试试推荐指令
-          {showSuggestions ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-        </button>
-        <span className="text-[10px] text-faint">支持 PDF、数据与代码附件</span>
-      </div>
-
-      {showSuggestions && (
-        <div className="ra-fade-up mb-2 flex flex-wrap gap-1.5">
-          {suggestions.map((text) => (
-            <button
-              key={text}
-              type="button"
-              onClick={() => setPrompt(text)}
-              className="rounded-full border border-line bg-surface-muted px-2.5 py-1.5 text-left text-[11.5px] leading-4 text-ink-soft transition-all hover:border-accent/35 hover:bg-accent-soft hover:text-accent-ink active:scale-[0.98]"
-            >
-              {text}
-            </button>
-          ))}
+    <div className="shrink-0 border-t border-line bg-surface px-4 pb-3 pt-2.5">
+      {!hasConversation ? (
+        <div className="mb-1.5 flex items-baseline justify-between">
+          <button
+            type="button"
+            onClick={() => setShowSuggestions(!showSuggestions)}
+            className="flex items-center gap-1 journal-caps text-[10px] transition-colors hover:text-ink"
+            aria-expanded={showSuggestions}
+          >
+            起始选题
+            {showSuggestions ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </button>
+          <span className="journal-caps text-[10px]">PDF · 数据 · 代码</span>
         </div>
+      ) : (
+        <div className="mb-1.5 flex items-baseline justify-between">
+          <span className="journal-caps text-[10px]">投稿说明</span>
+          <span className="journal-caps text-[10px]">PDF · 数据 · 代码</span>
+        </div>
+      )}
+
+      {!hasConversation && showSuggestions && (
+        <ol className="proof-fade mb-2.5 border-t border-line">
+          {suggestions.map((text, index) => (
+            <li key={text} className="border-b border-line">
+              <button
+                type="button"
+                onClick={() => setPrompt(text)}
+                className="group grid w-full grid-cols-[1.6rem_minmax(0,1fr)] items-baseline gap-2 py-1.5 text-left"
+              >
+                <span className="journal-num text-[10.5px] text-muted">{String(index + 1).padStart(2, '0')}</span>
+                <span className="font-serif text-[12.5px] leading-5 text-ink-soft transition-colors group-hover:text-ink">{text}</span>
+              </button>
+            </li>
+          ))}
+        </ol>
       )}
 
       {(pendingAttachments.length > 0 || uploadingAttachments || attachmentError) && (
         <div className="mb-2 flex flex-wrap gap-1.5" aria-live="polite">
           {pendingAttachments.map((attachment) => (
-            <div key={attachment.id} className="flex max-w-full items-center gap-1.5 rounded-[5px] border border-line bg-surface-muted px-2 py-1 text-[11.5px] text-ink-soft">
-              <FileText className="h-3.5 w-3.5 shrink-0 text-accent" />
-              <span className="max-w-44 truncate">{attachment.name}</span>
-              <span className="shrink-0 text-[10px] text-faint">{Math.max(1, Math.round(attachment.size / 1024))} KB</span>
+            <div key={attachment.id} className="flex max-w-full items-center gap-1.5 border border-line bg-surface-muted px-2 py-1 text-[11.5px] text-ink-soft">
+              <FileText className="h-3.5 w-3.5 shrink-0" />
+              <span className="max-w-44 truncate font-serif">{attachment.name}</span>
+              <span className="journal-num shrink-0 text-[10.5px] text-muted">{Math.max(1, Math.round(attachment.size / 1024))} KB</span>
               {isPdfAttachment(attachment) && (
                 <button
                   type="button"
                   onClick={() => onOpenAttachment(attachment)}
-                  className="rounded-[3px] p-0.5 text-faint transition-colors hover:bg-accent-soft hover:text-accent-ink"
+                  className="p-0.5 text-muted transition-colors hover:bg-surface-strong hover:text-ink"
                   title="在阅读器中打开 PDF"
                   aria-label={`打开 ${attachment.name}`}
                 >
@@ -89,7 +99,7 @@ export function ChatComposer(props: ChatComposerProps) {
               <button
                 type="button"
                 onClick={() => onRemoveAttachment(attachment.id)}
-                className="rounded-[3px] p-0.5 text-faint transition-colors hover:bg-flag-soft hover:text-flag"
+                className="p-0.5 text-muted transition-colors hover:bg-proof-soft hover:text-proof"
                 title="移除附件"
                 aria-label={`移除 ${attachment.name}`}
               >
@@ -98,58 +108,16 @@ export function ChatComposer(props: ChatComposerProps) {
             </div>
           ))}
           {uploadingAttachments && (
-            <span className="flex items-center gap-1.5 rounded-[5px] border border-line bg-surface-muted px-2 py-1 text-[11.5px] text-accent">
+            <span className="flex items-center gap-1.5 border border-line bg-surface-muted px-2 py-1 text-[11.5px] text-ink-soft">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              正在上传
+              正在收稿
             </span>
           )}
-          {attachmentError && <span className="w-full text-[11.5px] text-flag">{attachmentError}</span>}
+          {attachmentError && <span className="w-full text-[11.5px] text-proof">{attachmentError}</span>}
         </div>
       )}
 
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[6px] border border-line bg-surface-muted px-2.5 py-1.5">
-        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-ink-soft">
-          <ShieldCheck className="h-3.5 w-3.5 text-accent" />
-          运行权限
-        </span>
-        <div className="flex items-center gap-1" role="group" aria-label="运行权限">
-          <button
-            type="button"
-            onClick={() => onRuntimePermissionModeChange('confirm_important')}
-            className={`rounded-[4px] px-2 py-1 text-[11px] font-medium transition-colors ${runtimePermissionMode === 'confirm_important' ? 'bg-accent text-white' : 'text-muted hover:bg-surface hover:text-ink'}`}
-            aria-pressed={runtimePermissionMode === 'confirm_important'}
-          >
-            重要操作需确认
-          </button>
-          <button
-            type="button"
-            onClick={() => onRuntimePermissionModeChange('full_access')}
-            className={`rounded-[4px] px-2 py-1 text-[11px] font-medium transition-colors ${runtimePermissionMode === 'full_access' ? 'bg-accent text-white' : 'text-muted hover:bg-surface hover:text-ink'}`}
-            aria-pressed={runtimePermissionMode === 'full_access'}
-          >
-            完全权限
-          </button>
-        </div>
-      </div>
-      <p className="mb-1.5 px-1 text-[10.5px] leading-4 text-faint">
-        {runtimePermissionMode === 'full_access'
-          ? '自动执行拉镜像、装依赖、下载数据与 GPU 操作；仍受镜像白名单和资源上限约束。'
-          : '拉取镜像、安装依赖、下载数据集/模型、使用 GPU 前会暂停并请求你的确认。'}
-      </p>
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept=".pdf,.txt,.md,.json,.jsonl,.yaml,.yml,.toml,.py,.ipynb,.csv,.tsv"
-        className="hidden"
-        onChange={(event) => {
-          onAttachFiles(Array.from(event.target.files ?? []));
-          event.target.value = '';
-        }}
-      />
-
-      <div className="relative rounded-[8px] border border-line bg-surface shadow-[0_1px_2px_rgb(61_52_36/0.04)] transition-[border-color,box-shadow] focus-within:border-accent/55 focus-within:shadow-[0_0_0_3px_rgb(44_90_77/0.08)]">
+      <div className="border border-ink bg-surface transition-shadow focus-within:shadow-[0_0_0_1px_#17130f]">
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
@@ -163,40 +131,93 @@ export function ChatComposer(props: ChatComposerProps) {
           }}
           placeholder={
             isLoggedIn
-              ? '描述研究目标，或上传论文让助手复现实验…'
-              : '游客模式下也可直接提问；登录后会持久保存会话记录'
+              ? '写下研究目标，或上传论文让助手复现实验…'
+              : '游客模式下也可直接提问；登录后按稿次持久保存'
           }
           aria-label="消息输入框"
-          className="min-h-[82px] w-full resize-none bg-transparent px-3 pb-9 pt-2.5 text-[13.5px] leading-6 text-ink outline-none placeholder:text-faint"
+          className="block min-h-[76px] w-full resize-none bg-transparent px-3 pb-2 pt-2.5 font-serif text-[13.5px] leading-6 text-ink outline-none placeholder:text-muted"
           rows={3}
         />
-        <div className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={loading || uploadingAttachments || pendingAttachments.length >= 8}
-            className="flex h-7 w-7 items-center justify-center rounded-[4px] text-muted transition-colors hover:bg-surface-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-            title="添加论文、数据或实验配置"
-            aria-label="添加附件"
-          >
-            {uploadingAttachments ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
-          </button>
-
-          <div className="flex items-center gap-2">
-            <span className="hidden text-[10px] text-faint sm:inline">Enter 发送 · Shift+Enter 换行</span>
+        <div className="flex items-center justify-between gap-2 border-t border-line bg-surface-muted px-2 py-1.5">
+          <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={onSendMessage}
-              disabled={loading || uploadingAttachments || (!prompt.trim() && pendingAttachments.length === 0)}
-              className="flex h-7 w-7 items-center justify-center rounded-[5px] bg-accent text-white transition-all hover:bg-accent-strong active:scale-[0.94] disabled:cursor-not-allowed disabled:bg-line disabled:text-faint"
-              title="发送消息"
-              aria-label="发送消息"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={loading || uploadingAttachments || pendingAttachments.length >= 8}
+              className="flex h-7 w-7 items-center justify-center text-ink-soft transition-colors hover:bg-surface-strong disabled:cursor-not-allowed disabled:opacity-40"
+              title="添加论文、数据或实验配置"
+              aria-label="添加附件"
             >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {uploadingAttachments ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
             </button>
+            <span className="hidden journal-caps text-[10px] sm:inline">Enter 提交 · Shift+Enter 换行</span>
           </div>
+          <button
+            type="button"
+            onClick={onSendMessage}
+            disabled={loading || uploadingAttachments || (!prompt.trim() && pendingAttachments.length === 0)}
+            className="flex h-7 items-center gap-1.5 bg-ink px-3 text-[12px] font-semibold text-paper transition-colors hover:bg-black active:translate-y-px disabled:cursor-not-allowed disabled:bg-[#e6e0d3] disabled:text-[#4a4238]"
+            title="发送消息"
+            aria-label="发送消息"
+          >
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3 w-3" />}
+            发送
+          </button>
         </div>
       </div>
+
+      <div className="mt-2 flex items-start justify-between gap-3 border-t border-line pt-2">
+        <div className="flex items-center gap-1.5">
+          <ShieldCheck className="h-3.5 w-3.5 text-muted" />
+          <span className="journal-caps text-[10px]">运行权限</span>
+          <button
+            type="button"
+            className="flex h-4 w-4 items-center justify-center text-muted hover:text-ink"
+            aria-label="查看运行权限说明"
+            title={runtimePermissionMode === 'full_access'
+              ? '完全权限：自动拉镜像、装依赖、下载数据与 GPU 操作；仍受镜像白名单和资源上限约束。'
+              : '确认模式：拉取镜像、安装依赖、下载数据集/模型、使用 GPU 前会暂停并请求你的确认。'}
+          >
+            <HelpCircle className="h-3 w-3" />
+          </button>
+        </div>
+        <div className="flex items-center border border-line-strong" role="group" aria-label="运行权限">
+          <button
+            type="button"
+            onClick={() => onRuntimePermissionModeChange('confirm_important')}
+            className={`h-6 px-2 text-[11px] font-semibold transition-colors ${runtimePermissionMode === 'confirm_important' ? 'bg-ink text-paper' : 'bg-surface text-ink-soft hover:bg-surface-muted'}`}
+            aria-pressed={runtimePermissionMode === 'confirm_important'}
+          >
+            确认模式
+          </button>
+          <button
+            type="button"
+            onClick={() => onRuntimePermissionModeChange('full_access')}
+            className={`h-6 border-l border-line-strong px-2 text-[11px] font-semibold transition-colors ${runtimePermissionMode === 'full_access' ? 'bg-proof text-white' : 'bg-surface text-ink-soft hover:bg-surface-muted'}`}
+            aria-pressed={runtimePermissionMode === 'full_access'}
+          >
+            完全权限
+          </button>
+        </div>
+      </div>
+
+      <p className="mt-1.5 font-serif text-[11.5px] leading-4 text-muted">
+        {runtimePermissionMode === 'full_access'
+          ? '自动执行镜像、依赖、数据下载与 GPU 操作，仍受白名单与资源上限约束。'
+          : '镜像、依赖、数据下载与 GPU 操作前暂停，逐项确认。'}
+      </p>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".pdf,.txt,.md,.json,.jsonl,.yaml,.yml,.toml,.py,.ipynb,.csv,.tsv"
+        className="hidden"
+        onChange={(event) => {
+          onAttachFiles(Array.from(event.target.files ?? []));
+          event.target.value = '';
+        }}
+      />
     </div>
   );
 }

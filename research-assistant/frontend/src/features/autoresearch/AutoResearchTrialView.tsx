@@ -135,11 +135,11 @@ function SummaryValue({ label, value, tone = 'slate' }: { label: string; value: 
 function TrialRow({ trial, metricKey }: { trial: TrialView; metricKey: string }) {
   const status = trialStatus(trial);
   return (
-    <li className="rounded-md border border-line bg-surface px-4 py-3 shadow-sm">
+    <li className="rounded-[2px] border border-line bg-surface px-4 py-3 shadow-none">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold ${status.className}`}>
+            <span className={`inline-flex items-center gap-1 rounded-[2px] border px-2 py-1 text-[11px] font-semibold ${status.className}`}>
               {status.icon}
               {status.label}
             </span>
@@ -351,7 +351,7 @@ export function AutoResearchTrialView({ rawLedger, expanded = false }: AutoResea
             <ChartNoAxesCombined className="h-4 w-4 text-accent" />
             <span className="break-all">{ledger.metricKey}</span>
           </div>
-          <span className="inline-flex items-center gap-1 rounded-md border border-line bg-surface px-2 py-1 text-[11px] font-medium text-muted">
+          <span className="inline-flex items-center gap-1 rounded-[2px] border border-line bg-surface px-2 py-1 text-[11px] font-medium text-muted">
             <DirectionIcon className="h-3.5 w-3.5" />
             {ledger.direction === 'minimize' ? '越低越好' : '越高越好'}
           </span>
@@ -364,9 +364,9 @@ export function AutoResearchTrialView({ rawLedger, expanded = false }: AutoResea
           )}
         </div>
         <div className="mt-1 flex flex-wrap items-center justify-center gap-4 text-[10px] text-muted">
-          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-accent" />Baseline</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-ok" />Keep</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-flag" />Reject</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-[2px] bg-accent" />Baseline</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-[2px] bg-ok" />Keep</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-[2px] bg-flag" />Reject</span>
         </div>
       </section>
 

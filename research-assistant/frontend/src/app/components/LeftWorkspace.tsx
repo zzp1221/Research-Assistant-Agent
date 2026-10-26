@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactNode } from 'react';
-import { BookOpenText, UserRound, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { ChatPanel } from '../../features/chat/ChatPanel';
 import type { AssistResponse, ChatMessage, DocumentInfoResponse, TranslationJob, UploadedFile } from '../../contracts/api';
 import type { AssistMode } from '../../hooks/useAITranslationPlugin';
@@ -15,54 +15,32 @@ interface LeftWorkspaceShellProps {
   children: ReactNode;
 }
 
+/** The left page of the spread: manuscript copy under review. */
 function LeftWorkspaceShell(props: LeftWorkspaceShellProps) {
-  const { widthPercent, showClosePdf, onClosePdf, documentName, accountLabel, children } = props;
+  const { widthPercent, showClosePdf, onClosePdf, documentName, children } = props;
 
   return (
     <div
       style={{ width: `${widthPercent}%` }}
       className="research-assistant-left-workspace relative z-10 flex flex-shrink-0 flex-col overflow-hidden border-r border-line bg-surface"
     >
-      <header className="flex h-[58px] shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-4">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[5px] bg-accent text-surface shadow-sm">
-            <span className="font-serif text-[15px] font-semibold leading-none">R</span>
+      {showClosePdf && (
+        <header className="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-4">
+          <div className="flex min-w-0 items-baseline gap-2">
+            <span className="journal-caps text-[10px]">论文原文</span>
+            <span className="truncate font-serif text-[12.5px] text-ink-soft">{documentName || '未命名稿件'}</span>
           </div>
-          <div className="min-w-0">
-            <h1 className="truncate font-serif text-[15px] font-semibold leading-tight tracking-[-0.01em] text-ink">
-              Research Assistant{' '}
-              <span className="font-sans text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Agent</span>
-            </h1>
-            <p className="mt-0.5 truncate text-[10.5px] tracking-[0.04em] text-faint">
-              {documentName ? documentName : '论文阅读 · 计划执行 · 结果核验'}
-            </p>
-          </div>
-        </div>
-        {showClosePdf ? (
           <button
             type="button"
             onClick={onClosePdf}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[5px] border border-line bg-surface text-muted transition-colors hover:border-line-strong hover:bg-surface-muted hover:text-ink"
+            className="flex h-6 w-6 shrink-0 items-center justify-center border border-transparent text-muted transition-colors hover:border-line-strong hover:text-ink"
             title="关闭论文阅读器"
             aria-label="关闭论文阅读器"
           >
-            <X className="h-4 w-4" />
+            <X className="h-3.5 w-3.5" />
           </button>
-        ) : accountLabel ? (
-          <span
-            className="flex max-w-28 shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface-muted px-2.5 py-1 text-[10.5px] font-medium text-muted"
-            title={accountLabel}
-          >
-            <UserRound className="h-3 w-3 shrink-0 text-accent" />
-            <span className="truncate">{accountLabel}</span>
-          </span>
-        ) : (
-          <span className="hidden shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface-muted px-2.5 py-1 text-[10.5px] font-medium text-muted sm:flex">
-            <BookOpenText className="h-3 w-3 text-accent" />
-            科研工作台
-          </span>
-        )}
-      </header>
+        </header>
+      )}
       {children}
     </div>
   );
@@ -155,13 +133,13 @@ export interface TranslationPanelState {
 
 function PdfViewerSkeleton() {
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-paper-deep/40" aria-busy="true" aria-label="正在加载论文阅读器">
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line bg-surface px-3">
-        <span className="h-3 w-16 animate-pulse rounded bg-paper-deep" />
-        <span className="h-3 w-10 animate-pulse rounded bg-paper-deep" />
+    <div className="flex min-h-0 flex-1 flex-col bg-paper" aria-busy="true" aria-label="正在加载论文阅读器">
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line bg-surface px-3">
+        <span className="h-2.5 w-16 animate-pulse bg-paper-deep" />
+        <span className="h-2.5 w-10 animate-pulse bg-paper-deep" />
       </div>
       <div className="flex flex-1 items-center justify-center p-6">
-        <div className="h-full w-full max-w-2xl animate-pulse rounded-[4px] border border-line bg-surface shadow-[var(--shadow-card)]" />
+        <div className="h-full w-full max-w-2xl animate-pulse border border-line bg-surface" />
       </div>
     </div>
   );

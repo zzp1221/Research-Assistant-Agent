@@ -1,6 +1,5 @@
-import { CheckCircle2, Circle, CircleAlert, Clock3, LoaderCircle, ShieldAlert, XCircle } from 'lucide-react';
 import type { Task } from '../../contracts/api';
-import { getAgentIcon, getAgentLabel } from '../shared/agentVisuals';
+import { getAgentLabel, getProofMark, getStatusTone } from '../shared/agentVisuals';
 import { ExperimentSearchNodeLabel } from './ExperimentSearchNodeLabel';
 
 interface CreateTaskNodeLabelOptions {
@@ -11,47 +10,35 @@ interface CreateTaskNodeLabelOptions {
   task?: Task;
 }
 
-const statusMeta: Record<string, { label: string; className: string; icon: typeof Circle }> = {
-  pending: { label: '等待', className: 'text-faint', icon: Clock3 },
-  ready: { label: '就绪', className: 'text-[#3e5c76]', icon: Circle },
-  in_progress: { label: '运行中', className: 'text-warn', icon: LoaderCircle },
-  completed: { label: '已完成', className: 'text-ok', icon: CheckCircle2 },
-  failed: { label: '失败', className: 'text-flag', icon: CircleAlert },
-  blocked: { label: '已阻塞', className: 'text-muted', icon: ShieldAlert },
-  canceled: { label: '已取消', className: 'text-faint', icon: XCircle },
-  skipped: { label: '已跳过', className: 'text-faint', icon: XCircle },
-  awaiting_approval: { label: '待审批', className: 'text-plum', icon: ShieldAlert },
-};
-
 const getPrimaryTaskName = (taskName: string) => taskName.split(/\s+\/\s+/)[0]?.trim() || taskName;
 
+/**
+ * A node is a figure entry: plate number, proof mark, title, and the running
+ * head that names the responsible agent.
+ */
 export const createTaskNodeLabel = (options: CreateTaskNodeLabelOptions) => {
   const { assignedTo, taskName, status, step, task } = options;
   if (task?.Type === 'experiment_run') {
     return <ExperimentSearchNodeLabel task={task} status={status} step={step} />;
   }
-  const statusState = statusMeta[status] ?? statusMeta.pending;
-  const StatusIcon = statusState.icon;
+  const tone = getStatusTone(status);
 
   return (
-    <div className="flex min-h-[86px] w-full flex-col px-3.5 py-3 text-left">
-      <div className="flex items-center justify-between gap-2 text-[10.5px]">
-        <div className="flex min-w-0 items-center gap-1.5 text-muted">
-          {getAgentIcon(assignedTo)}
-          <span className="truncate font-medium">{getAgentLabel(assignedTo)}</span>
-        </div>
-        <div className={`flex shrink-0 items-center gap-1 font-medium ${statusState.className}`}>
-          <StatusIcon className={`h-3 w-3 ${status === 'in_progress' ? 'animate-spin' : ''}`} />
-          <span>{statusState.label}</span>
-        </div>
+    <div className="flex min-h-[76px] w-full flex-col px-3 py-2.5 text-left">
+      <div className="flex items-center justify-between gap-2">
+        <span className="journal-num text-[11px] text-muted">
+          {typeof step === 'number' ? `图 ${String(step).padStart(2, '0')}` : '图'}
+        </span>
+        <span className="flex items-center gap-1 journal-caps text-[10px]" style={{ color: tone.color }}>
+          <span aria-hidden="true" className={status === 'in_progress' ? 'proof-pulse' : ''}>{getProofMark(status)}</span>
+          {tone.label}
+        </span>
       </div>
-      <div className="mt-2.5 flex min-w-0 gap-2">
-        {typeof step === 'number' && (
-          <span className="shrink-0 font-mono text-[10.5px] font-semibold leading-[1.5] text-faint">{String(step).padStart(2, '0')}</span>
-        )}
-        <div className="line-clamp-2 text-[13px] font-semibold leading-[1.45] text-ink" title={taskName}>
-          {getPrimaryTaskName(taskName)}
-        </div>
+      <div className="mt-1 line-clamp-2 font-serif text-[13px] font-semibold leading-[1.4] text-ink" title={taskName}>
+        {getPrimaryTaskName(taskName)}
+      </div>
+      <div className="mt-auto pt-1.5 truncate border-t border-line/70 journal-caps text-[10px] text-muted">
+        {getAgentLabel(assignedTo)}
       </div>
     </div>
   );

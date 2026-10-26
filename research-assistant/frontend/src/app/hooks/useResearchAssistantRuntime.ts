@@ -397,7 +397,7 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
               const directOutputs = buildDirectExecutionOutputs(finalResult, generatedCode, structuredData, imageBase64);
 
               patchNodeState(task.ID, (prev) => ({
-                logs: `${prev.logs || ''}\n\n${formatParameterObject('[Params] 将传递给下游的参数', directOutputs)}\n\n[🎉 Agent 思考与执行完毕]`,
+                logs: `${prev.logs || ''}\n\n${formatParameterObject('[Params] 将传递给下游的参数', directOutputs)}\n\n[exec] agent finished`,
                 result: finalResult,
                 code: generatedCode,
                 structuredData,
@@ -422,7 +422,7 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
                 role: 'system',
                 taskId: task.ID,
                 text:
-                  `✅ 节点 **[${task.Name}]** 执行完成！\n\n您可以点击下方的快捷按钮或右侧节点查看完整结果。` +
+                  `节点 **[${task.Name}]** 已完成。完整结果可在右侧检查器的日志、报告与图表中查看。` +
                   (generatedCode
                     ? `\n\n**生成的代码片段:**\n\`\`\`python\n${generatedCode.substring(0, 300)}${
                         generatedCode.length > 300 ? '\n... (代码较长，请在右侧面板查看完整代码)' : ''
@@ -452,16 +452,16 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
         const message = error instanceof Error ? error.message : String(error);
         const errorMsg =
           message === 'Failed to fetch'
-            ? '哎呀，与后端失联了 📡！可能是大模型思考太久导致连接超时，或者您的本地端口被占用了，请重试一下～'
+            ? '与后端连接中断：可能是模型响应超时或本地端口被占用。请稍后重试，或检查后端服务状态。'
             : message;
 
         patchNodeState(task.ID, (prev) => ({
           ...prev,
-          logs: `${prev.logs}\n\n[❌ 执行中断] ${errorMsg}`,
+          logs: `${prev.logs}\n\n[error] 执行中断 ${errorMsg}`,
         }));
         appendChatMessage({
           role: 'system',
-          text: `❌ 节点 **[${task.Name}]** 执行失败。\n\n**错误信息:**\n${errorMsg}`,
+          text: `节点 **[${task.Name}]** 执行失败。\n\n**错误信息**\n\n${errorMsg}`,
         });
         updateNodeVisualState(task.ID, 'failed');
         throw error;
