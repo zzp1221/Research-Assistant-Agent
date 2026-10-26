@@ -1,12 +1,55 @@
 package planner
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"research-assistant-backend/internal/models"
 )
+
+var (
+	blobLoaderMu sync.RWMutex
+	blobLoader   func(string) ([]byte, error)
+)
+
+// SetBlobLoader wires the content-addressed blob store into artifact binding so
+// artifacts externalised as "blob:<sha256>" still reach downstream tasks.
+func SetBlobLoader(fn func(string) ([]byte, error)) {
+	blobLoaderMu.Lock()
+	defer blobLoaderMu.Unlock()
+	blobLoader = fn
+}
+
+// LoadBlobForResponse exposes blob loading to API response hydration.
+func LoadBlobForResponse(ref string) ([]byte, error) {
+	return loadBlob(ref)
+}
+
+// IsImageBytes reports whether raw bytes are a PNG or JPEG image. Content-based
+// detection avoids mis-encoding text artifacts whose key happens to contain
+// "plot" (for example plot_render_report).
+func IsImageBytes(data []byte) bool {
+	if len(data) < 4 {
+		return false
+	}
+	if data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G' {
+		return true
+	}
+	return data[0] == 0xFF && data[1] == 0xD8
+}
+
+func loadBlob(ref string) ([]byte, error) {
+	blobLoaderMu.RLock()
+	loader := blobLoader
+	blobLoaderMu.RUnlock()
+	if loader == nil {
+		return nil, fmt.Errorf("blob loader is not configured")
+	}
+	return loader(ref)
+}
 
 // ContextBinder resolves a task's declared inputs from the plan's ResearchContext
 // and artifacts. It is the single data-flow entry point used by the scheduler.
@@ -130,6 +173,15 @@ func findAttachment(ctx *models.ResearchContext, role string, index int) (models
 
 func artifactInputValue(artifact models.Artifact, target string) any {
 	raw := artifact.EffectiveValue()
+	if strings.TrimSpace(raw) == "" && strings.TrimSpace(artifact.BlobRef) != "" {
+		if data, err := loadBlob(artifact.BlobRef); err == nil {
+			if IsImageBytes(data) {
+				raw = base64.StdEncoding.EncodeToString(data)
+			} else {
+				raw = string(data)
+			}
+		}
+	}
 	if strings.TrimSpace(raw) == "" {
 		return raw
 	}

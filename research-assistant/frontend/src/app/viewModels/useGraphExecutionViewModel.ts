@@ -29,6 +29,13 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
   const runtime = useResearchAssistantRuntimeContext();
 
   return useMemo(() => {
+    // A pending runtime action must be decided on its own card. Showing the
+    // plan-level "审批并运行" button at the same time caused a guaranteed 409.
+    const hasPendingRuntimeAction = (activePlanRuntimeActions ?? []).some((action) => action.status === 'pending');
+    const requiresPlanApproval =
+      activePlanStatus === 'awaiting_approval' &&
+      !hasPendingRuntimeAction &&
+      !runtime.state.executionState.approvalResolved;
     const graphPanelProps = {
       nodes,
       edges,
@@ -48,7 +55,7 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
       graphTitle: uiText.graphTitle,
       graphHint: uiText.graphHint,
       isExecuting: runtime.state.executionState.isExecuting,
-	  requiresApproval: activePlanStatus === 'awaiting_approval' && !runtime.state.executionState.approvalResolved,
+	  requiresApproval: requiresPlanApproval,
       onRunAll: () => void runtime.actions.handleRunAllTasks(activePlanId),
 	  onApproveAndRun: () => void runtime.actions.handleApproveAndRun(activePlanId),
 	  onCancel: () => void runtime.actions.handleCancelPlan(activePlanId),
@@ -69,7 +76,7 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
           selectedTask: runtime.state.executionState.selectedTask,
           width: isExpandedMode ? '100%' : `${layout.sidebarWidth}px`,
           isExecuting: runtime.state.executionState.isExecuting,
-          requiresApproval: activePlanStatus === 'awaiting_approval' && !runtime.state.executionState.approvalResolved,
+          requiresApproval: requiresPlanApproval,
           displayMode: runtime.state.executionState.displayMode,
           executionLogs: runtime.state.selectedTaskState.logs,
           executionResult: runtime.state.selectedTaskState.result,

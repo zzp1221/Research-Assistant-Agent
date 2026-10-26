@@ -1,10 +1,16 @@
 package api
 
 import (
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -18,25 +24,102 @@ const (
 	sessionHeaderName  = "X-Session-Id"
 )
 
+var identitySecretOnce struct {
+	sync.Once
+	secret []byte
+}
+
+// identityCookieSecret derives the HMAC key used to sign identity cookies.
+// A dedicated IDENTITY_COOKIE_SECRET is preferred; API_AUTH_TOKEN is used as a
+// fallback so a single-node deployment does not need an extra secret. A random
+// per-process secret is the last resort (identities then reset on restart).
+func identityCookieSecret() []byte {
+	identitySecretOnce.Do(func() {
+		if raw := strings.TrimSpace(os.Getenv("IDENTITY_COOKIE_SECRET")); raw != "" {
+			identitySecretOnce.secret = []byte(raw)
+			return
+		}
+		if raw := strings.TrimSpace(os.Getenv("API_AUTH_TOKEN")); raw != "" {
+			identitySecretOnce.secret = []byte("identity:" + raw)
+			return
+		}
+		buffer := make([]byte, 32)
+		if _, err := rand.Read(buffer); err != nil {
+			identitySecretOnce.secret = []byte("identity-fallback-secret")
+			return
+		}
+		identitySecretOnce.secret = buffer
+	})
+	return identitySecretOnce.secret
+}
+
+func identityMAC(value string) string {
+	mac := hmac.New(sha256.New, identityCookieSecret())
+	mac.Write([]byte(value))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+// signIdentityCookie returns "<value>.<hmac>" so the server can verify that an
+// identity cookie was issued by this backend and was not forged by a client.
+func signIdentityCookie(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	return value + "." + identityMAC(value)
+}
+
+// verifyIdentityCookie validates the HMAC and returns the embedded identity.
+func verifyIdentityCookie(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	idx := strings.LastIndex(raw, ".")
+	if idx <= 0 || idx >= len(raw)-1 {
+		return ""
+	}
+	value := raw[:idx]
+	signature := raw[idx+1:]
+	expected := identityMAC(value)
+	if subtle.ConstantTimeCompare([]byte(signature), []byte(expected)) != 1 {
+		return ""
+	}
+	return sanitizeIdentityValue(value)
+}
+
+// legacyUserHeaderAllowed is a test-only compatibility switch. Production must
+// never trust a client supplied X-User-Id header.
+func legacyUserHeaderAllowed() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("ALLOW_LEGACY_USER_HEADER")), "true")
+}
+
 func ensureAnonUserIDCookie(c *gin.Context) string {
 	if c == nil {
 		return ""
 	}
-	if v, err := c.Cookie(anonUserCookieName); err == nil && strings.TrimSpace(v) != "" {
-		return v
+	if v, err := c.Cookie(anonUserCookieName); err == nil {
+		if verified := verifyIdentityCookie(v); verified != "" {
+			return verified
+		}
 	}
 	id := uuid.NewString()
-	setHTTPOnlyCookie(c, anonUserCookieName, id, cookieMaxAgeSeconds())
+	setHTTPOnlyCookie(c, anonUserCookieName, signIdentityCookie(id), cookieMaxAgeSeconds())
 	return id
 }
 
+// resolveUserID returns the authenticated principal of the request. The value
+// comes exclusively from a server-signed HttpOnly cookie; a bare X-User-Id
+// header is ignored (unless the explicit test-only switch is enabled).
 func resolveUserID(c *gin.Context) string {
 	if c == nil {
 		return ""
 	}
-	if headerValue := sanitizeIdentityValue(c.GetHeader(userIDHeaderName)); headerValue != "" {
-		setHTTPOnlyCookie(c, anonUserCookieName, headerValue, cookieMaxAgeSeconds())
-		return headerValue
+	if legacyUserHeaderAllowed() {
+		if headerValue := sanitizeIdentityValue(c.GetHeader(userIDHeaderName)); headerValue != "" {
+			setHTTPOnlyCookie(c, anonUserCookieName, signIdentityCookie(headerValue), cookieMaxAgeSeconds())
+			return headerValue
+		}
 	}
 	return ensureAnonUserIDCookie(c)
 }
@@ -45,21 +128,27 @@ func ensureSessionIDCookie(c *gin.Context) string {
 	if c == nil {
 		return ""
 	}
-	if v, err := c.Cookie(sessionCookieName); err == nil && strings.TrimSpace(v) != "" {
-		return v
+	if v, err := c.Cookie(sessionCookieName); err == nil {
+		if verified := verifyIdentityCookie(v); verified != "" {
+			return verified
+		}
 	}
 	id := uuid.NewString()
-	setHTTPOnlyCookie(c, sessionCookieName, id, cookieMaxAgeSeconds())
+	setHTTPOnlyCookie(c, sessionCookieName, signIdentityCookie(id), cookieMaxAgeSeconds())
 	return id
 }
 
+// resolveSessionID returns the server-signed session id. Client supplied
+// X-Session-Id headers are only honoured in the explicit legacy test mode.
 func resolveSessionID(c *gin.Context) string {
 	if c == nil {
 		return ""
 	}
-	if headerValue := sanitizeIdentityValue(c.GetHeader(sessionHeaderName)); headerValue != "" {
-		setHTTPOnlyCookie(c, sessionCookieName, headerValue, cookieMaxAgeSeconds())
-		return headerValue
+	if legacyUserHeaderAllowed() {
+		if headerValue := sanitizeIdentityValue(c.GetHeader(sessionHeaderName)); headerValue != "" {
+			setHTTPOnlyCookie(c, sessionCookieName, signIdentityCookie(headerValue), cookieMaxAgeSeconds())
+			return headerValue
+		}
 	}
 	return ensureSessionIDCookie(c)
 }

@@ -45,17 +45,15 @@ describe('ChatSessionManager', () => {
     expect(onCreateSession).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the guest login flow inside the menu', async () => {
+  it('shows the server-issued session identity and never offers a user id input', async () => {
     const user = userEvent.setup();
-    const onLogin = vi.fn();
-    const setLoginInput = vi.fn();
 
     render(
       <ChatSessionManager
-        state={{ ...baseState, loginInput: 'alice' }}
+        state={{ ...baseState, isLoggedIn: true, userId: 'user-1234567890' }}
         actions={{
-          setLoginInput,
-          onLogin,
+          setLoginInput: vi.fn(),
+          onLogin: vi.fn(),
           onCreateSession: vi.fn(),
           onSwitchSession: vi.fn(),
         }}
@@ -63,12 +61,8 @@ describe('ChatSessionManager', () => {
     );
 
     await user.click(screen.getByRole('button', { name: /工业检索多策略实验/ }));
-    const input = screen.getByLabelText('用户 ID');
-    expect(input).toHaveValue('alice');
-    await user.type(input, 'x');
-    expect(setLoginInput).toHaveBeenCalled();
-
-    await user.click(screen.getByRole('button', { name: '登录' }));
-    expect(onLogin).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/会话身份/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('用户 ID')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '登录' })).not.toBeInTheDocument();
   });
 });

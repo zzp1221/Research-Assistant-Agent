@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -117,6 +118,7 @@ func (e *NativeDockerEngine) GetType() string {
 }
 
 func (e *NativeDockerEngine) Create(ctx context.Context, image string, mountPath string, labels map[string]string) (string, error) {
+	image = rewriteImageWithRegistryMirror(image)
 	args, err := secureDockerRunArgs(image, labels)
 	if err != nil {
 		return "", err
@@ -130,6 +132,13 @@ func (e *NativeDockerEngine) Create(ctx context.Context, image string, mountPath
 			return "", err
 		}
 		args = append(args, "-v", fmt.Sprintf("%s:/workspace", normalizedMountPath))
+	}
+	// Share one pip cache across sandbox containers so repeated dependency
+	// installs hit the local cache instead of re-downloading wheels.
+	if cacheDir := strings.TrimSpace(os.Getenv("SANDBOX_PIP_CACHE_DIR")); cacheDir != "" {
+		if err := os.MkdirAll(cacheDir, 0o777); err == nil {
+			args = append(args, "-v", fmt.Sprintf("%s:/root/.cache/pip", cacheDir))
+		}
 	}
 	args = append(args, "--", image, "sleep", "infinity")
 	fmt.Printf("[NativeDocker] Executing: docker %s\n", strings.Join(args, " "))
@@ -174,6 +183,34 @@ func normalizeDockerMountPath(mountPath string) (string, error) {
 	return normalizeAndAuthorizeMountPath(mountPath)
 }
 
+// rewriteImageWithRegistryMirror prefixes docker.io images with the configured
+// mirror (for example docker.m.daocloud.io) so a deployment without direct
+// Docker Hub access can still pull runtime images. Images that already carry an
+// explicit registry host are left untouched.
+func rewriteImageWithRegistryMirror(image string) string {
+	image = strings.TrimSpace(image)
+	mirror := strings.TrimSpace(os.Getenv("SANDBOX_REGISTRY_MIRROR"))
+	if image == "" || mirror == "" {
+		return image
+	}
+	mirror = strings.TrimPrefix(mirror, "https://")
+	mirror = strings.TrimPrefix(mirror, "http://")
+	mirror = strings.TrimSuffix(mirror, "/")
+	if mirror == "" || strings.HasPrefix(image, mirror+"/") {
+		return image
+	}
+	if strings.Contains(image, "/") {
+		first := strings.Split(image, "/")[0]
+		if strings.Contains(first, ".") || strings.Contains(first, ":") || first == "localhost" {
+			// Already an explicit registry host; do not rewrite.
+			return image
+		}
+		return mirror + "/" + image
+	}
+	// Bare docker.io image such as "python:3.11-bullseye".
+	return mirror + "/library/" + image
+}
+
 func (e *NativeDockerEngine) validateSandboxContainer(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if !containerIDPattern.MatchString(id) {
@@ -210,6 +247,174 @@ func (e *NativeDockerEngine) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// executionMarkerPath marks the start of a sandbox execution so image capture
+// only returns files created by the current run instead of stale outputs from
+// earlier tasks sharing the same persistent runtime.
+const executionMarkerPath = "/tmp/.ra_exec_start"
+
+// executionOutputDir is the standard directory the runtime tells generated code
+// to save figures into (mirrored to the backend as RA_OUTPUT_DIR).
+const executionOutputDir = "/workspace/output"
+
+// maxCapturedImages bounds how many images one execution can return.
+const maxCapturedImages = 8
+
+// maxCapturedImageBytes bounds the size of a single captured image.
+const maxCapturedImageBytes = 32 << 20
+
+// prepareExecution creates the standard output directory and stamps a marker
+// file slightly in the past so a scan for "newer than marker" reliably includes
+// files written during this execution even on filesystems with coarse mtimes.
+func (e *NativeDockerEngine) prepareExecution(ctx context.Context, id string) {
+	script := "mkdir -p " + executionOutputDir + " /workspace/outputs 2>/dev/null; " +
+		"touch -d '2 seconds ago' " + executionMarkerPath + " 2>/dev/null || touch " + executionMarkerPath
+	_ = exec.CommandContext(ctx, dockerCommand(), "exec", id, "sh", "-c", script).Run()
+}
+
+// collectGeneratedImages returns base64 encoded images created under /workspace
+// since the execution marker was written. It supports multiple images and
+// arbitrary file names, which is the core of the unified artifact contract.
+func (e *NativeDockerEngine) collectGeneratedImages(ctx context.Context, id string) []string {
+	findScript := "find /workspace -type f -name '*.png' -newer " + executionMarkerPath + " -print 2>/dev/null | head -n " + strconv.Itoa(maxCapturedImages)
+	output, err := exec.CommandContext(ctx, dockerCommand(), "exec", id, "sh", "-c", findScript).Output()
+	if err != nil {
+		return nil
+	}
+	images := make([]string, 0, maxCapturedImages)
+	seen := map[string]struct{}{}
+	for _, rawPath := range strings.Split(string(output), "\n") {
+		path := strings.TrimSpace(rawPath)
+		if path == "" || strings.Contains(path, "..") {
+			continue
+		}
+		if _, duplicate := seen[path]; duplicate {
+			continue
+		}
+		seen[path] = struct{}{}
+		data, readErr := exec.CommandContext(ctx, dockerCommand(), "exec", id, "cat", path).Output()
+		if readErr != nil || len(data) == 0 || len(data) > maxCapturedImageBytes {
+			continue
+		}
+		images = append(images, base64.StdEncoding.EncodeToString(data))
+		_ = exec.CommandContext(ctx, dockerCommand(), "exec", id, "rm", "-f", path).Run()
+	}
+	return images
+}
+
+// readPlotImageFromContainer is the legacy single-file capture kept as a
+// fallback for runtimes that still write the historical output_plot.png name
+// without a newer mtime (for example when a previous step produced it).
+// SandboxInfo describes one running sandbox container for the plan registry.
+type SandboxInfo struct {
+	ID        string `json:"id"`
+	PlanID    string `json:"plan_id,omitempty"`
+	TaskID    string `json:"task_id,omitempty"`
+	TenantID  string `json:"tenant_id,omitempty"`
+	Image     string `json:"image,omitempty"`
+	Status    string `json:"status,omitempty"`
+	StartedAt string `json:"started_at,omitempty"`
+}
+
+// ListByPlan returns the sandbox containers labelled with the given plan id.
+func (e *NativeDockerEngine) ListByPlan(ctx context.Context, planID string) ([]SandboxInfo, error) {
+	planID = strings.TrimSpace(planID)
+	if !sandboxIdentityValid(planID) {
+		return nil, fmt.Errorf("invalid plan id")
+	}
+	output, err := exec.CommandContext(ctx, dockerCommand(), "ps", "-a",
+		"--filter", "label="+sandboxLabelKey+"="+sandboxLabelValue,
+		"--filter", "label="+planLabelKey+"="+planID,
+		"--format", "{{.ID}}|{{.Image}}|{{.Status}}").Output()
+	if err != nil {
+		return nil, fmt.Errorf("list sandboxes for plan: %w", err)
+	}
+	items := make([]SandboxInfo, 0)
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "|", 3)
+		if len(parts) < 3 || !containerIDPattern.MatchString(parts[0]) {
+			continue
+		}
+		items = append(items, SandboxInfo{ID: parts[0], PlanID: planID, Image: parts[1], Status: parts[2]})
+	}
+	return items, nil
+}
+
+// CleanupByPlan force-removes every sandbox container of a plan. Removing the
+// container also terminates pip/python child processes inside it.
+func (e *NativeDockerEngine) CleanupByPlan(ctx context.Context, planID string) (int, error) {
+	items, err := e.ListByPlan(ctx, planID)
+	if err != nil {
+		return 0, err
+	}
+	removed := 0
+	for _, item := range items {
+		if err := exec.CommandContext(ctx, dockerCommand(), "rm", "-f", item.ID).Run(); err == nil {
+			removed++
+			e.mu.Lock()
+			delete(e.mountPaths, item.ID)
+			e.mu.Unlock()
+		}
+	}
+	return removed, nil
+}
+
+// ReapStale removes sandbox containers that have been running longer than the
+// configured TTL. It returns the number of removed containers.
+func (e *NativeDockerEngine) ReapStale(ctx context.Context, ttl time.Duration) (int, error) {
+	if ttl <= 0 {
+		return 0, nil
+	}
+	output, err := exec.CommandContext(ctx, dockerCommand(), "ps", "-a",
+		"--filter", "label="+sandboxLabelKey+"="+sandboxLabelValue,
+		"--format", "{{.ID}}").Output()
+	if err != nil {
+		return 0, fmt.Errorf("list sandbox containers: %w", err)
+	}
+	removed := 0
+	now := time.Now()
+	for _, raw := range strings.Split(string(output), "\n") {
+		id := strings.TrimSpace(raw)
+		if !containerIDPattern.MatchString(id) {
+			continue
+		}
+		startedRaw, inspectErr := exec.CommandContext(ctx, dockerCommand(), "inspect",
+			"--format", "{{.State.StartedAt}}", id).Output()
+		if inspectErr != nil {
+			continue
+		}
+		started, parseErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(string(startedRaw)))
+		if parseErr != nil || now.Sub(started) < ttl {
+			continue
+		}
+		if rmErr := exec.CommandContext(ctx, dockerCommand(), "rm", "-f", id).Run(); rmErr == nil {
+			removed++
+			e.mu.Lock()
+			delete(e.mountPaths, id)
+			e.mu.Unlock()
+		}
+	}
+	return removed, nil
+}
+
+func sandboxIdentityValid(value string) bool {
+	if value == "" || len(value) > 128 {
+		return false
+	}
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '-' || r == '_' || r == '.' || r == ':':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func (e *NativeDockerEngine) readPlotImageFromContainer(ctx context.Context, id string) []string {
 	cmd := exec.CommandContext(ctx, dockerCommand(), "exec", id, "cat", "/workspace/output_plot.png")
 	data, err := cmd.Output()
@@ -224,7 +429,11 @@ func (e *NativeDockerEngine) ExecutePython(ctx context.Context, id string, code 
 	if err := e.validateSandboxContainer(ctx, id); err != nil {
 		return nil, err
 	}
-	cmd := exec.CommandContext(ctx, dockerCommand(), "exec", id, "python3", "-c", code)
+	e.prepareExecution(ctx, id)
+	cmd := exec.CommandContext(ctx, dockerCommand(), "exec",
+		"-e", "RA_OUTPUT_DIR="+executionOutputDir,
+		"-e", "MPLBACKEND=Agg",
+		id, "python3", "-c", code)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -245,18 +454,22 @@ func (e *NativeDockerEngine) ExecutePython(ctx context.Context, id string, code 
 		ExitCode: exitCode,
 	}
 
-	// 尝试从挂载目录读取生成的图表 (Matplotlib 默认保存路径)
-	e.mu.RLock()
-	mountPath, ok := e.mountPaths[id]
-	e.mu.RUnlock()
-	if ok {
-		plotPath := filepath.Join(mountPath, "output_plot.png")
-		if _, err := os.Stat(plotPath); err == nil {
-			imgData, readErr := os.ReadFile(plotPath)
-			if readErr == nil {
-				response.Images = []string{base64.StdEncoding.EncodeToString(imgData)}
-				// 读取后删除，避免下一次执行干扰
-				os.Remove(plotPath)
+	// 统一产物契约：扫描本次执行在 /workspace 下新增的 *.png（支持多图与任意文件名）。
+	response.Images = e.collectGeneratedImages(ctx, id)
+	if len(response.Images) == 0 {
+		// 兼容旧契约：仍从挂载目录读取 output_plot.png。
+		e.mu.RLock()
+		mountPath, ok := e.mountPaths[id]
+		e.mu.RUnlock()
+		if ok {
+			plotPath := filepath.Join(mountPath, "output_plot.png")
+			if _, err := os.Stat(plotPath); err == nil {
+				imgData, readErr := os.ReadFile(plotPath)
+				if readErr == nil {
+					response.Images = []string{base64.StdEncoding.EncodeToString(imgData)}
+					// 读取后删除，避免下一次执行干扰
+					os.Remove(plotPath)
+				}
 			}
 		}
 	}
@@ -271,22 +484,29 @@ func (e *NativeDockerEngine) ExecutePythonStream(ctx context.Context, id string,
 	if err := e.validateSandboxContainer(ctx, id); err != nil {
 		return nil, err
 	}
-	cmd := exec.CommandContext(ctx, dockerCommand(), "exec", id, "python3", "-c", code)
+	e.prepareExecution(ctx, id)
+	cmd := exec.CommandContext(ctx, dockerCommand(), "exec",
+		"-e", "RA_OUTPUT_DIR="+executionOutputDir,
+		"-e", "MPLBACKEND=Agg",
+		id, "python3", "-c", code)
 	response, err := e.runStreamingCommand(ctx, cmd, emit)
 	if err != nil {
 		return nil, err
 	}
 
-	e.mu.RLock()
-	mountPath, ok := e.mountPaths[id]
-	e.mu.RUnlock()
-	if ok {
-		plotPath := filepath.Join(mountPath, "output_plot.png")
-		if _, statErr := os.Stat(plotPath); statErr == nil {
-			imgData, readErr := os.ReadFile(plotPath)
-			if readErr == nil {
-				response.Images = []string{base64.StdEncoding.EncodeToString(imgData)}
-				os.Remove(plotPath)
+	response.Images = e.collectGeneratedImages(ctx, id)
+	if len(response.Images) == 0 {
+		e.mu.RLock()
+		mountPath, ok := e.mountPaths[id]
+		e.mu.RUnlock()
+		if ok {
+			plotPath := filepath.Join(mountPath, "output_plot.png")
+			if _, statErr := os.Stat(plotPath); statErr == nil {
+				imgData, readErr := os.ReadFile(plotPath)
+				if readErr == nil {
+					response.Images = []string{base64.StdEncoding.EncodeToString(imgData)}
+					os.Remove(plotPath)
+				}
 			}
 		}
 	}
@@ -304,7 +524,8 @@ func (e *NativeDockerEngine) ExecuteCommand(ctx context.Context, id string, cmdA
 	if err := e.validateSandboxContainer(ctx, id); err != nil {
 		return nil, err
 	}
-	args := append([]string{"exec", id}, cmdArr...)
+	e.prepareExecution(ctx, id)
+	args := append([]string{"exec", "-e", "RA_OUTPUT_DIR=" + executionOutputDir, id}, cmdArr...)
 	fmt.Printf("[NativeDocker] Executing: docker %s\n", strings.Join(args, " "))
 	dockerCmd := exec.CommandContext(ctx, dockerCommand(), args...)
 	var stdout, stderr bytes.Buffer
@@ -321,24 +542,28 @@ func (e *NativeDockerEngine) ExecuteCommand(ctx context.Context, id string, cmdA
 		}
 	}
 
-	return &ExecutionResponse{
+	response := &ExecutionResponse{
 		Stdout:   stdout.String(),
 		Stderr:   stderr.String(),
 		ExitCode: exitCode,
-	}, nil
+	}
+	response.Images = e.collectGeneratedImages(ctx, id)
+	return response, nil
 }
 
 func (e *NativeDockerEngine) ExecuteCommandStream(ctx context.Context, id string, cmdArr []string, emit func(ExecutionStreamEvent) error) (*ExecutionResponse, error) {
 	if err := e.validateSandboxContainer(ctx, id); err != nil {
 		return nil, err
 	}
-	args := append([]string{"exec", id}, cmdArr...)
+	e.prepareExecution(ctx, id)
+	args := append([]string{"exec", "-e", "RA_OUTPUT_DIR=" + executionOutputDir, id}, cmdArr...)
 	fmt.Printf("[NativeDocker] Executing: docker %s\n", strings.Join(args, " "))
 	dockerCmd := exec.CommandContext(ctx, dockerCommand(), args...)
 	response, err := e.runStreamingCommand(ctx, dockerCmd, emit)
 	if err != nil {
 		return nil, err
 	}
+	response.Images = e.collectGeneratedImages(ctx, id)
 	return response, emit(ExecutionStreamEvent{
 		Type:     "final",
 		Response: response,

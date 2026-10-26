@@ -91,6 +91,32 @@ func (p *plannerAgent) BuildNodes(ctx context.Context, intent models.IntentConte
 	return materializePlannerNodes(parsed.Nodes, intent)
 }
 
+// RepairNodes feeds a validation error back to the model once so it can fix
+// the blueprint instead of immediately falling back to a template plan.
+func (p *plannerAgent) RepairNodes(ctx context.Context, intent models.IntentContext, nodes []*models.TaskNode, validationErr error) ([]*models.TaskNode, error) {
+	if p == nil || !p.enabled || p.chatModel == nil {
+		return nil, fmt.Errorf("planner agent is disabled")
+	}
+	intentPayload, _ := json.MarshalIndent(intent, "", "  ")
+	nodesPayload, _ := json.MarshalIndent(nodes, "", "  ")
+	userPrompt := "原始意图 JSON:\n" + string(intentPayload) +
+		"\n\n上一次生成的节点 JSON:\n" + string(nodesPayload) +
+		"\n\n校验错误:\n" + validationErr.Error() +
+		"\n\n请修复节点列表并只返回严格的 JSON：{\"nodes\":[{\"ref\",\"name\",\"type\",\"assigned_to\",\"dependencies\",\"required_artifacts\",\"output_artifacts\",\"parallelizable\"}]}。要求：每个节点必须有非空 output_artifacts；不同分支不得重复使用同一个 artifact key（用分支前缀）；最多 14 个节点。"
+	msg, err := p.chatModel.Generate(ctx, []*schema.Message{
+		{Role: schema.System, Content: prompts.PlannerAgentSystemPrompt},
+		{Role: schema.User, Content: userPrompt},
+	})
+	if err != nil {
+		return nil, err
+	}
+	parsed, err := parsePlannerAgentResponse(msg.Content)
+	if err != nil {
+		return nil, err
+	}
+	return materializePlannerNodes(parsed.Nodes, intent)
+}
+
 func parsePlannerAgentResponse(raw string) (*plannerAgentResponse, error) {
 	cleaned := strings.TrimSpace(raw)
 	cleaned = strings.TrimPrefix(cleaned, "```json")
@@ -106,6 +132,226 @@ func parsePlannerAgentResponse(raw string) (*plannerAgentResponse, error) {
 		return nil, fmt.Errorf("planner agent returned empty node list")
 	}
 	return &response, nil
+}
+
+// maxAgentPlanNodes bounds an agent-generated plan. Deterministic templates may
+// legitimately be larger (paper reproduction is 13 nodes).
+const maxAgentPlanNodes = 14
+
+// postProcessPlannerNodes normalises an agent-generated node list before
+// validation: consecutive duplicate general_process nodes are merged, nodes
+// that cannot produce any artifact are pruned, and artifact keys that would
+// have multiple producers are namespaced per branch.
+func postProcessPlannerNodes(nodes []*models.TaskNode) []*models.TaskNode {
+	nodes = mergeConsecutiveGeneralProcess(nodes)
+	nodes = pruneOutputlessNodes(nodes)
+	namespaceDuplicateArtifacts(nodes)
+	return nodes
+}
+
+// mergeableNodeTypes are pure LLM/report stages where two consecutive
+// instances add latency but no information.
+var mergeableNodeTypes = map[string]struct{}{
+	"general_process":   {},
+	"general_synthesis": {},
+	"general_research":  {},
+	"verify_result":     {},
+}
+
+// mergeConsecutiveGeneralProcess collapses a chain of identical mergeable nodes
+// into one, which is the most common source of "3-4 repeated nodes".
+func mergeConsecutiveGeneralProcess(nodes []*models.TaskNode) []*models.TaskNode {
+	if len(nodes) < 2 {
+		return nodes
+	}
+	out := make([]*models.TaskNode, 0, len(nodes))
+	removed := map[string]string{} // removed id -> replacement id
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		_, mergeable := mergeableNodeTypes[node.Type]
+		if len(out) > 0 && mergeable && node.Type == out[len(out)-1].Type {
+			previous := out[len(out)-1]
+			previous.OutputArtifacts = ensureArtifacts(previous.OutputArtifacts, node.OutputArtifacts...)
+			previous.RequiredArtifacts = ensureArtifacts(previous.RequiredArtifacts, node.RequiredArtifacts...)
+			for _, produced := range previous.OutputArtifacts {
+				previous.RequiredArtifacts = removeArtifact(previous.RequiredArtifacts, produced)
+			}
+			previous.Dependencies = append(previous.Dependencies, node.Dependencies...)
+			removed[node.ID] = previous.ID
+			continue
+		}
+		out = append(out, node)
+	}
+	for _, node := range out {
+		node.Dependencies = dedupeDependencies(node.Dependencies, removed, node.ID)
+	}
+	return out
+}
+
+func dedupeDependencies(deps []string, removed map[string]string, selfID string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(deps))
+	for _, dep := range deps {
+		if replacement, ok := removed[dep]; ok {
+			dep = replacement
+		}
+		if dep == selfID {
+			continue
+		}
+		if _, ok := seen[dep]; ok {
+			continue
+		}
+		seen[dep] = struct{}{}
+		out = append(out, dep)
+	}
+	return out
+}
+
+// pruneOutputlessNodes removes nodes that declare no output artifact; a node
+// that cannot produce anything only adds latency and failure surface.
+func pruneOutputlessNodes(nodes []*models.TaskNode) []*models.TaskNode {
+	if len(nodes) == 0 {
+		return nodes
+	}
+	removed := map[string][]string{}
+	keep := make([]*models.TaskNode, 0, len(nodes))
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		if len(node.OutputArtifacts) == 0 {
+			// Splice the node out: downstream nodes inherit its dependencies.
+			removed[node.ID] = append([]string(nil), node.Dependencies...)
+			continue
+		}
+		keep = append(keep, node)
+	}
+	if len(removed) == 0 {
+		return keep
+	}
+	var expand func(id string, depth int) []string
+	expand = func(id string, depth int) []string {
+		deps, ok := removed[id]
+		if !ok || depth > 8 {
+			return []string{id}
+		}
+		out := make([]string, 0, len(deps))
+		for _, dep := range deps {
+			out = append(out, expand(dep, depth+1)...)
+		}
+		return out
+	}
+	for _, node := range keep {
+		next := make([]string, 0, len(node.Dependencies))
+		for _, dep := range node.Dependencies {
+			next = append(next, expand(dep, 0)...)
+		}
+		node.Dependencies = dedupeDependencies(next, nil, node.ID)
+	}
+	return keep
+}
+
+// namespaceDuplicateArtifacts rewrites artifact keys that would otherwise have
+// multiple producers (for example two framework branches both emitting
+// "generated_code") into per-branch keys, and updates downstream requirements
+// to reference the producer they actually depend on.
+func namespaceDuplicateArtifacts(nodes []*models.TaskNode) {
+	producers := map[string][]*models.TaskNode{}
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		for _, key := range node.OutputArtifacts {
+			producers[key] = append(producers[key], node)
+		}
+	}
+	rename := map[string]map[string]string{}
+	for key, list := range producers {
+		if len(list) < 2 {
+			continue
+		}
+		rename[key] = map[string]string{}
+		for index, node := range list {
+			newKey := artifactPrefixForNode(node, index) + "_" + key
+			rename[key][node.ID] = newKey
+			node.OutputArtifacts = replaceArtifactName(node.OutputArtifacts, key, newKey)
+		}
+	}
+	if len(rename) == 0 {
+		return
+	}
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		for index, required := range node.RequiredArtifacts {
+			mapping, duplicated := rename[required]
+			if !duplicated {
+				continue
+			}
+			if producerID := findAncestorProducer(node, nodes, mapping); producerID != "" {
+				node.RequiredArtifacts[index] = mapping[producerID]
+			}
+		}
+	}
+}
+
+func artifactPrefixForNode(node *models.TaskNode, index int) string {
+	base := normalizeToken(node.Name)
+	if base == "" {
+		base = "branch"
+	}
+	fields := strings.Fields(base)
+	if len(fields) > 2 {
+		fields = fields[:2]
+	}
+	slug := strings.Join(fields, "_")
+	if slug == "" {
+		slug = fmt.Sprintf("branch_%d", index+1)
+	}
+	return slug
+}
+
+func replaceArtifactName(values []string, oldName, newName string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == oldName {
+			out = append(out, newName)
+			continue
+		}
+		out = append(out, value)
+	}
+	return out
+}
+
+// findAncestorProducer finds the nearest transitive dependency of node that is
+// one of the candidate producers.
+func findAncestorProducer(node *models.TaskNode, nodes []*models.TaskNode, candidates map[string]string) string {
+	byID := map[string]*models.TaskNode{}
+	for _, item := range nodes {
+		if item != nil {
+			byID[item.ID] = item
+		}
+	}
+	visited := map[string]struct{}{}
+	queue := append([]string(nil), node.Dependencies...)
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		if _, ok := visited[current]; ok {
+			continue
+		}
+		visited[current] = struct{}{}
+		if _, ok := candidates[current]; ok {
+			return current
+		}
+		if dep, ok := byID[current]; ok {
+			queue = append(queue, dep.Dependencies...)
+		}
+	}
+	return ""
 }
 
 func materializePlannerNodes(blueprints []plannerNodeBlueprint, intent models.IntentContext) ([]*models.TaskNode, error) {
@@ -508,7 +754,10 @@ func applyPlannerNodeDefaults(bp plannerNodeBlueprint) plannerNodeBlueprint {
 		}
 	case "repo_prepare":
 		bp.RequiredArtifacts = ensureArtifacts(bp.RequiredArtifacts, "repo_url", "candidate_repositories", "repo_validation_report")
-		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, "workspace_path", "code_file_path", "generated_code", "repo_manifest")
+		// reproduction_mode_report is consumed by claim_evidence_build; without a
+		// producer the whole agent plan fails validation and falls back to the
+		// template even when everything else is correct.
+		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, "workspace_path", "code_file_path", "generated_code", "repo_manifest", "reproduction_mode_report")
 	case "paper_code_execute":
 		bp.RequiredArtifacts = ensureArtifacts(bp.RequiredArtifacts, "workspace_path", "code_file_path", "generated_code", "prepared_runtime", "repo_manifest")
 		bp.OutputArtifacts = ensureArtifacts(bp.OutputArtifacts, "run_metrics", "paper_debug_report", "paper_patch_manifest")

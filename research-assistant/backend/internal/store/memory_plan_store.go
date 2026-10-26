@@ -81,8 +81,29 @@ func (s *MemoryPlanStore) AppendEvent(planID string, event models.PlanEvent) err
 	if _, ok := s.plans[planID]; !ok {
 		return fmt.Errorf("plan not found: %s", planID)
 	}
-	s.events[planID] = append(s.events[planID], clonePlanEvent(event))
+	cloned := clonePlanEvent(event)
+	if cloned.Seq <= 0 {
+		cloned.Seq = int64(len(s.events[planID]) + 1)
+	}
+	s.events[planID] = append(s.events[planID], cloned)
 	return nil
+}
+
+func (s *MemoryPlanStore) ListEventsAfter(planID string, afterSeq int64) ([]models.PlanEvent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if _, ok := s.plans[planID]; !ok {
+		return nil, fmt.Errorf("plan not found: %s", planID)
+	}
+	out := make([]models.PlanEvent, 0)
+	for _, event := range s.events[planID] {
+		if event.Seq <= afterSeq {
+			continue
+		}
+		out = append(out, clonePlanEvent(event))
+	}
+	return out, nil
 }
 
 func (s *MemoryPlanStore) ListEvents(planID string) ([]models.PlanEvent, error) {
@@ -99,6 +120,17 @@ func (s *MemoryPlanStore) ListEvents(planID string) ([]models.PlanEvent, error) 
 		out = append(out, clonePlanEvent(event))
 	}
 	return out, nil
+}
+
+func (s *MemoryPlanStore) DeletePlan(planID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.plans[planID]; !ok {
+		return fmt.Errorf("plan not found: %s", planID)
+	}
+	delete(s.plans, planID)
+	delete(s.events, planID)
+	return nil
 }
 
 func clonePlanGraph(plan *models.PlanGraph) *models.PlanGraph {
@@ -118,6 +150,10 @@ func clonePlanGraph(plan *models.PlanGraph) *models.PlanGraph {
 	if plan.Usage.FinishedAt != nil {
 		finishedAt := *plan.Usage.FinishedAt
 		cloned.Usage.FinishedAt = &finishedAt
+	}
+	if plan.Usage.ApprovalWaitingSince != nil {
+		waitingSince := *plan.Usage.ApprovalWaitingSince
+		cloned.Usage.ApprovalWaitingSince = &waitingSince
 	}
 	cloned.Nodes = make([]*models.TaskNode, 0, len(plan.Nodes))
 	for _, node := range plan.Nodes {

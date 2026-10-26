@@ -37,6 +37,10 @@ services:
       - SANDBOX_NETWORK_MODE=${SANDBOX_NETWORK_MODE:-bridge}
       - SANDBOX_WORKSPACE_ROOTS=/tmp
       - SANDBOX_IMAGE_ALLOWLIST=${SANDBOX_IMAGE_ALLOWLIST:-python:3.9-bullseye,python:3.11-bullseye}
+      - SANDBOX_REGISTRY_MIRROR=${SANDBOX_REGISTRY_MIRROR:-}
+      - SANDBOX_TTL_MINUTES=${SANDBOX_TTL_MINUTES:-120}
+      - SANDBOX_REAPER_INTERVAL_SECONDS=${SANDBOX_REAPER_INTERVAL_SECONDS:-300}
+      - SANDBOX_PIP_CACHE_DIR=${SANDBOX_PIP_CACHE_DIR:-/tmp/research-assistant-pip-cache}
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -112,6 +116,9 @@ services:
       - SANDBOX_API_TOKEN=${SANDBOX_API_TOKEN:?SANDBOX_API_TOKEN must be set in research-assistant/.env}
       - API_AUTH_TOKEN=${API_AUTH_TOKEN:?API_AUTH_TOKEN must be set in research-assistant/.env}
       - REQUIRE_API_AUTH=true
+      - IDENTITY_COOKIE_SECRET=${IDENTITY_COOKIE_SECRET:-}
+      - APPROVAL_TIMEOUT_SECONDS=${APPROVAL_TIMEOUT_SECONDS:-1800}
+      - ALLOW_LEGACY_USER_HEADER=${ALLOW_LEGACY_USER_HEADER:-false}
       - PLAN_STORE_PATH=/app/data/plans.json
       - UPLOAD_ROOT=/app/uploads
       - UPLOAD_MAX_MB=${UPLOAD_MAX_MB:-32}
@@ -142,8 +149,9 @@ services:
   frontend:
     build:
       context: ./frontend
-      args:
-        VITE_API_AUTH_TOKEN: ${API_AUTH_TOKEN:?API_AUTH_TOKEN must be set in research-assistant/.env}
+    environment:
+      # Injected into nginx at container start; never compiled into the bundle.
+      - API_AUTH_TOKEN=${API_AUTH_TOKEN:?API_AUTH_TOKEN must be set in research-assistant/.env}
     ports:
       - "127.0.0.1:${FRONTEND_HOST_PORT:-5173}:80" # 将容器内的 Nginx 80 端口映射到宿主机 5173
     depends_on:

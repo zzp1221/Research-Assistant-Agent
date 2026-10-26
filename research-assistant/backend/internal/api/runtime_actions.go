@@ -3,8 +3,12 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"research-assistant-backend/internal/models"
@@ -39,6 +43,14 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "decision must be approve or reject"})
 		return
 	}
+	// A terminal plan must never be resurrected by approving a stale action.
+	if isTerminalPlanStatus(plan.Status) {
+		c.JSON(http.StatusConflict, gin.H{
+			"error": "plan has already ended (" + string(plan.Status) + "); create a new plan or rerun it",
+			"code":  "plan_already_terminal",
+		})
+		return
+	}
 	actionID := c.Param("actionId")
 	userID := resolveUserID(c)
 	now := time.Now()
@@ -47,6 +59,9 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 	r.mu.Unlock()
 	var decided *models.RuntimeActionRequest
 	if err := r.store.UpdatePlan(plan.ID, func(current *models.PlanGraph) error {
+		if isTerminalPlanStatus(current.Status) {
+			return fmt.Errorf("plan has already ended (%s); create a new plan or rerun it", current.Status)
+		}
 		index := -1
 		for i := range current.RuntimeActions {
 			if current.RuntimeActions[i].ID == actionID {
@@ -59,7 +74,30 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 		}
 		action := &current.RuntimeActions[index]
 		if action.Status != models.RuntimeActionPending {
-			return errors.New("runtime action is not pending")
+			return fmt.Errorf("runtime action is not pending (status=%s)", action.Status)
+		}
+		// Expired actions cannot be approved or rejected.
+		if !action.RequestedAt.IsZero() && now.Sub(action.RequestedAt) >= time.Duration(approvalTimeoutSecondsForAPI())*time.Second {
+			action.Status = models.RuntimeActionExpired
+			action.DecidedAt = &now
+			action.DecidedBy = "system:approval_timeout"
+			action.DecisionNote = "approval timed out"
+			if task := findPlanTask(current, action.TaskID); task != nil {
+				task.Status = models.StatusBlocked
+				task.Error = "approval timed out"
+				task.FinishedAt = &now
+				task.UpdatedAt = now
+			}
+			current.Status = models.StatusFailed
+			current.Outcome = models.OutcomeBlocked
+			current.OutcomeReason = "approval timed out"
+			current.Usage.FinishedAt = &now
+			current.MissingRequirements = append(current.MissingRequirements, models.MissingRequirement{
+				Kind: "approval_timeout", Name: string(action.Kind),
+				Detail: "审批窗口已过期", Remediation: "重新创建计划并在 APPROVAL_TIMEOUT_SECONDS 内确认。",
+			})
+			decided = action
+			return errApprovalExpired
 		}
 		task := findPlanTask(current, action.TaskID)
 		if task == nil {
@@ -115,6 +153,13 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 		decided = action
 		return nil
 	}); err != nil {
+		if errors.Is(err, errApprovalExpired) {
+			c.JSON(http.StatusConflict, gin.H{
+				"error": "approval window has expired; create a new plan or rerun it",
+				"code":  "approval_expired",
+			})
+			return
+		}
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
@@ -123,8 +168,10 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 		TaskID:    decided.TaskID,
 		EventType: "runtime_action_resolved",
 		Payload: map[string]any{
-			"action":   decided,
-			"decision": payload.Decision,
+			"action":     decided,
+			"decision":   payload.Decision,
+			"decided_by": userID,
+			"decided_at": now,
 		},
 		Timestamp: now,
 	}
@@ -143,6 +190,7 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 		if cancel != nil {
 			cancel()
 		}
+		r.scheduler.CleanupPlanSandboxes(context.Background(), plan.ID)
 	}
 	planStatus := plan.Status
 	if updated, getErr := r.store.GetPlan(plan.ID); getErr == nil && updated != nil {
@@ -154,13 +202,38 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 	})
 }
 
+// errApprovalExpired marks a decision on an action whose approval window ended.
+var errApprovalExpired = errors.New("approval window has expired")
+
+func isTerminalPlanStatus(status models.TaskStatus) bool {
+	switch status {
+	case models.StatusCompleted, models.StatusFailed, models.StatusCanceled:
+		return true
+	default:
+		return false
+	}
+}
+
+func approvalTimeoutSecondsForAPI() int {
+	const fallback = 1800
+	raw := strings.TrimSpace(os.Getenv("APPROVAL_TIMEOUT_SECONDS"))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
 func (r *planRuntime) startPlanExecution(planID string, plan *models.PlanGraph) bool {
 	r.mu.Lock()
 	if _, exists := r.running[planID]; exists {
 		r.mu.Unlock()
 		return false
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), planTimeout(plan))
+	ctx, cancel := context.WithCancel(context.Background())
 	r.running[planID] = cancel
 	r.mu.Unlock()
 

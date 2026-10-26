@@ -34,4 +34,10 @@ type RunUsage struct {
 	TaskAttempts int        `json:"task_attempts"`
 	StartedAt    *time.Time `json:"started_at,omitempty"`
 	FinishedAt   *time.Time `json:"finished_at,omitempty"`
+	// ApprovalWaitSeconds is the accumulated time the plan spent waiting for a
+	// human decision. It is excluded from the execution duration budget so an
+	// approval wait can never "burn" the plan timeout.
+	ApprovalWaitSeconds int `json:"approval_wait_seconds,omitempty"`
+	// ApprovalWaitingSince marks the start of the current approval wait window.
+	ApprovalWaitingSince *time.Time `json:"approval_waiting_since,omitempty"`
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChatMessage, IntentContext, PlanClarification, PlanGraph, UploadedFile } from '../../contracts/api';
-import { chat, createPlan, getPlan, uploadFile } from '../../services/api/researchAssistantApi';
+import { chat, createPlan, getMe, getPlan, listPlans, uploadFile } from '../../services/api/researchAssistantApi';
+import type { PlanSummary } from '../../services/api/researchAssistantApi';
 import { uiText } from '../constants/uiText';
 
 const isTaskIntent = (input: string) => {
@@ -126,8 +127,13 @@ const normalizeChatState = (raw: unknown): PersistedChatState => {
   }
 
   const data = raw as Partial<PersistedChatState>;
+  // Persisted sessions never carry a PlanGraph: plan payloads contain base64
+  // figures and would blow the localStorage quota. Only lightweight ids/titles
+  // are stored; the graph is re-fetched from the server on demand.
   const sessions = Array.isArray(data.sessions)
-    ? data.sessions.filter((session): session is ChatSessionRecord => Boolean(session?.id))
+    ? data.sessions
+        .filter((session): session is ChatSessionRecord => Boolean(session?.id))
+        .map((session) => ({ ...session, planGraph: null }))
     : [];
 
   return {
@@ -147,11 +153,8 @@ const loadPersistedChatState = (): PersistedChatState => {
     if (!raw) return createSessionState(null, '临时会话');
 
     const normalized = normalizeChatState(JSON.parse(raw));
-    if (!normalized.userId) {
-      return createSessionState(null, '临时会话');
-    }
     if (normalized.sessions.length === 0 || !normalized.activeSessionId) {
-      return createSessionState(normalized.userId, '新会话');
+      return createSessionState(normalized.userId, normalized.userId ? '新会话' : '临时会话');
     }
     return normalized;
   } catch {
@@ -159,7 +162,13 @@ const loadPersistedChatState = (): PersistedChatState => {
   }
 };
 
-const sanitizeUserId = (value: string) => value.trim().replace(/[^a-zA-Z0-9@._-]/g, '').slice(0, 128);
+// serializePersistedState strips in-memory-only payloads (PlanGraph) before
+// writing to localStorage so large base64 images can never exhaust the quota.
+const serializePersistedState = (state: PersistedChatState): string =>
+  JSON.stringify({
+    ...state,
+    sessions: state.sessions.map((session) => ({ ...session, planGraph: null })),
+  });
 
 const deriveSessionTitle = (fallbackTitle: string, messages: ChatMessage[]): string => {
   const firstUserMessage = messages.find((message) => message.role === 'user' && message.text.trim());
@@ -185,8 +194,65 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
   const [runtimePermissionMode, setRuntimePermissionMode] = useState<'confirm_important' | 'full_access'>('confirm_important');
   const [fullAccessAcknowledged, setFullAccessAcknowledged] = useState(false);
   const [showFullAccessConfirm, setShowFullAccessConfirm] = useState(false);
-  const [loginInput, setLoginInput] = useState(() => loadPersistedChatState().userId ?? '');
-  const [guestUserId] = useState(() => createId('guest'));
+  const [loginInput, setLoginInput] = useState('');
+  // The server owns identity (signed HttpOnly cookie). The client only mirrors
+  // it for display; it never sends a user id header.
+  const [serverIdentity, setServerIdentity] = useState<{ userId: string; sessionId: string } | null>(null);
+  const [serverPlans, setServerPlans] = useState<PlanSummary[]>([]);
+  const [storageWarning, setStorageWarning] = useState('');
+
+  const refreshServerPlans = useCallback(async () => {
+    try {
+      const response = await listPlans(20);
+      setServerPlans(response.plans ?? []);
+    } catch (error) {
+      console.warn('[chat] failed to load server plan library', error);
+    }
+  }, []);
+
+  const handleOpenServerPlan = useCallback(async (planId: string) => {
+    try {
+      const planGraph = await getPlan(planId, { userId: '', sessionId: '' });
+      setPersistedState((prev) => {
+        const existing = prev.sessions.find((session) => session.activePlanId === planId);
+        if (existing) {
+          return { ...prev, activeSessionId: existing.id };
+        }
+        const now = new Date().toISOString();
+        const record: ChatSessionRecord = {
+          id: createId('session'),
+          title: planGraph.user_intent?.slice(0, 18) || '历史计划',
+          createdAt: now,
+          updatedAt: now,
+          chatHistory: [createWelcomeMessage()],
+          activePlanId: planId,
+          intentContext: null,
+          planGraph,
+        };
+        return { ...prev, activeSessionId: record.id, sessions: [record, ...prev.sessions] };
+      });
+    } catch (error) {
+      console.warn('[chat] failed to open server plan', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getMe()
+      .then((identity) => {
+        if (cancelled) return;
+        setServerIdentity({ userId: identity.user_id, sessionId: identity.session_id });
+      })
+      .catch((error) => {
+        console.warn('[chat] failed to resolve server identity', error);
+      })
+      .finally(() => {
+        if (!cancelled) void refreshServerPlans();
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshServerPlans]);
 
   const activeSession = useMemo(
     () => persistedState.sessions.find((session) => session.id === persistedState.activeSessionId) ?? null,
@@ -197,30 +263,44 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
   const activePlanId = activeSession?.activePlanId ?? null;
 	const activePlanStatus = activeSession?.planGraph?.status ?? null;
   const intentContext = activeSession?.intentContext ?? null;
-  const sessionSummaries = useMemo<SessionSummary[]>(
-    () =>
-      [...persistedState.sessions]
-        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-        .map((session) => ({
-          id: session.id,
-          title: session.title,
-          createdAt: session.createdAt,
-          updatedAt: session.updatedAt,
-          messageCount: session.chatHistory.length,
-        })),
-    [persistedState.sessions],
-  );
+  const sessionSummaries = useMemo<SessionSummary[]>(() => {
+    const local = [...persistedState.sessions]
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .map((session) => ({
+        id: session.id,
+        title: session.title,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+        messageCount: session.chatHistory.length,
+      }));
+    // Server plan library: every owned plan appears even when this browser has
+    // no local session for it (refresh, cleared storage, another device).
+    const knownPlanIds = new Set(persistedState.sessions.map((session) => session.activePlanId).filter(Boolean) as string[]);
+    const remote = serverPlans
+      .filter((plan) => !knownPlanIds.has(plan.id))
+      .map((plan) => ({
+        id: `plan:${plan.id}`,
+        title: `[计划] ${plan.title || plan.intent_type}`,
+        createdAt: plan.created_at,
+        updatedAt: plan.updated_at,
+        messageCount: plan.total_nodes,
+      }));
+    return [...local, ...remote];
+  }, [persistedState.sessions, serverPlans]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
-      if (persistedState.userId) {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(persistedState));
-        return;
-      }
-      window.localStorage.removeItem(STORAGE_KEY);
+      window.localStorage.setItem(STORAGE_KEY, serializePersistedState(persistedState));
+      setStorageWarning('');
     } catch (error) {
       console.warn('[chat] failed to persist sessions; local storage quota or privacy mode blocked it', error);
+      setStorageWarning('本地存储空间不足，已自动降级为服务端恢复模式；计划仍可从服务器重新打开。');
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
     }
   }, [persistedState]);
 
@@ -252,33 +332,11 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     [appendMessageToSession, persistedState.activeSessionId],
   );
 
+  // Identity is issued by the backend; there is no client-side "login" that
+  // could impersonate another user. Kept as a no-op for API compatibility.
   const handleLogin = useCallback(() => {
-    const nextUserId = sanitizeUserId(loginInput);
-    if (!nextUserId) return;
-
-    setPersistedState((prev) => {
-      if (prev.userId === nextUserId && prev.sessions.length > 0 && prev.activeSessionId) {
-        return prev;
-      }
-      if (!prev.userId && prev.sessions.length > 0 && prev.activeSessionId) {
-        return {
-          ...prev,
-          userId: nextUserId,
-          sessions: prev.sessions.map((session, index) => ({
-            ...session,
-            title: session.title.startsWith('临时会话') ? `新会话 ${index + 1}` : session.title,
-          })),
-        };
-      }
-      return {
-        ...createSessionState(nextUserId, '新会话'),
-      };
-    });
-    setLoginInput(nextUserId);
-    setPrompt('');
-	setPendingAttachments([]);
-	setAttachmentError('');
-  }, [loginInput]);
+    setLoginInput('');
+  }, []);
 
   const handleCreateSession = useCallback(() => {
     const sessionTitlePrefix = persistedState.userId ? '新会话' : '临时会话';
@@ -297,6 +355,10 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
   }, [persistedState.sessions.length, persistedState.userId]);
 
   const handleSwitchSession = useCallback((sessionId: string) => {
+    if (sessionId.startsWith('plan:')) {
+      void handleOpenServerPlan(sessionId.slice('plan:'.length));
+      return;
+    }
     setPersistedState((prev) => ({
       ...prev,
       activeSessionId: sessionId,
@@ -304,7 +366,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     setPrompt('');
 	setPendingAttachments([]);
 	setAttachmentError('');
-  }, []);
+  }, [handleOpenServerPlan]);
 
 	const handleAttachFiles = useCallback(async (files: File[]) => {
 		if (files.length === 0 || !persistedState.activeSessionId) return;
@@ -317,7 +379,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
 		setUploadingAttachments(true);
 		setAttachmentError('');
 		const identity = {
-			userId: persistedState.userId ?? guestUserId,
+			userId: serverIdentity?.userId ?? '',
 			sessionId: persistedState.activeSessionId,
 		};
 		const uploaded: UploadedFile[] = [];
@@ -332,7 +394,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
 		} finally {
 			setUploadingAttachments(false);
 		}
-	}, [guestUserId, pendingAttachments.length, persistedState.activeSessionId, persistedState.userId]);
+	}, [serverIdentity?.userId, pendingAttachments.length, persistedState.activeSessionId]);
 
 	const handleRemoveAttachment = useCallback((uploadId: string) => {
 		setPendingAttachments((current) => current.filter((attachment) => attachment.id !== uploadId));
@@ -363,7 +425,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     if (!planId || !sessionId) return;
     try {
       const planGraph = await getPlan(planId, {
-        userId: persistedState.userId ?? guestUserId,
+        userId: serverIdentity?.userId ?? '',
         sessionId,
       });
       updateSessionPlanState(sessionId, {
@@ -374,7 +436,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     } catch (error) {
       console.warn('[chat] failed to refresh plan state', error);
     }
-  }, [activeSession, guestUserId, persistedState.activeSessionId, persistedState.userId, updateSessionPlanState]);
+  }, [activeSession, serverIdentity?.userId, persistedState.activeSessionId, updateSessionPlanState]);
 
   useEffect(() => {
     if (activeSession?.activePlanId) {
@@ -401,7 +463,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
 	const userPrompt = prompt.trim() || '请分析上传的材料，并设计预算受限的轻量消融实验。';
 	const attachmentNames = pendingAttachments.map((attachment) => attachment.name);
 	const attachmentIDs = pendingAttachments.map((attachment) => attachment.id);
-    const requestUserId = persistedState.userId ?? guestUserId;
+    const requestUserId = serverIdentity?.userId ?? '';
     const requestSessionId = persistedState.activeSessionId;
     setLoading(true);
 	appendMessageToSession(requestSessionId, {
@@ -431,7 +493,6 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
           activePlanId: generatedPlanGraph.id,
           planGraph: generatedPlanGraph,
         });
-        onPlanReady?.(generatedPlanGraph, returnedIntentContext ?? null);
         const clarificationText = formatPlanClarification(response.clarification);
         if (clarificationText) {
 		appendMessageToSession(requestSessionId, {
@@ -441,10 +502,19 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
         }
         setPendingAttachments([]);
         setAttachmentError('');
+        // The plan message must be appended before onPlanReady triggers the
+        // auto-run message, otherwise the chat log claims the run started before
+        // the plan existed.
+        const autoRuns =
+          generatedPlanGraph.intent_type === 'Code_Execution' &&
+          !generatedPlanGraph.approval?.required &&
+          generatedPlanGraph.nodes.some((node) => node.type === 'render_plot');
         appendMessageToSession(requestSessionId, {
           role: 'system',
-          text: uiText.planGenerated,
+          text: autoRuns ? uiText.planGeneratedAutoStart : uiText.planGenerated,
         });
+        onPlanReady?.(generatedPlanGraph, returnedIntentContext ?? null);
+        void refreshServerPlans();
       } else {
         const response = await chat(userPrompt, {
           userId: requestUserId,
@@ -458,7 +528,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     } finally {
       setLoading(false);
     }
-	}, [appendMessageToSession, fullAccessAcknowledged, guestUserId, loading, onPlanReady, pendingAttachments, persistedState.activeSessionId, persistedState.userId, prompt, runtimePermissionMode, updateSessionPlanState, uploadingAttachments]);
+	}, [appendMessageToSession, fullAccessAcknowledged, serverIdentity?.userId, loading, onPlanReady, pendingAttachments, persistedState.activeSessionId, prompt, refreshServerPlans, runtimePermissionMode, updateSessionPlanState, uploadingAttachments]);
 
   return {
     prompt,
@@ -473,12 +543,16 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
 	activePlanGraph: activeSession?.planGraph ?? null,
     intentContext,
     appendChatMessage,
-    isLoggedIn: Boolean(persistedState.userId),
-    userId: persistedState.userId,
+    isLoggedIn: Boolean(serverIdentity?.userId),
+    userId: serverIdentity?.userId ?? persistedState.userId,
 	requestIdentity: {
-		userId: persistedState.userId ?? guestUserId,
-		sessionId: persistedState.activeSessionId ?? 'session-unavailable',
+		userId: serverIdentity?.userId ?? '',
+		sessionId: serverIdentity?.sessionId ?? persistedState.activeSessionId ?? 'session-unavailable',
 	},
+	storageWarning,
+    serverPlans,
+    handleOpenServerPlan,
+    refreshServerPlans,
     loginInput,
     setLoginInput,
     activeSessionId: persistedState.activeSessionId,

@@ -44,7 +44,9 @@ function JournalMasthead(props: JournalMastheadProps) {
         </div>
         <div className="text-center">
           <div className="journal-serif text-[22px] font-semibold leading-none tracking-[0.01em] text-ink">The Research Proof</div>
-          <div className="journal-caps mt-1.5 text-[10.5px]">第 12 卷 · 第 4 期 · 执行校样 · 2026</div>
+          <div className="journal-caps mt-1.5 text-[10.5px]">
+            执行校样 · {new Date().toLocaleDateString('zh-CN')} {planId ? `· ${planId.slice(0, 8).toUpperCase()}` : ''}
+          </div>
         </div>
         <div className="flex-1 text-right journal-num text-[11px] leading-4 text-muted">
           {planId ?? 'S-0000'}

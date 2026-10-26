@@ -392,9 +392,67 @@ func (a *CoderAgent) ExecuteTask(ctx context.Context, task *models.Task, sharedC
 	return nil
 }
 
+// isPlotTask reports whether a task is expected to produce a figure artifact.
+func isPlotTask(task *models.Task) bool {
+	if task == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(task.Type)) {
+	case "render_plot", "result_visualization":
+		return true
+	default:
+		return false
+	}
+}
+
+func plotArtifactKeyForTask(task *models.Task) string {
+	if task != nil && strings.EqualFold(strings.TrimSpace(task.Type), "result_visualization") {
+		return "result_plot"
+	}
+	return "plot_image"
+}
+
+// upstreamPlotImage returns a base64 PNG already produced upstream (for example
+// by execute_code) so render_plot can reuse it instead of generating new code
+// and rebuilding a sandbox. Non-image values are ignored.
+func upstreamPlotImage(task *models.Task) string {
+	if task == nil || task.Inputs == nil {
+		return ""
+	}
+	candidates := []string{"execution_image", "plot_image", "result_plot", "image_base64"}
+	for _, key := range candidates {
+		value := strings.TrimSpace(extractTaskInputLike(task, key))
+		if value == "" {
+			continue
+		}
+		if strings.HasPrefix(value, "data:image/") {
+			if idx := strings.Index(value, "base64,"); idx >= 0 {
+				value = value[idx+len("base64,"):]
+			}
+		}
+		if strings.HasPrefix(value, "iVBORw0KGgo") || strings.HasPrefix(value, "/9j/") {
+			return value
+		}
+	}
+	return ""
+}
+
 func (a *CoderAgent) generateAndExecuteCodeTask(ctx context.Context, task *models.Task) error {
 	if task == nil {
 		return fmt.Errorf("task is nil")
+	}
+	// 上游已经产出图片时直接透传：不再生成代码、不再新建沙箱。
+	if isPlotTask(task) {
+		if image := upstreamPlotImage(task); image != "" {
+			task.ImageBase64 = image
+			task.Result = "reused upstream figure artifact"
+			task.Status = models.StatusCompleted
+			task.Error = ""
+			// The image stays on task.ImageBase64 only; the scheduler externalises
+			// it into the blob store, so it must not be duplicated into metadata.
+			logToContext(ctx, "[%s] render plot reused upstream image artifact (no new sandbox)", a.Name)
+			return nil
+		}
 	}
 	if a.CodeOnlyChain == nil {
 		task.Status = models.StatusFailed
@@ -410,8 +468,9 @@ func (a *CoderAgent) generateAndExecuteCodeTask(ctx context.Context, task *model
 	// Plot tasks must not rely on the model to re-install packages: the plan
 	// already installed declared dependencies in prepared_runtime. Keep the
 	// prompt explicit so the generated code only saves the figure.
-	if strings.EqualFold(strings.TrimSpace(task.Type), "render_plot") || strings.EqualFold(strings.TrimSpace(task.Type), "result_visualization") {
-		prompt += "\n\n这是绘图任务：直接使用已安装好的 matplotlib/numpy，不要执行 pip install，不要调用 plt.show()，必须把图像保存到 /workspace/output_plot.png。"
+	if isPlotTask(task) {
+		prompt += "\n\n这是绘图任务：直接使用已安装好的 matplotlib/numpy，不要执行 pip install，不要调用 plt.show()。" +
+			"必须把图像保存到 os.environ.get('RA_OUTPUT_DIR', '/workspace/output') 目录下（例如 os.path.join(os.environ['RA_OUTPUT_DIR'], 'result.png')），并保证生成的图片非空。"
 	}
 	if len(task.Inputs) > 0 {
 		if payload, err := json.Marshal(task.Inputs); err == nil {
@@ -503,6 +562,30 @@ func (a *CoderAgent) prepareRuntime(ctx context.Context, task *models.Task) erro
 	}
 	if runtimeReason != "" {
 		logToContext(ctx, "[%s] Runtime image selected from repository metadata: %s (%s)", a.Name, sandboxImage, runtimeReason)
+	}
+	// Image preflight: every execution chain ensures the image exists (and is
+	// allowlisted) before creating a container. This turns the previous opaque
+	// "Unable to find image" 500 into an actionable missing requirement.
+	if info, ensureErr := a.Sandbox.EnsureImage(ctx, sandboxImage); ensureErr != nil {
+		task.Status = models.StatusFailed
+		task.Error = fmt.Sprintf("runtime image preparation failed: %v", ensureErr)
+		if task.Metadata == nil {
+			task.Metadata = map[string]any{}
+		}
+		task.Metadata["missing_requirements"] = []models.MissingRequirement{{
+			Kind:        "image_pull_failed",
+			Name:        sandboxImage,
+			Detail:      ensureErr.Error(),
+			Remediation: "检查 SANDBOX_REGISTRY_MIRROR / 网络连通性，或改用 allowlist 中已预装科学栈的镜像。",
+		}}
+		logToContext(ctx, "[%s] image preflight failed for %s: %v", a.Name, sandboxImage, ensureErr)
+		return ensureErr
+	} else if info != nil {
+		if task.Metadata == nil {
+			task.Metadata = map[string]any{}
+		}
+		task.Metadata["runtime_image_digest"] = info.Digest
+		task.Metadata["runtime_image_size_bytes"] = info.SizeBytes
 	}
 	sandboxID, err := a.Sandbox.CreatePersistentSandbox(ctx, sandboxIdentityForTask(task), sandboxImage, mountPath)
 	if err != nil {
@@ -1207,7 +1290,11 @@ func (a *CoderAgent) executeCodeInSandbox(ctx context.Context, task *models.Task
 
 	executesMountedFile := strings.TrimSpace(workspacePath) != "" && strings.TrimSpace(codeFilePath) != ""
 	codeRepaired := false
-	moduleRecovered := false
+	// 缺模块恢复改为循环：最多补装 3 个模块（2 轮内完成），避免"装完 numpy
+	// 又缺 matplotlib"时只恢复一次就放弃。
+	const maxModuleRecoveries = 3
+	moduleRecoveries := 0
+	installedModules := make([]string, 0, maxModuleRecoveries)
 	var (
 		res *sandbox.PythonRunResponse
 		err error
@@ -1244,10 +1331,13 @@ func (a *CoderAgent) executeCodeInSandbox(ctx context.Context, task *models.Task
 			errText = fmt.Sprintf("sandbox exited with code %d", res.ExitCode)
 		}
 
-		// 第一层兜底：模块缺失时优先在当前运行时最小补装，再重跑一次。
-		if !moduleRecovered {
+		// 第一层兜底：模块缺失时优先在当前运行时最小补装，再重跑；循环直到
+		// 补齐所有缺失模块或达到上限。
+		if moduleRecoveries < maxModuleRecoveries {
 			if retried, installErr := a.installMissingPythonModule(ctx, sandboxID, errText); installErr == nil && retried {
-				moduleRecovered = true
+				moduleRecoveries++
+				installedModules = append(installedModules, extractMissingPythonModule(errText))
+				logToContext(ctx, "[%s] runtime missing-module recovery %d/%d applied for %s", a.Name, moduleRecoveries, maxModuleRecoveries, extractMissingPythonModule(errText))
 				continue
 			} else if installErr != nil {
 				logToContext(ctx, "[%s] runtime missing-module recovery failed: %v", a.Name, installErr)
@@ -1273,6 +1363,17 @@ func (a *CoderAgent) executeCodeInSandbox(ctx context.Context, task *models.Task
 		task.Error = strings.TrimSpace(res.Stderr)
 		if task.Error == "" {
 			task.Error = fmt.Sprintf("sandbox exited with code %d", res.ExitCode)
+		}
+		if task.Metadata == nil {
+			task.Metadata = map[string]any{}
+		}
+		if missingModule := extractMissingPythonModule(task.Error); missingModule != "" {
+			task.Metadata["missing_requirements"] = []models.MissingRequirement{{
+				Kind:        "dependency_missing",
+				Name:        missingModule,
+				Detail:      fmt.Sprintf("模块 %s 在运行时缺失；已自动补装 %d 个模块仍未解决", missingModule, len(installedModules)),
+				Remediation: "把该模块加入 dependency_spec 或在预装科学栈镜像中提供。",
+			}}
 		}
 		logToContext(ctx, "[%s] sandbox run exit_code=%d", a.Name, res.ExitCode)
 		return fmt.Errorf("%s", task.Error)

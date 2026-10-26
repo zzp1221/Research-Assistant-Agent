@@ -22,5 +22,8 @@ const resolveDefaultApiBaseUrl = () => {
 
 export const API_BASE_URL = resolveDefaultApiBaseUrl();
 
-// Optional static deployment token. Keep empty for loopback/local development.
-export const API_AUTH_TOKEN = (import.meta.env.VITE_API_AUTH_TOKEN as string | undefined)?.trim() ?? '';
+// 生产构建不再注入任何静态 API token：浏览器请求经 nginx 反向代理时由
+// 代理注入 Authorization。仅本地 Vite 开发态允许使用临时 token 直连后端。
+export const API_AUTH_TOKEN = import.meta.env.DEV
+  ? ((import.meta.env.VITE_API_AUTH_TOKEN as string | undefined)?.trim() ?? '')
+  : '';

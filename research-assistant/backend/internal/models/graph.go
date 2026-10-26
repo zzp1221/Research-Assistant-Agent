@@ -46,6 +46,7 @@ type TaskNode struct {
 	Code              string         `json:"code,omitempty"`
 	StructuredData    string         `json:"structured_data,omitempty"`
 	ImageBase64       string         `json:"image_base64,omitempty"`
+	ImageURL          string         `json:"image_url,omitempty"`
 	Error             string         `json:"error,omitempty"`
 	Metadata          map[string]any `json:"metadata,omitempty"`
 	StartedAt         *time.Time     `json:"started_at,omitempty"`
@@ -108,6 +109,7 @@ type TaskExecutionResult struct {
 	Code                string                `json:"code,omitempty"`
 	StructuredData      string                `json:"structured_data,omitempty"`
 	ImageBase64         string                `json:"image_base64,omitempty"`
+	ImageBlobRef        string                `json:"image_blob_ref,omitempty"`
 	Error               string                `json:"error,omitempty"`
 	Logs                []string              `json:"logs,omitempty"`
 	Artifacts           []Artifact            `json:"artifacts,omitempty"`

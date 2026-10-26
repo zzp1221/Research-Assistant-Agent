@@ -56,7 +56,16 @@ func sandboxImageAllowed(image string) bool {
 	}
 	for _, prefix := range strings.Split(raw, ",") {
 		prefix = strings.TrimSpace(prefix)
-		if prefix != "" && strings.HasPrefix(image, prefix) {
+		if prefix == "" {
+			continue
+		}
+		if strings.HasPrefix(image, prefix) {
+			return true
+		}
+		// A registry mirror prefixes the logical image (for example
+		// docker.m.daocloud.io/library/python:3.11-bullseye); the allowlist
+		// entry still matches the logical suffix.
+		if strings.HasSuffix(image, "/"+prefix) {
 			return true
 		}
 	}

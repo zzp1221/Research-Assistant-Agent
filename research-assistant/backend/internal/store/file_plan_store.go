@@ -111,6 +111,13 @@ func (s *FilePlanStore) UpdatePlan(planID string, update func(*models.PlanGraph)
 	if err := update(working); err != nil {
 		return err
 	}
+	// Dirty check: the scheduler polls frequently, and rewriting an unchanged
+	// multi-megabyte snapshot plus fsync was the main source of write amplification.
+	previousRaw, previousErr := json.Marshal(plan)
+	workingRaw, workingErr := json.Marshal(working)
+	if previousErr == nil && workingErr == nil && bytes.Equal(previousRaw, workingRaw) {
+		return nil
+	}
 	s.plans[planID] = working
 	if err := s.writeSnapshotLocked(working); err != nil {
 		return err
@@ -125,8 +132,37 @@ func (s *FilePlanStore) AppendEvent(planID string, event models.PlanEvent) error
 		return fmt.Errorf("plan not found: %s", planID)
 	}
 	cloned := clonePlanEvent(event)
+	if cloned.Seq <= 0 {
+		cloned.Seq = nextEventSeq(s.events[planID])
+	}
 	s.events[planID] = append(s.events[planID], cloned)
 	return s.appendRecordLocked(fileLogRecord{Kind: "event", Event: &cloned})
+}
+
+func nextEventSeq(events []models.PlanEvent) int64 {
+	var max int64
+	for _, event := range events {
+		if event.Seq > max {
+			max = event.Seq
+		}
+	}
+	return max + 1
+}
+
+func (s *FilePlanStore) ListEventsAfter(planID string, afterSeq int64) ([]models.PlanEvent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.plans[planID]; !ok {
+		return nil, fmt.Errorf("plan not found: %s", planID)
+	}
+	out := make([]models.PlanEvent, 0)
+	for _, event := range s.events[planID] {
+		if event.Seq <= afterSeq {
+			continue
+		}
+		out = append(out, clonePlanEvent(event))
+	}
+	return out, nil
 }
 
 func (s *FilePlanStore) ListEvents(planID string) ([]models.PlanEvent, error) {
@@ -141,6 +177,18 @@ func (s *FilePlanStore) ListEvents(planID string) ([]models.PlanEvent, error) {
 		out = append(out, clonePlanEvent(event))
 	}
 	return out, nil
+}
+
+func (s *FilePlanStore) DeletePlan(planID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.plans[planID]; !ok {
+		return fmt.Errorf("plan not found: %s", planID)
+	}
+	delete(s.plans, planID)
+	delete(s.events, planID)
+	_ = os.Remove(filepath.Join(s.snapshotDir, safePlanFileID(planID)+".json"))
+	return s.appendRecordLocked(fileLogRecord{Kind: "plan_deleted", PlanID: planID})
 }
 
 func (s *FilePlanStore) loadSnapshots() error {
@@ -257,6 +305,12 @@ func (s *FilePlanStore) loadAppendOnlyLog() error {
 				return nil
 			}
 			s.events[record.Event.PlanID] = append(s.events[record.Event.PlanID], *record.Event)
+		case "plan_deleted":
+			if record.PlanID == "" {
+				return nil
+			}
+			delete(s.plans, record.PlanID)
+			delete(s.events, record.PlanID)
 		}
 		return nil
 	}

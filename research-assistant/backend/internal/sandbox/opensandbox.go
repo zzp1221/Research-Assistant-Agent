@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -63,6 +65,19 @@ type executionStreamEvent struct {
 	Response *PythonRunResponse `json:"response,omitempty"`
 }
 
+func sandboxClientTimeout() time.Duration {
+	const fallback = 45 * time.Minute
+	raw := strings.TrimSpace(os.Getenv("SANDBOX_CLIENT_TIMEOUT_SECONDS"))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return time.Duration(value) * time.Second
+}
+
 func NewSandboxClient(baseURL string) *SandboxClient {
 	if baseURL == "" {
 		baseURL = "http://localhost:8082" // 默认指向我们的新 docker-sandbox 服务
@@ -71,7 +86,11 @@ func NewSandboxClient(baseURL string) *SandboxClient {
 		BaseURL: baseURL,
 		Token:   strings.TrimSpace(os.Getenv("SANDBOX_API_TOKEN")),
 		Client: &http.Client{
-			Timeout: 600 * time.Second,
+			// Dependency installs (torch, CUDA wheels) can legitimately exceed
+			// ten minutes on slow mirrors; the per-task timeout is enforced by
+			// the scheduler, so the transport timeout only needs to be a safety
+			// net above it.
+			Timeout: sandboxClientTimeout(),
 		},
 	}
 }
@@ -312,6 +331,68 @@ func (s *SandboxClient) EnsureImage(ctx context.Context, image string) (*Sandbox
 		return nil, err
 	}
 	return &info, nil
+}
+
+// SandboxInfo mirrors one entry of the sandbox plan registry.
+type SandboxInfo struct {
+	ID        string `json:"id"`
+	PlanID    string `json:"plan_id,omitempty"`
+	Image     string `json:"image,omitempty"`
+	Status    string `json:"status,omitempty"`
+	StartedAt string `json:"started_at,omitempty"`
+}
+
+// ListPlanSandboxes lists the running sandbox containers of one plan.
+func (s *SandboxClient) ListPlanSandboxes(ctx context.Context, planID string) ([]SandboxInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.BaseURL+"/api/v1/sandboxes?plan_id="+url.QueryEscape(planID), nil)
+	if err != nil {
+		return nil, err
+	}
+	s.authorize(req)
+	resp, err := s.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("list plan sandboxes failed (Status %d): %s", resp.StatusCode, string(body))
+	}
+	var payload struct {
+		Sandboxes []SandboxInfo `json:"sandboxes"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+	return payload.Sandboxes, nil
+}
+
+// CleanupPlanSandboxes force-removes every sandbox container of a plan. This
+// terminates pip/python child processes as a side effect.
+func (s *SandboxClient) CleanupPlanSandboxes(ctx context.Context, planID string) (int, error) {
+	payload, _ := json.Marshal(map[string]string{"plan_id": planID})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.BaseURL+"/api/v1/sandboxes/cleanup", bytes.NewBuffer(payload))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	s.authorize(req)
+	resp, err := s.Client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("cleanup plan sandboxes failed (Status %d): %s", resp.StatusCode, string(body))
+	}
+	var result struct {
+		Removed int `json:"removed"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, err
+	}
+	return result.Removed, nil
 }
 
 func (s *SandboxClient) authorize(req *http.Request) {

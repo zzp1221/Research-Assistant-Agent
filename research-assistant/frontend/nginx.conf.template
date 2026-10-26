@@ -15,6 +15,9 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        # BFF-style credential injection: the browser never receives the API
+        # token. nginx adds it server-side for every proxied API request.
+        proxy_set_header Authorization "Bearer ${API_AUTH_TOKEN}";
         proxy_buffering off;
         proxy_request_buffering off;
         proxy_cache off;
