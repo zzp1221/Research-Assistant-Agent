@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactNode } from 'react';
-import { FileText, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { ChatPanel } from '../../features/chat/ChatPanel';
 import type { AssistResponse, ChatMessage, DocumentInfoResponse, TranslationJob, UploadedFile } from '../../contracts/api';
 import type { AssistMode } from '../../hooks/useAITranslationPlugin';
@@ -15,6 +15,7 @@ interface LeftWorkspaceShellProps {
   children: ReactNode;
 }
 
+/** The left page of the spread: manuscript copy under review. */
 function LeftWorkspaceShell(props: LeftWorkspaceShellProps) {
   const { widthPercent, showClosePdf, onClosePdf, documentName, children } = props;
 
@@ -24,15 +25,15 @@ function LeftWorkspaceShell(props: LeftWorkspaceShellProps) {
       className="research-assistant-left-workspace relative z-10 flex flex-shrink-0 flex-col overflow-hidden border-r border-line bg-surface"
     >
       {showClosePdf && (
-        <header className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <FileText className="h-3.5 w-3.5 shrink-0 text-muted" />
-            <span className="truncate text-[12.5px] font-medium text-ink-soft">{documentName || '论文阅读器'}</span>
+        <header className="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-4">
+          <div className="flex min-w-0 items-baseline gap-2">
+            <span className="journal-caps text-[10px]">论文原文</span>
+            <span className="truncate font-serif text-[12.5px] text-ink-soft">{documentName || '未命名稿件'}</span>
           </div>
           <button
             type="button"
             onClick={onClosePdf}
-            className="flex h-7 w-7 shrink-0 items-center justify-center border border-transparent text-muted transition-colors hover:border-line-strong hover:bg-surface-muted hover:text-ink"
+            className="flex h-6 w-6 shrink-0 items-center justify-center border border-transparent text-muted transition-colors hover:border-line-strong hover:text-ink"
             title="关闭论文阅读器"
             aria-label="关闭论文阅读器"
           >

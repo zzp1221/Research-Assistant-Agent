@@ -1,8 +1,9 @@
 import { lazy, memo, Suspense, useEffect, useRef, useState } from 'react';
 import type { Edge, Node, OnEdgesChange, OnNodesChange } from '@xyflow/react';
-import { GitBranch, Play, RotateCcw, ShieldAlert, ShieldCheck, Square } from 'lucide-react';
+import { Play, RotateCcw, ShieldCheck, Square } from 'lucide-react';
 import type { IntentContext, MissingRequirement, RuntimeAction } from '../../contracts/api';
 import type { Task } from '../../contracts/api';
+import { getProofMark } from '../shared/agentVisuals';
 
 const GraphCanvas = lazy(() => import('./GraphCanvas'));
 
@@ -89,29 +90,7 @@ const describeRuntimeAction = (action: RuntimeAction): string => {
 
 const nodeStep = (node: Node) => (typeof node.data.step === 'number' ? node.data.step : undefined);
 
-const nodeStatusGlyph = (status: string) => {
-  switch (status) {
-    case 'completed':
-      return '●';
-    case 'in_progress':
-      return '◐';
-    case 'failed':
-      return '✕';
-    case 'blocked':
-      return '▲';
-    case 'awaiting_approval':
-      return '⚠';
-    case 'ready':
-      return '◔';
-    case 'canceled':
-    case 'skipped':
-      return '—';
-    default:
-      return '○';
-  }
-};
-
-const nodeStatusColor = (status: string) => {
+const statusInk = (status: string) => {
   switch (status) {
     case 'completed':
       return 'text-ok';
@@ -119,21 +98,21 @@ const nodeStatusColor = (status: string) => {
     case 'awaiting_approval':
       return 'text-warn';
     case 'failed':
-      return 'text-flag';
+      return 'text-proof';
     case 'ready':
-      return 'text-accent';
+      return 'text-ink';
     default:
-      return 'text-faint';
+      return 'text-muted';
   }
 };
 
 function GraphCanvasSkeleton() {
   return (
-    <div className="instrument-grid absolute inset-0 flex items-center justify-center" aria-busy="true" aria-label="正在加载计划画布">
+    <div className="plate-frame absolute inset-0 flex items-center justify-center" aria-busy="true" aria-label="正在加载图版">
       <div className="flex items-center gap-2" aria-hidden="true">
         <span className="h-10 w-20 animate-pulse border border-line bg-surface" />
         <span className="h-px w-8 bg-line-strong" />
-        <span className="h-10 w-20 animate-pulse border border-accent/40 bg-accent-soft" />
+        <span className="h-10 w-20 animate-pulse border border-ink/40 bg-surface" />
         <span className="h-px w-8 bg-line-strong" />
         <span className="h-10 w-20 animate-pulse border border-line bg-surface" />
       </div>
@@ -179,7 +158,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
   const runtimeDecisionLockRef = useRef(false);
   const runtimeDecisionBusy = runtimeDecision !== null;
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [showPlanInfo, setShowPlanInfo] = useState(false);
+  const [showColophon, setShowColophon] = useState(false);
 
   const handleRuntimeActionDecision = async (actionId: string, decision: 'approve' | 'reject') => {
     if (runtimeDecisionLockRef.current) return;
@@ -188,7 +167,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
     try {
       await onRuntimeActionDecision?.(actionId, decision);
     } catch {
-      // The runtime hook already reports approval failures in the chat.
+      // The runtime hook already reports approval failures in the manuscript notes.
     } finally {
       runtimeDecisionLockRef.current = false;
       setRuntimeDecision(null);
@@ -227,35 +206,23 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col bg-paper">
-      <header className="shrink-0 border-b border-line bg-surface px-4 py-3">
+      <header className="shrink-0 border-b border-line bg-surface px-5 py-3">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-2">
-              <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted" />
-              <h2 className="truncate font-display text-[15px] font-semibold tracking-[-0.01em] text-ink">{graphTitle}</h2>
-              {intentLabel && (
-                <span className="instrument-num shrink-0 border border-line bg-surface-muted px-1.5 py-0.5 text-[11px] font-medium text-ink-soft">
-                  {intentLabel}
-                </span>
-              )}
-              {outcome && (
-                <span className="instrument-num shrink-0 border border-line px-1.5 py-0.5 text-[11px] font-semibold text-ink-soft">
-                  {outcomeLabels[outcome] ?? outcome}
-                </span>
-              )}
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+              <h2 className="font-serif text-[17px] font-semibold leading-6 tracking-[-0.01em] text-ink">{graphTitle}</h2>
+              <span className="journal-num text-[11px] text-muted">{planId ? planId.slice(0, 8).toUpperCase() : 'PLAN'}</span>
+              {intentLabel && <span className="journal-caps text-[10px]">〔{intentLabel}〕</span>}
+              {outcome && <span className="proof-stamp">{outcomeLabels[outcome] ?? outcome}</span>}
               {plannerSource === 'template' && (
-                <span
-                  className="instrument-num shrink-0 border border-warn/30 bg-warn-soft px-1.5 py-0.5 text-[11px] font-medium text-warn"
-                  title={plannerFallbackReason || '该计划由模板规划生成'}
-                >
-                  模板规划
+                <span className="journal-caps text-[10px] text-warn" title={plannerFallbackReason || '该计划由模板规划生成'}>
+                  ◦ 模板规划
                 </span>
               )}
             </div>
-            <p className="mt-1 max-w-3xl truncate text-[12.5px] leading-5 text-muted" title={subtitle}>
+            <p className="mt-1 max-w-3xl truncate font-serif text-[13px] leading-6 text-ink-soft" title={subtitle}>
               {subtitle}
             </p>
-            {planId && <span className="instrument-num mt-0.5 block text-[11px] text-faint">{planId}</span>}
           </div>
 
           <div className="flex shrink-0 items-center gap-2 pt-0.5">
@@ -264,7 +231,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
                 type="button"
                 onClick={onCancel}
                 title="取消计划"
-                className="inline-flex h-7 items-center gap-1.5 border border-flag/40 bg-surface px-2.5 text-[12.5px] font-semibold text-flag transition-colors hover:bg-flag-soft active:translate-y-px"
+                className="inline-flex h-7 items-center gap-1.5 border border-proof bg-surface px-2.5 text-[12px] font-semibold text-proof transition-colors hover:bg-proof-soft active:translate-y-px"
               >
                 <Square className="h-2.5 w-2.5 fill-current" />
                 取消计划
@@ -273,7 +240,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
               <button
                 type="button"
                 onClick={onApproveAndRun}
-                className="inline-flex h-7 items-center gap-1.5 bg-accent px-2.5 text-[12.5px] font-semibold text-white transition-colors hover:bg-accent-strong active:translate-y-px"
+                className="inline-flex h-7 items-center gap-1.5 bg-ink px-2.5 text-[12px] font-semibold text-paper transition-colors hover:bg-black active:translate-y-px"
               >
                 <ShieldCheck className="h-3.5 w-3.5" />
                 审批并运行
@@ -282,7 +249,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
               <button
                 type="button"
                 onClick={onRetryFailed}
-                className="inline-flex h-7 items-center gap-1.5 border border-warn/40 bg-surface px-2.5 text-[12.5px] font-semibold text-warn transition-colors hover:bg-warn-soft active:translate-y-px"
+                className="inline-flex h-7 items-center gap-1.5 border border-warn bg-surface px-2.5 text-[12px] font-semibold text-warn transition-colors hover:bg-warn-soft active:translate-y-px"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 重试失败节点
@@ -293,7 +260,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
                 onClick={onRunAll}
                 disabled={pendingCount === 0 || pendingRuntimeActions.length > 0}
                 title={pendingRuntimeActions.length > 0 ? '先处理运行权限确认' : undefined}
-                className="inline-flex h-7 items-center gap-1.5 bg-accent px-2.5 text-[12.5px] font-semibold text-white transition-colors hover:bg-accent-strong active:translate-y-px disabled:cursor-not-allowed disabled:bg-surface-strong disabled:text-faint"
+                className="inline-flex h-7 items-center gap-1.5 bg-ink px-2.5 text-[12px] font-semibold text-paper transition-colors hover:bg-black active:translate-y-px disabled:cursor-not-allowed disabled:border-line disabled:bg-[#e6e0d3] disabled:text-[#4a4238]"
               >
                 <Play className="h-3 w-3 fill-current" />
                 {runAllText}
@@ -301,83 +268,82 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
             )}
             <button
               type="button"
-              onClick={() => setShowPlanInfo((value) => !value)}
-              aria-expanded={showPlanInfo}
-              className="flex h-7 w-7 items-center justify-center border border-line bg-surface text-muted transition-colors hover:border-line-strong hover:text-ink"
-              title="计划信息"
-              aria-label="计划信息"
+              onClick={() => setShowColophon((value) => !value)}
+              aria-expanded={showColophon}
+              className="flex h-7 w-7 items-center justify-center border border-line bg-surface text-muted transition-colors hover:border-ink hover:text-ink"
+              title="版本记录"
+              aria-label="版本记录"
             >
               ⋯
             </button>
           </div>
         </div>
 
-        {showPlanInfo && (
-          <div className="ra-fade-up mt-2 grid grid-cols-2 gap-x-6 gap-y-1 border-t border-line pt-2 text-[12px] sm:grid-cols-4">
-            <span className="text-faint">意图类型</span>
-            <span className="text-ink-soft">{intentLabel ?? '未识别'}</span>
-            <span className="text-faint">规划来源</span>
-            <span className="text-ink-soft">{plannerSource === 'template' ? '模板规划' : plannerSource === 'agent' ? 'Agent 规划' : '未知'}</span>
-            <span className="text-faint">运行权限</span>
-            <span className="text-ink-soft">{runtimePermissionMode === 'full_access' ? '完全权限' : '确认模式'}</span>
-            <span className="text-faint">结果状态</span>
-            <span className="text-ink-soft">{outcome ? outcomeLabels[outcome] ?? outcome : '尚未产出'}</span>
-          </div>
+        {showColophon && (
+          <dl className="proof-fade mt-2 grid grid-cols-2 gap-x-6 gap-y-1 border-t border-line pt-2 journal-num text-[11px] sm:grid-cols-4">
+            <dt className="text-muted">意图类型</dt>
+            <dd className="text-ink-soft">{intentLabel ?? '未识别'}</dd>
+            <dt className="text-muted">规划来源</dt>
+            <dd className="text-ink-soft">{plannerSource === 'template' ? '模板规划' : plannerSource === 'agent' ? 'Agent 规划' : '未知'}</dd>
+            <dt className="text-muted">运行权限</dt>
+            <dd className="text-ink-soft">{runtimePermissionMode === 'full_access' ? '完全权限' : '确认模式'}</dd>
+            <dt className="text-muted">结果状态</dt>
+            <dd className="text-ink-soft">{outcome ? outcomeLabels[outcome] ?? outcome : '尚未产出'}</dd>
+          </dl>
         )}
       </header>
 
-      <dl className="research-assistant-meta-strip grid shrink-0 grid-cols-5 border-b border-line bg-surface">
-        <div className="border-r border-line px-3.5 py-2">
-          <dt className="instrument-kicker">步骤</dt>
-          <dd className="instrument-num mt-0.5 text-[12.5px] text-ink">{nodes.length}</dd>
+      <dl className="research-assistant-plate-meta grid shrink-0 grid-cols-5 border-b border-line bg-surface-muted">
+        <div className="border-r border-line px-4 py-2">
+          <dt className="journal-caps text-[10px]">图版</dt>
+          <dd className="journal-num mt-0.5 text-[12.5px] text-ink">{nodes.length}</dd>
         </div>
-        <div className="border-r border-line px-3.5 py-2">
-          <dt className="instrument-kicker">已完成</dt>
-          <dd className="instrument-num mt-0.5 text-[12.5px] text-ink">
+        <div className="border-r border-line px-4 py-2">
+          <dt className="journal-caps text-[10px]">已校</dt>
+          <dd className="journal-num mt-0.5 text-[12.5px] text-ink">
             <span className="text-ok">{completedCount}</span>
-            <span className="text-faint"> / {nodes.length}</span>
+            <span className="text-muted"> / {nodes.length}</span>
           </dd>
         </div>
-        <div className="border-r border-line px-3.5 py-2">
-          <dt className="instrument-kicker">进行中</dt>
-          <dd className="instrument-num mt-0.5 text-[12.5px] text-ink">{runningCount}</dd>
+        <div className="border-r border-line px-4 py-2">
+          <dt className="journal-caps text-[10px]">在排</dt>
+          <dd className="journal-num mt-0.5 text-[12.5px] text-ink">{runningCount}</dd>
         </div>
-        <div className="border-r border-line px-3.5 py-2">
-          <dt className="instrument-kicker">待处理</dt>
+        <div className="border-r border-line px-4 py-2">
+          <dt className="journal-caps text-[10px]">校样批注</dt>
           <dd className="mt-0.5 text-[12.5px] text-ink">
             {pendingRuntimeActions.length > 0
-              ? <span className="font-semibold text-warn">{pendingRuntimeActions.length} 项授权</span>
+              ? <span className="font-semibold text-proof">{pendingRuntimeActions.length} 项待批</span>
               : failedCount > 0
-                ? <span className="font-semibold text-flag">{failedCount} 个失败</span>
+                ? <span className="font-semibold text-proof">{failedCount} 项失败</span>
                 : <span className="text-muted">无</span>}
           </dd>
         </div>
-        <div className="px-3.5 py-2">
-          <dt className="instrument-kicker">权限</dt>
+        <div className="px-4 py-2">
+          <dt className="journal-caps text-[10px]">校次</dt>
           <dd className="mt-0.5 text-[12.5px] text-ink-soft">{runtimePermissionMode === 'full_access' ? '完全权限' : '确认模式'}</dd>
         </div>
       </dl>
 
       {pendingRuntimeActions.length > 0 && (
-        <div className="shrink-0 border-b border-line bg-warn-soft px-4 py-2.5">
-          <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-warn">
-            <ShieldAlert className="h-3.5 w-3.5" />
-            需要运行权限确认
-            <span className="instrument-num ml-1 font-normal text-muted">{pendingRuntimeActions.length} 项</span>
+        <div className="shrink-0 border-b border-line bg-proof-soft px-5 py-2.5">
+          <div className="mb-1.5 flex items-baseline gap-2">
+            <span className="journal-caps text-[10.5px] font-semibold text-proof">校样批注 · 需要作者决定</span>
+            <span className="journal-num text-[11px] text-muted">{pendingRuntimeActions.length} 项</span>
           </div>
           <div className="space-y-1.5">
             {pendingRuntimeActions.map((action) => {
               const detailsText = describeRuntimeAction(action);
               const isThisActionBusy = runtimeDecision?.actionId === action.id;
               return (
-                <div key={action.id} className="flex flex-wrap items-center justify-between gap-2 border border-warn/25 border-l-2 border-l-warn bg-surface px-2.5 py-1.5">
+                <div key={action.id} className="flex flex-wrap items-center justify-between gap-2 border border-proof/25 bg-surface px-3 py-2">
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-baseline gap-x-2 text-[12.5px]">
-                      <span className="font-semibold text-ink">{action.title}</span>
-                      <span className="instrument-num text-[11px] text-faint">{action.kind}</span>
-                      {action.risk && <span className="instrument-num text-[11px] uppercase text-warn">{action.risk}</span>}
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-serif text-[13px] font-semibold text-ink">{action.title}</span>
+                      <span className="journal-caps text-[10px]">{action.kind}</span>
+                      {action.risk && <span className="journal-caps text-[10px] text-proof">{action.risk}</span>}
                     </div>
-                    {detailsText && <p className="mt-0.5 max-w-[42rem] break-words text-[11.5px] leading-4 text-muted" title={detailsText}>{detailsText}</p>}
+                    {detailsText && <p className="mt-0.5 max-w-[42rem] break-words journal-num text-[11px] leading-4 text-ink-soft" title={detailsText}>{detailsText}</p>}
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <button
@@ -385,7 +351,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
                       disabled={runtimeDecisionBusy}
                       aria-busy={isThisActionBusy && runtimeDecision?.decision === 'reject'}
                       onClick={() => void handleRuntimeActionDecision(action.id, 'reject')}
-                      className="h-6 border border-flag/40 bg-surface px-2 text-[11.5px] font-medium text-flag transition-colors hover:bg-flag-soft disabled:cursor-not-allowed disabled:opacity-50"
+                      className="h-6 border border-line-strong bg-surface px-2 text-[11.5px] font-medium text-ink-soft transition-colors hover:border-proof hover:text-proof disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {isThisActionBusy && runtimeDecision?.decision === 'reject' ? '提交中…' : '拒绝'}
                     </button>
@@ -394,7 +360,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
                       disabled={runtimeDecisionBusy}
                       aria-busy={isThisActionBusy && runtimeDecision?.decision === 'approve'}
                       onClick={() => void handleRuntimeActionDecision(action.id, 'approve')}
-                      className="h-6 bg-accent px-2 text-[11.5px] font-semibold text-white transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
+                      className="h-6 bg-ink px-2 text-[11.5px] font-semibold text-paper transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {isThisActionBusy && runtimeDecision?.decision === 'approve' ? '提交中…' : '允许一次'}
                     </button>
@@ -407,99 +373,111 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
       )}
 
       {missingRequirements && missingRequirements.length > 0 && (
-        <div className="shrink-0 border-b border-line bg-flag-soft px-4 py-2">
-          <p className="text-[12px] font-semibold text-flag">缺少必要条件</p>
+        <div className="shrink-0 border-b border-line bg-proof-soft px-5 py-2">
+          <p className="journal-caps text-[10.5px] font-semibold text-proof">缺失材料</p>
           <ul className="mt-1 space-y-0.5">
             {missingRequirements.map((item, index) => (
-              <li key={`${item.kind}-${index}`} className="text-[12px] leading-5 text-ink-soft">
-                <span className="font-medium">{item.name || item.kind}</span>
+              <li key={`${item.kind}-${index}`} className="font-serif text-[12.5px] leading-5 text-ink-soft">
+                <span className="font-semibold">{item.name || item.kind}</span>
                 {item.detail ? <span className="text-muted"> — {item.detail}</span> : null}
-                {item.remediation ? <span className="text-faint"> · 建议：{item.remediation}</span> : null}
+                {item.remediation ? <span className="text-muted"> · 建议：{item.remediation}</span> : null}
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      <div className="relative min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1 p-4">
         {nodes.length === 0 && (
-          <div className="instrument-grid absolute inset-0 z-10 flex items-center justify-center p-8">
-            <div className="max-w-sm">
-              <div className="flex items-end gap-1.5" aria-hidden="true">
-                <span className="block h-8 w-14 border border-line bg-surface" />
-                <span className="mb-3 h-px w-5 bg-line-strong" />
-                <span className="block h-8 w-14 border border-accent/50 bg-accent-soft" />
-                <span className="mb-3 h-px w-5 bg-line-strong" />
-                <span className="block h-8 w-14 border border-line bg-surface" />
-              </div>
-              <p className="mt-5 text-[14px] font-semibold text-ink">尚无运行</p>
-              <p className="mt-1 text-[12.5px] leading-5 text-muted">
-                在左侧描述研究目标。系统会生成可执行的执行图，节点状态、日志与产物都在此处呈现。
+          <div className="plate-frame absolute inset-4 flex items-center justify-center p-8">
+            <div className="max-w-md">
+              <div className="journal-caps text-[10px]">图 1 · 执行拓扑（待排版）</div>
+              <p className="mt-3 font-serif text-[17px] font-semibold leading-7 text-ink">本页尚无图版</p>
+              <p className="mt-1.5 font-serif text-[13px] leading-6 text-ink-soft">
+                在左侧写下研究目标。系统会先固定指标与约束，再把执行拆成可审计的节点，逐条落在这张校样上。
               </p>
-              <ul className="mt-3 border-t border-line">
-                <li className="border-b border-line py-1.5 text-[12px] text-ink-soft"><span className="instrument-num mr-2 text-faint">01</span>复现论文核心方法并跑通最小测试</li>
-                <li className="border-b border-line py-1.5 text-[12px] text-ink-soft"><span className="instrument-num mr-2 text-faint">02</span>对两个 RAG 框架做冻结指标评测</li>
-                <li className="border-b border-line py-1.5 text-[12px] text-ink-soft"><span className="instrument-num mr-2 text-faint">03</span>核查论文主张与证据链</li>
-              </ul>
+              <ol className="mt-4 border-t border-line">
+                <li className="border-b border-line py-1.5 font-serif text-[12.5px] text-ink-soft"><span className="journal-num mr-2 text-muted">一</span>复现论文核心方法并跑通最小测试</li>
+                <li className="border-b border-line py-1.5 font-serif text-[12.5px] text-ink-soft"><span className="journal-num mr-2 text-muted">二</span>对两个 RAG 框架做冻结指标评测</li>
+                <li className="border-b border-line py-1.5 font-serif text-[12.5px] text-ink-soft"><span className="journal-num mr-2 text-muted">三</span>核查论文主张与证据链</li>
+              </ol>
             </div>
           </div>
         )}
         {nodes.length > 0 && (
-          <Suspense fallback={<GraphCanvasSkeleton />}>
-            <GraphCanvas
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onNodeClick={onNodeClick}
-            />
-          </Suspense>
+          <div className="plate-frame absolute inset-4 overflow-hidden">
+            <Suspense fallback={<GraphCanvasSkeleton />}>
+              <GraphCanvas
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onNodeClick={onNodeClick}
+              />
+            </Suspense>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 border-t border-line bg-surface/90 px-3 py-1.5">
+              <p className="truncate font-serif text-[11.5px] leading-5 text-ink-soft">
+                <span className="font-semibold text-ink">图 1</span>
+                {'　'}执行拓扑：{nodes.length} 个节点，{edges.length} 条依赖。实线为控制流，虚线为数据流；符号见图例。
+              </p>
+            </div>
+          </div>
         )}
 
         {isExecuting && (
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden bg-surface-strong" aria-hidden="true">
-            <div className="ra-pulse h-full w-1/3 bg-accent" />
+          <div className="pointer-events-none absolute inset-x-4 top-4 z-10 h-0.5 overflow-hidden bg-line" aria-hidden="true">
+            <div className="proof-pulse h-full w-1/3 bg-proof" />
           </div>
         )}
       </div>
 
       {nodes.length > 0 && (
-        <div
-          className="research-assistant-node-index flex shrink-0 items-stretch border-t border-line bg-surface"
-          role="toolbar"
-          aria-label="节点索引"
-          aria-orientation="horizontal"
-          onKeyDown={handleIndexKeyDown}
-        >
-          {nodes.map((node, index) => {
-            const status = String(node.data.status);
-            const task = node.data.task as Task | undefined;
-            const isSelected = selectedNodeId === node.id;
-            return (
-              <button
-                key={node.id}
-                type="button"
-                onClick={() => selectNode(node.id)}
-                onDoubleClick={() => onOpenTask?.(node.id)}
-                aria-label={`${(nodeStep(node) ?? index + 1).toString().padStart(2, '0')} ${task?.Name ?? node.id}，${status}`}
-                className={`relative flex min-w-0 flex-1 flex-col gap-1 border-r border-line px-2.5 py-2 text-left transition-colors last:border-r-0 hover:bg-surface-muted ${isSelected ? 'bg-surface-strong' : ''}`}
-                aria-current={isSelected ? 'true' : undefined}
-              >
-                {isSelected && <span className="absolute inset-x-0 top-0 h-0.5 bg-accent" aria-hidden="true" />}
-                <span className="flex items-center gap-1.5">
-                  <span className="instrument-num text-[11px] text-faint">{(nodeStep(node) ?? index + 1).toString().padStart(2, '0')}</span>
-                  <span className={`text-[11px] font-semibold ${nodeStatusColor(status)}`} aria-hidden="true">{nodeStatusGlyph(status)}</span>
-                </span>
-                <span className="line-clamp-2 text-[11.5px] font-medium leading-[1.35] text-ink-soft">{task?.Name ?? node.id}</span>
-                <span className="mt-auto block h-0.5 w-full bg-surface-strong" aria-hidden="true">
-                  <span
-                    className={`block h-full ${status === 'completed' ? 'bg-ok' : status === 'in_progress' || status === 'awaiting_approval' ? 'bg-warn' : status === 'failed' ? 'bg-flag' : 'bg-transparent'}`}
-                    style={{ width: status === 'completed' ? '100%' : status === 'in_progress' || status === 'awaiting_approval' ? '48%' : '0%' }}
-                  />
-                </span>
-              </button>
-            );
-          })}
+        <div className="shrink-0 border-t border-ink bg-surface">
+          <div className="flex items-baseline justify-between px-5 pb-1.5 pt-2">
+            <span className="journal-caps text-[10px]">表 1 · 执行记录摘要</span>
+            <span className="journal-caps text-[10px]">按计划顺序 · 点击行查看批注</span>
+          </div>
+          <div
+            className="research-assistant-node-table"
+            role="toolbar"
+            aria-label="执行记录摘要"
+            aria-orientation="horizontal"
+            onKeyDown={handleIndexKeyDown}
+          >
+            <div className="grid grid-cols-[3.2rem_minmax(0,1fr)_9rem_4.5rem] border-t border-line bg-surface-muted journal-caps text-[10px]">
+              <span className="border-r border-line px-2 py-1">序号</span>
+              <span className="border-r border-line px-2 py-1">节点</span>
+              <span className="border-r border-line px-2 py-1">负责者</span>
+              <span className="px-2 py-1 text-right">状态</span>
+            </div>
+            <div className="max-h-[7.25rem] overflow-y-auto">
+              {nodes.map((node, index) => {
+                const status = String(node.data.status);
+                const task = node.data.task as Task | undefined;
+                const isSelected = selectedNodeId === node.id;
+                return (
+                  <button
+                    key={node.id}
+                    type="button"
+                    onClick={() => selectNode(node.id)}
+                    onDoubleClick={() => onOpenTask?.(node.id)}
+                    aria-current={isSelected ? 'true' : undefined}
+                    className={`grid w-full grid-cols-[3.2rem_minmax(0,1fr)_9rem_4.5rem] border-b border-line/70 text-left transition-colors last:border-b-0 hover:bg-surface-muted ${isSelected ? 'bg-surface-muted' : ''}`}
+                  >
+                    <span className={`border-r border-line/70 px-2 py-1 journal-num text-[11px] ${isSelected ? 'text-proof' : 'text-muted'}`}>
+                      {String(nodeStep(node) ?? index + 1).padStart(2, '0')}
+                    </span>
+                    <span className="truncate border-r border-line/70 px-2 py-1 font-serif text-[12px] text-ink-soft">{task?.Name ?? node.id}</span>
+                    <span className="truncate border-r border-line/70 px-2 py-1 journal-caps text-[10px] text-muted">{task?.AssignedTo ? task.AssignedTo.replace('_agent', '').replace('research_coding', '科研 Coding').replace('benchmark', '评测').replace('sandbox', '沙箱').replace('librarian', '文献').replace('general', '通用').replace('data', '数据').replace('coder', '代码') : '—'}</span>
+                    <span className={`flex items-center justify-end gap-1 px-2 py-1 journal-caps text-[10px] ${statusInk(status)}`}>
+                      <span aria-hidden="true">{getProofMark(status)}</span>
+                      {status === 'completed' ? '已校' : status === 'in_progress' ? '在排' : status === 'failed' ? '退改' : status === 'awaiting_approval' ? '待批' : '待校'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
     </div>

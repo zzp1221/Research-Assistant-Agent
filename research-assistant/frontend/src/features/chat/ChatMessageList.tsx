@@ -22,11 +22,20 @@ interface ChatMessageListProps {
 }
 
 const roleLabel = (role: string) => {
-  if (role === 'user') return '你';
-  if (role === 'system') return '系统';
+  if (role === 'user') return '作者';
+  if (role === 'system') return '校样';
   return '助手';
 };
 
+const paragraphNumber = (index: number) => {
+  const n = index + 1;
+  return `§${n}`;
+};
+
+/**
+ * Messages read as sectioned manuscript copy: a marginal paragraph number,
+ * a running head for the role, and serif body text — no chat bubbles.
+ */
 export function ChatMessageList(props: ChatMessageListProps) {
   const { chatHistory, loading, isLoggedIn, pdfActions, taskActions } = props;
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -52,31 +61,44 @@ export function ChatMessageList(props: ChatMessageListProps) {
 
   return (
     <div className="relative min-h-0 flex-1">
-      <div className="flex h-8 shrink-0 items-center justify-between border-b border-line bg-surface-muted px-3">
-        <span className="instrument-kicker">运行记录</span>
-        <span className="instrument-num text-[11px] text-faint">{chatHistory.length} 条</span>
+      <div className="flex h-8 shrink-0 items-baseline justify-between border-b border-line bg-surface px-4">
+        <span className="journal-caps text-[10px]">正文 · 校样批注</span>
+        <span className="journal-num text-[10.5px] text-muted">{chatHistory.length} 段</span>
       </div>
-      <div ref={scrollRef} onScroll={handleScroll} className="h-[calc(100%-2rem)] overflow-y-auto">
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        // Scrollable log region needs keyboard access (WCAG 2.1.1); axe flags it
+        // as scrollable-region-focusable when it cannot be focused.
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+        tabIndex={0}
+        role="log"
+        aria-label="校样正文"
+        className="h-[calc(100%-2rem)] overflow-y-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-proof"
+      >
         {!isLoggedIn && (
-          <div className="border-b border-line bg-surface px-3 py-2 text-[12.5px] leading-5 text-muted">
-            游客模式：可直接对话和新建临时会话，刷新后不保留记录；登录后可持久保存。
+          <div className="border-b border-line bg-surface-muted px-4 py-2">
+            <p className="journal-caps text-[10px]">未署名的临时稿</p>
+            <p className="mt-0.5 font-serif text-[12px] leading-5 text-ink-soft">可直接对话与新建稿次；刷新后不保留。登录后按稿次持久保存。</p>
           </div>
         )}
 
         {chatHistory.map((msg, i) => {
           const isSystem = msg.role === 'system';
           return (
-            <div
+            <article
               key={i}
-              className={`ra-fade-up grid grid-cols-[30px_38px_minmax(0,1fr)] gap-2 border-b border-line/70 px-3 py-2.5 ${isSystem ? 'bg-surface-muted/45' : 'bg-surface'}`}
+              className={`proof-fade border-b border-line/70 px-4 py-3 ${isSystem ? 'bg-surface-muted/60' : 'bg-surface'}`}
             >
-              <span className="instrument-num pt-0.5 text-[11px] text-faint">{String(i + 1).padStart(2, '0')}</span>
-              <span className={`pt-0.5 text-[12px] ${msg.role === 'user' ? 'font-semibold text-ink' : 'font-medium text-faint'}`}>
-                {roleLabel(msg.role)}
-              </span>
-              <div className="min-w-0">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="journal-num text-[10.5px] text-muted">{paragraphNumber(i)}</span>
+                <span className={`journal-caps text-[10px] ${msg.role === 'user' ? 'font-semibold text-ink' : 'text-muted'}`}>
+                  {roleLabel(msg.role)}
+                </span>
+              </div>
+              <div className="mt-1.5">
                 <div
-                  className={`prose prose-sm max-w-none text-[13px] leading-[1.65] ${isSystem ? 'text-ink-soft' : 'text-ink'} prose-p:my-1 prose-p:leading-[1.65] prose-headings:font-display prose-headings:font-semibold prose-headings:text-ink prose-strong:text-ink prose-code:rounded-[2px] prose-code:bg-surface-strong prose-code:px-1 prose-code:py-0.5 prose-code:text-[12px] prose-code:font-normal prose-code:text-accent-ink prose-pre:rounded-[2px] prose-pre:border prose-pre:border-white/10 prose-pre:bg-[#12181d] prose-pre:text-[12px] prose-pre:text-[#dfe6ea] prose-a:text-accent prose-a:underline-offset-2`}
+                  className={`prose prose-sm max-w-none font-serif text-[13px] leading-[1.72] ${isSystem ? 'text-ink-soft' : 'text-ink'} prose-p:my-1 prose-p:leading-[1.72] prose-headings:font-serif prose-headings:font-semibold prose-headings:text-ink prose-strong:text-ink prose-code:rounded-none prose-code:bg-surface-strong prose-code:px-1 prose-code:py-0.5 prose-code:text-[12px] prose-code:font-normal prose-code:text-ink prose-pre:rounded-none prose-pre:border prose-pre:border-line-strong prose-pre:bg-surface-muted prose-pre:text-[12px] prose-pre:text-ink-soft prose-a:text-proof prose-a:underline-offset-2 prose-blockquote:border-l-2 prose-blockquote:border-l-proof prose-blockquote:font-normal prose-blockquote:not-italic`}
                 >
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
                 </div>
@@ -86,7 +108,7 @@ export function ChatMessageList(props: ChatMessageListProps) {
                     {msg.actions.includes('open_pdf') && (
                       <button
                         onClick={pdfActions.onOpenPdf}
-                        className="inline-flex h-6 items-center gap-1.5 border border-line-strong bg-surface px-2 text-[11.5px] font-medium text-ink-soft transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink"
+                        className="inline-flex h-6 items-center gap-1.5 border border-line-strong bg-surface px-2 text-[11.5px] text-ink-soft transition-colors hover:border-ink hover:text-ink"
                       >
                         <FileText className="h-3 w-3" />
                         打开论文原文
@@ -95,7 +117,7 @@ export function ChatMessageList(props: ChatMessageListProps) {
                     {msg.actions.includes('close_pdf') && (
                       <button
                         onClick={pdfActions.onClosePdf}
-                        className="inline-flex h-6 items-center gap-1.5 border border-line bg-surface px-2 text-[11.5px] font-medium text-muted transition-colors hover:border-line-strong hover:bg-surface-muted hover:text-ink"
+                        className="inline-flex h-6 items-center gap-1.5 border border-line bg-surface px-2 text-[11.5px] text-muted transition-colors hover:border-line-strong hover:text-ink"
                       >
                         <X className="h-3 w-3" />
                         关闭阅读器
@@ -104,36 +126,38 @@ export function ChatMessageList(props: ChatMessageListProps) {
                     {msg.actions.includes('view_plot') && msg.taskId && (
                       <button
                         onClick={() => taskActions.onOpenTaskView(msg.taskId as string, 'plot')}
-                        className="inline-flex h-6 items-center gap-1.5 border border-line-strong bg-surface px-2 text-[11.5px] font-medium text-ink-soft transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink"
+                        className="inline-flex h-6 items-center gap-1.5 border border-line-strong bg-surface px-2 text-[11.5px] text-ink-soft transition-colors hover:border-ink hover:text-ink"
                       >
                         <Maximize2 className="h-3 w-3" />
-                        查看生成的图表
+                        查看图版
                       </button>
                     )}
                     {msg.actions.includes('view_report') && msg.taskId && (
                       <button
                         onClick={() => taskActions.onOpenTaskView(msg.taskId as string, 'report')}
-                        className="inline-flex h-6 items-center gap-1.5 border border-line-strong bg-surface px-2 text-[11.5px] font-medium text-ink-soft transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink"
+                        className="inline-flex h-6 items-center gap-1.5 border border-line-strong bg-surface px-2 text-[11.5px] text-ink-soft transition-colors hover:border-ink hover:text-ink"
                       >
                         <FileText className="h-3 w-3" />
-                        查看分析报告
+                        查看批注报告
                       </button>
                     )}
                   </div>
                 )}
               </div>
-            </div>
+            </article>
           );
         })}
 
         {loading && (
-          <div className="ra-fade-in grid grid-cols-[30px_38px_minmax(0,1fr)] gap-2 border-b border-line/70 bg-surface-muted/45 px-3 py-2.5">
-            <span className="instrument-num pt-0.5 text-[11px] text-faint">··</span>
-            <span className="pt-0.5 text-[12px] font-medium text-faint">计划</span>
-            <div className="flex items-center gap-2 text-[12.5px] text-muted">
-              <span className="ra-pulse h-1.5 w-1.5 bg-warn" aria-hidden="true" />
-              正在编排执行图：解析意图、绑定上下文、生成节点依赖
+          <div className="proof-in border-b border-line/70 bg-surface-muted/60 px-4 py-3">
+            <div className="flex items-baseline justify-between">
+              <span className="journal-num text-[10.5px] text-muted">§·</span>
+              <span className="journal-caps text-[10px] text-muted">校样</span>
             </div>
+            <p className="mt-1 flex items-center gap-2 font-serif text-[12.5px] leading-6 text-ink-soft">
+              <span className="proof-pulse h-1.5 w-1.5 shrink-0 bg-proof" aria-hidden="true" />
+              正在排版：解析意图、绑定上下文、编排节点依赖
+            </p>
           </div>
         )}
         <div ref={bottomRef} />
@@ -143,10 +167,10 @@ export function ChatMessageList(props: ChatMessageListProps) {
         <button
           type="button"
           onClick={() => scrollToBottom()}
-          className="ra-fade-in absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 border border-line-strong bg-surface px-3 py-1.5 text-[11.5px] font-medium text-muted shadow-float transition-colors hover:text-accent-ink"
+          className="proof-in absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 border border-ink bg-surface px-3 py-1.5 text-[11.5px] text-ink shadow-float transition-colors hover:bg-surface-muted"
         >
           <ArrowDown className="h-3 w-3" />
-          回到底部
+          回到末页
         </button>
       )}
     </div>

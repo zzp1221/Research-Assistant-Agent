@@ -2,50 +2,47 @@
 @plugin "@tailwindcss/typography";
 
 /*
- * Research Assistant — "Instrument" design system
- * A calibrated research instrument: state is always readable, every action
- * returns a receipt, decoration carries no information.
+ * Research Assistant — "Journal Proof" design system
+ * The workbench is a proof sheet under review: a masthead, a manuscript
+ * column, a plate with its caption, and marginalia that carry the verdicts.
+ * Body copy is set in serif; controls, labels and numerals stay sans/mono.
+ * Nothing is rounded — this is print, not a web card.
  */
 @theme {
   --font-sans: "Segoe UI Variable Text", "Segoe UI", "Noto Sans SC", "Microsoft YaHei UI",
     "Microsoft YaHei", "PingFang SC", sans-serif;
-  --font-display: "Segoe UI Variable Display", "Segoe UI", "Noto Sans SC", "Microsoft YaHei UI",
-    sans-serif;
-  --font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, "SimSun", serif;
+  --font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", Georgia, serif;
   --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, "SFMono-Regular", "Liberation Mono",
     Menlo, monospace;
 
-  --color-paper: #edf0f2;
-  --color-paper-deep: #e2e7ea;
-  --color-surface: #ffffff;
-  --color-surface-muted: #f5f7f8;
-  --color-surface-strong: #e7ebee;
-  --color-ink: #0f1418;
-  --color-ink-soft: #39434b;
-  --color-muted: #5d6975;
-  --color-faint: #5f6b76;
-  --color-line: #d6dde2;
-  --color-line-strong: #b8c2ca;
-  --color-accent: #1b4d6b;
-  --color-accent-strong: #143c55;
-  --color-accent-soft: #e3edf3;
-  --color-accent-ink: #10364c;
-  --color-flag: #9e2f26;
-  --color-flag-soft: #f7e9e7;
-  --color-warn: #8a5a0b;
-  --color-warn-soft: #f7efdd;
-  --color-ok: #2c6a4a;
-  --color-ok-soft: #e7f0ea;
+  --color-paper: #f4f1ea;
+  --color-paper-deep: #e8e3d9;
+  --color-surface: #fbfaf7;
+  --color-surface-muted: #f4f1ea;
+  --color-surface-strong: #e8e3d9;
+  --color-ink: #17130f;
+  --color-ink-soft: #3b342c;
+  --color-muted: #6b6156;
+  --color-faint: #5f564c;
+  --color-line: #d8d0c2;
+  --color-line-strong: #bdb2a0;
+  --color-accent: #17130f;
+  --color-accent-strong: #000000;
+  --color-accent-soft: #efe9dd;
+  --color-accent-ink: #17130f;
+  --color-proof: #8c2c2c;
+  --color-proof-soft: #f3e7e4;
+  --color-flag: #8c2c2c;
+  --color-flag-soft: #f3e7e4;
+  --color-warn: #7a4a12;
+  --color-warn-soft: #f6efe2;
+  --color-ok: #14603f;
+  --color-ok-soft: #e9f0ea;
   --color-plum: #554a6b;
   --color-plum-soft: #ece9f1;
-  --color-rail: #0f1418;
-  --color-rail-2: #1a2229;
-  --color-rail-ink: #dfe6ea;
-  --color-rail-muted: #97a5ae;
 
-  --radius-none: 0px;
-  --shadow-card: 0 1px 0 rgb(15 20 24 / 0.04);
-  --shadow-float: 0 10px 28px -18px rgb(15 20 24 / 0.45), 0 1px 0 rgb(15 20 24 / 0.06);
+  --shadow-card: none;
+  --shadow-float: 0 8px 24px -18px rgb(23 19 15 / 0.5), 0 0 0 1px #bdb2a0;
 }
 
 @layer base {
@@ -65,7 +62,7 @@
     color: var(--color-ink);
     font-family: var(--font-sans);
     font-size: 13.5px;
-    line-height: 1.55;
+    line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -84,13 +81,8 @@
   }
 
   ::selection {
-    background: #d5e5ee;
-    color: var(--color-accent-ink);
-  }
-
-  :focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 1px;
+    background: #e6d9c9;
+    color: var(--color-ink);
   }
 
   button,
@@ -98,14 +90,7 @@
   textarea,
   select {
     font: inherit;
-  }
-
-  /* Flat, rectangular controls everywhere — including legacy views. */
-  button,
-  input,
-  textarea,
-  select {
-    border-radius: 2px;
+    border-radius: 0;
   }
 
   *::-webkit-scrollbar {
@@ -114,14 +99,14 @@
   }
 
   *::-webkit-scrollbar-thumb {
-    background: #b8c2ca;
+    background: #bdb2a0;
     border: 3px solid transparent;
-    border-radius: 6px;
+    border-radius: 5px;
     background-clip: content-box;
   }
 
   *::-webkit-scrollbar-thumb:hover {
-    background: #97a5ae;
+    background: #9a8f7d;
     border: 3px solid transparent;
     background-clip: content-box;
   }
@@ -131,43 +116,56 @@
   }
 }
 
-/* ---------- Shared instrument primitives ---------- */
-
-.instrument-rail {
-  background: var(--color-rail);
-  color: var(--color-rail-ink);
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid #8c2c2c !important;
+  outline-offset: 2px !important;
 }
 
-.instrument-kicker {
-  font-family: var(--font-mono);
+/* ---------- Print primitives ---------- */
+
+.masthead-rule {
+  border-bottom: 2px solid var(--color-ink);
+  box-shadow: 0 4px 0 -3px var(--color-ink);
+}
+
+.journal-caps {
+  font-family: var(--font-sans);
   font-size: 11px;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--color-faint);
+  color: var(--color-muted);
 }
 
-.instrument-num {
+.journal-num {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
 
-.instrument-grid {
-  background-color: #fbfcfd;
-  background-image:
-    linear-gradient(to right, rgb(120 135 145 / 0.13) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(120 135 145 / 0.13) 1px, transparent 1px),
-    linear-gradient(to right, rgb(120 135 145 / 0.06) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(120 135 145 / 0.06) 1px, transparent 1px);
-  background-size:
-    24px 24px,
-    24px 24px,
-    8px 8px,
-    8px 8px;
+.journal-serif {
+  font-family: var(--font-serif);
 }
 
-.instrument-hairline {
+.proof-rule {
   border-color: var(--color-line);
+}
+
+.proof-stamp {
+  border: 1px solid var(--color-proof);
+  color: var(--color-proof);
+  padding: 1px 6px;
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.plate-frame {
+  border: 1px solid var(--color-ink);
+  background:
+    linear-gradient(to right, rgb(23 19 15 / 0.05) 1px, transparent 1px) 0 0 / 16px 16px,
+    linear-gradient(to bottom, rgb(23 19 15 / 0.05) 1px, transparent 1px) 0 0 / 16px 16px,
+    #fffefb;
 }
 
 /* ---------- React Flow skin ---------- */
@@ -184,24 +182,24 @@
 }
 
 .react-flow__node {
-  font-family: var(--font-sans);
+  font-family: var(--font-serif);
 }
 
 .react-flow__node.selected {
   box-shadow:
-    0 0 0 2px var(--color-accent),
-    0 6px 14px -12px rgb(15 20 24 / 0.4) !important;
+    0 0 0 2px var(--color-ink),
+    0 4px 0 -3px var(--color-proof) !important;
 }
 
 .react-flow__node:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+  outline: 2px solid var(--color-proof);
+  outline-offset: 3px;
 }
 
 .react-flow__controls {
   overflow: hidden;
-  border: 1px solid var(--color-line);
-  border-radius: 2px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 0;
   box-shadow: none;
 }
 
@@ -223,12 +221,12 @@
 
 .react-flow__attribution {
   background: transparent !important;
-  color: #5f6b76 !important;
-  font-size: 10px !important;
+  color: #5f564c !important;
+  font-size: 11px !important;
 }
 
 .react-flow__attribution a {
-  color: #5f6b76 !important;
+  color: #5f564c !important;
 }
 
 /* ---------- PDF viewer skin ---------- */
@@ -246,7 +244,7 @@
 
 .rpv-default-layout__body,
 .rpv-core__viewer {
-  background: #e6ebee !important;
+  background: #e8e3d9 !important;
 }
 
 .rpv-default-layout__toolbar .rpv-toolbar__item {
@@ -258,15 +256,15 @@
 }
 
 .rpv-core__page-layer::after {
-  box-shadow: 0 0 0 1px rgb(15 20 24 / 0.08) !important;
+  box-shadow: 0 0 0 1px rgb(23 19 15 / 0.12) !important;
 }
 
 /* ---------- Motion ---------- */
 
-@keyframes ra-fade-up {
+@keyframes proof-fade {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(3px);
   }
   to {
     opacity: 1;
@@ -274,7 +272,7 @@
   }
 }
 
-@keyframes ra-fade-in {
+@keyframes proof-in {
   from {
     opacity: 0;
   }
@@ -283,55 +281,39 @@
   }
 }
 
-@keyframes ra-pulse {
+@keyframes proof-pulse {
   0%,
   100% {
-    opacity: 0.5;
+    opacity: 0.45;
   }
   50% {
     opacity: 1;
   }
 }
 
-@keyframes ra-fill {
+@keyframes proof-slide {
   from {
-    transform: scaleX(0);
-  }
-  to {
-    transform: scaleX(1);
-  }
-}
-
-/* Slide without fading: a half-transparent panel would fail contrast checks
-   and make its first frame unreadable. */
-@keyframes ra-slide-in {
-  from {
-    transform: translateX(12px);
+    transform: translateX(10px);
   }
   to {
     transform: translateX(0);
   }
 }
 
-.ra-fade-up {
-  animation: ra-fade-up 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+.proof-fade {
+  animation: proof-fade 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-.ra-fade-in {
-  animation: ra-fade-in 140ms ease-out both;
+.proof-in {
+  animation: proof-in 140ms ease-out both;
 }
 
-.ra-pulse {
-  animation: ra-pulse 1.4s ease-in-out infinite;
+.proof-pulse {
+  animation: proof-pulse 1.5s ease-in-out infinite;
 }
 
-.ra-slide-in {
-  animation: ra-slide-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-
-.ra-fill {
-  transform-origin: left center;
-  animation: ra-fill 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+.proof-slide {
+  animation: proof-slide 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 /* ---------- Mobile ---------- */
@@ -346,22 +328,22 @@
     flex-direction: column;
   }
 
-  .research-assistant-rail {
-    height: 40px;
-    flex-basis: 40px;
-    padding-left: 12px;
+  .research-assistant-masthead {
+    height: 46px;
+    flex-basis: 46px;
+    padding: 0 12px;
   }
 
-  .research-assistant-rail .rail-context {
+  .research-assistant-masthead .masthead-running {
     display: none;
   }
 
   .research-assistant-mobile-tabbar {
     display: flex;
-    flex: 0 0 44px;
+    flex: 0 0 42px;
     align-items: center;
     gap: 4px;
-    padding: 5px 8px;
+    padding: 4px 8px;
     border-bottom: 1px solid var(--color-line);
     background: var(--color-surface);
   }
@@ -374,7 +356,6 @@
     justify-content: center;
     gap: 6px;
     border: 1px solid transparent;
-    border-radius: 2px;
     background: transparent;
     color: var(--color-muted);
     font-size: 12.5px;
@@ -382,14 +363,13 @@
   }
 
   .research-assistant-mobile-tabbar button.is-active {
-    border-color: var(--color-line-strong);
-    background: var(--color-accent-soft);
-    color: var(--color-accent-ink);
+    border-color: var(--color-ink);
+    color: var(--color-ink);
   }
 
   .research-assistant-left-workspace {
     width: 100% !important;
-    height: calc(100dvh - 84px);
+    height: calc(100dvh - 88px);
     min-height: 0;
     border-right: 0;
     box-shadow: none;
@@ -401,14 +381,14 @@
 
   .research-assistant-graph-workspace {
     width: 100%;
-    height: calc(100dvh - 84px);
+    height: calc(100dvh - 88px);
     min-height: 0;
   }
 
   .research-assistant-app-shell[data-mobile-pane='chat'] .research-assistant-graph-workspace,
   .research-assistant-app-shell[data-mobile-pane='graph'] .research-assistant-left-workspace {
     position: absolute;
-    top: 84px;
+    top: 88px;
     bottom: 0;
     visibility: hidden;
     pointer-events: none;
@@ -428,11 +408,11 @@
     width: 100% !important;
   }
 
-  .research-assistant-meta-strip {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  .research-assistant-plate-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
-  .research-assistant-node-index {
+  .research-assistant-node-table {
     display: none !important;
   }
 }
@@ -446,11 +426,4 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
-}
-
-/* ---------- Focus ---------- */
-
-:where(button, a, input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid #1b4d6b !important;
-  outline-offset: 2px !important;
 }

@@ -31,13 +31,13 @@ describe('GraphPanel planner source badge', () => {
         plannerFallbackReason="execute_code node is missing generated code input"
       />,
     );
-    const badge = screen.getByText('模板规划');
+    const badge = screen.getByText(/模板规划/);
     expect(badge).toBeInTheDocument();
     expect(badge.getAttribute('title')).toContain('missing generated code input');
   });
 
   it('does not show the badge for agent-planned graphs', () => {
     render(<GraphPanel {...baseProps} plannerSource="agent" />);
-    expect(screen.queryByText('模板规划')).not.toBeInTheDocument();
+    expect(screen.queryByText(/模板规划/)).not.toBeInTheDocument();
   });
 });

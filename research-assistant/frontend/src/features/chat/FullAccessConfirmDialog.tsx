@@ -24,6 +24,7 @@ const risks = [
   { key: '算力', value: '按计划声明使用 GPU 与网络访问' },
 ];
 
+/** A signed permission slip, in the same typographic voice as the proof sheet. */
 export function FullAccessConfirmDialog({ open, onCancel, onConfirm }: FullAccessConfirmDialogProps) {
   const [acknowledged, setAcknowledged] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -126,64 +127,77 @@ export function FullAccessConfirmDialog({ open, onCancel, onConfirm }: FullAcces
         aria-labelledby="full-access-title"
         aria-describedby="full-access-description"
         tabIndex={-1}
-        className="ra-fade-up w-full max-w-md border border-line-strong bg-surface outline-none shadow-float"
+        className="proof-fade w-full max-w-md border-2 border-ink bg-surface outline-none shadow-float"
       >
-        <div className="flex items-start justify-between gap-3 border-b border-line bg-surface-muted px-4 py-3">
-          <div className="flex items-start gap-2.5">
-            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-flag" />
-            <div>
-              <h2 id="full-access-title" className="font-display text-[15px] font-semibold text-ink">启用完全权限</h2>
-              <p id="full-access-description" className="mt-0.5 text-[12.5px] leading-5 text-muted">
-                当前计划将不再逐项请求确认。以下操作会自动执行，仍受镜像白名单、磁盘与运行时长上限约束。
-              </p>
+        <div className="flex items-start justify-between gap-3 border-b border-line px-5 pb-3 pt-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 shrink-0 text-proof" />
+              <span className="journal-caps text-[10px] text-proof">授权单 · 需签署</span>
             </div>
+            <h2 id="full-access-title" className="mt-1.5 font-serif text-[18px] font-semibold leading-6 text-ink">启用完全权限</h2>
+            <p id="full-access-description" className="mt-1 font-serif text-[12.5px] leading-5 text-ink-soft">
+              当前计划将不再逐项请求确认。以下操作会自动执行，仍受镜像白名单、磁盘与运行时长上限约束。
+            </p>
           </div>
           <button
             ref={closeButtonRef}
             type="button"
             onClick={() => { setAcknowledged(false); onCancel(); }}
             aria-label="关闭完全权限确认"
-            className="flex h-6 w-6 items-center justify-center text-muted transition-colors hover:bg-surface-strong hover:text-ink"
+            className="flex h-6 w-6 shrink-0 items-center justify-center border border-transparent text-muted transition-colors hover:border-line-strong hover:text-ink"
           >
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
 
-        <dl className="grid grid-cols-[68px_minmax(0,1fr)] border-b border-line">
-          {risks.map((risk) => (
-            <div key={risk.key} className="contents">
-              <dt className="border-b border-line/70 px-4 py-2 font-mono text-[11px] tracking-[0.08em] text-faint">{risk.key}</dt>
-              <dd className="border-b border-line/70 px-3 py-2 text-[12.5px] leading-5 text-ink-soft">{risk.value}</dd>
-            </div>
-          ))}
-        </dl>
+        <table className="w-full border-collapse">
+          <caption className="sr-only">完全权限自动执行的操作</caption>
+          <thead>
+            <tr className="border-b border-ink bg-surface-muted journal-caps text-[10px]">
+              <th scope="col" className="w-16 border-r border-line px-4 py-1.5 text-left font-normal">项目</th>
+              <th scope="col" className="px-3 py-1.5 text-left font-normal">将自动执行</th>
+            </tr>
+          </thead>
+          <tbody>
+            {risks.map((risk) => (
+              <tr key={risk.key} className="border-b border-line">
+                <th scope="row" className="border-r border-line px-4 py-2 text-left journal-num text-[11px] font-normal text-muted">{risk.key}</th>
+                <td className="px-3 py-2 font-serif text-[12.5px] leading-5 text-ink-soft">{risk.value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
 
-        <div className="p-4">
-          <label className="flex items-start gap-2 border border-flag/25 bg-flag-soft px-2.5 py-2 text-[12px] leading-5 text-ink-soft">
+        <div className="px-5 pb-4 pt-3">
+          <label className="flex items-start gap-2 border border-proof/30 bg-proof-soft px-3 py-2">
             <input
               type="checkbox"
               checked={acknowledged}
               onChange={(event) => setAcknowledged(event.target.checked)}
-              className="mt-1 h-3.5 w-3.5 accent-[var(--color-accent)]"
+              className="mt-1 h-3.5 w-3.5 accent-[#17130f]"
             />
-            <span>我理解并允许系统在当前计划中自动执行上述操作；仅在我信任该论文仓库时使用。</span>
+            <span className="font-serif text-[12px] leading-5 text-ink-soft">我理解并允许系统在当前计划中自动执行上述操作；仅在我信任该论文仓库时使用。</span>
           </label>
-          <div className="mt-3 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => { setAcknowledged(false); onCancel(); }}
-              className="h-7 border border-line-strong px-3 text-[12.5px] font-medium text-ink-soft transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-            >
-              取消
-            </button>
-            <button
-              type="button"
-              disabled={!acknowledged}
-              onClick={() => { setAcknowledged(false); onConfirm(); }}
-              className="h-7 bg-accent px-3 text-[12.5px] font-semibold text-white transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-surface-strong disabled:text-faint focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-            >
-              确认完全权限
-            </button>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <span className="journal-caps text-[10px]">签署人：计划所有者</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => { setAcknowledged(false); onCancel(); }}
+                className="h-7 border border-line-strong px-3 text-[12px] font-medium text-ink-soft transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-proof"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={!acknowledged}
+                onClick={() => { setAcknowledged(false); onConfirm(); }}
+                className="h-7 bg-ink px-3 text-[12px] font-semibold text-paper transition-colors hover:bg-black disabled:cursor-not-allowed disabled:bg-[#e6e0d3] disabled:text-[#4a4238] focus-visible:outline focus-visible:outline-2 focus-visible:outline-proof"
+              >
+                签署并启用
+              </button>
+            </div>
           </div>
         </div>
       </div>

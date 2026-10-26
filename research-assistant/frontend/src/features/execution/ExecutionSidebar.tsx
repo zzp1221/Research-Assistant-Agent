@@ -139,8 +139,8 @@ function PanelHeader(props: { eyebrow: string; title: string; onClose: () => voi
   return (
     <div className="flex shrink-0 items-start justify-between gap-4 border-b border-line bg-surface px-4 py-2.5">
       <div className="min-w-0">
-        <div className="instrument-kicker">{eyebrow}</div>
-        <h2 className="mt-0.5 truncate font-display text-[14px] font-semibold leading-5 tracking-[-0.01em] text-ink">{title}</h2>
+        <div className="journal-caps text-[10px]">{eyebrow}</div>
+        <h2 className="mt-0.5 truncate font-serif text-[15px] font-semibold leading-5 text-ink">{title}</h2>
       </div>
       <button
         type="button"
@@ -179,7 +179,7 @@ export function ExecutionSidebar(props: ExecutionSidebarProps) {
   return (
     <div
       style={{ width }}
-      className={`research-assistant-execution-sidebar ra-slide-in z-20 flex flex-col border-l border-line bg-surface ${
+      className={`research-assistant-execution-sidebar proof-slide z-20 flex flex-col border-l border-ink bg-surface ${
         isExpanded ? 'absolute inset-0 shadow-[var(--shadow-float)]' : 'relative'
       }`}
     >
@@ -322,7 +322,7 @@ function ExpandedReportView({ title, executionResult, onClose }: ExpandedReportV
     <div className="flex min-h-0 flex-1 flex-col bg-surface">
       <PanelHeader eyebrow="Analysis Report" title={title} onClose={onClose} closeLabel="退出全屏报告" />
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-        <article className="mx-auto max-w-[68ch] font-serif text-[15px] leading-7 text-ink-soft prose prose-stone prose-headings:font-serif prose-headings:text-ink prose-strong:text-ink prose-code:font-sans prose-code:text-[13px] prose-code:text-accent-ink prose-pre:rounded-[2px] prose-pre:bg-[#12181d] prose-pre:text-[13px] prose-pre:text-[#dfe6ea] prose-img:rounded-[2px] prose-img:border prose-img:border-line">
+        <article className="mx-auto max-w-[68ch] font-serif text-[15px] leading-[1.85] text-ink-soft prose prose-stone prose-headings:font-serif prose-headings:text-ink prose-strong:text-ink prose-code:font-sans prose-code:text-[13px] prose-code:text-accent-ink prose-pre:rounded-[2px] prose-pre:bg-[#12181d] prose-pre:text-[13px] prose-pre:text-[#dfe6ea] prose-img:rounded-[2px] prose-img:border prose-img:border-line">
           <ReportMarkdown>{executionResult}</ReportMarkdown>
         </article>
       </div>
@@ -419,14 +419,13 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
 
   return (
     <>
-      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-line bg-surface px-3.5 py-2.5">
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-ink bg-surface px-4 py-2.5">
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="instrument-kicker">节点详情</span>
-            <span className="text-line-strong">/</span>
-            <span className="instrument-num text-[11px] text-muted">{getAgentLabel(selectedTask.AssignedTo)}</span>
+          <div className="flex items-baseline gap-2">
+            <span className="journal-caps text-[10px]">页边批注</span>
+            <span className="journal-num text-[10.5px] text-muted">{getAgentLabel(selectedTask.AssignedTo)}</span>
           </div>
-          <h3 className="mt-0.5 truncate text-[13.5px] font-semibold leading-5 text-ink" title={selectedTask.Name}>{selectedTask.Name}</h3>
+          <h3 className="mt-0.5 truncate font-serif text-[14px] font-semibold leading-5 text-ink" title={selectedTask.Name}>{selectedTask.Name}</h3>
         </div>
         <button
           type="button"
@@ -440,29 +439,29 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <dl className="grid grid-cols-2 border-b border-line bg-surface">
-          <div className="border-b border-r border-line px-3.5 py-2">
-            <dt className="instrument-kicker">负责智能体</dt>
-            <dd className="mt-0.5 flex items-center gap-1.5 text-[12.5px] font-medium text-ink-soft">
-              {getAgentIcon(selectedTask.AssignedTo)}
-              {getAgentLabel(selectedTask.AssignedTo)}
-            </dd>
-          </div>
-          <div className="border-b border-line px-3.5 py-2">
-            <dt className="instrument-kicker">任务状态</dt>
-            <dd className="mt-0.5 text-[12.5px] font-medium text-ink-soft">
-              {taskStatusLabels[selectedTask.Status] ?? selectedTask.Status}
-            </dd>
-          </div>
-          <div className="border-r border-line px-3.5 py-2">
-            <dt className="instrument-kicker">任务类型</dt>
-            <dd className="instrument-num mt-0.5 text-[11.5px] text-ink-soft">{selectedTask.Type || '—'}</dd>
-          </div>
-          <div className="px-3.5 py-2">
-            <dt className="instrument-kicker">节点编号</dt>
-            <dd className="instrument-num mt-0.5 text-[11.5px] text-ink-soft">{selectedTask.ID.slice(0, 12)}</dd>
-          </div>
-        </dl>
+        <table className="w-full border-collapse border-b border-line">
+          <caption className="sr-only">节点规格</caption>
+          <tbody>
+            <tr className="border-b border-line">
+              <th scope="row" className="w-[5.5rem] border-r border-line px-4 py-1.5 text-left journal-caps text-[10px] font-normal">负责者</th>
+              <td className="px-3 py-1.5 text-[12px] text-ink-soft">
+                <span className="flex items-center gap-1.5">{getAgentIcon(selectedTask.AssignedTo, 'h-3.5 w-3.5 text-muted')}{getAgentLabel(selectedTask.AssignedTo)}</span>
+              </td>
+            </tr>
+            <tr className="border-b border-line">
+              <th scope="row" className="border-r border-line px-4 py-1.5 text-left journal-caps text-[10px] font-normal">状态</th>
+              <td className="px-3 py-1.5 text-[12px] text-ink-soft">{taskStatusLabels[selectedTask.Status] ?? selectedTask.Status}</td>
+            </tr>
+            <tr className="border-b border-line">
+              <th scope="row" className="border-r border-line px-4 py-1.5 text-left journal-caps text-[10px] font-normal">任务类型</th>
+              <td className="px-3 py-1.5 journal-num text-[11px] text-ink-soft">{selectedTask.Type || '—'}</td>
+            </tr>
+            <tr>
+              <th scope="row" className="border-r border-line px-4 py-1.5 text-left journal-caps text-[10px] font-normal">节点编号</th>
+              <td className="px-3 py-1.5 journal-num text-[11px] text-ink-soft">{selectedTask.ID.slice(0, 12)}</td>
+            </tr>
+          </tbody>
+        </table>
 
         {ablationBudget && (
           <div className="grid grid-cols-3 border-b border-line bg-surface">
@@ -472,12 +471,12 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
           </div>
         )}
 
-        <div className="border-b border-line px-3.5 py-2">
+        <div className="border-b border-line px-4 py-2">
           <button
             onClick={onExecute}
             disabled={isExecuting || requiresApproval}
             title={requiresApproval ? '计划尚未审批，请先使用右上角“审批并运行”' : '启动当前节点'}
-            className="flex h-8 w-full items-center justify-center gap-1.5 border border-line-strong bg-surface px-3 text-[12px] font-semibold text-ink-soft transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink active:translate-y-px disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-muted disabled:text-faint"
+            className="flex h-8 w-full items-center justify-center gap-1.5 border border-line-strong bg-surface px-3 text-[12px] font-semibold text-ink-soft transition-colors hover:border-ink hover:text-ink active:translate-y-px disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-muted disabled:text-muted"
           >
             {requiresApproval ? (
               <>
@@ -507,7 +506,7 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
         </div>
 
         {(executionResult || executionCode || executionStructuredData) && (
-          <div className="flex items-center justify-between border-b border-line px-2">
+          <div className="flex items-center justify-between border-b border-line px-1">
             <div role="tablist" aria-label="节点结果视图" className="flex flex-1 items-center overflow-x-auto">
               {tabItems.map((tab) => (
                 <TabButton
@@ -544,9 +543,9 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
           {activeMode === 'logs' ? (
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="mb-1.5 flex items-center justify-between px-0.5">
-                <span className="instrument-kicker flex items-center gap-1.5">
+                <span className="journal-caps flex items-center gap-1.5 text-[10px]">
                   <TerminalSquare className="h-3 w-3" />
-                  运行日志
+                  校样日志
                 </span>
                 <button
                   type="button"
@@ -558,7 +557,7 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
                   {copied ? '已复制' : '复制'}
                 </button>
               </div>
-              <div className="min-h-[16rem] flex-1 overflow-y-auto border border-[#1d262e] bg-[#0b1116] px-3 py-2.5 font-mono text-[11.5px] leading-[1.75] text-[#d5dee4] whitespace-pre-wrap break-words selection:bg-accent/40">
+              <div className="min-h-[16rem] flex-1 overflow-y-auto border border-line-strong bg-[#17130f] px-3 py-2.5 font-mono text-[11.5px] leading-[1.75] text-[#e8e3d9] whitespace-pre-wrap break-words selection:bg-proof/40">
                 {executionLogs || '> 等待执行…'}
                 {executionResult && !reportAgents.has(selectedTask.AssignedTo) && (
                   <div className="mt-4 border-t border-white/10 pt-3 text-[#a9c9b5]">
@@ -621,7 +620,7 @@ function TabButton(props: { active: boolean; onClick: () => void; onKeyDown?: (e
       tabIndex={active ? 0 : -1}
       onClick={onClick}
       onKeyDown={onKeyDown}
-      className={`flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-2 text-[11.5px] font-semibold transition-colors ${
+      className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 journal-caps text-[10px] transition-colors ${
         active
           ? 'border-accent text-accent-ink'
           : 'border-transparent text-muted hover:border-line-strong hover:text-ink-soft'
@@ -637,8 +636,8 @@ function BudgetValue({ label, value, suffix }: { label: string; value: unknown; 
   const displayValue = typeof value === 'number' || typeof value === 'string' ? String(value) : '-';
   return (
     <div className="border-r border-line px-3 py-2 text-center last:border-r-0">
-      <div className="instrument-kicker">{label}</div>
-      <div className="instrument-num mt-0.5 text-[12.5px] font-semibold text-ink-soft">{displayValue} {suffix}</div>
+      <div className="journal-caps text-[10px]">{label}</div>
+      <div className="journal-num mt-0.5 text-[12.5px] font-semibold text-ink-soft">{displayValue} {suffix}</div>
     </div>
   );
 }

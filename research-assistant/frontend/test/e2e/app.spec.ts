@@ -4,7 +4,7 @@ test('home page renders the research workbench', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Research Assistant').first()).toBeVisible();
   await expect(page.getByRole('button', { name: '发送消息' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '起始实验' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '起始选题' })).toBeVisible();
   await expect(page.getByText('多智能体执行流程')).toBeVisible();
 });
 
@@ -19,9 +19,9 @@ test('mobile layout switches panes without overflow or console errors', async ({
   await expect(page.getByText('Research Assistant').first()).toBeVisible();
   await expect(page.locator('.research-assistant-mobile-tabbar')).toBeVisible();
 
-  await page.getByRole('button', { name: '流程' }).click();
+  await page.getByRole('button', { name: /图版/ }).click();
   await expect(page.locator('.research-assistant-app-shell')).toHaveAttribute('data-mobile-pane', 'graph');
-  await page.getByRole('button', { name: '对话' }).click();
+  await page.getByRole('button', { name: '校样' }).click();
   await expect(page.locator('.research-assistant-app-shell')).toHaveAttribute('data-mobile-pane', 'chat');
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

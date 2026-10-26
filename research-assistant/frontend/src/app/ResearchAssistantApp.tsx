@@ -17,55 +17,65 @@ import { buildGraphLayout } from '../features/plan-graph/buildGraphLayout';
 import type { IntentContext, MissingRequirement, RuntimeAction } from '../contracts/api';
 import { isPdfAttachment } from '../features/pdf-viewer/pdfAttachment';
 
-interface InstrumentRailProps {
+interface JournalMastheadProps {
   planTitle: string | null;
   planId: string | null;
   stepCount: number;
   completedCount: number;
+  pendingCount: number;
   isExecuting: boolean;
   permissionMode: string | null;
   account: string;
 }
 
-function InstrumentRail(props: InstrumentRailProps) {
-  const { planTitle, planId, stepCount, completedCount, isExecuting, permissionMode, account } = props;
+/**
+ * The spread carries a masthead, not a navigation bar: the workbench is a
+ * manuscript under review, and every run is one issue of the same journal.
+ */
+function JournalMasthead(props: JournalMastheadProps) {
+  const { planTitle, planId, stepCount, completedCount, pendingCount, isExecuting, permissionMode, account } = props;
   return (
-    <div className="research-assistant-rail instrument-rail flex h-11 shrink-0 items-center gap-0 pl-4 text-rail-ink">
-      <div className="flex items-center gap-2.5 border-r border-white/12 pr-4">
-        <span className="relative block h-4 w-4 border-[1.5px] border-rail-ink" aria-hidden="true">
-          <span className="absolute left-[3px] top-[3px] block h-1.5 w-1.5 bg-rail-ink" />
-          <span className="absolute bottom-[3px] right-[3px] block h-1 w-1 border border-rail-ink" />
-        </span>
-        <span className="font-display text-[13px] font-semibold tracking-[0.01em]">Research Assistant</span>
-        <span className="font-mono text-[11px] tracking-[0.06em] text-rail-muted">仪器台</span>
+    <>
+      <header className="research-assistant-masthead masthead-rule flex h-16 shrink-0 items-center gap-6 bg-surface px-6">
+        <div className="flex-1 journal-caps leading-4">
+          Research Assistant
+          <br />
+          Manuscript Workbench
+        </div>
+        <div className="text-center">
+          <div className="journal-serif text-[22px] font-semibold leading-none tracking-[0.01em] text-ink">The Research Proof</div>
+          <div className="journal-caps mt-1.5 text-[10.5px]">第 12 卷 · 第 4 期 · 执行校样 · 2026</div>
+        </div>
+        <div className="flex-1 text-right journal-num text-[11px] leading-4 text-muted">
+          {planId ?? 'S-0000'}
+          <br />
+          {account}
+        </div>
+      </header>
+      <div className="flex h-9 shrink-0 items-center gap-5 border-b border-line bg-surface px-6">
+        <span className="journal-caps shrink-0">运行校样 · {planTitle ? '计划进行中' : '尚无计划'}</span>
+        <div className="flex min-w-0 flex-1 items-center justify-center gap-5 journal-num text-[11px] text-ink-soft">
+          <span>{stepCount} 节点</span>
+          <span className="h-3 w-px bg-line-strong" aria-hidden="true" />
+          <span>{completedCount} 完成</span>
+          {pendingCount > 0 && (
+            <>
+              <span className="h-3 w-px bg-line-strong" aria-hidden="true" />
+              <span className="text-proof">{pendingCount} 待批</span>
+            </>
+          )}
+          {planTitle && <span className="max-w-[22rem] truncate text-muted">{planTitle}</span>}
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          {isExecuting ? <span className="proof-stamp">未经最终验收</span> : <span className="journal-caps">已就绪</span>}
+          <span className="flex items-center gap-1.5 journal-caps">
+            <span className={`h-1.5 w-1.5 rounded-full ${isExecuting ? 'proof-pulse bg-proof' : completedCount > 0 && stepCount > 0 ? 'bg-ok' : 'bg-line-strong'}`} aria-hidden="true" />
+            {isExecuting ? '计划运行中' : stepCount > 0 ? '已就绪' : '空闲'}
+          </span>
+          <span className="journal-caps border-l border-line pl-3">{permissionMode === 'full_access' ? '完全权限' : '确认模式'}</span>
+        </div>
       </div>
-      <div className="rail-context ml-4 flex min-w-0 items-center gap-2 font-mono text-[11.5px] text-rail-muted">
-        {planTitle ? (
-          <>
-            <span className="truncate text-rail-ink">{planTitle}</span>
-            <span className="text-white/20">/</span>
-            <span className="shrink-0">{planId}</span>
-            <span className="text-white/20">/</span>
-            <span className="shrink-0 tabular-nums">{completedCount}÷{stepCount} 节点</span>
-          </>
-        ) : (
-          <span>尚无运行 · 在左侧描述研究目标</span>
-        )}
-      </div>
-      <div className="ml-auto flex h-full items-center">
-        <span className="flex h-full items-center gap-2 border-l border-white/10 px-4 font-mono text-[11.5px] text-rail-muted">
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${isExecuting ? 'ra-pulse bg-[#d9a441]' : completedCount > 0 && stepCount > 0 ? 'bg-[#69a985]' : 'bg-white/30'}`}
-            aria-hidden="true"
-          />
-          {isExecuting ? '计划运行中' : stepCount > 0 ? '已就绪' : '空闲'}
-        </span>
-        <span className="hidden h-full items-center border-l border-white/10 px-4 font-mono text-[11.5px] text-rail-muted sm:flex">
-          {permissionMode === 'full_access' ? '完全权限' : '确认模式'}
-        </span>
-        <span className="flex h-full items-center border-l border-white/10 px-4 font-mono text-[11.5px] text-rail-ink">{account}</span>
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -99,6 +109,7 @@ function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
   const graphProps = graphExecutionViewModel.graphPanelProps;
   const stepCount = graphProps.nodes.length;
   const completedCount = graphProps.nodes.filter((node) => node.data.status === 'completed').length;
+  const pendingActions = (graphProps.runtimeActions ?? []).filter((action) => action.status === 'pending').length;
 
   return (
     <div
@@ -106,76 +117,77 @@ function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
       data-mobile-pane={mobilePane}
       data-resizing={isResizing ? 'true' : 'false'}
     >
-      <InstrumentRail
+      <JournalMasthead
         planTitle={graphProps.intentContext?.raw_intent ?? null}
         planId={graphProps.planId ? graphProps.planId.slice(0, 8).toUpperCase() : null}
         stepCount={stepCount}
         completedCount={completedCount}
+        pendingCount={pendingActions}
         isExecuting={graphProps.isExecuting}
         permissionMode={graphProps.runtimePermissionMode ?? null}
         account={accountLabel}
       />
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-      <div className="research-assistant-mobile-tabbar">
-        <button
-          type="button"
-          onClick={() => onMobilePaneChange('chat')}
-          aria-pressed={mobilePane === 'chat'}
-          className={mobilePane === 'chat' ? 'is-active' : ''}
-        >
-          <MessageSquareText className="h-4 w-4" />
-          对话
-        </button>
-        <button
-          type="button"
-          onClick={() => onMobilePaneChange('graph')}
-          aria-pressed={mobilePane === 'graph'}
-          className={mobilePane === 'graph' ? 'is-active' : ''}
-        >
-          <GitBranch className="h-4 w-4" />
-          流程{graphNodeCount > 0 ? ` ${graphNodeCount}` : ''}
-        </button>
-      </div>
-
-      {leftWorkspace}
-
-      <div
-        className="research-assistant-left-resize-handle group relative flex w-2 shrink-0 cursor-col-resize items-center justify-center bg-paper transition-colors hover:bg-accent/10"
-        onPointerDown={(event) => {
-          event.preventDefault();
-          layout.startResizingLeftPanel();
-        }}
-        onDoubleClick={layout.resetLeftPanel}
-        title="拖动调整对话区宽度 · 双击恢复默认"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="调整对话区宽度"
-      >
-        <div className={`h-10 w-px rounded-full transition-colors ${layout.isResizing ? 'bg-accent' : 'bg-line-strong group-hover:bg-accent/70'}`} />
-      </div>
-
-      <div className="research-assistant-graph-workspace relative flex min-w-0 flex-1 overflow-hidden bg-paper">
-        <GraphPanel {...graphExecutionViewModel.graphPanelProps} />
-
-        {graphExecutionViewModel.showExecutionResizeHandle && (
-          <div
-            className="group relative z-20 flex w-2 shrink-0 cursor-col-resize items-center justify-center bg-surface transition-colors hover:bg-accent/10"
-            onPointerDown={(event) => {
-              event.preventDefault();
-              layout.startResizingSidebar();
-            }}
-            onDoubleClick={layout.resetSidebar}
-            title="拖动调整详情区宽度 · 双击恢复默认"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="调整节点详情宽度"
+        <div className="research-assistant-mobile-tabbar">
+          <button
+            type="button"
+            onClick={() => onMobilePaneChange('chat')}
+            aria-pressed={mobilePane === 'chat'}
+            className={mobilePane === 'chat' ? 'is-active' : ''}
           >
-            <div className={`h-10 w-px rounded-full transition-colors ${layout.isResizingSidebar ? 'bg-accent' : 'bg-line-strong group-hover:bg-accent/70'}`} />
-          </div>
-        )}
+            <MessageSquareText className="h-4 w-4" />
+            校样
+          </button>
+          <button
+            type="button"
+            onClick={() => onMobilePaneChange('graph')}
+            aria-pressed={mobilePane === 'graph'}
+            className={mobilePane === 'graph' ? 'is-active' : ''}
+          >
+            <GitBranch className="h-4 w-4" />
+            图版{graphNodeCount > 0 ? ` ${graphNodeCount}` : ''}
+          </button>
+        </div>
 
-        {graphExecutionViewModel.executionSidebarProps && <ExecutionSidebar {...graphExecutionViewModel.executionSidebarProps} />}
-      </div>
+        {leftWorkspace}
+
+        <div
+          className="research-assistant-left-resize-handle group relative flex w-1.5 shrink-0 cursor-col-resize items-center justify-center bg-paper transition-colors hover:bg-line"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            layout.startResizingLeftPanel();
+          }}
+          onDoubleClick={layout.resetLeftPanel}
+          title="拖动调整校样栏宽度 · 双击恢复默认"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="调整校样栏宽度"
+        >
+          <div className={`h-12 w-px transition-colors ${layout.isResizing ? 'bg-proof' : 'bg-line-strong group-hover:bg-ink'}`} />
+        </div>
+
+        <div className="research-assistant-graph-workspace relative flex min-w-0 flex-1 overflow-hidden bg-paper">
+          <GraphPanel {...graphExecutionViewModel.graphPanelProps} />
+
+          {graphExecutionViewModel.showExecutionResizeHandle && (
+            <div
+              className="group relative z-20 flex w-1.5 shrink-0 cursor-col-resize items-center justify-center bg-surface transition-colors hover:bg-line"
+              onPointerDown={(event) => {
+                event.preventDefault();
+                layout.startResizingSidebar();
+              }}
+              onDoubleClick={layout.resetSidebar}
+              title="拖动调整批注栏宽度 · 双击恢复默认"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整批注栏宽度"
+            >
+              <div className={`h-12 w-px transition-colors ${layout.isResizingSidebar ? 'bg-proof' : 'bg-line-strong group-hover:bg-ink'}`} />
+            </div>
+          )}
+
+          {graphExecutionViewModel.executionSidebarProps && <ExecutionSidebar {...graphExecutionViewModel.executionSidebarProps} />}
+        </div>
       </div>
     </div>
   );
