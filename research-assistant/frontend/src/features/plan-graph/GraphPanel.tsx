@@ -23,6 +23,7 @@ interface GraphPanelProps {
   runAllText: string;
   graphTitle: string;
   graphHint: string;
+  planId?: string | null;
   isExecuting: boolean;
   requiresApproval: boolean;
   onRunAll: () => void;
@@ -158,6 +159,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
     runAllText,
     graphTitle,
     graphHint,
+    planId,
     isExecuting,
     requiresApproval,
     onRunAll,
@@ -253,6 +255,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
             <p className="mt-1 max-w-3xl truncate text-[12.5px] leading-5 text-muted" title={subtitle}>
               {subtitle}
             </p>
+            {planId && <span className="instrument-num mt-0.5 block text-[11px] text-faint">{planId}</span>}
           </div>
 
           <div className="flex shrink-0 items-center gap-2 pt-0.5">

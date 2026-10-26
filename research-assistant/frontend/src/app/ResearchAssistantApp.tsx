@@ -108,7 +108,7 @@ function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
     >
       <InstrumentRail
         planTitle={graphProps.intentContext?.raw_intent ?? null}
-        planId={graphProps.intentContext ? 'PLAN' : null}
+        planId={graphProps.planId ? graphProps.planId.slice(0, 8).toUpperCase() : null}
         stepCount={stepCount}
         completedCount={completedCount}
         isExecuting={graphProps.isExecuting}

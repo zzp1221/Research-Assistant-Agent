@@ -53,6 +53,11 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
 	  onApproveAndRun: () => void runtime.actions.handleApproveAndRun(activePlanId),
 	  onCancel: () => void runtime.actions.handleCancelPlan(activePlanId),
 	  onRetryFailed: () => void runtime.actions.handleRetryFailedPlan(activePlanId),
+      planId: activePlanId,
+      onOpenTask: (taskId: string) => {
+        const node = nodes.find((candidate) => candidate.id === taskId);
+        if (node) runtime.actions.onNodeClick(null, node);
+      },
     };
 
     const isExpandedMode = runtime.state.executionState.displayMode.endsWith('-expanded');
