@@ -2,12 +2,16 @@ package scheduler
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"research-assistant-backend/internal/blobstore"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/store"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,6 +54,12 @@ type Scheduler struct {
 	maxConcurrent int
 	onTerminal    func(context.Context, *models.PlanGraph)
 	finalizer     PlanFinalizer
+	// sandboxCleanup releases plan-scoped runtime resources when a plan reaches
+	// a terminal state (completed/failed/canceled) or is canceled.
+	sandboxCleanup func(context.Context, *models.PlanGraph)
+	// blobs externalises large artifact values (images/reports) so PlanGraph
+	// snapshots stay small and identical images are stored exactly once.
+	blobs *blobstore.Store
 }
 
 func NewScheduler(planStore store.PlanStore, executor TaskExecutor, publisher EventPublisher, maxConcurrent int) *Scheduler {
@@ -79,11 +89,120 @@ func (s *Scheduler) SetFinalizer(finalizer PlanFinalizer) {
 	s.finalizer = finalizer
 }
 
+// SetSandboxCleanup registers the plan-level sandbox cleanup hook invoked on
+// every terminal transition. It is best-effort and never blocks the transition.
+func (s *Scheduler) SetSandboxCleanup(fn func(context.Context, *models.PlanGraph)) {
+	s.sandboxCleanup = fn
+}
+
+// SetBlobStore enables content-addressed externalisation of large artifacts.
+func (s *Scheduler) SetBlobStore(store *blobstore.Store) {
+	s.blobs = store
+}
+
+// blobThreshold is the value size above which an artifact is externalised.
+const blobThreshold = 16 * 1024
+
+// looksLikeBase64Image detects an inline base64 image payload.
+func looksLikeBase64Image(value string) bool {
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "data:image/") {
+		return true
+	}
+	return strings.HasPrefix(value, "iVBORw0KGgo") || strings.HasPrefix(value, "/9j/")
+}
+
+// isImageArtifact reports whether an artifact carries base64 image bytes.
+func isImageArtifact(artifact *models.Artifact) bool {
+	if artifact == nil {
+		return false
+	}
+	lowerType := strings.ToLower(artifact.Type)
+	lowerKey := strings.ToLower(artifact.Key)
+	return strings.Contains(lowerType, "image") || strings.Contains(lowerKey, "image") || strings.Contains(lowerKey, "plot")
+}
+
+// externalizeResult moves large artifact payloads and task images into the blob
+// store before the plan snapshot is written.
+func (s *Scheduler) externalizeResult(result *models.TaskExecutionResult) {
+	if s.blobs == nil || result == nil {
+		return
+	}
+	for i := range result.Artifacts {
+		artifact := &result.Artifacts[i]
+		if artifact.BlobRef != "" || len(artifact.Value) <= blobThreshold {
+			continue
+		}
+		payload := []byte(artifact.Value)
+		if isImageArtifact(artifact) && looksLikeBase64Image(artifact.Value) {
+			// Image artifacts carry base64 text; store the decoded PNG/JPEG so
+			// the blob is the real binary and hydration re-encodes exactly once.
+			if decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(artifact.Value)); err == nil {
+				payload = decoded
+			}
+		}
+		ref, size, err := s.blobs.Put(payload)
+		if err != nil {
+			continue
+		}
+		if artifact.Metadata == nil {
+			artifact.Metadata = map[string]any{}
+		}
+		artifact.Metadata["size_bytes"] = size
+		artifact.Metadata["preview"] = previewValue(artifact.Value)
+		artifact.BlobRef = ref
+		artifact.Location = "/api/artifacts/" + ref
+		artifact.Value = ""
+	}
+	if result.ImageBase64 != "" && result.ImageBlobRef == "" {
+		payload := []byte(result.ImageBase64)
+		if looksLikeBase64Image(result.ImageBase64) {
+			if decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(result.ImageBase64)); err == nil {
+				payload = decoded
+			}
+		}
+		if ref, _, err := s.blobs.Put(payload); err == nil {
+			result.ImageBlobRef = ref
+			// Drop the inline copy: the PlanGraph keeps only the reference and
+			// API responses rehydrate it on read.
+			result.ImageBase64 = ""
+		}
+	}
+}
+
+// CleanupPlanSandboxes releases the plan-scoped sandbox containers. It is used
+// when a plan becomes terminal outside the execution loop (for example a
+// rejected runtime action).
+func (s *Scheduler) CleanupPlanSandboxes(ctx context.Context, planID string) {
+	s.cleanupPlanSandboxes(ctx, planID)
+}
+
+func (s *Scheduler) cleanupPlanSandboxes(ctx context.Context, planID string) {
+	if s.sandboxCleanup == nil || strings.TrimSpace(planID) == "" {
+		return
+	}
+	plan, err := s.store.GetPlan(planID)
+	if err != nil || plan == nil {
+		return
+	}
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	_ = ctx
+	s.sandboxCleanup(cleanupCtx, plan)
+}
+
 func (s *Scheduler) CancelPlan(planID, reason string) error {
+	return s.CancelPlanWithActor(planID, reason, "")
+}
+
+// CancelPlanWithActor cancels a plan, cancels every pending runtime action so a
+// stale approval can never resurrect it, and releases plan-scoped sandboxes.
+func (s *Scheduler) CancelPlanWithActor(planID, reason, actor string) error {
 	now := time.Now()
 	if reason == "" {
 		reason = "canceled by user"
 	}
+	canceledActions := 0
 	if err := s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
 		if plan.Status == models.StatusCompleted || plan.Status == models.StatusFailed || plan.Status == models.StatusCanceled {
 			return fmt.Errorf("plan cannot be canceled from status %s", plan.Status)
@@ -106,12 +225,30 @@ func (s *Scheduler) CancelPlan(planID, reason string) error {
 				task.UpdatedAt = now
 			}
 		}
+		for i := range plan.RuntimeActions {
+			if plan.RuntimeActions[i].Status != models.RuntimeActionPending {
+				continue
+			}
+			plan.RuntimeActions[i].Status = models.RuntimeActionCanceled
+			plan.RuntimeActions[i].DecidedAt = &now
+			plan.RuntimeActions[i].DecidedBy = actor
+			plan.RuntimeActions[i].DecisionNote = "plan canceled"
+			canceledActions++
+		}
 		fillMeta(plan)
 		return nil
 	}); err != nil {
 		return err
 	}
-	s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "plan_canceled", TaskStatus: string(models.StatusCanceled), Payload: map[string]any{"reason": reason}, Timestamp: now})
+	payload := map[string]any{"reason": reason}
+	if actor != "" {
+		payload["actor"] = actor
+	}
+	if canceledActions > 0 {
+		payload["canceled_runtime_actions"] = canceledActions
+	}
+	s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "plan_canceled", TaskStatus: string(models.StatusCanceled), Payload: payload, Timestamp: now})
+	s.cleanupPlanSandboxes(context.Background(), planID)
 	return nil
 }
 
@@ -220,11 +357,22 @@ executionLoop:
 		if err := s.expireStaleLeases(planID); err != nil {
 			return err
 		}
+		// Approval waits use an independent budget and never consume the plan
+		// execution duration budget.
+		s.syncApprovalWaitWindow(planID)
+		if expired, expireErr := s.expireApprovalActions(planID); expireErr != nil {
+			return expireErr
+		} else if expired {
+			return nil
+		}
 		plan, err := s.store.GetPlan(planID)
 		if err != nil {
 			return err
 		}
 		if plan.Status == models.StatusCanceled {
+			return nil
+		}
+		if plan.Status == models.StatusFailed && plan.Outcome == models.OutcomeBlocked {
 			return nil
 		}
 		if budgetExceeded(plan) {
@@ -326,6 +474,7 @@ executionLoop:
 					Payload:   map[string]any{"outcome": string(outcome)},
 					Timestamp: time.Now(),
 				})
+				s.cleanupPlanSandboxes(context.Background(), planID)
 				if s.onTerminal != nil {
 					if latest, getErr := s.store.GetPlan(planID); getErr == nil && latest != nil {
 						s.onTerminal(ctx, latest)
@@ -365,6 +514,7 @@ executionLoop:
 					},
 					Timestamp: time.Now(),
 				})
+				s.cleanupPlanSandboxes(context.Background(), planID)
 				if s.onTerminal != nil {
 					if latest, getErr := s.store.GetPlan(planID); getErr == nil && latest != nil {
 						s.onTerminal(ctx, latest)
@@ -708,6 +858,7 @@ func (s *Scheduler) markTaskStarted(planID, taskID string) (string, string, int,
 
 func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner string, executionEpoch int, result *models.TaskExecutionResult) error {
 	now := time.Now()
+	s.externalizeResult(result)
 	if err := s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
 		task := getNodeByID(plan, taskID)
 		if task == nil {
@@ -721,6 +872,12 @@ func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner st
 		task.Code = result.Code
 		task.StructuredData = result.StructuredData
 		task.ImageBase64 = result.ImageBase64
+		if result.ImageBlobRef != "" {
+			if task.Metadata == nil {
+				task.Metadata = map[string]any{}
+			}
+			task.Metadata["image_blob_ref"] = result.ImageBlobRef
+		}
 		task.Error = ""
 		task.ExecutionID = ""
 		task.LeaseOwner = ""
@@ -734,8 +891,13 @@ func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner st
 			if key == "" {
 				return fmt.Errorf("task %s produced an artifact with an empty key", taskID)
 			}
-			if strings.TrimSpace(artifact.Value) == "" && strings.TrimSpace(artifact.Location) == "" {
-				return fmt.Errorf("task %s produced empty artifact %q", taskID, key)
+			if strings.TrimSpace(artifact.Value) == "" && strings.TrimSpace(artifact.Location) == "" && strings.TrimSpace(artifact.BlobRef) == "" {
+				// Optional image artifacts (execution_image) may legitimately be
+				// empty when a step produced no figure; downstream binding
+				// treats the empty value as "no upstream image".
+				if !strings.Contains(strings.ToLower(key), "image") {
+					return fmt.Errorf("task %s produced empty artifact %q", taskID, key)
+				}
 			}
 			if _, exists := seenArtifacts[key]; exists {
 				return fmt.Errorf("task %s produced duplicate artifact %q", taskID, key)
@@ -784,6 +946,7 @@ func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner st
 			"code":            result.Code,
 			"structured_data": result.StructuredData,
 			"image_base64":    result.ImageBase64,
+			"image_blob_ref":  result.ImageBlobRef,
 		},
 		Timestamp: now,
 	})
@@ -792,6 +955,7 @@ func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner st
 
 func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner string, executionEpoch int, result *models.TaskExecutionResult, allowRetry bool) (bool, error) {
 	now := time.Now()
+	s.externalizeResult(result)
 	retrying := false
 	blockedStatus := false
 	if err := s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
@@ -816,6 +980,12 @@ func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner strin
 		}
 		if strings.TrimSpace(result.ImageBase64) != "" {
 			task.ImageBase64 = result.ImageBase64
+		}
+		if result.ImageBlobRef != "" {
+			if task.Metadata == nil {
+				task.Metadata = map[string]any{}
+			}
+			task.Metadata["image_blob_ref"] = result.ImageBlobRef
 		}
 		for _, artifact := range result.Artifacts {
 			key := strings.TrimSpace(artifact.Key)
@@ -906,6 +1076,8 @@ func summarizeArtifacts(artifacts []models.Artifact) []map[string]any {
 			"key":              artifact.Key,
 			"type":             artifact.Type,
 			"producer_task_id": artifact.ProducerTaskID,
+			"blob_ref":         artifact.BlobRef,
+			"location":         artifact.Location,
 			"value_preview":    previewValue(artifact.Value),
 		})
 	}
@@ -980,6 +1152,7 @@ func (s *Scheduler) finishPlanTerminal(planID string, status models.TaskStatus, 
 		Payload:   map[string]any{"reason": reason},
 		Timestamp: now,
 	})
+	s.cleanupPlanSandboxes(context.Background(), planID)
 }
 
 func (s *Scheduler) expireStaleLeases(planID string) error {
@@ -1072,6 +1245,39 @@ func resetBlockedDependents(plan *models.PlanGraph, taskID string, now time.Time
 	visit(taskID)
 }
 
+// approvalTimeoutSeconds is the independent budget for waiting on a human
+// decision. It never counts toward the plan execution duration budget.
+func approvalTimeoutSeconds() int {
+	const fallback = 1800
+	raw := strings.TrimSpace(os.Getenv("APPROVAL_TIMEOUT_SECONDS"))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+// effectivePlanElapsed excludes approval wait windows from the execution budget.
+func effectivePlanElapsed(plan *models.PlanGraph, now time.Time) time.Duration {
+	if plan == nil || plan.Usage.StartedAt == nil {
+		return 0
+	}
+	elapsed := now.Sub(*plan.Usage.StartedAt)
+	elapsed -= time.Duration(plan.Usage.ApprovalWaitSeconds) * time.Second
+	if plan.Usage.ApprovalWaitingSince != nil {
+		if waiting := now.Sub(*plan.Usage.ApprovalWaitingSince); waiting > 0 {
+			elapsed -= waiting
+		}
+	}
+	if elapsed < 0 {
+		return 0
+	}
+	return elapsed
+}
+
 func budgetExceeded(plan *models.PlanGraph) bool {
 	if plan == nil {
 		return false
@@ -1079,7 +1285,120 @@ func budgetExceeded(plan *models.PlanGraph) bool {
 	if plan.Budget.MaxTaskAttempts > 0 && plan.Usage.TaskAttempts >= plan.Budget.MaxTaskAttempts && noRunning(plan) && !allTerminal(plan) {
 		return true
 	}
-	return plan.Budget.MaxDurationSec > 0 && plan.Usage.StartedAt != nil && time.Since(*plan.Usage.StartedAt) > time.Duration(plan.Budget.MaxDurationSec)*time.Second
+	if plan.Budget.MaxDurationSec <= 0 || plan.Usage.StartedAt == nil {
+		return false
+	}
+	return effectivePlanElapsed(plan, time.Now()) > time.Duration(plan.Budget.MaxDurationSec)*time.Second
+}
+
+// syncApprovalWaitWindow keeps RunUsage.ApprovalWaitingSince in sync with the
+// actual awaiting-approval state so the execution budget can be paused.
+func (s *Scheduler) syncApprovalWaitWindow(planID string) {
+	_ = s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
+		now := time.Now()
+		waiting := hasAwaitingApproval(plan)
+		if waiting && plan.Usage.ApprovalWaitingSince == nil {
+			plan.Usage.ApprovalWaitingSince = &now
+			plan.UpdatedAt = now
+			return nil
+		}
+		if !waiting && plan.Usage.ApprovalWaitingSince != nil {
+			waited := now.Sub(*plan.Usage.ApprovalWaitingSince)
+			if waited > 0 {
+				plan.Usage.ApprovalWaitSeconds += int(waited / time.Second)
+			}
+			plan.Usage.ApprovalWaitingSince = nil
+			plan.UpdatedAt = now
+		}
+		return nil
+	})
+}
+
+// expireApprovalActions turns every pending runtime action that exceeded
+// APPROVAL_TIMEOUT_SECONDS into an expired action, blocks its task and moves the
+// plan to a blocked terminal state with an actionable missing requirement.
+func (s *Scheduler) expireApprovalActions(planID string) (bool, error) {
+	timeout := time.Duration(approvalTimeoutSeconds()) * time.Second
+	expired := false
+	events := []models.PlanEvent{}
+	err := s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
+		now := time.Now()
+		for i := range plan.RuntimeActions {
+			action := &plan.RuntimeActions[i]
+			if action.Status != models.RuntimeActionPending {
+				continue
+			}
+			if action.RequestedAt.IsZero() || now.Sub(action.RequestedAt) < timeout {
+				continue
+			}
+			action.Status = models.RuntimeActionExpired
+			action.DecidedAt = &now
+			action.DecidedBy = "system:approval_timeout"
+			action.DecisionNote = "approval timed out"
+			expired = true
+			task := getNodeByID(plan, action.TaskID)
+			if task != nil {
+				task.Status = models.StatusBlocked
+				task.Error = "approval timed out after " + strconv.Itoa(approvalTimeoutSeconds()) + "s"
+				task.FinishedAt = &now
+				task.UpdatedAt = now
+			}
+			plan.MissingRequirements = appendMissingRequirement(plan.MissingRequirements, models.MissingRequirement{
+				Kind:        "approval_timeout",
+				Name:        string(action.Kind),
+				Detail:      "等待人工审批超过 APPROVAL_TIMEOUT_SECONDS，动作已过期",
+				Remediation: "重新创建计划并在审批窗口内确认该操作。",
+			})
+			events = append(events, models.PlanEvent{
+				PlanID:    plan.ID,
+				TaskID:    action.TaskID,
+				EventType: "runtime_action_expired",
+				Payload:   map[string]any{"action": action, "reason": "approval_timeout"},
+				Timestamp: now,
+			})
+		}
+		if expired {
+			plan.Status = models.StatusFailed
+			plan.Outcome = models.OutcomeBlocked
+			plan.OutcomeReason = "approval timed out"
+			plan.Usage.FinishedAt = &now
+			plan.Usage.ApprovalWaitingSince = nil
+			plan.UpdatedAt = now
+			for _, task := range plan.Nodes {
+				if task == nil {
+					continue
+				}
+				switch task.Status {
+				case models.StatusPending, models.StatusReady, models.StatusInProgress, models.StatusAwaitingApproval:
+					task.Status = models.StatusCanceled
+					task.Error = "plan aborted: approval timed out"
+					task.ExecutionID = ""
+					task.LeaseOwner = ""
+					task.LeaseExpiresAt = nil
+					task.FinishedAt = &now
+					task.UpdatedAt = now
+				}
+			}
+			fillMeta(plan)
+		}
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	for _, event := range events {
+		s.publishAndStore(planID, event)
+	}
+	if expired {
+		s.publishAndStore(planID, models.PlanEvent{
+			PlanID:    planID,
+			EventType: "plan_failed",
+			Payload:   map[string]any{"outcome": string(models.OutcomeBlocked), "reason": "approval_timeout"},
+			Timestamp: time.Now(),
+		})
+		s.cleanupPlanSandboxes(context.Background(), planID)
+	}
+	return expired, nil
 }
 
 func (s *Scheduler) publishDiscardedResult(planID, taskID, executionID, leaseOwner string) {
@@ -1144,6 +1463,24 @@ func (s *Scheduler) publishAndStore(planID string, event models.PlanEvent) {
 	if event.Timestamp.IsZero() {
 		event.Timestamp = time.Now()
 	}
+	// The persisted event only carries a blob reference. For live SSE consumers
+	// we hydrate the image inline so the existing UI keeps working, while the
+	// event log on disk stays small.
+	published := event
+	if s.blobs != nil && event.Payload != nil {
+		if ref, ok := event.Payload["image_blob_ref"].(string); ok && ref != "" {
+			if existing, _ := event.Payload["image_base64"].(string); strings.TrimSpace(existing) == "" {
+				if data, err := s.blobs.Get(ref); err == nil {
+					hydrated := make(map[string]any, len(event.Payload)+1)
+					for key, value := range event.Payload {
+						hydrated[key] = value
+					}
+					hydrated["image_base64"] = base64.StdEncoding.EncodeToString(data)
+					published.Payload = hydrated
+				}
+			}
+		}
+	}
 	if event.TraceID == "" {
 		if plan, err := s.store.GetPlan(planID); err == nil && plan != nil {
 			event.TraceID = plan.TraceID
@@ -1153,7 +1490,7 @@ func (s *Scheduler) publishAndStore(planID string, event models.PlanEvent) {
 		event.SpanID = "task_" + event.TaskID
 	}
 	_ = s.store.AppendEvent(planID, event)
-	s.publisher.Publish(planID, event)
+	s.publisher.Publish(planID, published)
 }
 
 func allTerminal(plan *models.PlanGraph) bool {

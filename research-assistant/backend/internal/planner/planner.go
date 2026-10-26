@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"regexp"
+	"sort"
 	intentpkg "research-assistant-backend/internal/intent"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/paperid"
@@ -59,18 +61,37 @@ func (p *Planner) BuildPlan(ctx context.Context, intent models.IntentContext) (*
 		nodes = buildCustomDatasetBenchmarkNodes(intent)
 	} else if isAutoResearchIntent(intent) {
 		nodes = buildAutoResearchNodes(intent)
-	} else if intent.IntentType == "General" && isPaperAnalysisIntent(intent) {
-		// D10: General + paper analysis always uses the deterministic builder so
-		// the same prompt cannot produce 3/5/2-node plans on different runs.
+	} else if intent.IntentType == "General" {
+		// General requests always use the deterministic builder: the same prompt
+		// must not produce 1/2/3-node plans on different runs. The agent planner
+		// remains an optional optimisation for execution-heavy intents.
 		nodes = buildGeneralNodesV2(intent)
 	} else if p.agent != nil {
 		nodes, err = p.agent.BuildNodes(ctx, intent)
+		if err == nil {
+			nodes = postProcessPlannerNodes(nodes)
+			if len(nodes) > maxAgentPlanNodes {
+				err = fmt.Errorf("planner produced %d nodes, above the %d node limit", len(nodes), maxAgentPlanNodes)
+			} else if validationErr := validateAgentPlannedNodes(intent, nodes); validationErr != nil {
+				// One bounded self-repair round with the validation error JSON
+				// before falling back to the deterministic template.
+				if repaired, repairErr := p.agent.RepairNodes(ctx, intent, nodes, validationErr); repairErr == nil {
+					repaired = postProcessPlannerNodes(repaired)
+					if len(repaired) <= maxAgentPlanNodes && validateAgentPlannedNodes(intent, repaired) == nil {
+						log.Printf("[PlannerAgent] self-repair succeeded after: %v", validationErr)
+						nodes = repaired
+						err = nil
+					} else {
+						err = validationErr
+					}
+				} else {
+					err = validationErr
+				}
+			}
+		}
 		if err != nil {
 			plannerFallbackReason = err.Error()
 			logPlannerFallback(intent, err)
-		} else if validationErr := validateAgentPlannedNodes(intent, nodes); validationErr != nil {
-			plannerFallbackReason = validationErr.Error()
-			logPlannerFallback(intent, validationErr)
 			nodes = nil
 		} else {
 			plannerSource = "agent"
@@ -81,6 +102,7 @@ func (p *Planner) BuildPlan(ctx context.Context, intent models.IntentContext) (*
 		plannerSource = "template"
 	}
 
+	normalizeArtifactContracts(nodes)
 	edges := buildEdgesFromNodes(nodes)
 	fillInitialStatuses(nodes)
 	plan.Nodes = nodes
@@ -109,6 +131,7 @@ func (p *Planner) BuildPlan(ctx context.Context, intent models.IntentContext) (*
 			templateNodes := buildFallbackNodes(intent)
 			if len(templateNodes) > 0 {
 				nodes = templateNodes
+				normalizeArtifactContracts(nodes)
 				edges := buildEdgesFromNodes(nodes)
 				fillInitialStatuses(nodes)
 				plan.Nodes = nodes
@@ -161,7 +184,7 @@ func newNode(name, taskType, agent string, deps, requiredArtifacts, outputArtifa
 		Priority:          0,
 		RetryLimit:        1,
 		RunCount:          0,
-		TimeoutSeconds:    600,
+		TimeoutSeconds:    defaultTaskTimeoutSeconds(taskType),
 		Contract: models.TaskContract{
 			Version:         models.TaskContractVersion,
 			InputArtifacts:  append([]string(nil), requiredArtifacts...),
@@ -184,6 +207,33 @@ func newNode(name, taskType, agent string, deps, requiredArtifacts, outputArtifa
 		log.Printf("planner built invalid task node %q: %v", displayName, err)
 	}
 	return node
+}
+
+// defaultTaskTimeoutSeconds gives heavy execution tasks a realistic budget.
+// Dependency installs and full experiment runs legitimately exceed ten minutes
+// on slow mirrors; the value is overridable per deployment.
+func defaultTaskTimeoutSeconds(taskType string) int {
+	envInt := func(key string, fallback int) int {
+		raw := strings.TrimSpace(os.Getenv(key))
+		if raw == "" {
+			return fallback
+		}
+		value, err := strconv.Atoi(raw)
+		if err != nil || value <= 0 {
+			return fallback
+		}
+		return value
+	}
+	switch taskType {
+	case "install_dependencies":
+		return envInt("TASK_TIMEOUT_INSTALL_SECONDS", 1800)
+	case "paper_code_execute", "benchmark_execute", "autoresearch_run", "experiment_run", "benchmark_adapter_preflight":
+		return envInt("TASK_TIMEOUT_EXECUTE_SECONDS", 3600)
+	case "render_plot", "result_visualization":
+		return envInt("TASK_TIMEOUT_PLOT_SECONDS", 900)
+	default:
+		return envInt("TASK_TIMEOUT_DEFAULT_SECONDS", 600)
+	}
 }
 
 func allowedToolsForAgent(agent string) []string {
@@ -899,6 +949,80 @@ func fillGraphMeta(plan *models.PlanGraph) {
 	}
 
 	plan.Meta = meta
+}
+
+// normalizeArtifactContracts applies the unified plot/execution artifact
+// contract after all builders (template or agent) produced their nodes:
+//   - a single execute_code node also publishes execution_image so a downstream
+//     render_plot can reuse the figure instead of regenerating it;
+//   - render_plot / result_visualization consume prepared_runtime and
+//     execution_image when (and only when) the plan actually has a producer.
+//
+// Adding these only when a producer exists keeps legacy plans valid while
+// eliminating the "render_plot creates a brand new sandbox" failure mode.
+func normalizeArtifactContracts(nodes []*models.TaskNode) {
+	if len(nodes) == 0 {
+		return
+	}
+	executeCodeCount := 0
+	var singleExecuteCode *models.TaskNode
+	for _, node := range nodes {
+		if node != nil && node.Type == "execute_code" {
+			executeCodeCount++
+			singleExecuteCode = node
+		}
+	}
+	if executeCodeCount == 1 && singleExecuteCode != nil {
+		singleExecuteCode.OutputArtifacts = ensureArtifacts(singleExecuteCode.OutputArtifacts, "execution_image")
+	}
+
+	producers := map[string]string{}
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		for _, key := range node.OutputArtifacts {
+			producers[key] = node.ID
+		}
+	}
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		switch node.Type {
+		case "render_plot", "result_visualization":
+			if producer, ok := producers["prepared_runtime"]; ok && producer != node.ID {
+				node.RequiredArtifacts = ensureArtifacts(node.RequiredArtifacts, "prepared_runtime")
+			} else if runtimeKey := findNamespacedRuntimeArtifact(producers, node.ID); runtimeKey != "" {
+				// Framework plans publish per-branch runtimes such as
+				// framework_a_prepared_runtime; reuse one instead of building an
+				// ephemeral sandbox.
+				node.RequiredArtifacts = ensureArtifacts(node.RequiredArtifacts, runtimeKey)
+			}
+			if producer, ok := producers["execution_image"]; ok && producer != node.ID {
+				node.RequiredArtifacts = ensureArtifacts(node.RequiredArtifacts, "execution_image")
+			}
+		}
+	}
+}
+
+// findNamespacedRuntimeArtifact returns a branch-namespaced prepared runtime
+// (for example framework_a_prepared_runtime) when the plan has one.
+func findNamespacedRuntimeArtifact(producers map[string]string, selfID string) string {
+	keys := make([]string, 0, len(producers))
+	for key, producer := range producers {
+		if producer == selfID {
+			continue
+		}
+		if strings.HasSuffix(key, "_prepared_runtime") || strings.HasSuffix(key, "_runtime_session") {
+			keys = append(keys, key)
+		}
+	}
+	if len(keys) == 0 {
+		return ""
+	}
+	sort.Strings(keys)
+	return keys[0]
 }
 
 func validatePlanGraph(plan *models.PlanGraph) error {
@@ -1736,6 +1860,9 @@ func validateCriticalNodeContracts(intent models.IntentContext, nodes []*models.
 	hasClaimEvidence := false
 	hasRepoDiscovery := false
 	hasRepoPrepare := false
+	hasReproductionSpec := false
+	hasImagePrepare := false
+	hasRuntimeValidate := false
 	hasAutoResearchSpec := false
 	hasAutoResearchRun := false
 	hasAutoResearchValidation := false
@@ -1799,6 +1926,21 @@ func validateCriticalNodeContracts(intent models.IntentContext, nodes []*models.
 			hasExperimentValidation = true
 			if node.AssignedTo != "research_coding_agent" || !containsArtifact(node.RequiredArtifacts, "experiment_trial_ledger") || !containsArtifact(node.RequiredArtifacts, "experiment_best_candidate") || !containsArtifact(node.OutputArtifacts, "experiment_validation_report") {
 				return fmt.Errorf("experiment_validate node %q has an incomplete validation contract", node.Name)
+			}
+		case "reproduction_spec":
+			hasReproductionSpec = true
+			if node.AssignedTo != "research_coding_agent" || !containsArtifact(node.OutputArtifacts, "reproduction_runtime_spec") {
+				return fmt.Errorf("reproduction_spec node %q must output reproduction_runtime_spec", node.Name)
+			}
+		case "image_prepare":
+			hasImagePrepare = true
+			if node.AssignedTo != "sandbox_agent" || !containsArtifact(node.OutputArtifacts, "runtime_image") || !containsArtifact(node.OutputArtifacts, "image_digest") {
+				return fmt.Errorf("image_prepare node %q must output runtime_image and image_digest", node.Name)
+			}
+		case "runtime_validate":
+			hasRuntimeValidate = true
+			if node.AssignedTo != "sandbox_agent" || !containsArtifact(node.OutputArtifacts, "environment_manifest") || !containsArtifact(node.OutputArtifacts, "runtime_validation_report") {
+				return fmt.Errorf("runtime_validate node %q must output environment_manifest and runtime_validation_report", node.Name)
 			}
 		case "generate_code":
 			hasGeneratedCode = true
@@ -1951,6 +2093,12 @@ func validateCriticalNodeContracts(intent models.IntentContext, nodes []*models.
 	if intent.IntentType == "Paper_Reproduction" {
 		if !hasPaperParse || !hasClaimRubric || !hasClaimEvidence || !hasRepoDiscovery || !hasRepoPrepare || !hasResolveDependencies || !hasPrepareRuntime || !hasInstallDependencies || !hasExecuteCode {
 			return fmt.Errorf("paper reproduction plan is missing one or more required canonical nodes")
+		}
+		// Preserve the audited reproduction runtime chain: without these nodes
+		// the plan cannot emit an EnvironmentManifest and would silently degrade
+		// reproducibility. The deterministic template always provides them.
+		if !hasReproductionSpec || !hasImagePrepare || !hasRuntimeValidate {
+			return fmt.Errorf("paper reproduction plan is missing the reproducibility runtime chain (reproduction_spec/image_prepare/runtime_validate)")
 		}
 	}
 	if intent.IntentType == "AutoResearch" {

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -16,10 +18,12 @@ import (
 	"sync"
 	"time"
 
+	"research-assistant-backend/internal/blobstore"
 	"research-assistant-backend/internal/events"
 	intentpkg "research-assistant-backend/internal/intent"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/planner"
+	"research-assistant-backend/internal/sandbox"
 	"research-assistant-backend/internal/scheduler"
 	"research-assistant-backend/internal/store"
 
@@ -76,12 +80,53 @@ func RegisterPlanRuntimeRoutes(
 	executor := scheduler.NewRoutedTaskExecutor(librarian, data, coder, specialized...)
 	runner := scheduler.NewScheduler(planStore, executor, eventBus, 2)
 	runner.SetFinalizer(&planner.PlanFinalizer{})
+	// Plan-level sandbox cleanup: every terminal plan releases its persistent
+	// runtimes so failed/canceled plans cannot leak containers.
+	sandboxURL := strings.TrimSpace(os.Getenv("SANDBOX_URL"))
+	if sandboxURL == "" {
+		sandboxURL = "http://localhost:8082"
+	}
+	sandboxClient := sandbox.NewSandboxClient(sandboxURL)
+
+	// Content-addressed artifact store keeps PlanGraph snapshots small.
+	blobRoot := strings.TrimSpace(os.Getenv("BLOB_STORE_PATH"))
+	if blobRoot == "" {
+		if planPath := strings.TrimSpace(os.Getenv("PLAN_STORE_PATH")); planPath != "" {
+			blobRoot = planPath + ".blobs"
+		} else {
+			blobRoot = filepath.Join(os.TempDir(), "research-assistant-blobs")
+		}
+	}
+	if blobStore, err := blobstore.New(blobRoot); err != nil {
+		log.Printf("blob store init failed: %v", err)
+	} else {
+		runner.SetBlobStore(blobStore)
+		planner.SetBlobLoader(blobStore.Get)
+		registerArtifactRoutes(apiGroup, blobStore)
+	}
+
+	runner.SetSandboxCleanup(func(ctx context.Context, plan *models.PlanGraph) {
+		if plan == nil || strings.TrimSpace(plan.ID) == "" {
+			return
+		}
+		removed, err := sandboxClient.CleanupPlanSandboxes(ctx, plan.ID)
+		if err != nil {
+			log.Printf("[sandbox] cleanup plan %s failed: %v", plan.ID, err)
+			return
+		}
+		if removed > 0 {
+			log.Printf("[sandbox] cleanup plan %s removed %d container(s)", plan.ID, removed)
+		}
+	})
 	runtime := newPlanRuntime(p, planStore, runner, eventBus)
 	runtime.register(apiGroup)
 }
 
 func (r *planRuntime) register(apiGroup *gin.RouterGroup) {
 	apiGroup.POST("/plan", r.createPlan)
+	apiGroup.GET("/plans", r.listPlans)
+	apiGroup.DELETE("/plans/:id", r.deletePlan)
+	apiGroup.GET("/sessions", r.listSessions)
 	apiGroup.GET("/plans/:id", r.getPlan)
 	apiGroup.GET("/plans/:id/events", r.getPlanEvents)
 	apiGroup.POST("/plans/:id/execute", r.executePlan)
@@ -176,6 +221,16 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save plan"})
 		return
 	}
+	_ = r.store.AppendEvent(plan.ID, models.PlanEvent{
+		PlanID:    plan.ID,
+		EventType: "plan_created",
+		Payload: map[string]any{
+			"actor":       userID,
+			"session_id":  sessionID,
+			"intent_type": plan.IntentType,
+		},
+		Timestamp: time.Now(),
+	})
 
 	response := gin.H{
 		"message":        "Plan generated successfully",
@@ -196,19 +251,240 @@ func (r *planRuntime) getPlan(c *gin.Context) {
 	if !ok {
 		return
 	}
+	hydratePlanForResponse(plan)
 	c.JSON(http.StatusOK, gin.H{"plan_graph": plan})
+}
+
+// planSummary is the lightweight list representation. It intentionally excludes
+// nodes, artifacts and base64 images so the plan library stays small.
+type planSummary struct {
+	ID             string     `json:"id"`
+	Title          string     `json:"title"`
+	IntentType     string     `json:"intent_type"`
+	Status         string     `json:"status"`
+	Outcome        string     `json:"outcome,omitempty"`
+	SessionID      string     `json:"session_id,omitempty"`
+	TotalNodes     int        `json:"total_nodes"`
+	CompletedNodes int        `json:"completed_nodes"`
+	FailedNodes    int        `json:"failed_nodes"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	FinishedAt     *time.Time `json:"finished_at,omitempty"`
+}
+
+func summarizePlan(plan *models.PlanGraph) planSummary {
+	title := strings.TrimSpace(plan.UserIntent)
+	if len([]rune(title)) > 60 {
+		title = string([]rune(title)[:60]) + "…"
+	}
+	return planSummary{
+		ID:             plan.ID,
+		Title:          title,
+		IntentType:     plan.IntentType,
+		Status:         string(plan.Status),
+		Outcome:        string(plan.Outcome),
+		SessionID:      plan.SessionID,
+		TotalNodes:     len(plan.Nodes),
+		CompletedNodes: plan.Meta.CompletedNodes,
+		FailedNodes:    plan.Meta.FailedNodes,
+		CreatedAt:      plan.CreatedAt,
+		UpdatedAt:      plan.UpdatedAt,
+		FinishedAt:     plan.Usage.FinishedAt,
+	}
+}
+
+func (r *planRuntime) listPlans(c *gin.Context) {
+	userID := resolveUserID(c)
+	limit := 20
+	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+	offset := 0
+	if raw := strings.TrimSpace(c.Query("cursor")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+	sessionFilter := strings.TrimSpace(c.Query("session_id"))
+	all, err := r.store.ListPlans()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	owned := make([]*models.PlanGraph, 0, len(all))
+	for _, plan := range all {
+		if plan == nil || plan.OwnerID != userID {
+			continue
+		}
+		if sessionFilter != "" && plan.SessionID != sessionFilter {
+			continue
+		}
+		owned = append(owned, plan)
+	}
+	sort.Slice(owned, func(i, j int) bool {
+		if owned[i].UpdatedAt.Equal(owned[j].UpdatedAt) {
+			return owned[i].ID > owned[j].ID
+		}
+		return owned[i].UpdatedAt.After(owned[j].UpdatedAt)
+	})
+	start := offset
+	if start > len(owned) {
+		start = len(owned)
+	}
+	end := start + limit
+	if end > len(owned) {
+		end = len(owned)
+	}
+	items := make([]planSummary, 0, end-start)
+	for _, plan := range owned[start:end] {
+		items = append(items, summarizePlan(plan))
+	}
+	nextCursor := ""
+	if end < len(owned) {
+		nextCursor = strconv.Itoa(end)
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"plans":       items,
+		"total":       len(owned),
+		"next_cursor": nextCursor,
+	})
+}
+
+func (r *planRuntime) deletePlan(c *gin.Context) {
+	plan, ok := r.authorizedPlan(c)
+	if !ok {
+		return
+	}
+	if plan.Status == models.StatusInProgress {
+		c.JSON(http.StatusConflict, gin.H{"error": "plan is running; cancel it before deleting"})
+		return
+	}
+	if err := r.store.DeletePlan(plan.ID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	r.scheduler.CleanupPlanSandboxes(context.Background(), plan.ID)
+	c.JSON(http.StatusOK, gin.H{"deleted": true, "plan_id": plan.ID})
+}
+
+func (r *planRuntime) listSessions(c *gin.Context) {
+	userID := resolveUserID(c)
+	all, err := r.store.ListPlans()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	type sessionSummary struct {
+		SessionID  string    `json:"session_id"`
+		PlanCount  int       `json:"plan_count"`
+		LastActive time.Time `json:"last_active"`
+	}
+	byID := map[string]*sessionSummary{}
+	for _, plan := range all {
+		if plan == nil || plan.OwnerID != userID || strings.TrimSpace(plan.SessionID) == "" {
+			continue
+		}
+		item, ok := byID[plan.SessionID]
+		if !ok {
+			item = &sessionSummary{SessionID: plan.SessionID}
+			byID[plan.SessionID] = item
+		}
+		item.PlanCount++
+		if plan.UpdatedAt.After(item.LastActive) {
+			item.LastActive = plan.UpdatedAt
+		}
+	}
+	items := make([]sessionSummary, 0, len(byID))
+	for _, item := range byID {
+		items = append(items, *item)
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].LastActive.After(items[j].LastActive) })
+	c.JSON(http.StatusOK, gin.H{"sessions": items})
+}
+
+// hydratePlanForResponse restores large artifact payloads and node images from
+// the content-addressed blob store for API consumers. The persisted PlanGraph
+// keeps only references, so snapshots stay small while clients still receive
+// the complete data they render.
+func hydratePlanForResponse(plan *models.PlanGraph) {
+	if plan == nil {
+		return
+	}
+	for key, artifact := range plan.Artifacts {
+		if strings.TrimSpace(artifact.Value) != "" || strings.TrimSpace(artifact.BlobRef) == "" {
+			continue
+		}
+		if data, err := planner.LoadBlobForResponse(artifact.BlobRef); err == nil {
+			if planner.IsImageBytes(data) {
+				artifact.Value = base64.StdEncoding.EncodeToString(data)
+			} else {
+				artifact.Value = string(data)
+			}
+			plan.Artifacts[key] = artifact
+		}
+	}
+	for _, node := range plan.Nodes {
+		if node == nil || node.Metadata == nil {
+			continue
+		}
+		ref, _ := node.Metadata["image_blob_ref"].(string)
+		if strings.TrimSpace(ref) == "" {
+			continue
+		}
+		node.ImageURL = "/api/artifacts/" + ref
+		if strings.TrimSpace(node.ImageBase64) == "" {
+			if data, err := planner.LoadBlobForResponse(ref); err == nil {
+				node.ImageBase64 = base64.StdEncoding.EncodeToString(data)
+			}
+		}
+	}
+}
+
+func registerArtifactRoutes(apiGroup *gin.RouterGroup, blobs *blobstore.Store) {
+	apiGroup.GET("/artifacts/:ref", func(c *gin.Context) {
+		ref := c.Param("ref")
+		if blobs == nil || !blobs.Exists(ref) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "artifact not found"})
+			return
+		}
+		path, err := blobs.Path(ref)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.File(path)
+	})
 }
 
 func (r *planRuntime) getPlanEvents(c *gin.Context) {
 	if _, ok := r.authorizedPlan(c); !ok {
 		return
 	}
-	events, err := r.store.ListEvents(c.Param("id"))
+	afterSeq := parseAfterSeq(c)
+	events, err := r.store.ListEventsAfter(c.Param("id"), afterSeq)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"events": events})
+	c.JSON(http.StatusOK, gin.H{"events": events, "after_seq": afterSeq})
+}
+
+// parseAfterSeq reads the incremental replay cursor from ?after_seq= or the
+// standard Last-Event-ID header.
+func parseAfterSeq(c *gin.Context) int64 {
+	if raw := strings.TrimSpace(c.Query("after_seq")); raw != "" {
+		if value, err := strconv.ParseInt(raw, 10, 64); err == nil && value > 0 {
+			return value
+		}
+	}
+	if raw := strings.TrimSpace(c.GetHeader("Last-Event-ID")); raw != "" {
+		if value, err := strconv.ParseInt(raw, 10, 64); err == nil && value > 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 func (r *planRuntime) streamTicket(c *gin.Context) {
@@ -241,7 +517,9 @@ func (r *planRuntime) executePlan(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "plan is already running"})
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), planTimeout(plan))
+	// The execution budget is enforced inside the scheduler so approval waits can
+	// be excluded from it; the context only carries cancellation.
+	ctx, cancel := context.WithCancel(context.Background())
 	r.running[planID] = cancel
 	r.mu.Unlock()
 
@@ -258,6 +536,12 @@ func (r *planRuntime) executePlan(c *gin.Context) {
 		}
 	}(ctx, cancel)
 
+	_ = r.store.AppendEvent(planID, models.PlanEvent{
+		PlanID:    planID,
+		EventType: "plan_execution_requested",
+		Payload:   map[string]any{"actor": resolveUserID(c)},
+		Timestamp: time.Now(),
+	})
 	c.JSON(http.StatusAccepted, gin.H{
 		"message": "Plan execution started",
 		"plan_id": planID,
@@ -272,7 +556,8 @@ func (r *planRuntime) cancelPlan(c *gin.Context) {
 	r.mu.Lock()
 	cancel := r.running[plan.ID]
 	r.mu.Unlock()
-	if err := r.scheduler.CancelPlan(plan.ID, "canceled by user"); err != nil {
+	actor := resolveUserID(c)
+	if err := r.scheduler.CancelPlanWithActor(plan.ID, "canceled by user", actor); err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
@@ -309,6 +594,12 @@ func (r *planRuntime) approvePlan(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
+	_ = r.store.AppendEvent(plan.ID, models.PlanEvent{
+		PlanID:    plan.ID,
+		EventType: "plan_approved",
+		Payload:   map[string]any{"actor": userID},
+		Timestamp: now,
+	})
 	c.JSON(http.StatusOK, gin.H{"message": "Plan approved", "plan_id": plan.ID})
 }
 
@@ -502,9 +793,12 @@ func (r *planRuntime) streamPlanEvents(c *gin.Context) {
 	subscription := r.events.Subscribe(planID)
 	defer r.events.Unsubscribe(planID, subscription)
 
+	// Incremental replay: only events after the client cursor are sent, so a
+	// reconnect never re-transfers the entire plan history.
+	lastSeq := parseAfterSeq(c)
 	seen := map[string]struct{}{}
 	replayUnseen := func() bool {
-		history, err := r.store.ListEvents(planID)
+		history, err := r.store.ListEventsAfter(planID, lastSeq)
 		if err != nil {
 			writePlanSSE(c, "error", gin.H{"error": err.Error()})
 			return false
@@ -515,7 +809,10 @@ func (r *planRuntime) streamPlanEvents(c *gin.Context) {
 				continue
 			}
 			seen[fingerprint] = struct{}{}
-			if !writePlanSSE(c, planStreamEventName, event) || isTerminalPlanEvent(event) {
+			if event.Seq > lastSeq {
+				lastSeq = event.Seq
+			}
+			if !writePlanSSEWithID(c, planStreamEventName, event.Seq, event) || isTerminalPlanEvent(event) {
 				return false
 			}
 		}
@@ -566,7 +863,9 @@ func (r *planRuntime) authorizedPlan(c *gin.Context) (*models.PlanGraph, bool) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "plan not found"})
 		return nil, false
 	}
-	if plan.OwnerID != "" && plan.OwnerID != resolveUserID(c) {
+	// Ownership is mandatory: a plan without an owner is not readable by any
+	// client, and a mismatching principal is always rejected.
+	if plan.OwnerID == "" || plan.OwnerID != resolveUserID(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "plan belongs to another user"})
 		return nil, false
 	}
@@ -717,6 +1016,25 @@ func removeAttachmentTextExcerpts(attachments []map[string]any) {
 	for _, attachment := range attachments {
 		delete(attachment, "text_excerpt")
 	}
+}
+
+func writePlanSSEWithID(c *gin.Context, eventName string, id int64, payload any) bool {
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return false
+	}
+	if id > 0 {
+		if _, err := fmt.Fprintf(c.Writer, "id: %d\n", id); err != nil {
+			return false
+		}
+	}
+	if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventName, encoded); err != nil {
+		return false
+	}
+	if flusher, ok := c.Writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
+	return true
 }
 
 func writePlanSSE(c *gin.Context, eventName string, payload any) bool {

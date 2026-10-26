@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, LogIn, MessageSquarePlus, UserRound } from 'lucide-react';
+import { Check, ChevronDown, MessageSquarePlus, UserRound } from 'lucide-react';
 
 interface SessionSummary {
   id: string;
@@ -154,43 +154,15 @@ export function ChatSessionManager(props: ChatSessionManagerProps) {
           </div>
 
           <div className="border-t border-line bg-surface-muted px-3 py-2.5">
-            {state.isLoggedIn ? (
-              <div className="flex items-center gap-2 text-[11.5px] text-ink-soft">
-                <UserRound className="h-3.5 w-3.5" />
-                <span className="truncate">已登录：<span className="font-medium text-ink">{state.userId}</span></span>
-              </div>
-            ) : (
-              <div>
-                <div className="mb-1.5 flex items-center gap-1.5 journal-caps text-[10px]">
-                  <UserRound className="h-3 w-3" />
-                  游客模式 · 登录后持久保存
-                </div>
-                <div className="flex gap-1.5">
-                  <input
-                    value={state.loginInput}
-                    onChange={(event) => actions.setLoginInput(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault();
-                        actions.onLogin();
-                      }
-                    }}
-                    placeholder="用户 ID，例如 alice"
-                    aria-label="用户 ID"
-                    className="h-8 min-w-0 flex-1 border border-line-strong bg-surface px-2 text-[12.5px] text-ink outline-none transition-colors placeholder:text-muted focus:border-ink"
-                  />
-                  <button
-                    type="button"
-                    onClick={actions.onLogin}
-                    disabled={state.loading || !state.loginInput.trim()}
-                    className="inline-flex h-8 items-center gap-1 bg-ink px-2.5 text-[12px] font-semibold text-paper transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <LogIn className="h-3 w-3" />
-                    登录
-                  </button>
-                </div>
-              </div>
-            )}
+            <div className="flex items-center gap-2 text-[11.5px] text-ink-soft">
+              <UserRound className="h-3.5 w-3.5" />
+              <span className="truncate">
+                会话身份：<span className="font-medium text-ink">{state.userId || '正在建立安全会话…'}</span>
+              </span>
+            </div>
+            <p className="mt-1 text-[10.5px] leading-4 text-muted">
+              身份由服务端签名 Cookie 签发，刷新或换设备后仍可找回计划。
+            </p>
           </div>
         </div>
       )}

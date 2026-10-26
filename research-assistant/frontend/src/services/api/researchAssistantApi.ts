@@ -16,10 +16,24 @@ export interface RequestIdentity {
   sessionId: string;
 }
 
-const buildIdentityHeaders = (identity: RequestIdentity) => ({
-  'X-User-Id': identity.userId,
-  'X-Session-Id': identity.sessionId,
-});
+export interface ServerIdentity {
+  user_id: string;
+  session_id: string;
+}
+
+// getMe resolves the server-derived principal (signed cookie based).
+export const getMe = async (): Promise<ServerIdentity> => {
+  const response = await httpClient.get<ServerIdentity>('/api/me');
+  return response.data;
+};
+
+// Identity is carried exclusively by server-signed HttpOnly cookies. The
+// frontend never sends a user id header, so a client cannot impersonate another
+// principal by editing a request.
+const buildIdentityHeaders = (identity?: RequestIdentity) => {
+  void identity;
+  return {};
+};
 
 export const createPlan = async (
   intent: string,
@@ -34,6 +48,37 @@ export const createPlan = async (
     runtime_permission_mode: runtimePermissionMode,
     runtime_permission_acknowledged: runtimePermissionAcknowledged,
   }, { headers: buildIdentityHeaders(identity) });
+  return response.data;
+};
+
+export interface PlanSummary {
+  id: string;
+  title: string;
+  intent_type: string;
+  status: string;
+  outcome?: string;
+  session_id?: string;
+  total_nodes: number;
+  completed_nodes: number;
+  failed_nodes: number;
+  created_at: string;
+  updated_at: string;
+  finished_at?: string;
+}
+
+export const listPlans = async (limit = 20, cursor = '', sessionId = ''): Promise<{ plans: PlanSummary[]; total: number; next_cursor: string }> => {
+  const params = new URLSearchParams();
+  params.set('limit', String(limit));
+  if (cursor) params.set('cursor', cursor);
+  if (sessionId) params.set('session_id', sessionId);
+  const response = await httpClient.get<{ plans: PlanSummary[]; total: number; next_cursor: string }>('/api/plans?' + params.toString());
+  return response.data;
+};
+
+export const deletePlan = async (planId: string, identity: RequestIdentity): Promise<{ deleted: boolean }> => {
+  const response = await httpClient.delete<{ deleted: boolean }>('/api/plans/' + planId, {
+    headers: buildIdentityHeaders(identity),
+  });
   return response.data;
 };
 

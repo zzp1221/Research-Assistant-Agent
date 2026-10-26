@@ -101,7 +101,7 @@ export function LeftWorkspaceChat(props: LeftWorkspaceChatProps) {
       widthPercent={widthPercent}
       showClosePdf={false}
       onClosePdf={pdfActions.onClosePdf}
-      accountLabel={state.isLoggedIn ? state.userId ?? '已登录' : '游客模式'}
+      accountLabel={state.userId ? `会话 ${state.userId.slice(0, 8)}` : '正在建立安全会话…'}
     >
       <ChatPanel state={state} chatActions={chatActions} pdfActions={pdfActions} taskActions={taskActions} />
     </LeftWorkspaceShell>

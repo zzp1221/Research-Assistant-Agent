@@ -58,6 +58,7 @@ const (
 	RuntimeActionApproved RuntimeActionStatus = "approved"
 	RuntimeActionRejected RuntimeActionStatus = "rejected"
 	RuntimeActionExpired  RuntimeActionStatus = "expired"
+	RuntimeActionCanceled RuntimeActionStatus = "canceled"
 )
 
 // RuntimeActionRequest is persisted in PlanGraph.RuntimeActions.

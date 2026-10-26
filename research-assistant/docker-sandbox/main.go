@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/subtle"
 	"docker-sandbox/internal/engine"
 	"encoding/json"
@@ -11,7 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -272,6 +275,73 @@ func (s *SandboxService) DeleteSandbox(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+func (s *SandboxService) ListSandboxes(c *gin.Context) {
+	planID := strings.TrimSpace(c.Query("plan_id"))
+	if planID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "plan_id is required"})
+		return
+	}
+	items, err := s.dkEngine.ListByPlan(c.Request.Context(), planID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"sandboxes": items, "count": len(items)})
+}
+
+type cleanupSandboxesRequest struct {
+	PlanID string `json:"plan_id" binding:"required"`
+}
+
+func (s *SandboxService) CleanupSandboxes(c *gin.Context) {
+	var req cleanupSandboxesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	removed, err := s.dkEngine.CleanupByPlan(c.Request.Context(), req.PlanID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	log.Printf("[Sandbox] cleanup plan=%s removed=%d", req.PlanID, removed)
+	c.JSON(http.StatusOK, gin.H{"removed": removed, "plan_id": req.PlanID})
+}
+
+// startSandboxReaper periodically removes sandbox containers that outlived the
+// configured TTL so leaked persistent runtimes cannot exhaust the host.
+func startSandboxReaper(ctx context.Context, svc *SandboxService) {
+	ttlMinutes := 120
+	if raw := strings.TrimSpace(os.Getenv("SANDBOX_TTL_MINUTES")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			ttlMinutes = parsed
+		}
+	}
+	interval := 5 * time.Minute
+	if raw := strings.TrimSpace(os.Getenv("SANDBOX_REAPER_INTERVAL_SECONDS")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 10 {
+			interval = time.Duration(parsed) * time.Second
+		}
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			removed, err := svc.dkEngine.ReapStale(context.Background(), time.Duration(ttlMinutes)*time.Minute)
+			if err != nil {
+				log.Printf("[Sandbox] reaper failed: %v", err)
+				continue
+			}
+			if removed > 0 {
+				log.Printf("[Sandbox] reaper removed %d stale sandbox container(s) (ttl=%dm)", removed, ttlMinutes)
+			}
+		}
+	}
+}
+
 func (s *SandboxService) Capabilities(c *gin.Context) {
 	c.JSON(http.StatusOK, s.dkEngine.Capabilities(c.Request.Context()))
 }
@@ -524,12 +594,16 @@ func runEngine() {
 		api.GET("/capabilities", svc.Capabilities)
 		api.POST("/images/ensure", svc.EnsureImage)
 		api.POST("/sandboxes", svc.CreateSandbox)
+		api.GET("/sandboxes", svc.ListSandboxes)
+		api.POST("/sandboxes/cleanup", svc.CleanupSandboxes)
 		api.DELETE("/sandboxes/:id", svc.DeleteSandbox)
 		api.POST("/sandboxes/:id/python", svc.ExecutePython)
 		api.POST("/sandboxes/:id/python/stream", svc.ExecutePythonStream)
 		api.POST("/sandboxes/:id/commands", svc.ExecuteCommand)
 		api.POST("/sandboxes/:id/commands/stream", svc.ExecuteCommandStream)
 	}
+
+	go startSandboxReaper(context.Background(), svc)
 
 	log.Printf("Docker Sandbox Engine starting on %s, fallback=%t, opensandbox=%s", listenAddr, enableFallback, osURL)
 	if err := r.Run(listenAddr); err != nil {

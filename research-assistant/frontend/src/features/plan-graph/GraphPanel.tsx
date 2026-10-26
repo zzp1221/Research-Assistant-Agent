@@ -468,10 +468,10 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
                       {String(nodeStep(node) ?? index + 1).padStart(2, '0')}
                     </span>
                     <span className="truncate border-r border-line/70 px-2 py-1 font-serif text-[12px] text-ink-soft">{task?.Name ?? node.id}</span>
-                    <span className="truncate border-r border-line/70 px-2 py-1 journal-caps text-[10px] text-muted">{task?.AssignedTo ? task.AssignedTo.replace('_agent', '').replace('research_coding', '科研 Coding').replace('benchmark', '评测').replace('sandbox', '沙箱').replace('librarian', '文献').replace('general', '通用').replace('data', '数据').replace('coder', '代码') : '—'}</span>
+                    <span className="truncate border-r border-line/70 px-2 py-1 journal-caps text-[10px] text-muted">{task?.AssignedTo ? task.AssignedTo.replace('_agent', '').replace('research_coding', '科研 Coding').replace('benchmark', '评测').replace('sandbox', '沙箱').replace('librarian', '文献').replace('general', '通用').replace('data', '数据').replace('coder', '代码').replace('answer', '回答') : '—'}</span>
                     <span className={`flex items-center justify-end gap-1 px-2 py-1 journal-caps text-[10px] ${statusInk(status)}`}>
                       <span aria-hidden="true">{getProofMark(status)}</span>
-                      {status === 'completed' ? '已校' : status === 'in_progress' ? '在排' : status === 'failed' ? '退改' : status === 'awaiting_approval' ? '待批' : '待校'}
+                      {status === 'completed' ? '已校' : status === 'in_progress' ? '在排' : status === 'failed' ? '退改' : status === 'awaiting_approval' ? '待批' : status === 'blocked' ? '受阻' : status === 'canceled' ? '已撤' : status === 'skipped' ? '跳过' : status === 'ready' ? '待排' : '待校'}
                     </span>
                   </button>
                 );

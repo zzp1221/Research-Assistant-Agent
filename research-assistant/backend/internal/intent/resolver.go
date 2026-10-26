@@ -175,11 +175,17 @@ func postValidate(ctx models.IntentContext) models.IntentContext {
 	}
 
 	frameworks := normalizeFrameworks(ctx.Entities["frameworks"])
+	// Never trust arbitrary LLM entities: only real framework names from the
+	// whitelist may drive Framework_Evaluation. This prevents "bisect/sorted"
+	// or any other library/function name from being treated as a framework.
+	frameworks = filterKnownFrameworks(frameworks)
 	if len(frameworks) == 0 {
 		frameworks = DetectKnownFrameworks(ctx.RawIntent)
 	}
 	if len(frameworks) > 0 {
 		ctx.Entities["frameworks"] = frameworks
+	} else {
+		delete(ctx.Entities, "frameworks")
 	}
 
 	switch ctx.IntentType {
@@ -224,6 +230,53 @@ func normalizeIntentType(value string) string {
 		return strings.TrimSpace(value)
 	case "Literature_Review", "Data_Analysis":
 		return "General"
+	default:
+		return ""
+	}
+}
+
+// filterKnownFrameworks keeps only whitelisted framework names, canonicalising
+// common aliases. Unknown names are dropped instead of being passed through.
+func filterKnownFrameworks(values []string) []string {
+	known := DetectKnownFrameworks(strings.Join(values, " "))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		canonical := canonicalFrameworkName(value)
+		if canonical == "" {
+			continue
+		}
+		if !containsString(out, canonical) {
+			out = append(out, canonical)
+		}
+	}
+	for _, item := range known {
+		if !containsString(out, item) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func canonicalFrameworkName(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, " ", "")
+	normalized = strings.ReplaceAll(normalized, "_", "")
+	normalized = strings.ReplaceAll(normalized, "-", "")
+	switch normalized {
+	case "langchain":
+		return "langchain"
+	case "llamaindex", "llama_index", "llamaindexai":
+		return "llamaindex"
+	case "haystack", "haystackai":
+		return "haystack"
+	case "dspy":
+		return "dspy"
+	case "autogen", "autogenai":
+		return "autogen"
+	case "crewai":
+		return "crewai"
+	case "langgraph":
+		return "langgraph"
 	default:
 		return ""
 	}

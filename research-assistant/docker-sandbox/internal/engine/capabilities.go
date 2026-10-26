@@ -22,6 +22,8 @@ type Capabilities struct {
 	DiskFreeBytes       int64    `json:"disk_free_bytes"`
 	ImageAllowlist      []string `json:"image_allowlist"`
 	NetworkMode         string   `json:"network_mode"`
+	SandboxCount        int      `json:"sandbox_count"`
+	ReaperTTLMinutes    int      `json:"reaper_ttl_minutes"`
 }
 
 // ImageInfo is returned by EnsureImage.
@@ -44,8 +46,40 @@ func (e *NativeDockerEngine) Capabilities(ctx context.Context) Capabilities {
 		DiskFreeBytes:       diskFreeBytes("/tmp"),
 		ImageAllowlist:      imageAllowlist(),
 		NetworkMode:         envOrDefault("SANDBOX_NETWORK_MODE", "bridge"),
+		SandboxCount:        countSandboxContainers(ctx),
+		ReaperTTLMinutes:    reaperTTLMinutes(),
 	}
 	return caps
+}
+
+func reaperTTLMinutes() int {
+	const fallback = 120
+	raw := strings.TrimSpace(os.Getenv("SANDBOX_TTL_MINUTES"))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+// countSandboxContainers reports how many sandbox containers are currently
+// running so operators can watch for leaks.
+func countSandboxContainers(ctx context.Context) int {
+	output, err := exec.CommandContext(ctx, dockerCommand(), "ps", "-q",
+		"--filter", "label="+sandboxLabelKey+"="+sandboxLabelValue).Output()
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	return count
 }
 
 func (e *NativeDockerEngine) EnsureImage(ctx context.Context, image string) (*ImageInfo, error) {
@@ -56,22 +90,27 @@ func (e *NativeDockerEngine) EnsureImage(ctx context.Context, image string) (*Im
 	if !sandboxImageAllowed(image) {
 		return nil, fmt.Errorf("image_not_allowed: %s is not in SANDBOX_IMAGE_ALLOWLIST", image)
 	}
-	info, err := inspectImage(ctx, image)
+	resolvedImage := rewriteImageWithRegistryMirror(image)
+	info, err := inspectImage(ctx, resolvedImage)
 	if err == nil {
 		info.Pulled = false
+		info.Image = image
 		return info, nil
 	}
 	pullCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
-	output, pullErr := exec.CommandContext(pullCtx, dockerCommand(), "pull", image).CombinedOutput()
+	output, pullErr := exec.CommandContext(pullCtx, dockerCommand(), "pull", resolvedImage).CombinedOutput()
 	if pullErr != nil {
 		return nil, fmt.Errorf("image_pull_failed: %v: %s", pullErr, truncateOutput(string(output), 800))
 	}
-	info, err = inspectImage(ctx, image)
+	info, err = inspectImage(ctx, resolvedImage)
 	if err != nil {
 		return nil, fmt.Errorf("image_pull_failed: pull completed but inspect failed: %w", err)
 	}
 	info.Pulled = true
+	// Report the logical image name the caller asked for while keeping the
+	// resolved (mirrored) image available for diagnostics.
+	info.Image = image
 	return info, nil
 }
 

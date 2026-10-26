@@ -164,10 +164,12 @@ JSON 必须包含 intent_type、confidence、entities、reasoning。
 intent_type 只能是以下之一：General, Code_Execution, Paper_Reproduction, Framework_Evaluation, AutoResearch, Custom_Benchmark, Literature_Review, Data_Analysis。
 判断规则：
 1. 纯绘图/画图/对比图请求，如果没有明确框架名称或框架对比/benchmark 语义，intent_type=Code_Execution，entities.needs_plot=true，output_mode=plot。
-2. 明确比较多个框架/工具/技术选型，intent_type=Framework_Evaluation；如果还要求图表，entities.needs_plot=true，output_mode=plot。
+2. Framework_Evaluation 只适用于下列框架白名单中的真实框架之间的对比/选型/benchmark：langchain, llamaindex, haystack, dspy, autogen, crewai, langgraph。只有同时出现白名单框架名 + benchmark/对比/选型语义时才判 Framework_Evaluation；如果还要求图表，entities.needs_plot=true，output_mode=plot。
+   重要：比较两个函数、算法、标准库（例如 bisect vs sorted、二分法 vs 摩尔排序、numpy vs pandas 的某个函数）属于 Code_Execution，不是 Framework_Evaluation；这些名称绝不能放进 entities.frameworks。
 3. 明确复现论文、论文仓库或论文实验，intent_type=Paper_Reproduction。
 4. 明确 AutoResearch/自动实验，intent_type=AutoResearch。
 5. 其他总结、解释、知识问答，intent_type=General。
+6. entities.frameworks 只能包含白名单框架名；没有白名单框架时省略该字段。
 entities 是字符串键值对象，可提取 frameworks（字符串数组）、framework_count、needs_plot（布尔）、needs_benchmark（布尔）、output_mode（plot/report）、paper_title、repo_url、topic、needs_report 等。
 示例：
 用户：帮我画一个正弦函数和余弦函数的对比图

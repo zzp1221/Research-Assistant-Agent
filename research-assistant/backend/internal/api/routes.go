@@ -50,7 +50,7 @@ func CORSMiddleware() gin.HandlerFunc {
 		}
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-User-Id, X-Session-Id")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
 
 		if c.Request.Method == "OPTIONS" {
 			if origin != "" && !corsOriginAllowed(origin) {
@@ -114,6 +114,16 @@ func SetupRoutes(r *gin.Engine) {
 
 		apiGroup.GET("/hello", func(c *gin.Context) {
 			c.String(200, "hello api group")
+		})
+
+		// /api/me returns the server-derived principal. The frontend uses it to
+		// display the account and to recover the current identity after refresh;
+		// it never supplies identity itself.
+		apiGroup.GET("/me", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"user_id":    resolveUserID(c),
+				"session_id": resolveSessionID(c),
+			})
 		})
 
 		apiGroup.GET("/health", func(c *gin.Context) {
@@ -313,6 +323,11 @@ func probeServiceHealth(ctx context.Context, client *http.Client, baseURL, path 
 		return result
 	}
 	for key, value := range payload {
+		switch key {
+		case "base_url", "model", "provider", "api_key":
+			// Never expose provider credentials/details on the public health probe.
+			continue
+		}
 		result[key] = value
 	}
 	result["configured"] = configured

@@ -6,10 +6,11 @@ import type {
 import { httpClient } from './httpClient';
 import type { RequestIdentity } from './researchAssistantApi';
 
-const buildIdentityHeaders = (identity: RequestIdentity) => ({
-  'X-User-Id': identity.userId,
-  'X-Session-Id': identity.sessionId,
-});
+// Identity travels in server-signed HttpOnly cookies; no user id header is sent.
+const buildIdentityHeaders = (identity?: RequestIdentity) => {
+  void identity;
+  return {};
+};
 
 export const getUploadDocument = async (uploadId: string, identity: RequestIdentity): Promise<DocumentInfoResponse> => {
   const response = await httpClient.get<DocumentInfoResponse>(`/api/uploads/${uploadId}/document`, {

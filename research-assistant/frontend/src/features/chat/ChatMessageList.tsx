@@ -78,8 +78,8 @@ export function ChatMessageList(props: ChatMessageListProps) {
       >
         {!isLoggedIn && (
           <div className="border-b border-line bg-surface-muted px-4 py-2">
-            <p className="journal-caps text-[10px]">未署名的临时稿</p>
-            <p className="mt-0.5 font-serif text-[12px] leading-5 text-ink-soft">可直接对话与新建稿次；刷新后不保留。登录后按稿次持久保存。</p>
+            <p className="journal-caps text-[10px]">正在建立安全会话</p>
+            <p className="mt-0.5 font-serif text-[12px] leading-5 text-ink-soft">服务端正在签发会话身份；计划会保存在服务器，刷新后可从计划库重新打开。</p>
           </div>
         )}
 

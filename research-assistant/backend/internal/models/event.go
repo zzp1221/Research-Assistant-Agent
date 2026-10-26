@@ -4,7 +4,10 @@ import "time"
 
 // PlanEvent is an incremental event emitted while a plan is being executed.
 type PlanEvent struct {
-	PlanID      string         `json:"plan_id"`
+	PlanID string `json:"plan_id"`
+	// Seq is a monotonically increasing per-plan sequence number used for
+	// incremental SSE replay (Last-Event-ID / after_seq).
+	Seq         int64          `json:"seq"`
 	EventType   string         `json:"event_type"`
 	TaskID      string         `json:"task_id,omitempty"`
 	TaskStatus  string         `json:"task_status,omitempty"`
