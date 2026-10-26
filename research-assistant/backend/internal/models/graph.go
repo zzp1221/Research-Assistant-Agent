@@ -64,12 +64,14 @@ type TaskEdge struct {
 
 // GraphMeta is a lightweight execution summary for the current plan graph.
 type GraphMeta struct {
-	TotalNodes      int `json:"total_nodes"`
-	CompletedNodes  int `json:"completed_nodes"`
-	FailedNodes     int `json:"failed_nodes"`
-	BlockedNodes    int `json:"blocked_nodes"`
-	InProgressNodes int `json:"in_progress_nodes"`
-	ReadyNodes      int `json:"ready_nodes"`
+	TotalNodes            int    `json:"total_nodes"`
+	CompletedNodes        int    `json:"completed_nodes"`
+	FailedNodes           int    `json:"failed_nodes"`
+	BlockedNodes          int    `json:"blocked_nodes"`
+	InProgressNodes       int    `json:"in_progress_nodes"`
+	ReadyNodes            int    `json:"ready_nodes"`
+	PlannerSource         string `json:"planner_source,omitempty"`          // agent / template
+	PlannerFallbackReason string `json:"planner_fallback_reason,omitempty"` // why the template was used
 }
 
 // PlanGraph is the executable DAG representation used by the refactored plan flow.
@@ -101,13 +103,14 @@ type PlanGraph struct {
 
 // TaskExecutionResult is the normalized scheduler-facing result of one task execution.
 type TaskExecutionResult struct {
-	Status         TaskStatus            `json:"status"`
-	Result         string                `json:"result,omitempty"`
-	Code           string                `json:"code,omitempty"`
-	StructuredData string                `json:"structured_data,omitempty"`
-	ImageBase64    string                `json:"image_base64,omitempty"`
-	Error          string                `json:"error,omitempty"`
-	Logs           []string              `json:"logs,omitempty"`
-	Artifacts      []Artifact            `json:"artifacts,omitempty"`
-	RuntimeAction  *RuntimeActionRequest `json:"runtime_action,omitempty"`
+	Status              TaskStatus            `json:"status"`
+	Result              string                `json:"result,omitempty"`
+	Code                string                `json:"code,omitempty"`
+	StructuredData      string                `json:"structured_data,omitempty"`
+	ImageBase64         string                `json:"image_base64,omitempty"`
+	Error               string                `json:"error,omitempty"`
+	Logs                []string              `json:"logs,omitempty"`
+	Artifacts           []Artifact            `json:"artifacts,omitempty"`
+	MissingRequirements []MissingRequirement  `json:"missing_requirements,omitempty"`
+	RuntimeAction       *RuntimeActionRequest `json:"runtime_action,omitempty"`
 }

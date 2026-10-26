@@ -1,6 +1,7 @@
 package planner
 
 import (
+	"strings"
 	"testing"
 
 	"research-assistant-backend/internal/models"
@@ -414,11 +415,17 @@ func TestGeneralSummaryPlanStillPassesValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Nodes) != 2 || plan.Nodes[0].Type != "paper_parse" || plan.Nodes[1].Type != "general_synthesis" {
+	wantTypes := []string{"paper_parse", "general_research", "verify_result", "general_synthesis"}
+	if len(plan.Nodes) != len(wantTypes) {
 		t.Fatalf("unexpected general summary plan: %#v", plan.Nodes)
 	}
-	if plan.Nodes[1].AssignedTo != "answer_agent" {
-		t.Fatalf("general synthesis assigned to %s, want answer_agent", plan.Nodes[1].AssignedTo)
+	for i, want := range wantTypes {
+		if plan.Nodes[i].Type != want {
+			t.Fatalf("node %d type=%s, want %s", i, plan.Nodes[i].Type, want)
+		}
+	}
+	if plan.Nodes[len(plan.Nodes)-1].AssignedTo != "answer_agent" {
+		t.Fatalf("general synthesis assigned to %s, want answer_agent", plan.Nodes[len(plan.Nodes)-1].AssignedTo)
 	}
 	if len(plan.Nodes[0].InputBindings) == 0 {
 		t.Fatalf("paper_parse must declare document_id/paper_metadata input bindings")
@@ -533,5 +540,99 @@ func TestFrameworkEvaluationPlotPlanUsesCoderRenderNode(t *testing.T) {
 	}
 	if !containsArtifact(plot.OutputArtifacts, "plot_image") {
 		t.Fatalf("framework render_plot outputs=%#v, want plot_image", plot.OutputArtifacts)
+	}
+}
+
+func TestGeneralPaperPlanShapeIsDeterministic(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	intent := models.IntentContext{
+		RawIntent:  "分析一下这篇论文的主要创新点和局限性",
+		IntentType: "General",
+		Entities:   map[string]any{"paper_metadata": map[string]any{"title": "Attention Is All You Need"}},
+	}
+	var first []string
+	for run := 0; run < 10; run++ {
+		plan, err := NewPlanner().BuildPlan(t.Context(), intent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		types := make([]string, 0, len(plan.Nodes))
+		for _, node := range plan.Nodes {
+			types = append(types, node.Type)
+		}
+		if run == 0 {
+			first = types
+			continue
+		}
+		if strings.Join(types, ",") != strings.Join(first, ",") {
+			t.Fatalf("plan shape drifted: %v vs %v", types, first)
+		}
+	}
+	if strings.Join(first, ",") != "paper_parse,general_research,verify_result,general_synthesis" {
+		t.Fatalf("unexpected deterministic shape: %v", first)
+	}
+}
+
+func TestGeneralPlanRejectsClaimNodes(t *testing.T) {
+	intent := models.IntentContext{RawIntent: "分析一下这篇论文", IntentType: "General", Entities: map[string]any{}}
+	nodes := []*models.TaskNode{
+		newNode("Parse", "paper_parse", "librarian_agent", nil, nil, []string{"parsed_paper", "paper_metadata", "paper_summary"}, true, intent.RawIntent),
+		newNode("Claims", "claim_rubric_extract", "librarian_agent", nil, []string{"parsed_paper"}, []string{"claim_rubric", "claim_rubric_report"}, true, intent.RawIntent),
+		newNode("Answer", "general_synthesis", "answer_agent", nil, nil, []string{"general_response"}, false, intent.RawIntent),
+	}
+	if err := validateAgentPlannedNodes(intent, nodes); err == nil {
+		t.Fatal("General plan with claim_rubric_extract must be rejected")
+	}
+}
+
+func TestPlannerDefaultsDeriveFromRegistry(t *testing.T) {
+	for _, taskType := range registeredTaskTypeNames() {
+		spec, ok := lookupTaskTypeSpec(taskType)
+		if !ok {
+			t.Fatalf("registered type %q has no spec", taskType)
+		}
+		agent := "general_agent"
+		if len(spec.AllowedAgents) > 0 {
+			agent = spec.AllowedAgents[0]
+		}
+		bp := normalizePlannerBlueprint(plannerNodeBlueprint{
+			Ref:        "n1",
+			Name:       "Node",
+			Type:       taskType,
+			AssignedTo: agent,
+		})
+		node := newNode("Node", bp.Type, bp.AssignedTo, nil, bp.RequiredArtifacts, bp.OutputArtifacts, false, "")
+		if err := validateTaskNode(node); err != nil {
+			t.Fatalf("type %q failed after defaults: %v (outputs=%v)", taskType, err, bp.OutputArtifacts)
+		}
+	}
+}
+
+func TestValidatePlanGraphRejectsDuplicateArtifactProducers(t *testing.T) {
+	plan := &models.PlanGraph{
+		ID: "dup",
+		Nodes: []*models.TaskNode{
+			{ID: "a", Type: "prepare_runtime", AssignedTo: "sandbox_agent", Status: models.StatusPending, OutputArtifacts: []string{"prepared_runtime"}},
+			{ID: "b", Type: "install_dependencies", AssignedTo: "sandbox_agent", Status: models.StatusPending, OutputArtifacts: []string{"prepared_runtime"}},
+		},
+		Edges:     []*models.TaskEdge{},
+		Artifacts: map[string]models.Artifact{},
+	}
+	if err := validatePlanGraph(plan); err == nil {
+		t.Fatal("duplicate artifact producers must be rejected")
+	}
+}
+
+func TestValidatePlanGraphRejectsSelfRequiredArtifact(t *testing.T) {
+	plan := &models.PlanGraph{
+		ID: "self-required",
+		Nodes: []*models.TaskNode{
+			{ID: "a", Type: "install_dependencies", AssignedTo: "sandbox_agent", Status: models.StatusPending, RequiredArtifacts: []string{"prepared_runtime"}, OutputArtifacts: []string{"prepared_runtime", "dependency_install_report"}},
+		},
+		Edges:     []*models.TaskEdge{},
+		Artifacts: map[string]models.Artifact{},
+	}
+	if err := validatePlanGraph(plan); err == nil {
+		t.Fatal("self-required artifact must be rejected")
 	}
 }

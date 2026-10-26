@@ -42,13 +42,15 @@ type repositoryFile struct {
 // SmokeRecipe describes how to build a bounded smoke runner for a repository
 // shape. Templates are Go text/template files rendered with the paper title.
 type SmokeRecipe struct {
-	ID           string      `json:"id"`
-	Kind         string      `json:"kind"`
-	Template     string      `json:"template"`
-	RequireFiles []string    `json:"require_files,omitempty"`
-	TaskGroups   [][]string  `json:"task_groups,omitempty"`
-	TextGroups   [][]string  `json:"text_groups,omitempty"`
-	Variants     *VariantSet `json:"variants,omitempty"`
+	ID                   string      `json:"id"`
+	Kind                 string      `json:"kind"`
+	Template             string      `json:"template"`
+	RequireFiles         []string    `json:"require_files,omitempty"`
+	TaskGroups           [][]string  `json:"task_groups,omitempty"`
+	TextGroups           [][]string  `json:"text_groups,omitempty"`
+	RequiresDatasetShape string      `json:"requires_dataset_shape,omitempty"`
+	RejectShapes         []string    `json:"reject_shapes,omitempty"`
+	Variants             *VariantSet `json:"variants,omitempty"`
 }
 
 type VariantSet struct {

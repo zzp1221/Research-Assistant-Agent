@@ -273,7 +273,11 @@ executionLoop:
 					outcome := models.OutcomeCompleted
 					if hasFailure(current) {
 						finalStatus = models.StatusFailed
-						outcome = models.OutcomeFailed
+						if hasBlockedOnly(current) {
+							outcome = models.OutcomeBlocked
+						} else {
+							outcome = models.OutcomeFailed
+						}
 					}
 					if s.finalizer != nil && finalStatus == models.StatusCompleted {
 						if finalizeErr := s.finalizer.Finalize(ctx, current); finalizeErr != nil {
@@ -789,6 +793,7 @@ func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner st
 func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner string, executionEpoch int, result *models.TaskExecutionResult, allowRetry bool) (bool, error) {
 	now := time.Now()
 	retrying := false
+	blockedStatus := false
 	if err := s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
 		task := getNodeByID(plan, taskID)
 		if task == nil {
@@ -819,10 +824,21 @@ func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner strin
 			}
 			plan.Artifacts[key] = artifact
 		}
+		for _, missing := range result.MissingRequirements {
+			if missing.Kind == "" {
+				continue
+			}
+			plan.MissingRequirements = appendMissingRequirement(plan.MissingRequirements, missing)
+		}
 		task.ExecutionID = ""
 		task.LeaseOwner = ""
 		task.LeaseExpiresAt = nil
-		if allowRetry && task.RunCount <= task.RetryLimit {
+		blocked := result.Status == models.StatusBlocked
+		if blocked {
+			task.Status = models.StatusBlocked
+			blockedStatus = true
+			task.FinishedAt = &now
+		} else if allowRetry && task.RunCount <= task.RetryLimit {
 			task.Status = models.StatusPending
 			task.FinishedAt = nil
 			retrying = true
@@ -841,14 +857,21 @@ func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner strin
 		s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "task_retrying", TaskID: taskID, TaskStatus: string(models.StatusPending), ExecutionID: executionID, Payload: map[string]any{"error": result.Error}, Timestamp: now})
 		return true, nil
 	}
+	eventType := "task_failed"
+	taskStatus := models.StatusFailed
+	if blockedStatus {
+		eventType = "task_blocked"
+		taskStatus = models.StatusBlocked
+	}
 	s.publishAndStore(planID, models.PlanEvent{
 		PlanID:      planID,
-		EventType:   "task_failed",
+		EventType:   eventType,
 		TaskID:      taskID,
-		TaskStatus:  string(models.StatusFailed),
+		TaskStatus:  string(taskStatus),
 		ExecutionID: executionID,
 		Payload: map[string]any{
-			"error": result.Error,
+			"error":                result.Error,
+			"missing_requirements": result.MissingRequirements,
 		},
 		Timestamp: now,
 	})
@@ -1146,6 +1169,33 @@ func allTerminal(plan *models.PlanGraph) bool {
 	return true
 }
 
+// hasBlockedOnly reports whether the plan failed solely because tasks were
+// blocked by actionable missing requirements (not by real task failures).
+func hasBlockedOnly(plan *models.PlanGraph) bool {
+	blocked := false
+	for _, node := range plan.Nodes {
+		if node == nil {
+			continue
+		}
+		switch node.Status {
+		case models.StatusFailed, models.StatusCanceled:
+			return false
+		case models.StatusBlocked:
+			blocked = true
+		}
+	}
+	return blocked
+}
+
+func appendMissingRequirement(list []models.MissingRequirement, item models.MissingRequirement) []models.MissingRequirement {
+	for _, existing := range list {
+		if existing.Kind == item.Kind && existing.Name == item.Name && existing.Detail == item.Detail {
+			return list
+		}
+	}
+	return append(list, item)
+}
+
 func hasFailure(plan *models.PlanGraph) bool {
 	for _, node := range plan.Nodes {
 		if node != nil && (node.Status == models.StatusFailed || node.Status == models.StatusBlocked || node.Status == models.StatusCanceled) {
@@ -1176,7 +1226,9 @@ func countInProgress(plan *models.PlanGraph) int {
 
 func fillMeta(plan *models.PlanGraph) {
 	meta := models.GraphMeta{
-		TotalNodes: len(plan.Nodes),
+		TotalNodes:            len(plan.Nodes),
+		PlannerSource:         plan.Meta.PlannerSource,
+		PlannerFallbackReason: plan.Meta.PlannerFallbackReason,
 	}
 	for _, node := range plan.Nodes {
 		if node == nil {

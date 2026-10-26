@@ -31,13 +31,16 @@ type DocumentRef struct {
 }
 
 type PaperMetadata struct {
-	Title    string   `json:"title,omitempty"`
-	Authors  []string `json:"authors,omitempty"`
-	Year     int      `json:"year,omitempty"`
-	Venue    string   `json:"venue,omitempty"`
-	ArxivID  string   `json:"arxiv_id,omitempty"`
-	RepoURL  string   `json:"repo_url,omitempty"`
-	Abstract string   `json:"abstract,omitempty"`
+	Title      string   `json:"title,omitempty"`
+	Authors    []string `json:"authors,omitempty"`
+	Year       int      `json:"year,omitempty"`
+	Venue      string   `json:"venue,omitempty"`
+	ArxivID    string   `json:"arxiv_id,omitempty"`
+	RepoURL    string   `json:"repo_url,omitempty"`
+	Abstract   string   `json:"abstract,omitempty"`
+	Source     string   `json:"source,omitempty"`     // rule / llm / user
+	Confidence float64  `json:"confidence,omitempty"` // 0..1, rule extraction confidence
+	Warnings   []string `json:"warnings,omitempty"`
 }
 
 type MissingRequirement struct {

@@ -117,6 +117,9 @@ func executeRepoPrepare(ctx context.Context, runtimeTask *models.Task) error {
 		generatedCode = string(raw)
 	}
 
+	datasetProfiles := probeWorkspaceDatasets(workspacePath)
+	datasetProfileJSON, _ := json.Marshal(datasetProfiles)
+
 	manifest := repoPrepareManifest{
 		RepoURL:                repoURL,
 		RequestedRevision:      repositoryRevision,
@@ -140,17 +143,28 @@ func executeRepoPrepare(ctx context.Context, runtimeTask *models.Task) error {
 	if runtimeTask.Metadata == nil {
 		runtimeTask.Metadata = map[string]any{}
 	}
-	runtimeTask.Metadata["artifact_values"] = map[string]any{
+	artifacts := map[string]any{
 		"workspace_path":           workspacePath,
 		"code_file_path":           selectedCodeFile,
 		"generated_code":           generatedCode,
 		"repo_manifest":            string(manifestJSON),
 		"reproduction_mode_report": modeReport,
+		"dataset_shape_profile":    string(datasetProfileJSON),
 	}
+	runtimeTask.Metadata["artifact_values"] = artifacts
 
 	runtimeTask.Result = chooseNonEmpty(workspacePath, selectedCodeFile, repoURL)
 	runtimeTask.Code = generatedCode
 	runtimeTask.Status = models.StatusCompleted
+
+	if missing := datasetShapeGate(workspacePath, selectedCodeFile, runtimeTask, datasetProfiles); missing != nil {
+		missingJSON, _ := json.Marshal([]models.MissingRequirement{*missing})
+		artifacts["missing_requirements"] = string(missingJSON)
+		runtimeTask.Metadata["missing_requirements"] = []models.MissingRequirement{*missing}
+		runtimeTask.Status = models.StatusBlocked
+		runtimeTask.Error = "dataset shape mismatch: " + missing.Detail
+		return nil
+	}
 	return nil
 }
 

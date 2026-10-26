@@ -164,6 +164,14 @@ func (a *DataAgent) executeClaimEvidenceBuild(ctx context.Context, task *models.
 	task.Result = report
 	task.StructuredData = string(graphPayload)
 	task.Status = models.StatusCompleted
+	if task.Metadata == nil {
+		task.Metadata = map[string]any{}
+	}
+	if status != "assessed" {
+		// The task itself stays completed (the graph and report are valid
+		// artifacts); PlanFinalizer downgrades the plan outcome to needs_review.
+		task.Metadata["degraded_reason"] = statusReason
+	}
 	setClaimArtifactValues(task, map[string]string{
 		"claim_evidence_graph":      string(graphPayload),
 		"claim_verification_report": report,

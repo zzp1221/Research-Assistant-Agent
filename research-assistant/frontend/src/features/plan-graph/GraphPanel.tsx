@@ -17,6 +17,8 @@ interface GraphPanelProps {
   missingRequirements?: MissingRequirement[];
   runtimeActions?: RuntimeAction[];
   runtimePermissionMode?: string | null;
+  plannerSource?: string | null;
+  plannerFallbackReason?: string | null;
   onRuntimeActionDecision?: (actionId: string, decision: 'approve' | 'reject') => Promise<boolean | void> | boolean | void;
   runAllText: string;
   graphTitle: string;
@@ -99,6 +101,8 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
     missingRequirements,
     runtimeActions,
     runtimePermissionMode,
+    plannerSource,
+    plannerFallbackReason,
     onRuntimeActionDecision,
     runAllText,
     graphTitle,
@@ -155,6 +159,14 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
               {outcome && (
                 <span className="shrink-0 rounded-[3px] border border-accent/30 bg-accent-soft px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-accent-ink">
                   {outcome}
+                </span>
+              )}
+              {plannerSource === 'template' && (
+                <span
+                  className="shrink-0 rounded-[3px] border border-warn/30 bg-warn-soft px-1.5 py-0.5 text-[10.5px] font-medium text-warn"
+                  title={plannerFallbackReason || '该计划由模板规划生成'}
+                >
+                  模板规划
                 </span>
               )}
               {runtimePermissionMode && (

@@ -75,11 +75,23 @@ func DataSystemPromptForTask(intentType string, taskType string, taskName string
 	if intent == "framework_evaluation" || task == "framework_report" || task == "framework_recommendation" || strings.Contains(text, "framework_evaluation") || strings.Contains(text, "benchmark report") || strings.Contains(text, "框架对比") {
 		return DataFrameworkReportSystemPrompt
 	}
+	if task == "verify_result" {
+		// verify_result is the user-facing close-out of code/experiment plans.
+		// Reuse the direct-answer prompt instead of the analyst report template
+		// so the first paragraph answers the user's question (D9).
+		return AnswerSystemPrompt
+	}
 	return DataSystemPrompt
 }
 
 func DataPromptInput(input string) string {
 	return fmt.Sprintf("请根据以下输入材料生成评估报告：\n%s", input)
+}
+
+// AnswerPromptInput asks for a direct, conclusion-first answer using the
+// supplied materials, matching AnswerSystemPrompt.
+func AnswerPromptInput(input string) string {
+	return fmt.Sprintf("请直接回答用户的问题，先给结论再给支撑数据；不要输出“实验目标/执行过程/核心指标分析”等流程标题。\n\n输入材料：\n%s", input)
 }
 
 const AblationCandidateSystemPrompt = `You design lightweight scientific ablation studies using a bounded Tree of Thoughts.
@@ -730,8 +742,8 @@ Rules:
      Papers with Code search -> candidate repositories -> validation/ranking -> fallback GitHub search -> final repo_url.
 8.7. repo_discovery must require parsed_paper and should output candidate_repositories, repo_validation_report, repo_url.
 8.8. repo_prepare should depend on repo_discovery and consume repo_url (and repo_validation_report if present).
-8.9. Every paper reproduction plan must freeze a hierarchical claim rubric before execution using claim_rubric_extract, then finish with claim_evidence_build after comparison and any rerun/plot nodes.
-8.10. claim_rubric_extract must consume parsed_paper and output claim_rubric plus claim_rubric_report. claim_evidence_build must consume claim_rubric, run_metrics, and comparison_report and output claim_evidence_graph plus claim_verification_report.
+8.9. Only Paper_Reproduction plans may include claim_rubric_extract / claim_evidence_build. Paper_Reproduction must freeze a hierarchical claim rubric before execution using claim_rubric_extract, then finish with claim_evidence_build after comparison and any rerun/plot nodes. General paper-analysis plans must not contain claim_* nodes.
+8.10. In Paper_Reproduction plans, claim_rubric_extract must consume parsed_paper and output claim_rubric plus claim_rubric_report. claim_evidence_build must consume claim_rubric, run_metrics, and comparison_report and output claim_evidence_graph plus claim_verification_report.
 9. Keep the DAG minimal but executable.
 10. If plotting or reporting is requested, include dedicated downstream nodes for them.
 

@@ -1,0 +1,33 @@
+                                                 Fast unfolding of communities in large networks
+arXiv:0803.0476v2 [physics.soc-ph] 25 Jul 2008
+
+
+
+
+                                                             Vincent D. Blondel1;a , Jean-Loup Guillaume1,2;b , Renaud
+                                                             Lambiotte1,3;c and Etienne Lefebvre1
+                                                             1
+                                                               Department of Mathematical Engineering, Université catholique de Louvain, 4
+                                                             avenue Georges Lemaitre, B-1348 Louvain-la-Neuve, Belgium
+                                                             2
+                                                               LIP6, Université Pierre et Marie Curie, 4 place Jussieu, 75005 Paris, France
+                                                             3
+                                                               Institute for Mathematical Sciences, Imperial College London, 53 Prince’s Gate,
+                                                             South Kensington campus, SW72PG, UK
+                                                             E-mail: a vincent.blondel@uclouvain.be; b jean-loup.guillaume@lip6.fr;
+                                                             c
+                                                              r.lambiotte@imperial.ac.uk;
+
+                                                             Abstract. We propose a simple method to extract the community structure of large
+                                                             networks. Our method is a heuristic method that is based on modularity optimization.
+                                                             It is shown to outperform all other known community detection method in terms of
+                                                             computation time. Moreover, the quality of the communities detected is very good, as
+                                                             measured by the so-called modularity. This is shown ﬁrst by identifying language
+                                                             communities in a Belgian mobile phone network of 2.6 million customers and by
+                                                             analyzing a web graph of 118 million nodes and more than one billion links. The
+                                                             accuracy of our algorithm is also veriﬁed on ad-hoc modular networks.
+
+
+                                                 Keywords: Random graphs, networks; Critical phenomena of socio-economic systems;
+                                                 Socio-economic networks
+
