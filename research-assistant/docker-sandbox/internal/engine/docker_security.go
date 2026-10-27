@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,13 +10,27 @@ import (
 	"strings"
 )
 
-func secureDockerRunArgs(image string, labels map[string]string) ([]string, error) {
+func secureDockerRunArgs(image string, labels map[string]string, options ...CreateOptions) ([]string, error) {
 	image = strings.TrimSpace(image)
 	if image == "" {
 		return nil, fmt.Errorf("sandbox image is empty")
 	}
 	if !sandboxImageAllowed(image) {
 		return nil, fmt.Errorf("sandbox image %q is not in SANDBOX_IMAGE_ALLOWLIST", image)
+	}
+	var opts CreateOptions
+	if len(options) > 0 {
+		opts = options[0]
+	}
+	networkMode, err := EffectiveNetworkMode(opts.NetworkMode)
+	if err != nil {
+		return nil, err
+	}
+	networkArg := networkMode
+	if networkMode == NetworkNone {
+		// Isolation uses an internal bridge (no gateway) because Docker cannot
+		// attach the default bridge to a container created with --network none.
+		networkArg = offlineNetworkName()
 	}
 
 	args := []string{
@@ -26,8 +41,21 @@ func secureDockerRunArgs(image string, labels map[string]string) ([]string, erro
 		"--pids-limit", envOrDefault("SANDBOX_PIDS_LIMIT", "256"),
 		"--security-opt", "no-new-privileges:true",
 		"--cap-drop", "ALL",
-		"--network", envOrDefault("SANDBOX_NETWORK_MODE", "bridge"),
+		"--network", networkArg,
 		"--workdir", "/workspace",
+	}
+	if runtimeName := strings.TrimSpace(opts.Runtime); runtimeName != "" {
+		allowed := strings.TrimSpace(os.Getenv("SANDBOX_ALLOWED_RUNTIMES"))
+		if allowed != "" && !containsCommaSeparated(allowed, runtimeName) {
+			return nil, fmt.Errorf("sandbox runtime %q is not in SANDBOX_ALLOWED_RUNTIMES", runtimeName)
+		}
+		args = append(args, "--runtime", runtimeName)
+	}
+	if opts.Limits.MaxDiskGB > 0 && strings.TrimSpace(opts.MountPath) == "" {
+		// A tmpfs workspace gets a hard size limit enforced by the kernel. Host
+		// bind mounts cannot be quota'd this way and are measured after each
+		// command instead.
+		args = append(args, "--tmpfs", fmt.Sprintf("/workspace:rw,exec,size=%dg", int(math.Ceil(opts.Limits.MaxDiskGB))))
 	}
 	labelKeys := make([]string, 0, len(labels))
 	for key := range labels {
@@ -40,13 +68,35 @@ func secureDockerRunArgs(image string, labels map[string]string) ([]string, erro
 	for _, key := range labelKeys {
 		args = append(args, "--label", key+"="+labels[key])
 	}
-	if user := strings.TrimSpace(os.Getenv("SANDBOX_CONTAINER_USER")); user != "" {
+	user := strings.TrimSpace(os.Getenv("SANDBOX_CONTAINER_USER"))
+	readOnlyRoot := envBool("SANDBOX_READ_ONLY_ROOT", false)
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("SANDBOX_SECURITY_PROFILE")), "strict") {
+		// Strict profile: unprivileged user, immutable rootfs and tmpfs scratch
+		// space. It is opt-in because pip installs into /root and some runtime
+		// images assume uid 0.
+		readOnlyRoot = true
+		if user == "" {
+			user = "65534:65534"
+		}
+	}
+	if user != "" {
 		args = append(args, "--user", user)
 	}
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("SANDBOX_READ_ONLY_ROOT")), "true") {
-		args = append(args, "--read-only", "--tmpfs", "/tmp:rw,noexec,nosuid,size=512m")
+	if readOnlyRoot {
+		args = append(args, "--read-only",
+			"--tmpfs", "/tmp:rw,noexec,nosuid,size=512m",
+			"--tmpfs", "/root/.cache:rw,size=1g")
 	}
 	return args, nil
+}
+
+func containsCommaSeparated(raw, want string) bool {
+	for _, item := range strings.Split(raw, ",") {
+		if strings.EqualFold(strings.TrimSpace(item), want) {
+			return true
+		}
+	}
+	return false
 }
 
 func sandboxImageAllowed(image string) bool {

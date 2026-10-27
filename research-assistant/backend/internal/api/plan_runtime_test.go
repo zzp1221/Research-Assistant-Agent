@@ -124,6 +124,11 @@ func TestPlanRuntimeExecutesStoredGraphAndReplaysEvents(t *testing.T) {
 		!strings.Contains(streamResponse.Body.String(), `"event_type":"plan_completed"`) {
 		t.Fatalf("terminal event was not replayed over SSE: %s", streamResponse.Body.String())
 	}
+	// Every SSE event must carry a numeric id so EventSource reconnects can send
+	// Last-Event-ID/after_seq and resume without duplicates.
+	if !strings.Contains(streamResponse.Body.String(), "id: 1\n") {
+		t.Fatalf("SSE events are missing the id: field: %s", streamResponse.Body.String())
+	}
 }
 
 func TestPlanRuntimeRejectsUnknownPlan(t *testing.T) {

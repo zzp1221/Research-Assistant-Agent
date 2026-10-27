@@ -21,6 +21,23 @@ type AgentRunner interface {
 	ExecuteTask(ctx context.Context, task *models.Task, sharedContext map[string]interface{}) error
 }
 
+// networkAccessApproved reports whether the plan explicitly approved network
+// access for this task. Code execution stays offline unless the approval exists.
+func networkAccessApproved(plan *models.PlanGraph, taskID string) bool {
+	if plan == nil {
+		return false
+	}
+	for _, action := range plan.RuntimeActions {
+		if action.TaskID != taskID {
+			continue
+		}
+		if action.Kind == models.RuntimeActionNetworkAccess && action.Status == models.RuntimeActionApproved {
+			return true
+		}
+	}
+	return false
+}
+
 // DefaultTaskExecutor remains as a lightweight fallback when no real agent router is injected.
 type DefaultTaskExecutor struct{}
 
@@ -99,8 +116,10 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		RunCount:          task.RunCount,
 		Inputs:            inputs,
 		Metadata: map[string]any{
-			"plan_id":   plan.ID,
-			"tenant_id": plan.OwnerID,
+			"plan_id":        plan.ID,
+			"tenant_id":      plan.OwnerID,
+			"runtime_policy": plan.RuntimePolicy,
+			"network_access": networkAccessApproved(plan, task.ID),
 		},
 		CreatedAt: task.CreatedAt,
 		UpdatedAt: task.UpdatedAt,

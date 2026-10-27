@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -17,10 +16,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"research-assistant-backend/internal/blobstore"
 	"research-assistant-backend/internal/events"
 	intentpkg "research-assistant-backend/internal/intent"
+	"research-assistant-backend/internal/metrics"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/planner"
 	"research-assistant-backend/internal/sandbox"
@@ -39,8 +40,10 @@ type planRuntime struct {
 	events         *events.Bus
 	intentResolver *intentpkg.Resolver
 
-	mu      sync.Mutex
-	running map[string]context.CancelFunc
+	mu          sync.Mutex
+	running     map[string]context.CancelFunc
+	planLimiter *rateLimiter
+	idempotency *idempotencyCache
 }
 
 func newPlanRuntime(p *planner.Planner, planStore store.PlanStore, runner *scheduler.Scheduler, eventBus *events.Bus) *planRuntime {
@@ -51,6 +54,8 @@ func newPlanRuntime(p *planner.Planner, planStore store.PlanStore, runner *sched
 		events:         eventBus,
 		intentResolver: intentpkg.NewResolverFromEnv(),
 		running:        map[string]context.CancelFunc{},
+		planLimiter:    planRateLimitFromEnv(),
+		idempotency:    newIdempotencyCache(24 * time.Hour),
 	}
 }
 
@@ -126,12 +131,17 @@ func (r *planRuntime) register(apiGroup *gin.RouterGroup) {
 	apiGroup.POST("/plan", r.createPlan)
 	apiGroup.GET("/plans", r.listPlans)
 	apiGroup.DELETE("/plans/:id", r.deletePlan)
+	apiGroup.GET("/plans/:id/export", r.exportPlan)
 	apiGroup.GET("/sessions", r.listSessions)
+	apiGroup.DELETE("/sessions/:id", r.deleteSession)
 	apiGroup.GET("/plans/:id", r.getPlan)
 	apiGroup.GET("/plans/:id/events", r.getPlanEvents)
 	apiGroup.POST("/plans/:id/execute", r.executePlan)
 	apiGroup.POST("/plans/:id/cancel", r.cancelPlan)
 	apiGroup.POST("/plans/:id/approve", r.approvePlan)
+	apiGroup.POST("/plans/:id/pause", r.pausePlan)
+	apiGroup.POST("/plans/:id/resume", r.resumePlan)
+	apiGroup.POST("/plans/:id/tasks/:taskId/run", r.runFromNode)
 	apiGroup.GET("/plans/:id/runtime-actions", r.getRuntimeActions)
 	apiGroup.POST("/plans/:id/runtime-actions/:actionId/decision", r.decideRuntimeAction)
 	apiGroup.POST("/plans/:id/tasks/:taskId/retry", r.retryTask)
@@ -149,8 +159,77 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		return
 	}
 
+	trimmedIntent := strings.TrimSpace(payload.Intent)
+	if trimmedIntent == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "intent is required", "code": "intent_required"})
+		return
+	}
+	maxIntentChars := envIntDefault("MAX_INTENT_CHARS", 20000)
+	if utf8.RuneCountInString(trimmedIntent) > maxIntentChars {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":       fmt.Sprintf("intent is longer than the %d character limit", maxIntentChars),
+			"code":        "intent_too_long",
+			"remediation": errorRemediation("intent_too_long"),
+			"limit":       maxIntentChars,
+			"actual":      utf8.RuneCountInString(trimmedIntent),
+		})
+		return
+	}
+	if len(payload.Attachments) > 8 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "at most 8 attachments are allowed per plan", "code": "too_many_attachments"})
+		return
+	}
+
 	userID := resolveUserID(c)
 	sessionID := resolveSessionID(c)
+
+	if allowed, retryAfter := r.planLimiter.Allow(userID); !allowed {
+		seconds := int(retryAfter.Seconds())
+		if seconds < 1 {
+			seconds = 1
+		}
+		c.Header("Retry-After", strconv.Itoa(seconds))
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"error":               "too many plan creations; retry later",
+			"code":                "rate_limited",
+			"remediation":         errorRemediation("rate_limited"),
+			"retry_after_seconds": seconds,
+		})
+		return
+	}
+
+	idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+	if len(idempotencyKey) > 128 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Idempotency-Key is too long", "code": "invalid_idempotency_key"})
+		return
+	}
+	if idempotencyKey != "" {
+		if entry, ok := r.idempotency.Lookup(userID, idempotencyKey); ok {
+			c.Header("Idempotency-Replayed", "true")
+			contentType := entry.contentType
+			if contentType == "" {
+				contentType = "application/json; charset=utf-8"
+			}
+			c.Data(entry.status, contentType, entry.body)
+			return
+		}
+	}
+	activePlans, activeErr := r.countActivePlans(userID)
+	if activeErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot inspect active plans", "code": "store_unavailable"})
+		return
+	}
+	if maxActive := envIntDefault("PLAN_MAX_ACTIVE_PER_USER", 3); activePlans >= maxActive {
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"error":       fmt.Sprintf("at most %d active plans are allowed per user", maxActive),
+			"code":        "active_plan_quota_exceeded",
+			"remediation": errorRemediation("active_plan_quota_exceeded"),
+			"active":      activePlans,
+			"max_active":  maxActive,
+		})
+		return
+	}
+
 	runtimePolicy, policyErr := buildRuntimePolicy(payload, userID)
 	if policyErr != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": policyErr.Error()})
@@ -162,6 +241,26 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+	// An arXiv URL or DOI in the intent is imported automatically so the plan
+	// starts from real metadata and the PDF instead of an LLM guess.
+	var importedPaper *models.PaperMetadata
+	if len(attachments) == 0 {
+		if imported, paper, ok := r.importPlanReference(c.Request.Context(), userID, sessionID, payload.Intent); ok {
+			importedPaper = paper
+			if imported != nil {
+				attachments = append(attachments, imported)
+			}
+			if paper != nil {
+				intentContext.Entities["paper_metadata"] = paperMetadataMap(paper)
+				if existingTitle, _ := intentContext.Entities["paper_title"].(string); strings.TrimSpace(existingTitle) == "" {
+					intentContext.Entities["paper_title"] = paper.Title
+				}
+				if existingQuery, _ := intentContext.Entities["paper_search_query"].(string); strings.TrimSpace(existingQuery) == "" {
+					intentContext.Entities["paper_search_query"] = paper.Title
+				}
+			}
+		}
 	}
 	if len(attachments) > 0 {
 		if shouldRouteUploadedCustomBenchmark(intentContext.IntentType, payload.Intent, attachments) {
@@ -179,6 +278,9 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		}
 	}
 	researchContext, contextErr := buildResearchContext(userID, sessionID, payload.Intent, attachments, intentContext.IntentType)
+	if importedPaper != nil && researchContext.Paper == nil {
+		researchContext.Paper = importedPaper
+	}
 	if contextErr != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": contextErr.Error(),
@@ -207,11 +309,13 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate plan"})
 		return
 	}
-	if len(attachments) > 0 {
+	if len(attachments) > 0 || importedPaper != nil {
 		plan.Context = researchContext
-		if err := planner.ValidatePlanContextCoverage(plan, researchContext); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "missing_requirements": plan.MissingRequirements})
-			return
+		if len(attachments) > 0 {
+			if err := planner.ValidatePlanContextCoverage(plan, researchContext); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "missing_requirements": plan.MissingRequirements})
+				return
+			}
 		}
 	}
 	plan.RuntimePolicy = runtimePolicy
@@ -243,7 +347,37 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 	if clarification, ok := buildPlanClarification(intentContext.IntentType, payload.Intent); ok {
 		response["clarification"] = clarification
 	}
-	c.JSON(http.StatusOK, response)
+	metrics.RecordPlanCreated(plan.IntentType)
+	recordAuditEvent("plan_created", userID, plan.ID, map[string]any{
+		"intent_type": plan.IntentType,
+		"session_id":  sessionID,
+	})
+	encoded, encodeErr := json.Marshal(response)
+	if encodeErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encode plan response"})
+		return
+	}
+	r.idempotency.Store(userID, idempotencyKey, http.StatusOK, encoded, "application/json; charset=utf-8")
+	c.Data(http.StatusOK, "application/json; charset=utf-8", encoded)
+}
+
+// countActivePlans counts the plans that currently occupy execution capacity.
+func (r *planRuntime) countActivePlans(userID string) (int, error) {
+	all, err := r.store.ListPlans()
+	if err != nil {
+		return 0, err
+	}
+	active := 0
+	for _, plan := range all {
+		if plan == nil || plan.OwnerID != userID {
+			continue
+		}
+		switch plan.Status {
+		case models.StatusInProgress, models.StatusAwaitingApproval:
+			active++
+		}
+	}
+	return active, nil
 }
 
 func (r *planRuntime) getPlan(c *gin.Context) {
@@ -258,18 +392,21 @@ func (r *planRuntime) getPlan(c *gin.Context) {
 // planSummary is the lightweight list representation. It intentionally excludes
 // nodes, artifacts and base64 images so the plan library stays small.
 type planSummary struct {
-	ID             string     `json:"id"`
-	Title          string     `json:"title"`
-	IntentType     string     `json:"intent_type"`
-	Status         string     `json:"status"`
-	Outcome        string     `json:"outcome,omitempty"`
-	SessionID      string     `json:"session_id,omitempty"`
-	TotalNodes     int        `json:"total_nodes"`
-	CompletedNodes int        `json:"completed_nodes"`
-	FailedNodes    int        `json:"failed_nodes"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
-	FinishedAt     *time.Time `json:"finished_at,omitempty"`
+	ID             string          `json:"id"`
+	Title          string          `json:"title"`
+	IntentType     string          `json:"intent_type"`
+	Status         string          `json:"status"`
+	Outcome        string          `json:"outcome,omitempty"`
+	SessionID      string          `json:"session_id,omitempty"`
+	TotalNodes     int             `json:"total_nodes"`
+	CompletedNodes int             `json:"completed_nodes"`
+	FailedNodes    int             `json:"failed_nodes"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+	FinishedAt     *time.Time      `json:"finished_at,omitempty"`
+	Paused         bool            `json:"paused,omitempty"`
+	RunTrigger     string          `json:"run_trigger,omitempty"`
+	Usage          models.RunUsage `json:"usage,omitempty"`
 }
 
 func summarizePlan(plan *models.PlanGraph) planSummary {
@@ -290,6 +427,9 @@ func summarizePlan(plan *models.PlanGraph) planSummary {
 		CreatedAt:      plan.CreatedAt,
 		UpdatedAt:      plan.UpdatedAt,
 		FinishedAt:     plan.Usage.FinishedAt,
+		Paused:         plan.Paused,
+		RunTrigger:     plan.RunTrigger,
+		Usage:          plan.Usage,
 	}
 }
 
@@ -506,45 +646,36 @@ func (r *planRuntime) executePlan(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if plan.Paused {
+		c.JSON(http.StatusConflict, gin.H{"error": "plan is paused; resume it before running", "code": "plan_paused", "remediation": errorRemediation("plan_paused")})
+		return
+	}
 	if plan.Status != models.StatusPending && plan.Status != models.StatusReady {
 		c.JSON(http.StatusConflict, gin.H{"error": fmt.Sprintf("plan cannot be started from status %s", plan.Status)})
 		return
 	}
-
-	r.mu.Lock()
-	if _, exists := r.running[planID]; exists {
-		r.mu.Unlock()
-		c.JSON(http.StatusConflict, gin.H{"error": "plan is already running"})
+	var payload struct {
+		Trigger string `json:"trigger,omitempty"`
+	}
+	_ = c.ShouldBindJSON(&payload)
+	trigger := strings.TrimSpace(payload.Trigger)
+	if trigger == "" {
+		trigger = "manual"
+	}
+	if trigger != "manual" && trigger != "auto" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "trigger must be manual or auto", "code": "invalid_trigger"})
 		return
 	}
-	// The execution budget is enforced inside the scheduler so approval waits can
-	// be excluded from it; the context only carries cancellation.
-	ctx, cancel := context.WithCancel(context.Background())
-	r.running[planID] = cancel
-	r.mu.Unlock()
-
-	go func(runCtx context.Context, runCancel context.CancelFunc) {
-		defer func() {
-			runCancel()
-			r.mu.Lock()
-			delete(r.running, planID)
-			r.mu.Unlock()
-		}()
-
-		if err := r.scheduler.ExecutePlan(runCtx, planID); err != nil && !errors.Is(err, context.Canceled) {
-			log.Printf("plan execution failed plan_id=%s: %v", planID, err)
-		}
-	}(ctx, cancel)
-
-	_ = r.store.AppendEvent(planID, models.PlanEvent{
-		PlanID:    planID,
-		EventType: "plan_execution_requested",
-		Payload:   map[string]any{"actor": resolveUserID(c)},
-		Timestamp: time.Now(),
-	})
+	actor := resolveUserID(c)
+	if err := r.launchPlan(planID, trigger, actor); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "plan is already running", "code": "plan_already_running", "remediation": errorRemediation("plan_already_running")})
+		return
+	}
+	recordAuditEvent("plan_execution_requested", actor, planID, map[string]any{"trigger": trigger})
 	c.JSON(http.StatusAccepted, gin.H{
 		"message": "Plan execution started",
 		"plan_id": planID,
+		"trigger": trigger,
 	})
 }
 
@@ -836,7 +967,7 @@ func (r *planRuntime) streamPlanEvents(c *gin.Context) {
 				continue
 			}
 			seen[fingerprint] = struct{}{}
-			if !writePlanSSE(c, planStreamEventName, event) {
+			if !writePlanSSEWithID(c, planStreamEventName, event.Seq, event) {
 				return
 			}
 			if isTerminalPlanEvent(event) {

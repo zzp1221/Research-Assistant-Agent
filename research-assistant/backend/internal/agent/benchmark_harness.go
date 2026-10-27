@@ -12,6 +12,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"research-assistant-backend/internal/llmclient"
 	"sort"
 	"strconv"
 	"strings"
@@ -535,7 +536,7 @@ func readBenchmarkFeatureIDs(path string) (map[string]struct{}, error) {
 }
 
 func (a *ResearchCodingAgent) repairBenchmarkAdapter(ctx context.Context, manifestJSON, specJSON, code, failure string) (string, string, error) {
-	message, err := a.ChatModel.Generate(ctx, []*schema.Message{
+	message, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
 		{Role: schema.System, Content: prompts.BenchmarkAdapterSystemPrompt},
 		{Role: schema.User, Content: prompts.BenchmarkAdapterRepairUserPrompt(manifestJSON, specJSON, code, truncateBenchmarkText(failure, 12000))},
 	})

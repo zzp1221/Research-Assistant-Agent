@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"research-assistant-backend/internal/llmclient"
 	"sort"
 	"strings"
 
@@ -76,7 +77,7 @@ func (a *LibrarianAgent) executeClaimRubricExtraction(ctx context.Context, task 
 	}
 	parsedPaper = truncateClaimBytes(parsedPaper, claimMaxPaperBytes)
 
-	message, err := a.ChatModel.Generate(ctx, []*schema.Message{
+	message, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
 		{Role: schema.System, Content: prompts.ClaimRubricSystemPrompt},
 		{Role: schema.User, Content: prompts.ClaimRubricUserPrompt(task.Description, parsedPaper)},
 	})
@@ -124,7 +125,7 @@ func (a *DataAgent) executeClaimEvidenceBuild(ctx context.Context, task *models.
 		status = "degraded"
 		statusReason = "claim adjudication model is unavailable; all criteria remain unverifiable"
 	} else {
-		message, generateErr := a.ChatModel.Generate(ctx, []*schema.Message{
+		message, generateErr := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
 			{Role: schema.System, Content: prompts.ClaimEvidenceSystemPrompt},
 			{Role: schema.User, Content: prompts.ClaimEvidenceUserPrompt(rubricJSON, evidenceContext)},
 		})

@@ -22,6 +22,9 @@ type Capabilities struct {
 	DiskFreeBytes       int64    `json:"disk_free_bytes"`
 	ImageAllowlist      []string `json:"image_allowlist"`
 	NetworkMode         string   `json:"network_mode"`
+	NetworkAllowed      bool     `json:"network_allowed"`
+	SecurityProfile     string   `json:"security_profile"`
+	ContainerUser       string   `json:"container_user,omitempty"`
 	SandboxCount        int      `json:"sandbox_count"`
 	ReaperTTLMinutes    int      `json:"reaper_ttl_minutes"`
 }
@@ -45,7 +48,10 @@ func (e *NativeDockerEngine) Capabilities(ctx context.Context) Capabilities {
 		MemoryTotalBytes:    readMemoryTotal(),
 		DiskFreeBytes:       diskFreeBytes("/tmp"),
 		ImageAllowlist:      imageAllowlist(),
-		NetworkMode:         envOrDefault("SANDBOX_NETWORK_MODE", "bridge"),
+		NetworkMode:         envOrDefault("SANDBOX_NETWORK_MODE", NetworkNone),
+		NetworkAllowed:      envBool("SANDBOX_ALLOW_NETWORK", true),
+		SecurityProfile:     envOrDefault("SANDBOX_SECURITY_PROFILE", "standard"),
+		ContainerUser:       strings.TrimSpace(os.Getenv("SANDBOX_CONTAINER_USER")),
 		SandboxCount:        countSandboxContainers(ctx),
 		ReaperTTLMinutes:    reaperTTLMinutes(),
 	}

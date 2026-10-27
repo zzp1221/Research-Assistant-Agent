@@ -49,7 +49,8 @@ func CORSMiddleware() gin.HandlerFunc {
 			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 		}
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-User-Id, X-Session-Id")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-User-Id, X-Session-Id, Idempotency-Key")
+		c.Writer.Header().Set("Access-Control-Expose-Headers", "Retry-After, Idempotency-Replayed, Content-Disposition")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
 
 		if c.Request.Method == "OPTIONS" {
@@ -80,8 +81,9 @@ func corsOriginAllowed(origin string) bool {
 }
 
 func SetupRoutes(r *gin.Engine) {
-	// Apply CORS
+	// Apply CORS and request metrics
 	r.Use(CORSMiddleware())
+	r.Use(metricsMiddleware())
 
 	p := planner.NewPlanner()
 
@@ -101,8 +103,11 @@ func SetupRoutes(r *gin.Engine) {
 	chatAgent := agent.NewChatAgent(coderAgent)
 	answerAgent := agent.NewAnswerAgent()
 
+	r.GET("/openapi.json", serveOpenAPI)
 	apiGroup := r.Group("/api")
 	apiGroup.Use(APIAuthMiddleware())
+	apiGroup.GET("/openapi.json", serveOpenAPI)
+	registerObservabilityRoutes(r, apiGroup)
 	{
 		// Preflight handlers for the group
 		apiGroup.OPTIONS("/*path", func(c *gin.Context) {
@@ -111,6 +116,7 @@ func SetupRoutes(r *gin.Engine) {
 
 		RegisterPlanRuntimeRoutes(apiGroup, p, librarianAgent, dataAgent, coderAgent, researchCodingAgent, benchmarkAgent, chatAgent, answerAgent)
 		RegisterUploadRoutes(apiGroup)
+		RegisterLiteratureRoutes(apiGroup)
 
 		apiGroup.GET("/hello", func(c *gin.Context) {
 			c.String(200, "hello api group")
@@ -249,7 +255,9 @@ func buildServiceHealth(ctx context.Context, sandboxURL string, optimizerURLs ..
 		repositoryHealth["message"] = "git is unavailable; external repository workflows cannot run"
 	}
 	health := gin.H{
-		"ok": gitErr == nil,
+		"ok":      gitErr == nil,
+		"version": serviceVersion(),
+		"time":    time.Now().UTC(),
 		"backend": gin.H{
 			"ok":      true,
 			"message": "backend is reachable",
@@ -288,12 +296,39 @@ func buildServiceHealth(ctx context.Context, sandboxURL string, optimizerURLs ..
 		}
 	}
 	if optimizerURL == "" {
-		return health
+		return sanitizeHealth(health)
 	}
 	optimizerHealth := probeServiceHealth(ctx, client, optimizerURL, "/health", true)
 	health["research_optimizer"] = optimizerHealth
 	if ok, _ := optimizerHealth["ok"].(bool); !ok {
 		health["ok"] = false
+	}
+	return sanitizeHealth(health)
+}
+
+// serviceVersion returns a build identifier without exposing internals.
+func serviceVersion() string {
+	for _, key := range []string{"APP_VERSION", "VERSION", "GIT_SHA"} {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+	return "dev"
+}
+
+// sanitizeHealth removes internal endpoint URLs unless HEALTH_VERBOSE=true.
+// Provider/base_url/model details are never included; they belong in logs.
+func sanitizeHealth(health gin.H) gin.H {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("HEALTH_VERBOSE")), "true") {
+		return health
+	}
+	for _, key := range []string{"sandbox", "research_optimizer", "intent_recognition", "repository"} {
+		entry, ok := health[key].(gin.H)
+		if !ok {
+			continue
+		}
+		delete(entry, "url")
+		delete(entry, "opensandbox_url")
 	}
 	return health
 }

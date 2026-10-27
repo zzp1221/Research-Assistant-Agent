@@ -191,6 +191,24 @@ func (a *CoderAgent) runtimeValidate(ctx context.Context, task *models.Task) err
 	image := extractTaskInputLike(task, "runtime_image")
 	digest := extractTaskInputLike(task, "image_digest")
 	finished := time.Now()
+	networkMode := "none"
+	if task.Metadata != nil {
+		if value, ok := task.Metadata["sandbox_network_mode"].(string); ok && strings.TrimSpace(value) != "" {
+			networkMode = strings.TrimSpace(value)
+		}
+	}
+	var networkRX, networkTX int64
+	if a.Sandbox != nil && session != "" {
+		if usage, usageErr := a.Sandbox.SandboxUsage(ctx, session); usageErr == nil && usage != nil {
+			networkRX = usage.NetworkRXBytes
+			networkTX = usage.NetworkTXBytes
+			if strings.TrimSpace(usage.NetworkMode) != "" && usage.NetworkMode != "none" {
+				networkMode = usage.NetworkMode
+			}
+		}
+	}
+	policy := runtimePolicyForTask(task)
+	hardLimits := policy.HardLimits
 	manifest := models.EnvironmentManifest{
 		Version:        "environment.manifest/v1",
 		Image:          image,
@@ -201,6 +219,10 @@ func (a *CoderAgent) runtimeValidate(ctx context.Context, task *models.Task) err
 		SystemPackages: spec.SystemPackages,
 		RunCommand:     spec.RunCommand,
 		WorkingDir:     chooseNonEmpty(spec.WorkingDir, "/workspace"),
+		NetworkMode:    networkMode,
+		NetworkRXBytes: networkRX,
+		NetworkTXBytes: networkTX,
+		HardLimits:     &hardLimits,
 		StartedAt:      started,
 		FinishedAt:     &finished,
 		Status:         "ready",
@@ -280,36 +302,36 @@ print(json.dumps(out))
 // knownDistributionModules covers the most common packages whose import name
 // differs from the distribution name, for runtimes where metadata is missing.
 var knownDistributionModules = map[string][]string{
-	"scikit-learn":            {"sklearn"},
-	"scikit-image":            {"skimage"},
-	"pyyaml":                  {"yaml"},
-	"pillow":                  {"PIL"},
-	"opencv-python":           {"cv2"},
-	"opencv-python-headless":  {"cv2"},
-	"python-dateutil":         {"dateutil"},
-	"beautifulsoup4":          {"bs4"},
-	"msgpack-python":          {"msgpack"},
-	"pycryptodome":            {"Crypto"},
-	"python-dotenv":           {"dotenv"},
-	"protobuf":                {"google.protobuf"},
-	"pytorch":                 {"torch"},
-	"tensorflow-gpu":          {"tensorflow"},
-	"faiss-cpu":               {"faiss"},
-	"faiss-gpu":               {"faiss"},
-	"graphviz":                {"graphviz"},
-	"python-igraph":           {"igraph"},
-	"scikit-optimize":         {"skopt"},
-	"umap-learn":              {"umap"},
-	"python-louvain":          {"community"},
-	"networkx":                {"networkx"},
-	"pillow-simd":             {"PIL"},
-	"pyshp":                   {"shapefile"},
-	"pydantic-settings":       {"pydantic_settings"},
-	"langchain-community":     {"langchain_community"},
-	"langchain-core":          {"langchain_core"},
-	"opencv-contrib-python":   {"cv2"},
-	"tables":                  {"tables"},
-	"h5py":                    {"h5py"},
+	"scikit-learn":           {"sklearn"},
+	"scikit-image":           {"skimage"},
+	"pyyaml":                 {"yaml"},
+	"pillow":                 {"PIL"},
+	"opencv-python":          {"cv2"},
+	"opencv-python-headless": {"cv2"},
+	"python-dateutil":        {"dateutil"},
+	"beautifulsoup4":         {"bs4"},
+	"msgpack-python":         {"msgpack"},
+	"pycryptodome":           {"Crypto"},
+	"python-dotenv":          {"dotenv"},
+	"protobuf":               {"google.protobuf"},
+	"pytorch":                {"torch"},
+	"tensorflow-gpu":         {"tensorflow"},
+	"faiss-cpu":              {"faiss"},
+	"faiss-gpu":              {"faiss"},
+	"graphviz":               {"graphviz"},
+	"python-igraph":          {"igraph"},
+	"scikit-optimize":        {"skopt"},
+	"umap-learn":             {"umap"},
+	"python-louvain":         {"community"},
+	"networkx":               {"networkx"},
+	"pillow-simd":            {"PIL"},
+	"pyshp":                  {"shapefile"},
+	"pydantic-settings":      {"pydantic_settings"},
+	"langchain-community":    {"langchain_community"},
+	"langchain-core":         {"langchain_core"},
+	"opencv-contrib-python":  {"cv2"},
+	"tables":                 {"tables"},
+	"h5py":                   {"h5py"},
 }
 
 func distributionRoot(name string) string {

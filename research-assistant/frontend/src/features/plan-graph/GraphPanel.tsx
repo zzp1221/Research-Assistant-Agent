@@ -1,6 +1,6 @@
 import { lazy, memo, Suspense, useEffect, useRef, useState } from 'react';
 import type { Edge, Node, OnEdgesChange, OnNodesChange } from '@xyflow/react';
-import { Play, RotateCcw, ShieldCheck, Square } from 'lucide-react';
+import { Eye, Play, RotateCcw, ShieldCheck, Square } from 'lucide-react';
 import type { IntentContext, MissingRequirement, RuntimeAction } from '../../contracts/api';
 import type { Task } from '../../contracts/api';
 import { getProofMark } from '../shared/agentVisuals';
@@ -20,6 +20,7 @@ interface GraphPanelProps {
   runtimePermissionMode?: string | null;
   plannerSource?: string | null;
   plannerFallbackReason?: string | null;
+  runTrigger?: 'manual' | 'auto' | '' | null;
   onRuntimeActionDecision?: (actionId: string, decision: 'approve' | 'reject') => Promise<boolean | void> | boolean | void;
   runAllText: string;
   graphTitle: string;
@@ -134,6 +135,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
     runtimePermissionMode,
     plannerSource,
     plannerFallbackReason,
+    runTrigger,
     onRuntimeActionDecision,
     runAllText,
     graphTitle,
@@ -178,6 +180,11 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
     setSelectedNodeId(nodeId);
     const node = nodes.find((candidate) => candidate.id === nodeId);
     if (node) onNodeClick(null, node);
+  };
+
+  const handleCanvasNodeClick = (event: unknown, node: Node) => {
+    setSelectedNodeId(node.id);
+    onNodeClick(event, node);
   };
 
   const activeIndex = nodes.findIndex((node) => node.id === selectedNodeId);
@@ -266,6 +273,21 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
                 {runAllText}
               </button>
             )}
+            {nodes.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const target = nodes.find((node) => node.id === selectedNodeId) ?? nodes[0];
+                  if (target) selectNode(target.id);
+                }}
+                aria-label="查看节点详情"
+                title="查看节点详情"
+                className="inline-flex h-7 items-center gap-1.5 border border-line-strong bg-surface px-2.5 text-[12px] font-semibold text-ink-soft transition-colors hover:border-ink hover:text-ink active:translate-y-px md:hidden"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                查看节点
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setShowColophon((value) => !value)}
@@ -287,6 +309,10 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
             <dd className="text-ink-soft">{plannerSource === 'template' ? '模板规划' : plannerSource === 'agent' ? 'Agent 规划' : '未知'}</dd>
             <dt className="text-muted">运行权限</dt>
             <dd className="text-ink-soft">{runtimePermissionMode === 'full_access' ? '完全权限' : '确认模式'}</dd>
+            <dt className="text-muted">运行方式</dt>
+            <dd className="text-ink-soft" data-testid="plan-run-trigger">
+              {runTrigger === 'auto' ? '自动运行' : runTrigger === 'manual' ? '手动运行' : '未运行'}
+            </dd>
             <dt className="text-muted">结果状态</dt>
             <dd className="text-ink-soft">{outcome ? outcomeLabels[outcome] ?? outcome : '尚未产出'}</dd>
           </dl>
@@ -373,18 +399,31 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
       )}
 
       {missingRequirements && missingRequirements.length > 0 && (
-        <div className="shrink-0 border-b border-line bg-proof-soft px-5 py-2">
-          <p className="journal-caps text-[10.5px] font-semibold text-proof">缺失材料</p>
-          <ul className="mt-1 space-y-0.5">
-            {missingRequirements.map((item, index) => (
-              <li key={`${item.kind}-${index}`} className="font-serif text-[12.5px] leading-5 text-ink-soft">
-                <span className="font-semibold">{item.name || item.kind}</span>
-                {item.detail ? <span className="text-muted"> — {item.detail}</span> : null}
-                {item.remediation ? <span className="text-muted"> · 建议：{item.remediation}</span> : null}
-              </li>
-            ))}
+        <section className="shrink-0 border-b border-line bg-proof-soft px-5 py-2" aria-label="缺失材料">
+          <p className="journal-caps text-[10.5px] font-semibold text-proof">
+            缺失材料 · {missingRequirements.length} 项
+          </p>
+          <ul className="mt-1 space-y-1.5">
+            {missingRequirements.map((item, index) => {
+              const remediation = item.remediation || '请补充该材料后重试。';
+              return (
+                <li key={`${item.kind}-${index}`} className="border-l border-proof/30 pl-2.5">
+                  <div className="flex flex-wrap items-baseline gap-x-2 font-serif text-[12.5px] leading-5 text-ink-soft">
+                    <span className="journal-caps text-[10px] text-proof">{item.kind}</span>
+                    <span className="font-semibold text-ink">{item.name || item.kind}</span>
+                  </div>
+                  {item.detail ? (
+                    <p className="font-serif text-[12px] leading-5 text-muted">{item.detail}</p>
+                  ) : null}
+                  <p className="font-serif text-[11.5px] leading-5 text-ink-soft">
+                    <span className="font-semibold text-proof">修复建议: </span>
+                    {remediation}
+                  </p>
+                </li>
+              );
+            })}
           </ul>
-        </div>
+        </section>
       )}
 
       <div className="relative min-h-0 flex-1 p-4">
@@ -412,7 +451,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
                 edges={edges}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
-                onNodeClick={onNodeClick}
+                onNodeClick={handleCanvasNodeClick}
               />
             </Suspense>
             <div className="pointer-events-none absolute inset-x-0 bottom-0 border-t border-line bg-surface/90 px-3 py-1.5">

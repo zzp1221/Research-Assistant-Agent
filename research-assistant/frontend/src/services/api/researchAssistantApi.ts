@@ -35,6 +35,23 @@ const buildIdentityHeaders = (identity?: RequestIdentity) => {
   return {};
 };
 
+export const PLAN_CREATE_TIMEOUT_MESSAGE = '计划创建超时；请稍后刷新计划库确认是否已创建。';
+
+// Plan creation can legitimately take 14-50s (LLM planning), longer than the
+// default client timeout. The header makes a client retry safe: the backend
+// replays the cached plan instead of creating a duplicate.
+// Paper reproduction plans can take ~2 minutes with arXiv import plus the
+// agent planner, so allow a wider budget than a plain chat request.
+const PLAN_CREATE_TIMEOUT_MS = 240_000;
+
+const createIdempotencyKey = (): string => {
+  const cryptoApi = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
+  if (cryptoApi && typeof cryptoApi.randomUUID === 'function') {
+    return cryptoApi.randomUUID();
+  }
+  return `idem-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
 export const createPlan = async (
   intent: string,
   identity: RequestIdentity,
@@ -42,13 +59,27 @@ export const createPlan = async (
   runtimePermissionMode: 'confirm_important' | 'full_access' = 'confirm_important',
   runtimePermissionAcknowledged = false,
 ): Promise<PlanResponse> => {
-  const response = await httpClient.post<PlanResponse>('/api/plan', {
-    intent,
-    attachments,
-    runtime_permission_mode: runtimePermissionMode,
-    runtime_permission_acknowledged: runtimePermissionAcknowledged,
-  }, { headers: buildIdentityHeaders(identity) });
-  return response.data;
+  try {
+    const response = await httpClient.post<PlanResponse>('/api/plan', {
+      intent,
+      attachments,
+      runtime_permission_mode: runtimePermissionMode,
+      runtime_permission_acknowledged: runtimePermissionAcknowledged,
+    }, {
+      headers: {
+        ...buildIdentityHeaders(identity),
+        'Idempotency-Key': createIdempotencyKey(),
+      },
+      timeout: PLAN_CREATE_TIMEOUT_MS,
+    });
+    return response.data;
+  } catch (error: unknown) {
+    const code = error && typeof error === 'object' ? (error as { code?: unknown }).code : undefined;
+    if (code === 'ECONNABORTED') {
+      throw new Error(PLAN_CREATE_TIMEOUT_MESSAGE);
+    }
+    throw error;
+  }
 };
 
 export interface PlanSummary {
@@ -111,8 +142,18 @@ export const chat = async (message: string, identity: RequestIdentity): Promise<
   return response.data;
 };
 
-export const executePlan = async (planId: string, identity: RequestIdentity): Promise<ExecutePlanResponse> => {
-	const response = await httpClient.post<ExecutePlanResponse>(`/api/plans/${planId}/execute`, {}, { headers: buildIdentityHeaders(identity) });
+export type PlanExecutionTrigger = 'manual' | 'auto';
+
+export const executePlan = async (
+	planId: string,
+	identity: RequestIdentity,
+	trigger: PlanExecutionTrigger = 'manual',
+): Promise<ExecutePlanResponse> => {
+	const response = await httpClient.post<ExecutePlanResponse>(
+		`/api/plans/${planId}/execute`,
+		{ trigger },
+		{ headers: buildIdentityHeaders(identity) },
+	);
 	return response.data;
 };
 
@@ -167,6 +208,17 @@ export const getPlanStreamTicket = async (planId: string, identity: RequestIdent
 	return response.data.ticket;
 };
 
+export interface PlanEventSourceOptions {
+  /**
+   * Incremental replay cursor. The backend also accepts the standard
+   * Last-Event-ID header, but the browser EventSource API offers no way to set
+   * request headers, so `after_seq` is the supported reconnect mechanism.
+   */
+  afterSeq?: number;
+  /** Fetch a fresh 60s stream ticket even in cookie-auth (non-token) mode. */
+  forceTicket?: boolean;
+}
+
 export const createPlanEventSource = async (
   planId: string,
   identity: RequestIdentity,
@@ -174,12 +226,19 @@ export const createPlanEventSource = async (
     onPlanEvent: (event: PlanEvent) => void;
     onError?: () => void;
   },
+  options: PlanEventSourceOptions = {},
 ): Promise<EventSource> => {
-	let url = `${API_BASE_URL}/api/plans/${planId}/stream`;
-	if (API_AUTH_TOKEN) {
+	const params = new URLSearchParams();
+	// Tickets expire after 60s, so every reconnect must request a new one.
+	if (API_AUTH_TOKEN || options.forceTicket) {
 		const ticket = await getPlanStreamTicket(planId, identity);
-		url += `?ticket=${encodeURIComponent(ticket)}`;
+		params.set('ticket', ticket);
 	}
+	if (typeof options.afterSeq === 'number' && Number.isFinite(options.afterSeq) && options.afterSeq > 0) {
+		params.set('after_seq', String(Math.floor(options.afterSeq)));
+	}
+	const query = params.toString();
+	const url = `${API_BASE_URL}/api/plans/${planId}/stream${query ? `?${query}` : ''}`;
 	const source = new EventSource(url, { withCredentials: true });
   source.addEventListener(PLAN_STREAM_EVENT_NAME, (evt) => {
     const parsed = JSON.parse((evt as MessageEvent).data) as PlanEvent;
@@ -230,11 +289,11 @@ export const executePlanTaskStream = async (
   );
 
   if (!response.ok) {
-    throw new Error(`[HTTP ${response.status}] 哎呀，服务器好像开小差了，请稍后再试一次吧～`);
+    throw new Error(`[HTTP ${response.status}] 请求失败，请稍后重试；若持续失败请导出计划并联系管理员。`);
   }
 
   if (!response.body) {
-    throw new Error('您的浏览器版本可能有点老，不支持流式传输呢 😅');
+    throw new Error('当前浏览器不支持流式输出，请升级到最新版 Chrome/Edge 后重试。');
   }
 
   const reader = response.body.getReader();

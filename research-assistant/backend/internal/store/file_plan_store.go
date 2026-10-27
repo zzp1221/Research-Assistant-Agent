@@ -126,17 +126,25 @@ func (s *FilePlanStore) UpdatePlan(planID string, update func(*models.PlanGraph)
 }
 
 func (s *FilePlanStore) AppendEvent(planID string, event models.PlanEvent) error {
+	_, err := s.AppendEventReturning(planID, event)
+	return err
+}
+
+func (s *FilePlanStore) AppendEventReturning(planID string, event models.PlanEvent) (models.PlanEvent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.plans[planID]; !ok {
-		return fmt.Errorf("plan not found: %s", planID)
+		return models.PlanEvent{}, fmt.Errorf("plan not found: %s", planID)
 	}
 	cloned := clonePlanEvent(event)
 	if cloned.Seq <= 0 {
 		cloned.Seq = nextEventSeq(s.events[planID])
 	}
 	s.events[planID] = append(s.events[planID], cloned)
-	return s.appendRecordLocked(fileLogRecord{Kind: "event", Event: &cloned})
+	if err := s.appendRecordLocked(fileLogRecord{Kind: "event", Event: &cloned}); err != nil {
+		return models.PlanEvent{}, err
+	}
+	return clonePlanEvent(cloned), nil
 }
 
 func nextEventSeq(events []models.PlanEvent) int64 {

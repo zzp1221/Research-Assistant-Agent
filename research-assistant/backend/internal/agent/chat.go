@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"research-assistant-backend/internal/appconfig"
 	"research-assistant-backend/internal/llmclient"
@@ -59,7 +58,7 @@ func (a *ChatAgent) initEinoChain() {
 		return messages, nil
 	}))
 
-	graph.AddChatModelNode("LLM_Chat", chatModel)
+	graph.AddChatModelNode("LLM_Chat", wrapUsageModel(chatModel))
 
 	graph.AddLambdaNode("Response_Extractor", compose.InvokableLambda(func(ctx context.Context, msg *schema.Message) (string, error) {
 		return msg.Content, nil
@@ -123,14 +122,7 @@ func (a *ChatAgent) ExecuteTask(ctx context.Context, task *models.Task, sharedCo
 		question = task.Name
 	}
 	if len(task.Inputs) > 0 {
-		if payload, err := json.Marshal(task.Inputs); err == nil {
-			text := string(payload)
-			const maxInputChars = 12000
-			if len(text) > maxInputChars {
-				text = text[:maxInputChars] + "..."
-			}
-			question += "\n\n上游输入（只读，供回答使用）：\n" + text
-		}
+		question += "\n\n上游输入（只读，供回答使用）：\n" + formatTaskInputsForPrompt(task.Inputs, 12000)
 	}
 	output, err := a.Answer(ctx, question)
 	if err != nil {

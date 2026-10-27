@@ -39,7 +39,20 @@ jobs:
       - name: Backend race tests
         if: runner.os == 'Linux'
         working-directory: research-assistant/backend
-        run: go test -race ./internal/scheduler ./internal/api ./internal/store
+        run: go test -race ./internal/scheduler ./internal/api ./internal/store ./internal/metrics ./internal/usage ./internal/audit
+
+      - name: Security regression tests
+        if: runner.os == 'Linux'
+        working-directory: research-assistant/backend
+        run: go test -count=1 ./internal/api ./internal/scheduler ./internal/scan ./internal/documents -run 'Security|Forged|SSRF|Traversal|RateLimit|Intent|Upload|Malware|Scan|Network|Approval|Gate'
+
+      - name: Go vulnerability scan
+        if: runner.os == 'Linux'
+        working-directory: research-assistant/backend
+        continue-on-error: true
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
 
       - name: Backend coverage gate
         if: runner.os == 'Linux'
@@ -97,6 +110,26 @@ jobs:
       - name: Test
         working-directory: research-assistant/frontend
         run: npm test
+      - name: CLI syntax
+        run: node --check research-assistant/scripts/ra.mjs
+      - name: Dependency audit (informational)
+        working-directory: research-assistant/frontend
+        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=high
+
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: UTF-8 and mojibake gate
+        run: node research-assistant/scripts/check-utf8.mjs
+      - name: CLI syntax check
+        run: node --check research-assistant/scripts/ra.mjs
+      - name: HTTP smoke script syntax check
+        run: node --check research-assistant/test/e2e/http-smoke.mjs
       - name: Install Playwright browser
         working-directory: research-assistant/frontend
         run: npx playwright install --with-deps chromium
@@ -170,3 +203,45 @@ jobs:
         run: docker build -t research-assistant-sandbox:ci research-assistant/docker-sandbox
       - name: Build frontend image
         run: docker build -t research-assistant-frontend:ci research-assistant/frontend
+
+  compose-smoke:
+    # Real backend E2E against the docker compose stack. Runs on main and on
+    # manual dispatch so PR feedback stays fast and deterministic.
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare compose environment
+        working-directory: research-assistant
+        run: |
+          cp .env.example .env
+          sed -i 's/replace-with-a-random-internal-token/ci-internal-token/g' .env
+          sed -i 's/replace-with-a-random-api-token/ci-api-token/g' .env
+          cp backend.env.example backend.env
+          sed -i 's/^OPENAI_API_KEY=.*/OPENAI_API_KEY=ci-placeholder-key/' backend.env
+          sed -i 's/^INTENT_ROUTER_MODE=.*/INTENT_ROUTER_MODE=rule/' backend.env
+          echo 'ALLOW_LEGACY_USER_HEADER=true' >> .env
+      - name: Start stack
+        working-directory: research-assistant
+        env:
+          ALLOW_LEGACY_USER_HEADER: "true"
+          INTENT_ROUTER_MODE: rule
+        run: docker compose up -d --build
+      - name: Wait for backend
+        run: |
+          node -e "const started=Date.now();(async()=>{while(Date.now()-started<300000){try{const r=await fetch('http://127.0.0.1:8080/api/health');if(r.ok)process.exit(0)}catch{}await new Promise(r=>setTimeout(r,2000))}process.exit(1)})()"
+      - name: HTTP smoke
+        working-directory: research-assistant
+        env:
+          RA_API_URL: http://127.0.0.1:8080
+          RA_API_TOKEN: ci-api-token
+        run: node test/e2e/http-smoke.mjs
+      - name: Dump compose logs on failure
+        if: failure()
+        working-directory: research-assistant
+        run: docker compose logs --no-color --tail 400
+      - name: Stop stack
+        if: always()
+        working-directory: research-assistant
+        run: docker compose down -v

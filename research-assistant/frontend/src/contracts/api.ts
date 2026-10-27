@@ -191,6 +191,9 @@ export interface PlanGraph {
   status: string;
   outcome?: string;
   outcome_reason?: string;
+  paused?: boolean;
+  paused_at?: string;
+  run_trigger?: 'manual' | 'auto';
   missing_requirements?: MissingRequirement[];
   runtime_policy?: RuntimePolicy;
   runtime_actions?: RuntimeAction[];
@@ -213,6 +216,12 @@ export interface PlanGraph {
     task_attempts: number;
     started_at?: string;
     finished_at?: string;
+    llm_prompt_tokens?: number;
+    llm_completion_tokens?: number;
+    llm_calls?: number;
+    llm_cost_usd?: number;
+    llm_estimated?: boolean;
+    sandbox_seconds?: number;
   };
   nodes: GraphTask[];
   edges: GraphEdge[];

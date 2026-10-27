@@ -114,6 +114,36 @@ make docker-down      # Docker Compose 停止
 5. 事件与 Artifact 通过 SSE 推送到前端；前端展示 DAG、节点日志、代码、报告和证据图。
 6. AutoResearch 场景下，Go Harness 负责候选合法性、预算、Keep/Reject、回滚与 Holdout 验收，Python Optimizer 只提供候选排序建议。
 
+## 2026-10 第二轮加固（R-01 ~ R-17）
+
+本轮按 `docs/improvement-2026-10-26/02-remaining-issues.md` 完成剩余问题修复，关键变化：
+
+**沙箱与资源边界**
+- 沙箱默认 `SANDBOX_NETWORK_MODE=none`，代码执行无公网出口；只有已批准的依赖安装/联网执行节点会临时 `docker network connect bridge`，执行后立即断开。
+- `RuntimePolicy` 的镜像/下载/磁盘/时长硬限制进入执行路径：镜像预检、`docker stats` 网络计量、`du` 磁盘计量、按任务的超时与 507 超限错误；实际用量写入 `EnvironmentManifest` 与审计日志。
+- `SANDBOX_SECURITY_PROFILE=strict` 提供非 root + read-only rootfs + tmpfs 的高隔离模式；`SANDBOX_RUNTIME=runsc` 可接入 gVisor（需宿主机已安装）。
+
+**API 与调度**
+- `POST /api/plan`：intent ≤ 20000 字符、附件 ≤ 8、per-user token bucket（429 + Retry-After）、`Idempotency-Key` 24h 幂等、per-user 活跃计划上限。
+- Scheduler 改为事件驱动唤醒（任务完成立即唤醒），并发/每用户配额可配置；无状态变化不写快照；计划停滞超过 `PLAN_STALL_SECONDS` 发布 `plan_stalled`。
+- 新增暂停/恢复/从节点重跑：`POST /api/plans/:id/pause|resume`、`POST /api/plans/:id/tasks/:taskId/run`。
+
+**可观测性与成本**
+- `GET /api/metrics` 与 `GET /metrics`（Prometheus 文本格式）：HTTP、计划/任务、LLM token/延迟、沙箱、活跃计划与停滞指标。
+- 计划与节点记录 LLM prompt/completion tokens、费用（`LLM_PRICE_*_PER_1K_USD`）与沙箱耗时；无 provider usage 时按字符估算并标记 `estimated`。
+- 审计日志（`AUDIT_LOG_PATH`）与 `GET /api/audit/export`；OpenAPI 3.1 文档在 `/openapi.json`；CLI 在 `scripts/ra.mjs`。
+
+**检索、文献与数据**
+- `documents` 使用真正的 BM25（IDF/k1/b/长度归一化）、页码/章节过滤与两阶段 Librarian 检索；扫描版 PDF 回退 tesseract OCR（`PDF_OCR_MAX_PAGES`），不可用时返回明确 missing requirement。
+- `GET /api/literature/search` 支持 arXiv/OpenAlex/Crossref/GitHub；`POST /api/literature/import` 支持 arXiv URL/ID、DOI、PDF URL 导入并自动落盘为论文附件；计划意图中的 arXiv/DOI 会自动导入。
+- 上传按 SHA-256 去重、per-user 配额、可选 ClamAV 扫描、`DELETE /api/uploads/:id`、`DELETE /api/sessions/:id`、`GET /api/plans/:id/export?format=md|json|zip`（最小复现包）。
+- PDF 解析限制输入大小与超时（`PDF_PARSE_MAX_MB` / `PDF_PARSE_TIMEOUT_SECONDS`），解析失败可见。
+
+**前端**
+- 计划审批与运行时审批严格分离；运行时标题按计划上下文生成；自动运行开关（默认关闭）与触发方式展示。
+- SSE 断线指数退避重连、刷新 ticket、按 `after_seq` 增量续传；创建计划带幂等键。
+- 结构化错误码 + 修复建议；执行日志级别过滤/窗口化/下载；窄屏可打开节点详情。
+
 ## 运行边界
 
 - 默认是单机研究原型，不是多租户生产服务。

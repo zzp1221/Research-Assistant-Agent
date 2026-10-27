@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"research-assistant-backend/internal/llmclient"
 	"sort"
 	"strings"
 
@@ -246,7 +247,7 @@ func (a *ResearchCodingAgent) planPaperCodeRepair(ctx context.Context, task *mod
 	if err != nil {
 		return response, nil, err
 	}
-	message, err := a.ChatModel.Generate(ctx, []*schema.Message{
+	message, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
 		{Role: schema.System, Content: prompts.ResearchCodingDebugSystemPrompt},
 		{Role: schema.User, Content: prompts.ResearchCodingDebugUserPrompt(task.Description, diagnostic, contextText, repairNumber)},
 	})

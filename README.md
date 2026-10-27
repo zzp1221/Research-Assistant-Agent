@@ -325,7 +325,18 @@ Windows 用户请使用 Docker Compose；`scripts/windows/start-backend.ps1` 会
 | `GET` | `/api/health` | 检查后端、仓库、沙箱与 Optimizer 状态 |
 | `POST` | `/api/plan` | 根据用户意图创建并保存 DAG |
 | `GET` | `/api/plans/:id` | 查询计划、节点状态和产物 |
-| `POST` | `/api/plans/:id/execute` | 启动整张计划图 |
+| `POST` | `/api/plans/:id/execute` | 启动整张计划图；可带 `{"trigger":"manual|auto"}` |
+| `POST` | `/api/plans/:id/pause` / `resume` | 暂停派发/恢复执行 |
+| `POST` | `/api/plans/:id/tasks/:taskId/run` | 从指定节点重置下游并重新运行 |
+| `GET` | `/api/plans/:id/export?format=md`（或 json/zip） | 导出最小复现包 |
+| `DELETE` | `/api/plans/:id` / `/api/sessions/:id` | 删除计划/会话 |
+| `POST` | `/api/uploads` | 上传附件（SHA-256 去重、配额、可选 ClamAV 扫描） |
+| `DELETE` | `/api/uploads/:id` | 删除上传及其派生文档 |
+| `GET` | `/api/literature/search` | arXiv/OpenAlex/Crossref/GitHub 检索 |
+| `POST` | `/api/literature/import` | arXiv ID/URL、DOI、PDF URL 导入并解析 |
+| `GET` | `/api/metrics` | Prometheus 文本指标（Bearer 鉴权） |
+| `GET` | `/api/audit/export` | 审计事件导出（调用者隔离） |
+| `GET` | `/openapi.json` | OpenAPI 3.1 合同 |
 | `POST` | `/api/plans/:id/approve` | 批准需要人工确认的计划 |
 | `GET` | `/api/plans/:id/runtime-actions` | 查询运行时审批请求（镜像/依赖/GPU/网络等） |
 | `POST` | `/api/plans/:id/runtime-actions/:actionId/decision` | 允许或拒绝一次运行时操作；拒绝会终止计划 |
@@ -348,7 +359,7 @@ Windows 用户请使用 Docker Compose；`scripts/windows/start-backend.ps1` 会
 | `GET` | `/api/v1/capabilities` | Sandbox 宿主能力：Docker、GPU、CPU、内存、磁盘、镜像 allowlist |
 | `POST` | `/api/v1/images/ensure` | 校验并确保运行时镜像存在，返回 digest/size |
 
-完整路由和请求结构见 [backend/README.md](research-assistant/backend/README.md)。
+完整路由和请求结构见 [backend/README.md](research-assistant/backend/README.md) 与 [openapi.json](research-assistant/backend/internal/api/openapi.json)；命令行工具见 [scripts/ra.mjs](research-assistant/scripts/ra.mjs)。
 
 ### 3.4 测试与质量门禁
 

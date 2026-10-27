@@ -1,11 +1,13 @@
 package api
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -14,6 +16,7 @@ import (
 	"time"
 
 	"research-assistant-backend/internal/documents"
+	"research-assistant-backend/internal/scan"
 	uploadspkg "research-assistant-backend/internal/uploads"
 
 	"github.com/gin-gonic/gin"
@@ -31,24 +34,30 @@ type uploadMetadata struct {
 	OwnerID     string    `json:"owner_id"`
 	SessionID   string    `json:"session_id"`
 	StoredPath  string    `json:"stored_path"`
+	ScanStatus  string    `json:"scan_status,omitempty"`
+	ScanDetail  string    `json:"scan_detail,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
 type uploadResponse struct {
-	ID          string         `json:"id"`
-	Name        string         `json:"name"`
-	ContentType string         `json:"content_type"`
-	Size        int64          `json:"size"`
-	SHA256      string         `json:"sha256"`
-	ContentURL  string         `json:"content_url"`
-	CreatedAt   time.Time      `json:"created_at"`
-	Document    map[string]any `json:"document,omitempty"`
+	ID           string         `json:"id"`
+	Name         string         `json:"name"`
+	ContentType  string         `json:"content_type"`
+	Size         int64          `json:"size"`
+	SHA256       string         `json:"sha256"`
+	ContentURL   string         `json:"content_url"`
+	CreatedAt    time.Time      `json:"created_at"`
+	Document     map[string]any `json:"document,omitempty"`
+	Deduplicated bool           `json:"deduplicated,omitempty"`
+	Scan         *scan.Result   `json:"scan,omitempty"`
 }
 
 func RegisterUploadRoutes(apiGroup *gin.RouterGroup) {
 	apiGroup.POST("/uploads", createUpload)
 	apiGroup.GET("/uploads/:id/content", serveUploadContent)
+	apiGroup.DELETE("/uploads/:id", deleteUpload)
 	registerDocumentRoutes(apiGroup)
+	startUploadJanitor(context.Background())
 }
 
 func createUpload(c *gin.Context) {
@@ -101,6 +110,10 @@ func createUpload(c *gin.Context) {
 
 	ownerID := resolveUserID(c)
 	sessionID := resolveSessionID(c)
+	if err := ensureUploadQuota(ownerID, fileHeader.Size); err != nil {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": err.Error(), "code": "quota_exceeded", "remediation": errorRemediation("quota_exceeded")})
+		return
+	}
 	uploadID := uuid.NewString()
 	directory := uploadDirectory(ownerID, uploadID)
 	if err := os.MkdirAll(directory, 0o700); err != nil {
@@ -122,16 +135,63 @@ func createUpload(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Content-addressed dedupe: the same bytes uploaded twice reuse the original
+	// document, avoiding a second PDF parse and duplicate storage.
+	if existing, ok := findUploadByHash(ownerID, metadata.SHA256); ok {
+		_ = os.RemoveAll(directory)
+		response := uploadResponseFromMetadata(existing)
+		response.Deduplicated = true
+		if existing.ScanStatus != "" {
+			response.Scan = &scan.Result{Status: existing.ScanStatus, Detail: existing.ScanDetail}
+		}
+		if extension == ".pdf" {
+			if document, loadErr := documents.Load(filepath.Dir(existing.StoredPath)); loadErr == nil {
+				response.Document = documentSummary(document)
+			}
+		}
+		recordAuditEvent("upload_deduplicated", ownerID, existing.ID, map[string]any{"sha256": existing.SHA256, "name": name})
+		c.JSON(http.StatusOK, response)
+		return
+	}
+
+	scanResult := scan.Result{Status: "skipped", Detail: "CLAMAV_ADDR is not configured"}
+	if scan.Configured() {
+		result, scanErr := scan.ScanFile(c.Request.Context(), storedPath)
+		if scanErr != nil {
+			_ = os.RemoveAll(directory)
+			c.JSON(http.StatusBadGateway, gin.H{"error": "malware scan failed: " + scanErr.Error(), "code": "scan_failed", "remediation": errorRemediation("scan_failed")})
+			return
+		}
+		scanResult = result
+		if result.Status == "infected" {
+			_ = os.RemoveAll(directory)
+			recordAuditEvent("upload_malware_blocked", ownerID, uploadID, map[string]any{"name": name, "signature": result.Signature})
+			c.JSON(http.StatusUnprocessableEntity, gin.H{
+				"error":       "uploaded file failed the malware scan",
+				"code":        "malware_detected",
+				"remediation": errorRemediation("malware_detected"),
+				"scan":        result,
+			})
+			return
+		}
+	}
+	metadata.ScanStatus = scanResult.Status
+	metadata.ScanDetail = scanResult.Detail
 	if err := writeUploadMetadata(metadata); err != nil {
 		_ = os.RemoveAll(directory)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot persist upload metadata"})
 		return
+	}
+	if err := writeUploadIndex(ownerID, metadata.SHA256, metadata.ID); err != nil {
+		logUploadError("cannot persist upload hash index", err)
 	}
 
 	// A PDF upload must be readable before it can feed paper parsing or the
 	// document assist API. Extraction failures are recorded, not fatal: the
 	// reader still opens and the UI shows why text is unavailable.
 	response := uploadResponseFromMetadata(metadata)
+	response.Scan = &scanResult
 	if extension == ".pdf" {
 		document := documents.ExtractPDF(c.Request.Context(), uploadID, storedPath)
 		if err := documents.Save(directory, document); err != nil {
@@ -141,8 +201,13 @@ func createUpload(c *gin.Context) {
 		}
 		response.Document = documentSummary(document)
 	}
+	recordAuditEvent("upload_created", ownerID, uploadID, map[string]any{"name": name, "size": metadata.Size, "sha256": metadata.SHA256, "scan": scanResult.Status})
 
 	c.JSON(http.StatusCreated, response)
+}
+
+func logUploadError(message string, err error) {
+	log.Printf("[uploads] %s: %v", message, err)
 }
 
 func persistUpload(source multipart.File, header *multipart.FileHeader, path string, metadata uploadMetadata, maxBytes int64) (uploadMetadata, error) {

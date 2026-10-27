@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"research-assistant-backend/internal/llmclient"
 	"sort"
 	"strings"
 
@@ -40,7 +41,7 @@ type ablationEvaluationEnvelope struct {
 
 func (a *DataAgent) executeAblationDesign(ctx context.Context, task *models.Task) error {
 	budget := ablationBudgetFromTask(task)
-	contextText := fmt.Sprintf("%s\n\nAvailable artifacts and constraints:\n%v", task.Description, task.Inputs)
+	contextText := fmt.Sprintf("%s\n\nAvailable artifacts and constraints:\n%s", task.Description, formatTaskInputsForPrompt(task.Inputs, 8000))
 	defaults := defaultAblationCandidates()
 	if estimatedMinutes := boundedTaskInt(task, "ablation_estimated_minutes_per_experiment", 0, 0, 60); estimatedMinutes > 0 {
 		for index := range defaults {
@@ -50,7 +51,7 @@ func (a *DataAgent) executeAblationDesign(ctx context.Context, task *models.Task
 	rootCandidates := prepareAblationRootCandidates(nil, defaults)
 
 	if a != nil && a.ChatModel != nil {
-		msg, err := a.ChatModel.Generate(ctx, []*schema.Message{
+		msg, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
 			{Role: schema.System, Content: prompts.AblationCandidateSystemPrompt},
 			{Role: schema.User, Content: prompts.AblationCandidateUserPrompt(contextText, budget)},
 		})
@@ -72,7 +73,7 @@ func (a *DataAgent) executeAblationDesign(ctx context.Context, task *models.Task
 		parents := selectAblationExpansionParents(scoredRoots, budget, minInt(remainingBranches, ablationTreeExpansionBeam))
 		if len(parents) > 0 && remainingBranches > 0 {
 			rawParents, _ := json.Marshal(parents)
-			msg, err := a.ChatModel.Generate(ctx, []*schema.Message{
+			msg, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
 				{Role: schema.System, Content: prompts.AblationExpansionSystemPrompt},
 				{Role: schema.User, Content: prompts.AblationExpansionUserPrompt(contextText, string(rawParents), budget, remainingBranches)},
 			})
@@ -125,7 +126,7 @@ func evaluateAblationBranches(ctx context.Context, agent *DataAgent, contextText
 		return evaluations
 	}
 	rawCandidates, _ := json.Marshal(candidates)
-	msg, err := agent.ChatModel.Generate(ctx, []*schema.Message{
+	msg, err := llmclient.GenerateWithUsage(ctx, agent.ChatModel, []*schema.Message{
 		{Role: schema.System, Content: prompts.AblationEvaluationSystemPrompt},
 		{Role: schema.User, Content: prompts.AblationEvaluationUserPrompt(contextText, string(rawCandidates), budget)},
 	})

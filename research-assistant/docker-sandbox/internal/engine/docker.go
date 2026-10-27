@@ -117,15 +117,28 @@ func (e *NativeDockerEngine) GetType() string {
 	return "Docker"
 }
 
-func (e *NativeDockerEngine) Create(ctx context.Context, image string, mountPath string, labels map[string]string) (string, error) {
-	image = rewriteImageWithRegistryMirror(image)
-	args, err := secureDockerRunArgs(image, labels)
+func (e *NativeDockerEngine) Create(ctx context.Context, options CreateOptions) (string, error) {
+	image := rewriteImageWithRegistryMirror(options.Image)
+	if err := e.enforceImageLimit(ctx, image, options.Limits.MaxImageBytes); err != nil {
+		return "", err
+	}
+	networkMode, networkErr := EffectiveNetworkMode(options.NetworkMode)
+	if networkErr != nil {
+		return "", networkErr
+	}
+	if networkMode == NetworkNone {
+		if err := e.ensureOfflineNetwork(ctx); err != nil {
+			return "", err
+		}
+	}
+	args, err := secureDockerRunArgs(image, options.Labels, options)
 	if err != nil {
 		return "", err
 	}
 	if gpuRequest := dockerGPURequest(); gpuRequest != "" {
 		args = append(args, "--gpus", gpuRequest)
 	}
+	mountPath := options.MountPath
 	if mountPath != "" {
 		normalizedMountPath, err := normalizeDockerMountPath(mountPath)
 		if err != nil {
@@ -181,6 +194,163 @@ func normalizeDockerMountPath(mountPath string) (string, error) {
 		return "", nil
 	}
 	return normalizeAndAuthorizeMountPath(mountPath)
+}
+
+// ensureOfflineNetwork creates the internal, non-routable bridge used by
+// default. The network has no gateway, so containers cannot reach the internet
+// or resolve public names even though they are attached to a bridge.
+func (e *NativeDockerEngine) ensureOfflineNetwork(ctx context.Context) error {
+	name := offlineNetworkName()
+	checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	inspect := exec.CommandContext(checkCtx, dockerCommand(), "network", "inspect", "--format", "{{.Internal}}", name)
+	if output, err := inspect.Output(); err == nil {
+		if strings.EqualFold(strings.TrimSpace(string(output)), "true") {
+			return nil
+		}
+		return fmt.Errorf("sandbox offline network %q exists but is not internal", name)
+	}
+	output, createErr := exec.CommandContext(checkCtx, dockerCommand(),
+		"network", "create", "--internal",
+		"--opt", "com.docker.network.bridge.enable_icc=false",
+		"--label", sandboxLabelKey+"="+sandboxLabelValue,
+		name).CombinedOutput()
+	if createErr != nil {
+		message := strings.TrimSpace(string(output))
+		if strings.Contains(strings.ToLower(message), "already exists") {
+			return nil
+		}
+		return fmt.Errorf("create sandbox offline network %q: %v (%s)", name, createErr, message)
+	}
+	return nil
+}
+
+// enforceImageLimit rejects an image whose size exceeds MaxImageBytes before
+// any container is created.
+func (e *NativeDockerEngine) enforceImageLimit(ctx context.Context, image string, maxBytes int64) error {
+	if maxBytes <= 0 {
+		return nil
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(checkCtx, dockerCommand(), "image", "inspect", "--format", "{{.Size}}", image).Output()
+	if err != nil {
+		// A missing image is handled by the ensure-image step; do not mask it.
+		return nil
+	}
+	size, parseErr := strconv.ParseInt(strings.TrimSpace(string(output)), 10, 64)
+	if parseErr != nil {
+		return nil
+	}
+	if size > maxBytes {
+		return fmt.Errorf("sandbox image %q is %d bytes, exceeding max_image_bytes=%d", image, size, maxBytes)
+	}
+	return nil
+}
+
+// SetNetwork attaches or detaches the bridge network at runtime. Containers are
+// always created with network=none so code execution has no egress; the backend
+// opens network only around an approved install/download command.
+func (e *NativeDockerEngine) SetNetwork(ctx context.Context, id, mode string) error {
+	id = strings.TrimSpace(id)
+	if !containerIDPattern.MatchString(id) {
+		return fmt.Errorf("invalid sandbox container id")
+	}
+	networkMode, err := EffectiveNetworkMode(mode)
+	if err != nil {
+		return err
+	}
+	switch networkMode {
+	case NetworkBridge:
+		output, connectErr := exec.CommandContext(ctx, dockerCommand(), "network", "connect", "bridge", id).CombinedOutput()
+		if connectErr != nil {
+			message := strings.TrimSpace(string(output))
+			if strings.Contains(strings.ToLower(message), "already exists") {
+				return nil
+			}
+			return fmt.Errorf("connect sandbox network: %v (%s)", connectErr, message)
+		}
+		return nil
+	default:
+		// The container's primary network is the internal offline bridge; only
+		// the temporary egress attachment is removed here.
+		output, disconnectErr := exec.CommandContext(ctx, dockerCommand(), "network", "disconnect", "bridge", id).CombinedOutput()
+		if disconnectErr != nil {
+			message := strings.TrimSpace(string(output))
+			if strings.Contains(strings.ToLower(message), "is not connected") {
+				return nil
+			}
+			return fmt.Errorf("disconnect sandbox network: %v (%s)", disconnectErr, message)
+		}
+		return nil
+	}
+}
+
+// NetworkBytes reads the cumulative container network counters.
+func (e *NativeDockerEngine) NetworkBytes(ctx context.Context, id string) (int64, int64, error) {
+	id = strings.TrimSpace(id)
+	if !containerIDPattern.MatchString(id) {
+		return 0, 0, fmt.Errorf("invalid sandbox container id")
+	}
+	output, err := exec.CommandContext(ctx, dockerCommand(), "stats", "--no-stream", "--format", "{{.NetIO}}", id).Output()
+	if err != nil {
+		return 0, 0, err
+	}
+	parts := strings.Split(strings.TrimSpace(string(output)), "/")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("unexpected docker stats output %q", strings.TrimSpace(string(output)))
+	}
+	rx, _ := parseDockerBytes(parts[0])
+	tx, _ := parseDockerBytes(parts[1])
+	return rx, tx, nil
+}
+
+// DiskUsageMB sums the writable paths inside the container.
+func (e *NativeDockerEngine) DiskUsageMB(ctx context.Context, id string) (float64, error) {
+	id = strings.TrimSpace(id)
+	if !containerIDPattern.MatchString(id) {
+		return 0, fmt.Errorf("invalid sandbox container id")
+	}
+	output, err := exec.CommandContext(ctx, dockerCommand(), "exec", id, "sh", "-c",
+		"du -sm /workspace /root /tmp 2>/dev/null | awk '{s+=$1} END {print s+0}'").Output()
+	if err != nil {
+		return 0, err
+	}
+	value, parseErr := strconv.ParseFloat(strings.TrimSpace(string(output)), 64)
+	if parseErr != nil {
+		return 0, fmt.Errorf("unexpected du output %q", strings.TrimSpace(string(output)))
+	}
+	return value, nil
+}
+
+func parseDockerBytes(raw string) (int64, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return 0, nil
+	}
+	units := []struct {
+		suffix string
+		factor float64
+	}{
+		{"GiB", 1024 * 1024 * 1024},
+		{"MiB", 1024 * 1024},
+		{"KiB", 1024},
+		{"GB", 1000 * 1000 * 1000},
+		{"MB", 1000 * 1000},
+		{"kB", 1000},
+		{"B", 1},
+	}
+	for _, unit := range units {
+		if strings.HasSuffix(value, unit.suffix) {
+			number := strings.TrimSpace(strings.TrimSuffix(value, unit.suffix))
+			parsed, err := strconv.ParseFloat(number, 64)
+			if err != nil {
+				return 0, err
+			}
+			return int64(parsed * unit.factor), nil
+		}
+	}
+	return 0, fmt.Errorf("unknown byte unit in %q", raw)
 }
 
 // rewriteImageWithRegistryMirror prefixes docker.io images with the configured

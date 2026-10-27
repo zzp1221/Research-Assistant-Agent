@@ -24,7 +24,7 @@ func runtimeActionForTask(plan *models.PlanGraph, task *models.TaskNode) (models
 		if image == "" {
 			image = "python:3.11-bullseye"
 		}
-		return models.RuntimeActionImagePull, "拉取论文运行时镜像", map[string]any{
+		return models.RuntimeActionImagePull, runtimeActionTitle(plan, "拉取运行时镜像", "拉取论文运行时镜像"), map[string]any{
 			"image":    image,
 			"registry": imageRegistry(image),
 		}, "medium", true
@@ -33,7 +33,7 @@ func runtimeActionForTask(plan *models.PlanGraph, task *models.TaskNode) (models
 		if len(deps) == 0 {
 			return "", "", nil, "", false
 		}
-		return models.RuntimeActionDependencyInstall, "安装论文依赖", map[string]any{
+		return models.RuntimeActionDependencyInstall, runtimeActionTitle(plan, "安装运行依赖", "安装论文依赖"), map[string]any{
 			"packages": deps,
 		}, "medium", true
 	case "runtime_probe":
@@ -53,14 +53,37 @@ func runtimeActionForTask(plan *models.PlanGraph, task *models.TaskNode) (models
 				"models": spec.ModelRefs,
 			}, "high", true
 		}
-	case "paper_code_execute":
-		if spec.NetworkAccess {
-			return models.RuntimeActionNetworkAccess, "运行阶段访问网络", map[string]any{
-				"network_access": true,
-			}, "medium", true
+	case "paper_code_execute", "fix_and_rerun", "benchmark_execute",
+		"benchmark_adapter_preflight", "benchmark_split_materialize", "benchmark_dataset_audit",
+		"autoresearch_run", "autoresearch_validate", "experiment_run", "experiment_dataset_prepare",
+		"framework_run_left", "framework_run_right":
+		// Execution tasks may fetch datasets, model weights or repositories.
+		// Request an explicit network decision in confirm mode; full_access
+		// auto-approves it. Simple offline code execution is not gated.
+		details := map[string]any{"network_access": true, "task_type": task.Type}
+		if len(spec.DatasetRefs) > 0 {
+			details["datasets"] = spec.DatasetRefs
 		}
+		if len(spec.ModelRefs) > 0 {
+			details["models"] = spec.ModelRefs
+		}
+		return models.RuntimeActionNetworkAccess, "运行阶段访问网络", details, "medium", true
 	}
 	return "", "", nil, "", false
+}
+
+// runtimeActionTitle keeps the approval copy honest: a plotting plan is not a
+// paper reproduction, so its dependency card must not claim to install paper
+// dependencies.
+func runtimeActionTitle(plan *models.PlanGraph, generic, paper string) string {
+	if plan == nil {
+		return generic
+	}
+	intentType := strings.ToLower(strings.TrimSpace(plan.IntentType))
+	if strings.Contains(intentType, "paper") || strings.Contains(intentType, "reproduction") {
+		return paper
+	}
+	return generic
 }
 
 func runtimeSpecForPlan(plan *models.PlanGraph) models.ReproductionRuntimeSpec {
@@ -161,6 +184,14 @@ func (s *Scheduler) prepareRuntimeGate(planID, taskID string) (*models.RuntimeAc
 			Status:      models.RuntimeActionPending,
 			RequestedAt: now,
 		}
+		// One approved network decision covers the rest of the plan so users are
+		// not prompted once per execution node.
+		if kind == models.RuntimeActionNetworkAccess && planHasApprovedNetworkAccess(plan) {
+			action.Status = models.RuntimeActionApproved
+			action.AutoApproved = true
+			action.DecidedAt = &now
+			action.DecidedBy = "prior_approval"
+		}
 		plan.RuntimeActions = append(plan.RuntimeActions, *action)
 		task.RuntimeActionIDs = append(task.RuntimeActionIDs, action.ID)
 		if plan.RuntimePolicy.Mode == models.RuntimePermissionFullAccess {
@@ -169,6 +200,10 @@ func (s *Scheduler) prepareRuntimeGate(planID, taskID string) (*models.RuntimeAc
 			action.DecidedAt = &now
 			action.DecidedBy = "policy:full_access"
 			plan.RuntimeActions[len(plan.RuntimeActions)-1] = *action
+			return nil
+		}
+		if action.Status == models.RuntimeActionApproved && action.AutoApproved {
+			// Covered by a previous explicit approval for this plan.
 			return nil
 		}
 		task.Status = models.StatusAwaitingApproval
@@ -200,6 +235,20 @@ func (s *Scheduler) prepareRuntimeGate(planID, taskID string) (*models.RuntimeAc
 		})
 	}
 	return action, pending, nil
+}
+
+// planHasApprovedNetworkAccess reports whether the user already approved a
+// network action for this plan.
+func planHasApprovedNetworkAccess(plan *models.PlanGraph) bool {
+	if plan == nil {
+		return false
+	}
+	for _, action := range plan.RuntimeActions {
+		if action.Kind == models.RuntimeActionNetworkAccess && action.Status == models.RuntimeActionApproved && !action.AutoApproved {
+			return true
+		}
+	}
+	return false
 }
 
 func findRuntimeAction(plan *models.PlanGraph, taskID string, kind models.RuntimeActionKind) *models.RuntimeActionRequest {

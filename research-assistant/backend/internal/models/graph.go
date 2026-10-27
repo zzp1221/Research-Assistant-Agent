@@ -49,6 +49,7 @@ type TaskNode struct {
 	ImageURL          string         `json:"image_url,omitempty"`
 	Error             string         `json:"error,omitempty"`
 	Metadata          map[string]any `json:"metadata,omitempty"`
+	Usage             *TaskUsage     `json:"usage,omitempty"`
 	StartedAt         *time.Time     `json:"started_at,omitempty"`
 	FinishedAt        *time.Time     `json:"finished_at,omitempty"`
 	CreatedAt         time.Time      `json:"created_at"`
@@ -98,8 +99,13 @@ type PlanGraph struct {
 	Edges               []*TaskEdge            `json:"edges"`
 	Artifacts           map[string]Artifact    `json:"artifacts"`
 	Meta                GraphMeta              `json:"meta"`
-	CreatedAt           time.Time              `json:"created_at"`
-	UpdatedAt           time.Time              `json:"updated_at"`
+	// Paused stops the scheduler from dispatching new tasks. Running tasks are
+	// allowed to finish so pause never corrupts an in-flight execution.
+	Paused     bool       `json:"paused,omitempty"`
+	PausedAt   *time.Time `json:"paused_at,omitempty"`
+	RunTrigger string     `json:"run_trigger,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 // TaskExecutionResult is the normalized scheduler-facing result of one task execution.
@@ -115,4 +121,5 @@ type TaskExecutionResult struct {
 	Artifacts           []Artifact            `json:"artifacts,omitempty"`
 	MissingRequirements []MissingRequirement  `json:"missing_requirements,omitempty"`
 	RuntimeAction       *RuntimeActionRequest `json:"runtime_action,omitempty"`
+	Usage               *TaskUsage            `json:"usage,omitempty"`
 }

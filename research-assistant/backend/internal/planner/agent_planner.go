@@ -76,7 +76,7 @@ func (p *plannerAgent) BuildNodes(ctx context.Context, intent models.IntentConte
 
 	intentPayload, _ := json.MarshalIndent(intent, "", "  ")
 	userPrompt := prompts.PlannerAgentUserPrompt(string(intentPayload))
-	msg, err := p.chatModel.Generate(ctx, []*schema.Message{
+	msg, err := llmclient.GenerateWithUsage(ctx, p.chatModel, []*schema.Message{
 		{Role: schema.System, Content: prompts.PlannerAgentSystemPrompt},
 		{Role: schema.User, Content: userPrompt},
 	})
@@ -103,7 +103,7 @@ func (p *plannerAgent) RepairNodes(ctx context.Context, intent models.IntentCont
 		"\n\n上一次生成的节点 JSON:\n" + string(nodesPayload) +
 		"\n\n校验错误:\n" + validationErr.Error() +
 		"\n\n请修复节点列表并只返回严格的 JSON：{\"nodes\":[{\"ref\",\"name\",\"type\",\"assigned_to\",\"dependencies\",\"required_artifacts\",\"output_artifacts\",\"parallelizable\"}]}。要求：每个节点必须有非空 output_artifacts；不同分支不得重复使用同一个 artifact key（用分支前缀）；最多 14 个节点。"
-	msg, err := p.chatModel.Generate(ctx, []*schema.Message{
+	msg, err := llmclient.GenerateWithUsage(ctx, p.chatModel, []*schema.Message{
 		{Role: schema.System, Content: prompts.PlannerAgentSystemPrompt},
 		{Role: schema.User, Content: userPrompt},
 	})

@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"research-assistant-backend/internal/llmclient"
 	"sort"
 	"strconv"
 	"strings"
@@ -1401,7 +1402,7 @@ func (a *ResearchCodingAgent) proposeAutoResearchCandidate(ctx context.Context, 
 		"recent_trials":             recentAutoResearchTrials(ledger.Trials, 4),
 		"latest_evaluator_evidence": latestAutoResearchEvaluatorEvidence(ledger.Trials),
 	})
-	message, err := a.ChatModel.Generate(ctx, []*schema.Message{
+	message, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
 		{Role: schema.System, Content: prompts.AutoResearchCandidateSystemPrompt},
 		{Role: schema.User, Content: prompts.AutoResearchCandidateUserPrompt(string(specJSON), string(ledgerSummary), contextText, readOnlyContext, rejectedCandidateFeedback)},
 	})

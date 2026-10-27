@@ -1,0 +1,1195 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Research Assistant API",
+    "version": "2026.10",
+    "description": "Plan creation, execution control, uploads, literature import and observability for the Research Assistant."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Same host as the deployed backend"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    },
+    {
+      "identityCookie": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "opaque"
+      },
+      "identityCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "sa_uid"
+      }
+    },
+    "schemas": {
+      "PlanGraph": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "user_intent": {
+            "type": "string"
+          },
+          "intent_type": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "ready",
+              "in_progress",
+              "awaiting_approval",
+              "completed",
+              "failed",
+              "canceled"
+            ]
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "run_trigger": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "auto"
+            ]
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "artifacts": {
+            "type": "object"
+          },
+          "usage": {
+            "type": "object"
+          },
+          "approval": {
+            "type": "object"
+          },
+          "runtime_policy": {
+            "type": "object"
+          }
+        }
+      },
+      "PlanEvent": {
+        "type": "object",
+        "properties": {
+          "plan_id": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "task_status": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RuntimeAction": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image_pull",
+              "dependency_install",
+              "dataset_download",
+              "model_download",
+              "gpu_use",
+              "network_access",
+              "system_package_install"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "expired",
+              "canceled"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "MissingRequirement": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "remediation": {
+            "type": "string"
+          }
+        }
+      },
+      "Upload": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "content_url": {
+            "type": "string"
+          },
+          "deduplicated": {
+            "type": "boolean"
+          },
+          "scan": {
+            "type": "object"
+          }
+        }
+      },
+      "LiteratureResult": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "authors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "year": {
+            "type": "integer"
+          },
+          "doi": {
+            "type": "string"
+          },
+          "arxiv_id": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "pdf_url": {
+            "type": "string"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "remediation": {
+            "type": "string"
+          },
+          "missing_requirements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingRequirement"
+            }
+          }
+        }
+      }
+    },
+    "parameters": {
+      "PlanID": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "TaskID": {
+        "name": "taskId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "AfterSeq": {
+        "name": "after_seq",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "health",
+        "summary": "Liveness and dependency health (no provider credentials)",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Health document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "operationId": "getMe",
+        "summary": "Current server-issued principal",
+        "responses": {
+          "200": {
+            "description": "Identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user_id": {
+                      "type": "string"
+                    },
+                    "session_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plan": {
+      "post": {
+        "operationId": "createPlan",
+        "summary": "Create an execution plan from an intent",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "intent"
+                ],
+                "properties": {
+                  "intent": {
+                    "type": "string",
+                    "maxLength": 20000
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 8
+                  },
+                  "runtime_permission_mode": {
+                    "type": "string",
+                    "enum": [
+                      "confirm_important",
+                      "full_access"
+                    ]
+                  },
+                  "runtime_permission_acknowledged": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Plan created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "plan_graph": {
+                      "$ref": "#/components/schemas/PlanGraph"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid intent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited or active plan quota exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plans": {
+      "get": {
+        "operationId": "listPlans",
+        "summary": "List the caller's plans",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Plan summaries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "plans": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "next_cursor": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plans/{id}": {
+      "get": {
+        "operationId": "getPlan",
+        "summary": "Read one plan",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "plan_graph": {
+                      "$ref": "#/components/schemas/PlanGraph"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deletePlan",
+        "summary": "Delete one plan",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "409": {
+            "description": "Plan is running"
+          }
+        }
+      }
+    },
+    "/api/plans/{id}/execute": {
+      "post": {
+        "operationId": "executePlan",
+        "summary": "Start or resume plan execution",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "trigger": {
+                    "type": "string",
+                    "enum": [
+                      "manual",
+                      "auto"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Execution started"
+          },
+          "409": {
+            "description": "Plan cannot start"
+          }
+        }
+      }
+    },
+    "/api/plans/{id}/pause": {
+      "post": {
+        "operationId": "pausePlan",
+        "summary": "Pause dispatching new tasks",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paused"
+          },
+          "409": {
+            "description": "Plan cannot be paused"
+          }
+        }
+      }
+    },
+    "/api/plans/{id}/resume": {
+      "post": {
+        "operationId": "resumePlan",
+        "summary": "Resume a paused plan",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resumed"
+          },
+          "409": {
+            "description": "Plan cannot be resumed"
+          }
+        }
+      }
+    },
+    "/api/plans/{id}/cancel": {
+      "post": {
+        "operationId": "cancelPlan",
+        "summary": "Cancel a plan and release its sandboxes",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Canceled"
+          },
+          "409": {
+            "description": "Plan is terminal"
+          }
+        }
+      }
+    },
+    "/api/plans/{id}/approve": {
+      "post": {
+        "operationId": "approvePlan",
+        "summary": "Approve a plan that requires human approval",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approved"
+          },
+          "409": {
+            "description": "Approval not allowed"
+          }
+        }
+      }
+    },
+    "/api/plans/{id}/tasks/{taskId}/run": {
+      "post": {
+        "operationId": "runFromNode",
+        "summary": "Rewind from a node and re-run the plan",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          },
+          {
+            "$ref": "#/components/parameters/TaskID"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Rewound and started"
+          },
+          "409": {
+            "description": "Plan is running"
+          }
+        }
+      }
+    },
+    "/api/plans/{id}/events": {
+      "get": {
+        "operationId": "listPlanEvents",
+        "summary": "Incremental plan event log",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          },
+          {
+            "$ref": "#/components/parameters/AfterSeq"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PlanEvent"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plans/{id}/stream": {
+      "get": {
+        "operationId": "streamPlanEvents",
+        "summary": "Server-sent events with Last-Event-ID/after_seq resume",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          },
+          {
+            "$ref": "#/components/parameters/AfterSeq"
+          },
+          {
+            "name": "ticket",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "text/event-stream"
+          }
+        }
+      }
+    },
+    "/api/plans/{id}/stream-ticket": {
+      "get": {
+        "operationId": "planStreamTicket",
+        "summary": "Issue a short-lived SSE ticket",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ticket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ticket": {
+                      "type": "string"
+                    },
+                    "expires_in": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plans/{id}/runtime-actions": {
+      "get": {
+        "operationId": "listRuntimeActions",
+        "summary": "List runtime approval requests",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "runtime_actions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RuntimeAction"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plans/{id}/runtime-actions/{actionId}/decision": {
+      "post": {
+        "operationId": "decideRuntimeAction",
+        "summary": "Approve or reject a runtime action",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          },
+          {
+            "name": "actionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "decision"
+                ],
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "approve",
+                      "reject"
+                    ]
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Decision applied"
+          },
+          "409": {
+            "description": "Expired or terminal"
+          }
+        }
+      }
+    },
+    "/api/plans/{id}/export": {
+      "get": {
+        "operationId": "exportPlan",
+        "summary": "Export a reproducible plan package",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "md",
+                "json",
+                "zip"
+              ],
+              "default": "md"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Markdown, JSON or ZIP package"
+          }
+        }
+      }
+    },
+    "/api/artifacts/{ref}": {
+      "get": {
+        "operationId": "downloadArtifact",
+        "summary": "Download a content-addressed artifact",
+        "parameters": [
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Artifact bytes"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/api/sessions": {
+      "get": {
+        "operationId": "listSessions",
+        "summary": "List sessions derived from owned plans",
+        "responses": {
+          "200": {
+            "description": "Sessions"
+          }
+        }
+      }
+    },
+    "/api/sessions/{id}": {
+      "delete": {
+        "operationId": "deleteSession",
+        "summary": "Delete a session and its plans",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "409": {
+            "description": "Session has an active plan"
+          }
+        }
+      }
+    },
+    "/api/uploads": {
+      "post": {
+        "operationId": "uploadFile",
+        "summary": "Upload a PDF/text/config attachment (SHA-256 deduplicated)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deduplicated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Upload"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Upload"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Quota exceeded"
+          },
+          "422": {
+            "description": "Malware detected"
+          }
+        }
+      }
+    },
+    "/api/uploads/{id}": {
+      "delete": {
+        "operationId": "deleteUpload",
+        "summary": "Delete an upload",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/api/uploads/{id}/content": {
+      "get": {
+        "operationId": "downloadUpload",
+        "summary": "Download uploaded content",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content"
+          }
+        }
+      }
+    },
+    "/api/literature/search": {
+      "get": {
+        "operationId": "searchLiterature",
+        "summary": "Search arXiv/OpenAlex/Crossref/GitHub",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sources",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated: arxiv,openalex,crossref,github"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            }
+          },
+          {
+            "name": "year_from",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/LiteratureResult"
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/literature/import": {
+      "post": {
+        "operationId": "importLiterature",
+        "summary": "Import a paper by arXiv URL/ID, DOI or PDF URL (downloads PDF and metadata)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ref"
+                ],
+                "properties": {
+                  "ref": {
+                    "type": "string"
+                  },
+                  "attach": {
+                    "type": "boolean",
+                    "description": "Store the PDF as an upload for the caller (default true)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Imported metadata and upload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid reference"
+          },
+          "502": {
+            "description": "Provider or download failure"
+          }
+        }
+      }
+    },
+    "/api/metrics": {
+      "get": {
+        "operationId": "metrics",
+        "summary": "Prometheus text exposition",
+        "responses": {
+          "200": {
+            "description": "Metrics",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/audit/export": {
+      "get": {
+        "operationId": "exportAudit",
+        "summary": "Audit events (scoped to caller unless AUDIT_EXPORT_TOKEN is provided)",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "jsonl"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audit events"
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "operationId": "openapi",
+        "summary": "This document",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 document"
+          }
+        }
+      }
+    }
+  }
+}

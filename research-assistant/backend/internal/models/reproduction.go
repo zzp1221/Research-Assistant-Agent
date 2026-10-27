@@ -129,19 +129,25 @@ type ModelRef struct {
 
 // EnvironmentManifest is the auditable result of runtime validation.
 type EnvironmentManifest struct {
-	Version        string               `json:"version"`
-	Image          string               `json:"image"`
-	ImageDigest    string               `json:"image_digest,omitempty"`
-	Language       string               `json:"language,omitempty"`
-	PythonVersion  string               `json:"python_version,omitempty"`
-	PipFreeze      []PackageSpec        `json:"pip_freeze,omitempty"`
-	SystemPackages []string             `json:"system_packages,omitempty"`
-	GPU            string               `json:"gpu,omitempty"`
-	CUDAVersion    string               `json:"cuda_version,omitempty"`
-	DatasetHashes  map[string]string    `json:"dataset_hashes,omitempty"`
-	ModelHashes    map[string]string    `json:"model_hashes,omitempty"`
-	RunCommand     []string             `json:"run_command,omitempty"`
-	WorkingDir     string               `json:"working_dir,omitempty"`
+	Version        string            `json:"version"`
+	Image          string            `json:"image"`
+	ImageDigest    string            `json:"image_digest,omitempty"`
+	Language       string            `json:"language,omitempty"`
+	PythonVersion  string            `json:"python_version,omitempty"`
+	PipFreeze      []PackageSpec     `json:"pip_freeze,omitempty"`
+	SystemPackages []string          `json:"system_packages,omitempty"`
+	GPU            string            `json:"gpu,omitempty"`
+	CUDAVersion    string            `json:"cuda_version,omitempty"`
+	DatasetHashes  map[string]string `json:"dataset_hashes,omitempty"`
+	ModelHashes    map[string]string `json:"model_hashes,omitempty"`
+	RunCommand     []string          `json:"run_command,omitempty"`
+	WorkingDir     string            `json:"working_dir,omitempty"`
+	// NetworkMode records whether the runtime ever had egress (none/bridge) and
+	// Network*Bytes the measured traffic, so a reproduction is auditable.
+	NetworkMode    string               `json:"network_mode,omitempty"`
+	NetworkRXBytes int64                `json:"network_rx_bytes,omitempty"`
+	NetworkTXBytes int64                `json:"network_tx_bytes,omitempty"`
+	HardLimits     *RuntimeHardLimits   `json:"hard_limits,omitempty"`
 	StartedAt      time.Time            `json:"started_at"`
 	FinishedAt     *time.Time           `json:"finished_at,omitempty"`
 	Status         string               `json:"status"`

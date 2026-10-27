@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -29,6 +30,10 @@ type SandboxService struct {
 	osEngine *engine.OpenSandboxEngine
 	dkEngine *engine.NativeDockerEngine
 	config   Config
+
+	limitsMu sync.RWMutex
+	limits   map[string]engine.Limits
+	network  map[string]string
 }
 
 func sandboxAuthMiddleware() gin.HandlerFunc {
@@ -61,7 +66,73 @@ func NewSandboxService(cfg Config) *SandboxService {
 		osEngine: osEngine,
 		dkEngine: engine.NewNativeDockerEngine(),
 		config:   cfg,
+		limits:   map[string]engine.Limits{},
+		network:  map[string]string{},
 	}
+}
+
+func (s *SandboxService) setLimits(id string, limits engine.Limits, networkMode string) {
+	s.limitsMu.Lock()
+	defer s.limitsMu.Unlock()
+	if s.limits == nil {
+		s.limits = map[string]engine.Limits{}
+	}
+	if s.network == nil {
+		s.network = map[string]string{}
+	}
+	s.limits[id] = limits
+	s.network[id] = networkMode
+}
+
+func (s *SandboxService) getLimits(id string) (engine.Limits, string) {
+	s.limitsMu.RLock()
+	defer s.limitsMu.RUnlock()
+	return s.limits[id], s.network[id]
+}
+
+func (s *SandboxService) forgetLimits(id string) {
+	s.limitsMu.Lock()
+	defer s.limitsMu.Unlock()
+	delete(s.limits, id)
+	delete(s.network, id)
+}
+
+// executionContext applies MaxRuntimeSec to a single command execution.
+func (s *SandboxService) executionContext(parent context.Context, id string) (context.Context, context.CancelFunc) {
+	limits, _ := s.getLimits(id)
+	if limits.MaxRuntimeSec <= 0 {
+		return context.WithCancel(parent)
+	}
+	return context.WithTimeout(parent, time.Duration(limits.MaxRuntimeSec)*time.Second)
+}
+
+// enforceUsage checks disk and download budgets after a command and annotates
+// the response with the measured usage. It returns an error when a hard limit
+// is exceeded so the caller can surface a 507 with the reason and numbers.
+func (s *SandboxService) enforceUsage(ctx context.Context, id string, res *engine.ExecutionResponse) error {
+	limits, _ := s.getLimits(id)
+	if limits == (engine.Limits{}) {
+		return nil
+	}
+	if res == nil {
+		return nil
+	}
+	if rx, tx, err := s.dkEngine.NetworkBytes(ctx, id); err == nil {
+		res.NetworkRXBytes = rx
+		res.NetworkTXBytes = tx
+		if limits.MaxDownloadBytes > 0 && rx > limits.MaxDownloadBytes {
+			return fmt.Errorf("sandbox download limit exceeded: received %d bytes, limit %d", rx, limits.MaxDownloadBytes)
+		}
+	}
+	if limits.MaxDiskGB > 0 {
+		if used, err := s.dkEngine.DiskUsageMB(ctx, id); err == nil {
+			res.DiskUsedMB = used
+			if used > limits.MaxDiskGB*1024 {
+				return fmt.Errorf("sandbox disk limit exceeded: used %.0f MB, limit %.0f GB", used, limits.MaxDiskGB)
+			}
+		}
+	}
+	return nil
 }
 
 func configureFileLogging() {
@@ -126,11 +197,18 @@ const (
 )
 
 type CreateRequest struct {
-	Image     string `json:"image"`
-	MountPath string `json:"mount_path"`
-	TenantID  string `json:"tenant_id,omitempty"`
-	TaskID    string `json:"task_id,omitempty"`
-	PlanID    string `json:"plan_id,omitempty"`
+	Image       string         `json:"image"`
+	MountPath   string         `json:"mount_path"`
+	TenantID    string         `json:"tenant_id,omitempty"`
+	TaskID      string         `json:"task_id,omitempty"`
+	PlanID      string         `json:"plan_id,omitempty"`
+	NetworkMode string         `json:"network_mode,omitempty"`
+	Runtime     string         `json:"runtime,omitempty"`
+	Limits      *engine.Limits `json:"limits,omitempty"`
+}
+
+type NetworkRequest struct {
+	Mode string `json:"mode"`
 }
 
 type CreateResponse struct {
@@ -174,10 +252,28 @@ func (s *SandboxService) CreateSandbox(c *gin.Context) {
 		return
 	}
 
+	limits := engine.Limits{}
+	if req.Limits != nil {
+		limits = *req.Limits
+	}
+	networkMode, networkErr := engine.EffectiveNetworkMode(req.NetworkMode)
+	if networkErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": networkErr.Error()})
+		return
+	}
+
 	// 1. 优先尝试 Native Docker (本地开发最可靠，支持挂载)
-	id, err := s.dkEngine.Create(c.Request.Context(), req.Image, req.MountPath, labels)
+	id, err := s.dkEngine.Create(c.Request.Context(), engine.CreateOptions{
+		Image:       req.Image,
+		MountPath:   req.MountPath,
+		Labels:      labels,
+		NetworkMode: networkMode,
+		Runtime:     req.Runtime,
+		Limits:      limits,
+	})
 	if err == nil {
-		log.Printf("[Success] Native Docker sandbox created: %s", id)
+		s.setLimits(id, limits, networkMode)
+		log.Printf("[Success] Native Docker sandbox created: %s network=%s", id, networkMode)
 		c.JSON(http.StatusOK, CreateResponse{SandboxID: "dk-" + id})
 		return
 	}
@@ -268,11 +364,66 @@ func (s *SandboxService) DeleteSandbox(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+		s.forgetLimits(strings.TrimPrefix(id, "dk-"))
 	} else {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown sandbox id prefix"})
 		return
 	}
 	c.Status(http.StatusOK)
+}
+
+// SetSandboxNetwork opens or closes egress for one sandbox. The backend calls
+// this around an approved dependency install and always closes it afterwards.
+func (s *SandboxService) SetSandboxNetwork(c *gin.Context) {
+	id := c.Param("id")
+	if !strings.HasPrefix(id, "dk-") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "network control is only supported for native docker sandboxes"})
+		return
+	}
+	var req NetworkRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	containerID := strings.TrimPrefix(id, "dk-")
+	if err := s.dkEngine.SetNetwork(c.Request.Context(), containerID, req.Mode); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	mode, _ := engine.EffectiveNetworkMode(req.Mode)
+	s.limitsMu.Lock()
+	if s.network != nil {
+		s.network[containerID] = mode
+	}
+	s.limitsMu.Unlock()
+	log.Printf("[Sandbox] network mode for %s set to %s", containerID, mode)
+	c.JSON(http.StatusOK, gin.H{"sandbox_id": id, "network_mode": mode})
+}
+
+// SandboxUsage reports live network and disk usage for one sandbox.
+func (s *SandboxService) SandboxUsage(c *gin.Context) {
+	id := c.Param("id")
+	if !strings.HasPrefix(id, "dk-") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "usage is only supported for native docker sandboxes"})
+		return
+	}
+	containerID := strings.TrimPrefix(id, "dk-")
+	limits, networkMode := s.getLimits(containerID)
+	rx, tx, netErr := s.dkEngine.NetworkBytes(c.Request.Context(), containerID)
+	disk, diskErr := s.dkEngine.DiskUsageMB(c.Request.Context(), containerID)
+	payload := gin.H{
+		"sandbox_id":   id,
+		"network_mode": networkMode,
+		"limits":       limits,
+	}
+	if netErr == nil {
+		payload["network_rx_bytes"] = rx
+		payload["network_tx_bytes"] = tx
+	}
+	if diskErr == nil {
+		payload["disk_used_mb"] = disk
+	}
+	c.JSON(http.StatusOK, payload)
 }
 
 func (s *SandboxService) ListSandboxes(c *gin.Context) {
@@ -378,16 +529,18 @@ func (s *SandboxService) ExecutePython(c *gin.Context) {
 
 	var res *engine.ExecutionResponse
 	var err error
-	ctx := c.Request.Context()
+	containerID := strings.TrimPrefix(id, "dk-")
+	ctx, cancel := s.executionContext(c.Request.Context(), containerID)
+	defer cancel()
 
 	if strings.HasPrefix(id, "os-") {
 		if s.osEngine == nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "opensandbox fallback is disabled"})
 			return
 		}
-		res, err = s.osEngine.ExecutePython(ctx, strings.TrimPrefix(id, "os-"), req.Code)
+		res, err = s.osEngine.ExecutePython(c.Request.Context(), strings.TrimPrefix(id, "os-"), req.Code)
 	} else if strings.HasPrefix(id, "dk-") {
-		res, err = s.dkEngine.ExecutePython(ctx, strings.TrimPrefix(id, "dk-"), req.Code)
+		res, err = s.dkEngine.ExecutePython(ctx, containerID, req.Code)
 	} else {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown sandbox id prefix"})
 		return
@@ -395,6 +548,10 @@ func (s *SandboxService) ExecutePython(c *gin.Context) {
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if guardErr := s.enforceUsage(c.Request.Context(), containerID, res); guardErr != nil {
+		c.JSON(http.StatusInsufficientStorage, gin.H{"error": guardErr.Error(), "usage": res})
 		return
 	}
 	c.JSON(http.StatusOK, res)
@@ -431,11 +588,18 @@ func (s *SandboxService) ExecutePythonStream(c *gin.Context) {
 		return nil
 	}
 
-	ctx := c.Request.Context()
+	containerID := strings.TrimPrefix(id, "dk-")
+	ctx, cancel := s.executionContext(c.Request.Context(), containerID)
+	defer cancel()
 	switch {
 	case strings.HasPrefix(id, "dk-"):
-		if _, err := s.dkEngine.ExecutePythonStream(ctx, strings.TrimPrefix(id, "dk-"), req.Code, emit); err != nil {
+		res, err := s.dkEngine.ExecutePythonStream(ctx, containerID, req.Code, emit)
+		if err != nil {
 			writeStreamError(c.Writer, flushWriter, err)
+			return
+		}
+		if guardErr := s.enforceUsage(c.Request.Context(), containerID, res); guardErr != nil {
+			writeStreamError(c.Writer, flushWriter, guardErr)
 		}
 	case strings.HasPrefix(id, "os-"):
 		if s.osEngine == nil {
@@ -463,16 +627,18 @@ func (s *SandboxService) ExecuteCommand(c *gin.Context) {
 
 	var res *engine.ExecutionResponse
 	var err error
-	ctx := c.Request.Context()
+	containerID := strings.TrimPrefix(id, "dk-")
+	ctx, cancel := s.executionContext(c.Request.Context(), containerID)
+	defer cancel()
 
 	if strings.HasPrefix(id, "os-") {
 		if s.osEngine == nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "opensandbox fallback is disabled"})
 			return
 		}
-		res, err = s.osEngine.ExecuteCommand(ctx, strings.TrimPrefix(id, "os-"), req.Cmd)
+		res, err = s.osEngine.ExecuteCommand(c.Request.Context(), strings.TrimPrefix(id, "os-"), req.Cmd)
 	} else if strings.HasPrefix(id, "dk-") {
-		res, err = s.dkEngine.ExecuteCommand(ctx, strings.TrimPrefix(id, "dk-"), req.Cmd)
+		res, err = s.dkEngine.ExecuteCommand(ctx, containerID, req.Cmd)
 	} else {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown sandbox id prefix"})
 		return
@@ -480,6 +646,10 @@ func (s *SandboxService) ExecuteCommand(c *gin.Context) {
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if guardErr := s.enforceUsage(c.Request.Context(), containerID, res); guardErr != nil {
+		c.JSON(http.StatusInsufficientStorage, gin.H{"error": guardErr.Error(), "usage": res})
 		return
 	}
 	c.JSON(http.StatusOK, res)
@@ -516,11 +686,18 @@ func (s *SandboxService) ExecuteCommandStream(c *gin.Context) {
 		return nil
 	}
 
-	ctx := c.Request.Context()
+	containerID := strings.TrimPrefix(id, "dk-")
+	ctx, cancel := s.executionContext(c.Request.Context(), containerID)
+	defer cancel()
 	switch {
 	case strings.HasPrefix(id, "dk-"):
-		if _, err := s.dkEngine.ExecuteCommandStream(ctx, strings.TrimPrefix(id, "dk-"), req.Cmd, emit); err != nil {
+		res, err := s.dkEngine.ExecuteCommandStream(ctx, containerID, req.Cmd, emit)
+		if err != nil {
 			writeStreamError(c.Writer, flushWriter, err)
+			return
+		}
+		if guardErr := s.enforceUsage(c.Request.Context(), containerID, res); guardErr != nil {
+			writeStreamError(c.Writer, flushWriter, guardErr)
 		}
 	case strings.HasPrefix(id, "os-"):
 		if s.osEngine == nil {
@@ -597,6 +774,8 @@ func runEngine() {
 		api.GET("/sandboxes", svc.ListSandboxes)
 		api.POST("/sandboxes/cleanup", svc.CleanupSandboxes)
 		api.DELETE("/sandboxes/:id", svc.DeleteSandbox)
+		api.POST("/sandboxes/:id/network", svc.SetSandboxNetwork)
+		api.GET("/sandboxes/:id/usage", svc.SandboxUsage)
 		api.POST("/sandboxes/:id/python", svc.ExecutePython)
 		api.POST("/sandboxes/:id/python/stream", svc.ExecutePythonStream)
 		api.POST("/sandboxes/:id/commands", svc.ExecuteCommand)

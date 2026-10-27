@@ -1,5 +1,7 @@
-import { useRef } from 'react';
+import { useId, useRef } from 'react';
 import { ChevronDown, ChevronUp, Eye, FileText, HelpCircle, Loader2, Paperclip, Send, ShieldCheck, X } from 'lucide-react';
+import { useAutoRunOnCreateControl } from '../../app/hooks/useResearchAssistantChatFlow';
+import { uiText } from '../../app/constants/uiText';
 import type { UploadedFile } from '../../contracts/api';
 import { isPdfAttachment } from '../pdf-viewer/pdfAttachment';
 
@@ -38,6 +40,8 @@ export function ChatComposer(props: ChatComposerProps) {
     runtimePermissionMode = 'confirm_important', onRuntimePermissionModeChange = () => undefined,
   } = props;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const autoRunCopyId = useId();
+  const { autoRunOnCreate, setAutoRunOnCreate } = useAutoRunOnCreateControl();
 
   return (
     <div className="shrink-0 border-t border-line bg-surface px-4 pb-3 pt-2.5">
@@ -162,6 +166,33 @@ export function ChatComposer(props: ChatComposerProps) {
           >
             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3 w-3" />}
             发送
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <span id={`${autoRunCopyId}-label`} className="journal-caps text-[10px]">
+            {uiText.autoRunSwitchLabel}
+          </span>
+          <p id={`${autoRunCopyId}-hint`} className="mt-0.5 font-serif text-[11.5px] leading-4 text-muted">
+            {uiText.autoRunSwitchHint}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className={`journal-caps text-[10px] ${autoRunOnCreate ? 'text-ink' : 'text-muted'}`} aria-hidden="true">
+            {autoRunOnCreate ? '自动' : '手动'}
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={autoRunOnCreate}
+            aria-labelledby={`${autoRunCopyId}-label`}
+            aria-describedby={`${autoRunCopyId}-hint`}
+            onClick={() => setAutoRunOnCreate(!autoRunOnCreate)}
+            className={`flex h-5 w-9 shrink-0 items-center border p-0.5 transition-colors ${autoRunOnCreate ? 'justify-end border-ink bg-ink' : 'justify-start border-line-strong bg-surface hover:border-ink'}`}
+          >
+            <span className={`block h-3.5 w-3.5 transition-colors ${autoRunOnCreate ? 'bg-paper' : 'bg-ink-soft'}`} aria-hidden="true" />
           </button>
         </div>
       </div>

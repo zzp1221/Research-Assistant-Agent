@@ -77,7 +77,7 @@ func (a *DataAgent) initEinoChain() {
 		return messages, nil
 	}))
 
-	graph.AddChatModelNode("LLM_Generate_Report", chatModel)
+	graph.AddChatModelNode("LLM_Generate_Report", wrapUsageModel(chatModel))
 
 	graph.AddLambdaNode("Report_Extractor", compose.InvokableLambda(func(ctx context.Context, msg *schema.Message) (string, error) {
 		log.Printf("[%s] Eino 节点 [Report_Extractor]: 报告生成完毕", a.Name)
@@ -108,7 +108,7 @@ func (a *DataAgent) ExecuteTask(ctx context.Context, task *models.Task, sharedCo
 
 	input := task.Description
 	if task != nil && len(task.Inputs) > 0 {
-		input = fmt.Sprintf("%s\n\n上游输入:\n%v", task.Description, task.Inputs)
+		input = fmt.Sprintf("%s\n\n上游输入:\n%s", task.Description, formatTaskInputsForPrompt(task.Inputs, 6000))
 	}
 	intentType := sharedContextValue(sharedContext, "intent_type")
 	ctx = context.WithValue(ctx, dataSystemPromptContextKey, prompts.DataSystemPromptForTask(intentType, task.Type, task.Name, task.Description))

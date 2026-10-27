@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ChatMessage, IntentContext, PlanClarification, PlanGraph, UploadedFile } from '../../contracts/api';
-import { chat, createPlan, getMe, getPlan, listPlans, uploadFile } from '../../services/api/researchAssistantApi';
+import { PLAN_CREATE_TIMEOUT_MESSAGE, chat, createPlan, getMe, getPlan, listPlans, uploadFile } from '../../services/api/researchAssistantApi';
 import type { PlanSummary } from '../../services/api/researchAssistantApi';
+import { formatApiError } from '../../services/api/apiError';
 import { uiText } from '../constants/uiText';
 
 const isTaskIntent = (input: string) => {
@@ -12,9 +13,13 @@ const isTaskIntent = (input: string) => {
   ].some((pattern) => pattern.test(normalized));
 };
 
+export interface PlanReadyOptions {
+  autoRun: boolean;
+}
+
 interface UseResearchAssistantChatFlowOptions {
   onPlanGraphChanged: (planGraph: PlanGraph | null) => void;
-  onPlanReady?: (planGraph: PlanGraph, intentContext: IntentContext | null) => void;
+  onPlanReady?: (planGraph: PlanGraph, options: PlanReadyOptions, intentContext: IntentContext | null) => void;
 }
 
 interface ChatSessionRecord {
@@ -43,6 +48,40 @@ interface SessionSummary {
 }
 
 const STORAGE_KEY = 'research-assistant.chat-sessions.v1';
+export const AUTO_RUN_ON_CREATE_STORAGE_KEY = 'research-assistant.auto-run-on-create.v1';
+
+export interface AutoRunOnCreateControl {
+  autoRunOnCreate: boolean;
+  setAutoRunOnCreate: (next: boolean) => void;
+}
+
+// The preference lives in the flow hook so the composer can only change what the
+// next plan creation will actually read. The default is deliberately inert so a
+// standalone composer (tests, previews) never starts anything by itself.
+export const AutoRunOnCreateContext = createContext<AutoRunOnCreateControl>({
+  autoRunOnCreate: false,
+  setAutoRunOnCreate: () => undefined,
+});
+
+export const useAutoRunOnCreateControl = (): AutoRunOnCreateControl => useContext(AutoRunOnCreateContext);
+
+const loadAutoRunOnCreate = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(AUTO_RUN_ON_CREATE_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+// Mirrors the backend/UX rule: only a plot-producing Code_Execution plan without
+// a pending plan-level approval may start itself. Manual plans never match.
+export const isAutoRunPlanEligible = (planGraph: PlanGraph, autoRunOnCreate: boolean): boolean => {
+  if (!autoRunOnCreate) return false;
+  if (planGraph.intent_type !== 'Code_Execution') return false;
+  if (planGraph.approval?.required) return false;
+  return planGraph.nodes.some((node) => node.type === 'render_plot');
+};
 
 const createId = (prefix: string) => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -200,6 +239,22 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
   const [serverIdentity, setServerIdentity] = useState<{ userId: string; sessionId: string } | null>(null);
   const [serverPlans, setServerPlans] = useState<PlanSummary[]>([]);
   const [storageWarning, setStorageWarning] = useState('');
+  const [autoRunOnCreate, setAutoRunOnCreateState] = useState<boolean>(loadAutoRunOnCreate);
+
+  const setAutoRunOnCreate = useCallback((next: boolean) => {
+    setAutoRunOnCreateState(next);
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(AUTO_RUN_ON_CREATE_STORAGE_KEY, next ? '1' : '0');
+    } catch (error) {
+      console.warn('[chat] failed to persist auto-run preference', error);
+    }
+  }, []);
+
+  const autoRunControl = useMemo<AutoRunOnCreateControl>(
+    () => ({ autoRunOnCreate, setAutoRunOnCreate }),
+    [autoRunOnCreate, setAutoRunOnCreate],
+  );
 
   const refreshServerPlans = useCallback(async () => {
     try {
@@ -502,18 +557,22 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
         }
         setPendingAttachments([]);
         setAttachmentError('');
-        // The plan message must be appended before onPlanReady triggers the
-        // auto-run message, otherwise the chat log claims the run started before
-        // the plan existed.
-        const autoRuns =
-          generatedPlanGraph.intent_type === 'Code_Execution' &&
-          !generatedPlanGraph.approval?.required &&
-          generatedPlanGraph.nodes.some((node) => node.type === 'render_plot');
+        // The plan message must land before any execution request, otherwise the
+        // chat log claims the run started before the plan existed. Auto-run gets
+        // a short first line plus the dedicated "auto started" line; approval
+        // requirements force the manual copy so the UI never claims a start.
+        const autoRun = isAutoRunPlanEligible(generatedPlanGraph, autoRunOnCreate);
         appendMessageToSession(requestSessionId, {
           role: 'system',
-          text: autoRuns ? uiText.planGeneratedAutoStart : uiText.planGenerated,
+          text: autoRun ? uiText.planGeneratedBrief : uiText.planGenerated,
         });
-        onPlanReady?.(generatedPlanGraph, returnedIntentContext ?? null);
+        if (autoRun) {
+          appendMessageToSession(requestSessionId, {
+            role: 'system',
+            text: uiText.planAutoStarted,
+          });
+        }
+        onPlanReady?.(generatedPlanGraph, { autoRun }, returnedIntentContext ?? null);
         void refreshServerPlans();
       } else {
         const response = await chat(userPrompt, {
@@ -524,11 +583,22 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
       }
     } catch (error) {
       console.error(error);
-      appendMessageToSession(requestSessionId, { role: 'system', text: uiText.backendError });
+      // A plan may have been created server-side even though the client timed
+      // out; point the user at the plan library instead of a generic failure.
+      let message: string = uiText.backendError;
+      if (error instanceof Error && error.message === PLAN_CREATE_TIMEOUT_MESSAGE) {
+        message = error.message;
+      } else {
+        const formatted = formatApiError(error);
+        message = formatted.remediation
+          ? `${formatted.title}：${formatted.detail}\n修复建议：${formatted.remediation}`
+          : `${formatted.title}：${formatted.detail}`;
+      }
+      appendMessageToSession(requestSessionId, { role: 'system', text: message });
     } finally {
       setLoading(false);
     }
-	}, [appendMessageToSession, fullAccessAcknowledged, serverIdentity?.userId, loading, onPlanReady, pendingAttachments, persistedState.activeSessionId, prompt, refreshServerPlans, runtimePermissionMode, updateSessionPlanState, uploadingAttachments]);
+	}, [appendMessageToSession, autoRunOnCreate, fullAccessAcknowledged, serverIdentity?.userId, loading, onPlanReady, pendingAttachments, persistedState.activeSessionId, prompt, refreshServerPlans, runtimePermissionMode, updateSessionPlanState, uploadingAttachments]);
 
   return {
     prompt,
@@ -562,6 +632,9 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     handleSwitchSession,
     handleSendMessage,
     runtimePermissionMode,
+    autoRunOnCreate,
+    setAutoRunOnCreate,
+    autoRunControl,
     showFullAccessConfirm,
     handleRuntimePermissionModeChange: (mode: 'confirm_important' | 'full_access') => {
       if (mode === 'full_access') {

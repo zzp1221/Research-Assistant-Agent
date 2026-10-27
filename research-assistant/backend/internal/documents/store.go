@@ -3,8 +3,6 @@ package documents
 import (
 	"context"
 	"fmt"
-	"math"
-	"sort"
 	"strings"
 	"unicode"
 
@@ -89,46 +87,20 @@ func (s *Store) ReadSection(ctx context.Context, ownerID, documentID, section st
 	return builder.String(), nil
 }
 
+// Search returns the best BM25 chunks for query. It is kept for existing
+// callers and delegates to SearchWithOptions.
 func (s *Store) Search(ctx context.Context, ownerID, documentID, query string, topK int) ([]Chunk, error) {
+	return s.SearchWithOptions(ctx, ownerID, documentID, query, SearchOptions{TopK: topK})
+}
+
+// SearchWithOptions returns the best BM25 chunks for query after applying the
+// page/section filters in opts.
+func (s *Store) SearchWithOptions(ctx context.Context, ownerID, documentID, query string, opts SearchOptions) ([]Chunk, error) {
 	document, err := s.GetDocument(ctx, ownerID, documentID)
 	if err != nil {
 		return nil, err
 	}
-	if topK <= 0 {
-		topK = 8
-	}
-	if topK > 20 {
-		topK = 20
-	}
-	chunks := buildChunks(document)
-	tokens := queryTokens(query)
-	if len(tokens) == 0 {
-		if len(chunks) > topK {
-			chunks = chunks[:topK]
-		}
-		return chunks, nil
-	}
-	for i := range chunks {
-		chunks[i].Score = scoreChunk(chunks[i].Text, tokens)
-	}
-	sort.SliceStable(chunks, func(i, j int) bool { return chunks[i].Score > chunks[j].Score })
-	filtered := make([]Chunk, 0, topK)
-	for _, chunk := range chunks {
-		if chunk.Score <= 0 {
-			continue
-		}
-		filtered = append(filtered, chunk)
-		if len(filtered) >= topK {
-			break
-		}
-	}
-	if len(filtered) == 0 {
-		if len(chunks) > topK {
-			chunks = chunks[:topK]
-		}
-		return chunks, nil
-	}
-	return filtered, nil
+	return RankDocument(document, query, opts), nil
 }
 
 func buildChunks(document *Document) []Chunk {
@@ -219,19 +191,4 @@ func queryTokens(query string) []string {
 		}
 	}
 	return tokens
-}
-
-func scoreChunk(text string, tokens []string) float64 {
-	lower := strings.ToLower(text)
-	score := 0.0
-	for _, token := range tokens {
-		count := strings.Count(lower, token)
-		if count > 0 {
-			score += float64(count) * (1.0 + math.Log1p(float64(len([]rune(token)))))
-		}
-	}
-	if score == 0 {
-		return 0
-	}
-	return score / (1.0 + float64(len([]rune(text)))/1200.0)
 }

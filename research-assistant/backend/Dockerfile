@@ -30,7 +30,7 @@ RUN if [ -f /etc/apt/sources.list ]; then \
             /etc/apt/sources.list.d/debian.sources; \
     fi; \
     apt-get -o Acquire::Retries=5 update \
-    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends ca-certificates git poppler-utils \
+    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends ca-certificates git poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/bin/api .
 

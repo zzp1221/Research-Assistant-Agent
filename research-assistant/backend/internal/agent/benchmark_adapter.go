@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"research-assistant-backend/internal/llmclient"
 	"sort"
 	"strings"
 
@@ -70,7 +71,7 @@ func (a *ResearchCodingAgent) executeAdapterGeneration(ctx context.Context, task
 		return failResearchCodingTask(task, err)
 	}
 
-	planMessage, err := a.ChatModel.Generate(ctx, []*schema.Message{
+	planMessage, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
 		{Role: schema.System, Content: prompts.BenchmarkAdapterSystemPrompt},
 		{Role: schema.User, Content: prompts.BenchmarkAdapterPlanUserPrompt(repositoryContext, manifestJSON, task.Description)},
 	})
@@ -93,7 +94,7 @@ func (a *ResearchCodingAgent) executeAdapterGeneration(ctx context.Context, task
 	var generation benchmarkAdapterGenerationResponse
 	var generationErr error
 	for attempt := 1; attempt <= 2; attempt++ {
-		generationMessage, err := a.ChatModel.Generate(ctx, generationMessages)
+		generationMessage, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, generationMessages)
 		if err != nil {
 			return failResearchCodingTask(task, fmt.Errorf("adapter code generation failed: %w", err))
 		}

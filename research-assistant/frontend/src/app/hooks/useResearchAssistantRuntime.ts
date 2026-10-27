@@ -5,7 +5,8 @@ import type { ChatMessage, ExecuteTaskResultEvent, NodeExecutionState, PlanGraph
 import { PLAN_EVENTS, isPlanTerminalEvent, pickImageBase64 } from '../../contracts/events';
 import { approvePlan, cancelPlan, createPlanEventSource, decideRuntimeAction, executePlan, executePlanTaskStream, retryTask } from '../../services/api/researchAssistantApi';
 import { usePlanHistoryHydrator } from './usePlanHistoryHydrator';
-import type { RequestIdentity } from '../../services/api/researchAssistantApi';
+import { describeReconnect, eventSeq, isTerminalPlanEventType, nextBackoffMs, shouldReconnect } from './planStreamReconnect';
+import type { PlanExecutionTrigger, RequestIdentity } from '../../services/api/researchAssistantApi';
 import { getTaskStyleByStatus } from '../../features/shared/agentVisuals';
 import { createTaskNodeLabel } from '../../features/plan-graph/nodeLabelFactory';
 import { uiText } from '../constants/uiText';
@@ -196,6 +197,26 @@ interface UseResearchAssistantRuntimeOptions {
 export function useResearchAssistantRuntime(options: UseResearchAssistantRuntimeOptions) {
 	const { nodes, setNodes, appendChatMessage, identity, refreshPlanState, activePlanGraph } = options;
   const planEventSourceRef = useRef<EventSource | null>(null);
+  const planReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const planStreamGenerationRef = useRef(0);
+  const planStreamSeqRef = useRef(0);
+  const planStreamAttemptsRef = useRef(0);
+  const lastPlanEventTypeRef = useRef('');
+  const activePlanStreamIdRef = useRef<string | null>(null);
+
+  // Cancel the pending retry, invalidate in-flight connections and close the
+  // current EventSource. Generation is bumped so stale async results are ignored.
+  const closePlanStream = useCallback(() => {
+    planStreamGenerationRef.current += 1;
+    if (planReconnectTimerRef.current !== null) {
+      clearTimeout(planReconnectTimerRef.current);
+      planReconnectTimerRef.current = null;
+    }
+    planEventSourceRef.current?.close();
+    planEventSourceRef.current = null;
+    planStreamAttemptsRef.current = 0;
+  }, []);
+
   const [executionState, dispatchExecution] = useReducer(executionReducer, {
     selectedTask: null,
     nodeStates: {},
@@ -245,105 +266,183 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
 
   const connectPlanStream = useCallback(
     async (planId: string) => {
-      if (planEventSourceRef.current) {
-        planEventSourceRef.current.close();
+      closePlanStream();
+
+      if (activePlanStreamIdRef.current !== planId) {
+        activePlanStreamIdRef.current = planId;
+        planStreamSeqRef.current = 0;
       }
+      lastPlanEventTypeRef.current = '';
+      const generation = planStreamGenerationRef.current;
 
-      const source = await createPlanEventSource(planId, identity, {
-        onPlanEvent: (event) => {
-          if (event.task_id && event.task_status) {
-            updateNodeVisualState(event.task_id, event.task_status);
-          }
+      let source: EventSource | null = null;
+      let connectionToken = 0;
 
-          if (event.event_type === PLAN_EVENTS.TASK_READY && event.task_id) {
-            appendNodeLog(event.task_id, `[Plan] ready\n${formatArtifactSummaries('[Plan Params] 本次上游传入参数', event.payload?.inputs)}`);
-          }
-          if (event.event_type === PLAN_EVENTS.TASK_STARTED && event.task_id) {
-            appendNodeLog(event.task_id, '[Plan] started');
-          }
-          if (event.event_type === PLAN_EVENTS.TASK_LOG && event.task_id) {
-            appendNodeLog(event.task_id, String(event.payload?.message || ''));
-          }
-          if (event.event_type === PLAN_EVENTS.ARTIFACT_CREATED && event.task_id) {
-            const keys = Array.isArray(event.payload?.artifact_keys) ? event.payload?.artifact_keys?.join(', ') : '';
-            appendNodeLog(
-              event.task_id,
-              `[Plan] artifacts created${keys ? `: ${keys}` : ''}\n${formatArtifactSummaries('[Plan Params] 将传递给下游的参数', event.payload?.artifacts)}`,
-            );
-          }
-          if (event.event_type === PLAN_EVENTS.TASK_BLOCKED && event.task_id) {
-            const upstream = String(event.payload?.upstream_task_id || '');
-            appendNodeLog(event.task_id, `[Plan] blocked${upstream ? ` by ${upstream}` : ''}`);
-          }
-          if (event.event_type === PLAN_EVENTS.TASK_COMPLETED && event.task_id) {
-            const result = String(event.payload?.result || event.payload?.result_summary || '');
-            const code = String(event.payload?.code || '');
-            const structuredData = String(event.payload?.structured_data || '');
-            patchNodeState(event.task_id, (prev) => ({
-              ...prev,
-              logs: prev.logs ? `${prev.logs}\n[Plan] task_completed` : '[Plan] task_completed',
-              result: result || prev.result || '',
-              code: code || prev.code || '',
-              structuredData: structuredData || prev.structuredData || '',
-              imageBase64: pickImageBase64(event.payload) || prev.imageBase64 || '',
-            }));
-            setNodes((current) => current.map((node) => node.id === event.task_id
-              ? updateNodeStatus(node, 'completed', {
-                  Result: result || (node.data.task as Task | undefined)?.Result,
-                  Code: code || (node.data.task as Task | undefined)?.Code,
-                  StructuredData: structuredData || (node.data.task as Task | undefined)?.StructuredData,
-                })
-              : node));
-          }
-          if (event.event_type === PLAN_EVENTS.RUNTIME_ACTION_REQUESTED) {
-            const action = event.payload?.action as { title?: string; kind?: string } | undefined;
-            appendChatMessage({ role: 'system', text: `需要你的运行权限确认：${action?.title || action?.kind || '重要操作'}。请在右侧计划面板允许或拒绝。` });
-            void refreshPlanState?.();
-          }
-          if (event.event_type === PLAN_EVENTS.RUNTIME_ACTION_RESOLVED) {
-            void refreshPlanState?.();
-          }
-          if (event.event_type === PLAN_EVENTS.TASK_FAILED && event.task_id) {
-            const errorText = String(event.payload?.error || 'Task failed');
-            patchNodeState(event.task_id, (prev) => ({
-              ...prev,
-              logs: prev.logs ? `${prev.logs}\n[Plan Error] ${errorText}` : `[Plan Error] ${errorText}`,
-            }));
-          }
-
-          if (isPlanTerminalEvent(event)) {
-			if (event.event_type === PLAN_EVENTS.PLAN_CANCELED) {
-				setNodes((current) => current.map((node) => updateNodeStatusIfActive(node, 'canceled')));
-			}
-            source.close();
-            planEventSourceRef.current = null;
-            dispatchExecution({ type: 'set-executing', value: false });
-            appendChatMessage({
-              role: 'system',
-              text:
-                event.event_type === PLAN_EVENTS.PLAN_COMPLETED
-                  ? '整张拓扑图已经执行完成。'
-                  : `计划执行失败：${String(event.payload?.error || event.payload?.reason || '未知错误')}`,
-            });
-            void refreshPlanState?.();
-          }
-        },
-        onError: () => {
+      const disposeStream = () => {
+        if (source) {
           source.close();
-          if (planEventSourceRef.current === source) {
-            planEventSourceRef.current = null;
-          }
-          dispatchExecution({ type: 'set-executing', value: false });
-          appendChatMessage({
-            role: 'system',
-            text: '计划事件流已中断；请刷新计划状态后重试。',
-          });
-        },
-      });
+          source = null;
+        }
+        if (planEventSourceRef.current) {
+          planEventSourceRef.current.close();
+          planEventSourceRef.current = null;
+        }
+      };
 
-      planEventSourceRef.current = source;
+      const scheduleReconnect = () => {
+        if (generation !== planStreamGenerationRef.current) return;
+        if (planReconnectTimerRef.current !== null) return;
+        const attempt = planStreamAttemptsRef.current;
+        if (!shouldReconnect(lastPlanEventTypeRef.current, attempt)) {
+          dispatchExecution({ type: 'set-executing', value: false });
+          // A terminal event already produced its own message; only a genuine
+          // retry exhaustion needs the "stream interrupted" notice.
+          if (!isTerminalPlanEventType(lastPlanEventTypeRef.current)) {
+            appendChatMessage({ role: 'system', text: '计划事件流已中断；请刷新计划状态后重试。' });
+          }
+          return;
+        }
+        const nextAttempt = attempt + 1;
+        planStreamAttemptsRef.current = nextAttempt;
+        appendChatMessage({ role: 'system', text: describeReconnect(nextAttempt) });
+        planReconnectTimerRef.current = setTimeout(() => {
+          planReconnectTimerRef.current = null;
+          if (generation !== planStreamGenerationRef.current) return;
+          const cursor = planStreamSeqRef.current > 0 ? planStreamSeqRef.current : undefined;
+          void openStream(cursor, true).catch((error: unknown) => {
+            console.error(error);
+            scheduleReconnect();
+          });
+        }, nextBackoffMs(attempt));
+      };
+
+      const openStream = async (afterSeq: number | undefined, isReconnect: boolean): Promise<void> => {
+        const token = connectionToken + 1;
+        connectionToken = token;
+        const created = await createPlanEventSource(planId, identity, {
+          onPlanEvent: (event) => {
+            // Ignore queued callbacks from a stream superseded by a plan switch,
+            // cancel, or a newer connection in the same reconnect loop.
+            if (generation !== planStreamGenerationRef.current) return;
+            if (token !== connectionToken) return;
+            const seq = eventSeq(event);
+
+            // Any event proves the new connection is alive, including a replay
+            // of something already applied. Announce recovery once, then reset
+            // the backoff budget so a later outage starts from 1s again.
+            if (planStreamAttemptsRef.current > 0) {
+              planStreamAttemptsRef.current = 0;
+              const resumeSeq = Math.max(seq, planStreamSeqRef.current);
+              appendChatMessage({ role: 'system', text: '计划事件流已恢复（从序号 ' + resumeSeq + ' 继续）' });
+            }
+
+            if (seq > 0) {
+              // A reconnect replays events the UI already applied; drop them.
+              if (seq <= planStreamSeqRef.current) return;
+              planStreamSeqRef.current = seq;
+            }
+            lastPlanEventTypeRef.current = event.event_type;
+
+            if (event.task_id && event.task_status) {
+              updateNodeVisualState(event.task_id, event.task_status);
+            }
+
+            if (event.event_type === PLAN_EVENTS.TASK_READY && event.task_id) {
+              appendNodeLog(event.task_id, `[Plan] ready\n${formatArtifactSummaries('[Plan Params] 本次上游传入参数', event.payload?.inputs)}`);
+            }
+            if (event.event_type === PLAN_EVENTS.TASK_STARTED && event.task_id) {
+              appendNodeLog(event.task_id, '[Plan] started');
+            }
+            if (event.event_type === PLAN_EVENTS.TASK_LOG && event.task_id) {
+              appendNodeLog(event.task_id, String(event.payload?.message || ''));
+            }
+            if (event.event_type === PLAN_EVENTS.ARTIFACT_CREATED && event.task_id) {
+              const keys = Array.isArray(event.payload?.artifact_keys) ? event.payload?.artifact_keys?.join(', ') : '';
+              appendNodeLog(
+                event.task_id,
+                `[Plan] artifacts created${keys ? `: ${keys}` : ''}\n${formatArtifactSummaries('[Plan Params] 将传递给下游的参数', event.payload?.artifacts)}`,
+              );
+            }
+            if (event.event_type === PLAN_EVENTS.TASK_BLOCKED && event.task_id) {
+              const upstream = String(event.payload?.upstream_task_id || '');
+              appendNodeLog(event.task_id, `[Plan] blocked${upstream ? ` by ${upstream}` : ''}`);
+            }
+            if (event.event_type === PLAN_EVENTS.TASK_COMPLETED && event.task_id) {
+              const result = String(event.payload?.result || event.payload?.result_summary || '');
+              const code = String(event.payload?.code || '');
+              const structuredData = String(event.payload?.structured_data || '');
+              patchNodeState(event.task_id, (prev) => ({
+                ...prev,
+                logs: prev.logs ? `${prev.logs}\n[Plan] task_completed` : '[Plan] task_completed',
+                result: result || prev.result || '',
+                code: code || prev.code || '',
+                structuredData: structuredData || prev.structuredData || '',
+                imageBase64: pickImageBase64(event.payload) || prev.imageBase64 || '',
+              }));
+              setNodes((current) => current.map((node) => node.id === event.task_id
+                ? updateNodeStatus(node, 'completed', {
+                    Result: result || (node.data.task as Task | undefined)?.Result,
+                    Code: code || (node.data.task as Task | undefined)?.Code,
+                    StructuredData: structuredData || (node.data.task as Task | undefined)?.StructuredData,
+                  })
+                : node));
+            }
+            if (event.event_type === PLAN_EVENTS.RUNTIME_ACTION_REQUESTED) {
+              const action = event.payload?.action as { title?: string; kind?: string } | undefined;
+              appendChatMessage({ role: 'system', text: `需要你的运行权限确认：${action?.title || action?.kind || '重要操作'}。请在右侧计划面板允许或拒绝。` });
+              void refreshPlanState?.();
+            }
+            if (event.event_type === PLAN_EVENTS.RUNTIME_ACTION_RESOLVED) {
+              void refreshPlanState?.();
+            }
+            if (event.event_type === PLAN_EVENTS.TASK_FAILED && event.task_id) {
+              const errorText = String(event.payload?.error || 'Task failed');
+              patchNodeState(event.task_id, (prev) => ({
+                ...prev,
+                logs: prev.logs ? `${prev.logs}\n[Plan Error] ${errorText}` : `[Plan Error] ${errorText}`,
+              }));
+            }
+
+            if (isPlanTerminalEvent(event)) {
+              if (event.event_type === PLAN_EVENTS.PLAN_CANCELED) {
+                setNodes((current) => current.map((node) => updateNodeStatusIfActive(node, 'canceled')));
+              }
+              disposeStream();
+              if (planReconnectTimerRef.current !== null) {
+                clearTimeout(planReconnectTimerRef.current);
+                planReconnectTimerRef.current = null;
+              }
+              planStreamAttemptsRef.current = 0;
+              dispatchExecution({ type: 'set-executing', value: false });
+              appendChatMessage({
+                role: 'system',
+                text:
+                  event.event_type === PLAN_EVENTS.PLAN_COMPLETED
+                    ? '整张拓扑图已经执行完成。'
+                    : `计划执行失败：${String(event.payload?.error || event.payload?.reason || '未知错误')}`,
+              });
+              void refreshPlanState?.();
+            }
+          },
+          onError: () => {
+            if (generation !== planStreamGenerationRef.current) return;
+            if (token !== connectionToken) return;
+            disposeStream();
+            scheduleReconnect();
+          },
+        }, { afterSeq, forceTicket: isReconnect });
+
+        if (generation !== planStreamGenerationRef.current) {
+          created.close();
+          return;
+        }
+        source = created;
+        planEventSourceRef.current = created;
+      };
+
+      await openStream(planStreamSeqRef.current > 0 ? planStreamSeqRef.current : undefined, false);
     },
-	[appendChatMessage, appendNodeLog, identity, patchNodeState, refreshPlanState, setNodes, updateNodeVisualState],
+	[appendChatMessage, appendNodeLog, closePlanStream, identity, patchNodeState, refreshPlanState, setNodes, updateNodeVisualState],
   );
 
   const handleExecuteTask = useCallback(
@@ -473,7 +572,7 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
   );
 
   const handleRunAllTasks = useCallback(
-    async (activePlanId: string | null) => {
+    async (activePlanId: string | null, trigger: PlanExecutionTrigger = 'manual') => {
       if (executionState.isExecuting) return;
       if (!activePlanId) {
         appendChatMessage({ role: 'system', text: uiText.noPlanMessage });
@@ -484,7 +583,7 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
       appendChatMessage({ role: 'system', text: uiText.planStartMessage });
 
       try {
-		await executePlan(activePlanId, identity);
+		await executePlan(activePlanId, identity, trigger);
         await connectPlanStream(activePlanId);
       } catch (error) {
         console.error(error);
@@ -546,8 +645,7 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
 			if (!activePlanId) return;
 			try {
 				await cancelPlan(activePlanId, identity);
-				planEventSourceRef.current?.close();
-				planEventSourceRef.current = null;
+				closePlanStream();
 				setNodes((current) => current.map((node) => updateNodeStatusIfActive(node, 'canceled')));
 				dispatchExecution({ type: 'set-executing', value: false });
 				appendChatMessage({ role: 'system', text: '计划已取消，未完成任务已停止。' });
@@ -556,7 +654,7 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
 				appendChatMessage({ role: 'system', text: '取消计划失败，请刷新计划状态后重试。' });
 			}
 		},
-		[appendChatMessage, identity, setNodes],
+		[appendChatMessage, closePlanStream, identity, setNodes],
 	);
 
 	const handleRetryFailedPlan = useCallback(
@@ -619,13 +717,20 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
     [appendNodeLog, executionState.selectedTask],
   );
 
+  // Switching plans must not leave the previous stream or its retry timer alive;
+  // connectPlanStream also closes the previous subscription when reconnecting.
+  useEffect(() => {
+    if (activePlanStreamIdRef.current && activePlanStreamIdRef.current !== activePlanGraphId) {
+      closePlanStream();
+      activePlanStreamIdRef.current = null;
+    }
+  }, [activePlanGraphId, closePlanStream]);
+
   useEffect(
     () => () => {
-      if (planEventSourceRef.current) {
-        planEventSourceRef.current.close();
-      }
+      closePlanStream();
     },
-    [],
+    [closePlanStream],
   );
 
   const setDisplayMode = useCallback(

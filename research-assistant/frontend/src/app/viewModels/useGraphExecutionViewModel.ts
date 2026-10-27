@@ -1,10 +1,19 @@
 import { useMemo } from 'react';
 import type { RefObject } from 'react';
 import type { Edge, Node, OnEdgesChange, OnNodesChange } from '@xyflow/react';
-import type { IntentContext, MissingRequirement, RuntimeAction } from '../../contracts/api';
+import type { IntentContext, MissingRequirement, PlanGraph, RuntimeAction } from '../../contracts/api';
 import { useResearchAssistantRuntimeContext } from '../context/ResearchAssistantRuntimeContext';
 import { uiText } from '../constants/uiText';
 import type { useResearchAssistantLayoutState } from '../hooks/useResearchAssistantLayoutState';
+
+export type PlanRunTrigger = 'manual' | 'auto' | '';
+
+// PlanGraph predates run_trigger in the shared contract; narrow the optional
+// backend field here so the view model stays the single reader for the colophon.
+export const readPlanRunTrigger = (planGraph: PlanGraph | null | undefined): PlanRunTrigger => {
+  const raw = planGraph?.run_trigger;
+  return raw === 'manual' || raw === 'auto' ? raw : '';
+};
 
 interface UseGraphExecutionViewModelOptions {
   nodes: Node[];
@@ -20,12 +29,13 @@ interface UseGraphExecutionViewModelOptions {
   activePlanRuntimePolicyMode?: string | null;
   activePlanPlannerSource?: string | null;
   activePlanPlannerFallbackReason?: string | null;
+  activePlanRunTrigger?: PlanRunTrigger | null;
   layout: ReturnType<typeof useResearchAssistantLayoutState>;
   logsEndRef: RefObject<HTMLDivElement | null>;
 }
 
 export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOptions) {
-	const { nodes, edges, onNodesChange, onEdgesChange, intentContext, activePlanId, activePlanStatus, activePlanOutcome, activePlanMissingRequirements, activePlanRuntimeActions, activePlanRuntimePolicyMode, activePlanPlannerSource, activePlanPlannerFallbackReason, layout, logsEndRef } = options;
+	const { nodes, edges, onNodesChange, onEdgesChange, intentContext, activePlanId, activePlanStatus, activePlanOutcome, activePlanMissingRequirements, activePlanRuntimeActions, activePlanRuntimePolicyMode, activePlanPlannerSource, activePlanPlannerFallbackReason, activePlanRunTrigger, layout, logsEndRef } = options;
   const runtime = useResearchAssistantRuntimeContext();
 
   return useMemo(() => {
@@ -49,6 +59,7 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
       runtimePermissionMode: activePlanRuntimePolicyMode ?? null,
       plannerSource: activePlanPlannerSource ?? null,
       plannerFallbackReason: activePlanPlannerFallbackReason ?? null,
+      runTrigger: activePlanRunTrigger ?? '',
       onRuntimeActionDecision: (actionId: string, decision: 'approve' | 'reject') =>
         runtime.actions.handleRuntimeActionDecision(activePlanId, actionId, decision),
       runAllText: uiText.runAll,
@@ -86,7 +97,7 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
           logsEndRef,
           onClose: runtime.actions.closeTaskPanel,
           onExecute: () =>
-            void runtime.actions.handleExecuteTask(
+            runtime.actions.handleExecuteTask(
               runtime.state.executionState.selectedTask as NonNullable<typeof runtime.state.executionState.selectedTask>,
               activePlanId,
             ),
@@ -99,5 +110,5 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
       showExecutionResizeHandle,
       executionSidebarProps,
     };
-	}, [activePlanId, activePlanStatus, activePlanOutcome, activePlanMissingRequirements, activePlanRuntimeActions, activePlanRuntimePolicyMode, activePlanPlannerSource, activePlanPlannerFallbackReason, edges, intentContext, layout.sidebarWidth, logsEndRef, nodes, onEdgesChange, onNodesChange, runtime]);
+	}, [activePlanId, activePlanStatus, activePlanOutcome, activePlanMissingRequirements, activePlanRuntimeActions, activePlanRuntimePolicyMode, activePlanPlannerSource, activePlanPlannerFallbackReason, activePlanRunTrigger, edges, intentContext, layout.sidebarWidth, logsEndRef, nodes, onEdgesChange, onNodesChange, runtime]);
 }

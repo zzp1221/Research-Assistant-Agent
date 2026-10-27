@@ -31,13 +31,42 @@ type SandboxIdentity struct {
 	PlanID   string
 }
 
+// SandboxLimits mirrors the RuntimePolicy hard limits enforced by the sandbox
+// service.
+type SandboxLimits struct {
+	MaxImageBytes    int64   `json:"max_image_bytes,omitempty"`
+	MaxDownloadBytes int64   `json:"max_download_bytes,omitempty"`
+	MaxDiskGB        float64 `json:"max_disk_gb,omitempty"`
+	MaxRuntimeSec    int     `json:"max_runtime_sec,omitempty"`
+}
+
+// SandboxOptions carries network policy and hard limits for a new sandbox.
+type SandboxOptions struct {
+	NetworkMode string
+	Runtime     string
+	Limits      SandboxLimits
+}
+
 // SandboxCreateRequest 创建沙箱请求 (简化版)
 type SandboxCreateRequest struct {
-	Image     string `json:"image"`
-	MountPath string `json:"mount_path"`
-	TenantID  string `json:"tenant_id,omitempty"`
-	TaskID    string `json:"task_id,omitempty"`
-	PlanID    string `json:"plan_id,omitempty"`
+	Image       string        `json:"image"`
+	MountPath   string        `json:"mount_path"`
+	TenantID    string        `json:"tenant_id,omitempty"`
+	TaskID      string        `json:"task_id,omitempty"`
+	PlanID      string        `json:"plan_id,omitempty"`
+	NetworkMode string        `json:"network_mode,omitempty"`
+	Runtime     string        `json:"runtime,omitempty"`
+	Limits      SandboxLimits `json:"limits,omitempty"`
+}
+
+// SandboxUsageResponse reports live container resource usage.
+type SandboxUsageResponse struct {
+	SandboxID      string        `json:"sandbox_id"`
+	NetworkMode    string        `json:"network_mode"`
+	Limits         SandboxLimits `json:"limits"`
+	NetworkRXBytes int64         `json:"network_rx_bytes,omitempty"`
+	NetworkTXBytes int64         `json:"network_tx_bytes,omitempty"`
+	DiskUsedMB     float64       `json:"disk_used_mb,omitempty"`
 }
 
 // SandboxCreateResponse 创建沙箱响应
@@ -52,10 +81,13 @@ type PythonRunRequest struct {
 
 // PythonRunResponse Python 代码执行响应 (包含 stdout, stderr, exit_code 和 images)
 type PythonRunResponse struct {
-	Stdout   string   `json:"stdout"`
-	Stderr   string   `json:"stderr"`
-	ExitCode int      `json:"exit_code"`
-	Images   []string `json:"images,omitempty"`
+	Stdout         string   `json:"stdout"`
+	Stderr         string   `json:"stderr"`
+	ExitCode       int      `json:"exit_code"`
+	Images         []string `json:"images,omitempty"`
+	NetworkRXBytes int64    `json:"network_rx_bytes,omitempty"`
+	NetworkTXBytes int64    `json:"network_tx_bytes,omitempty"`
+	DiskUsedMB     float64  `json:"disk_used_mb,omitempty"`
 }
 
 type executionStreamEvent struct {
@@ -95,14 +127,27 @@ func NewSandboxClient(baseURL string) *SandboxClient {
 	}
 }
 
-// CreatePersistentSandbox 创建持久化沙箱
+// CreatePersistentSandbox 创建持久化沙箱 (default: no network, deployment defaults)
 func (s *SandboxClient) CreatePersistentSandbox(ctx context.Context, identity SandboxIdentity, image string, mountPath string) (string, error) {
+	return s.CreatePersistentSandboxWithOptions(ctx, identity, image, mountPath, SandboxOptions{NetworkMode: "none"})
+}
+
+// CreatePersistentSandboxWithOptions creates a sandbox with an explicit network
+// policy and hard limits.
+func (s *SandboxClient) CreatePersistentSandboxWithOptions(ctx context.Context, identity SandboxIdentity, image string, mountPath string, options SandboxOptions) (string, error) {
+	networkMode := strings.TrimSpace(options.NetworkMode)
+	if networkMode == "" {
+		networkMode = "none"
+	}
 	reqBody, _ := json.Marshal(SandboxCreateRequest{
-		Image:     image,
-		MountPath: mountPath,
-		TenantID:  strings.TrimSpace(identity.TenantID),
-		TaskID:    strings.TrimSpace(identity.TaskID),
-		PlanID:    strings.TrimSpace(identity.PlanID),
+		Image:       image,
+		MountPath:   mountPath,
+		TenantID:    strings.TrimSpace(identity.TenantID),
+		TaskID:      strings.TrimSpace(identity.TaskID),
+		PlanID:      strings.TrimSpace(identity.PlanID),
+		NetworkMode: networkMode,
+		Runtime:     options.Runtime,
+		Limits:      options.Limits,
 	})
 	req, err := http.NewRequestWithContext(ctx, "POST", s.BaseURL+"/api/v1/sandboxes", bytes.NewBuffer(reqBody))
 	if err != nil {
@@ -128,6 +173,51 @@ func (s *SandboxClient) CreatePersistentSandbox(ctx context.Context, identity Sa
 	}
 
 	return res.SandboxID, nil
+}
+
+// SetSandboxNetwork opens ("bridge") or closes ("none") sandbox egress. The
+// caller must always close it after the approved install step.
+func (s *SandboxClient) SetSandboxNetwork(ctx context.Context, sandboxID, mode string) error {
+	payload, _ := json.Marshal(map[string]string{"mode": mode})
+	req, err := http.NewRequestWithContext(ctx, "POST", s.BaseURL+"/api/v1/sandboxes/"+sandboxID+"/network", bytes.NewBuffer(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	s.authorize(req)
+	resp, err := s.Client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("setting sandbox network failed (Status %d): %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+// SandboxUsage returns live network/disk usage for a sandbox.
+func (s *SandboxClient) SandboxUsage(ctx context.Context, sandboxID string) (*SandboxUsageResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", s.BaseURL+"/api/v1/sandboxes/"+sandboxID+"/usage", nil)
+	if err != nil {
+		return nil, err
+	}
+	s.authorize(req)
+	resp, err := s.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("sandbox usage failed (Status %d): %s", resp.StatusCode, string(body))
+	}
+	var usage SandboxUsageResponse
+	if err := json.NewDecoder(resp.Body).Decode(&usage); err != nil {
+		return nil, err
+	}
+	return &usage, nil
 }
 
 // CleanupSandbox 清理沙箱

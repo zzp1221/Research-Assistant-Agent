@@ -9,9 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"research-assistant-backend/internal/agentctx"
+	"research-assistant-backend/internal/llmclient"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/compose"
@@ -37,7 +40,7 @@ type Agent interface {
 func logToContext(ctx context.Context, format string, v ...interface{}) {
 	msg := fmt.Sprintf(format, v...)
 	log.Println(msg)
-	if ch, ok := ctx.Value("logChannel").(chan string); ok {
+	if ch, ok := agentctx.LogChannel(ctx); ok {
 		// 非阻塞发送
 		select {
 		case ch <- msg:
@@ -473,14 +476,7 @@ func (a *CoderAgent) generateAndExecuteCodeTask(ctx context.Context, task *model
 			"必须把图像保存到 os.environ.get('RA_OUTPUT_DIR', '/workspace/output') 目录下（例如 os.path.join(os.environ['RA_OUTPUT_DIR'], 'result.png')），并保证生成的图片非空。"
 	}
 	if len(task.Inputs) > 0 {
-		if payload, err := json.Marshal(task.Inputs); err == nil {
-			text := string(payload)
-			const maxInputChars = 12000
-			if len(text) > maxInputChars {
-				text = text[:maxInputChars] + "..."
-			}
-			prompt += "\n\n上游输入（只读，供绘图/分析使用）：\n" + text
-		}
+		prompt += "\n\n上游输入（只读，供绘图/分析使用）：\n" + formatTaskInputsForPrompt(task.Inputs, 12000)
 	}
 	code, err := a.CodeOnlyChain.Invoke(ctx, prompt)
 	if err != nil {
@@ -587,12 +583,17 @@ func (a *CoderAgent) prepareRuntime(ctx context.Context, task *models.Task) erro
 		task.Metadata["runtime_image_digest"] = info.Digest
 		task.Metadata["runtime_image_size_bytes"] = info.SizeBytes
 	}
-	sandboxID, err := a.Sandbox.CreatePersistentSandbox(ctx, sandboxIdentityForTask(task), sandboxImage, mountPath)
+	sandboxOptions := sandboxOptionsForTask(task)
+	sandboxID, err := a.Sandbox.CreatePersistentSandboxWithOptions(ctx, sandboxIdentityForTask(task), sandboxImage, mountPath, sandboxOptions)
 	if err != nil {
 		task.Status = models.StatusFailed
 		task.Error = fmt.Sprintf("failed to create runtime sandbox: %v", err)
 		return err
 	}
+	if task.Metadata == nil {
+		task.Metadata = map[string]any{}
+	}
+	task.Metadata["sandbox_network_mode"] = sandboxOptions.NetworkMode
 	task.Result = sandboxID
 	logToContext(ctx, "[%s] Runtime ready: %s", a.Name, sandboxID)
 	if task.Metadata == nil {
@@ -665,6 +666,26 @@ func (a *CoderAgent) installDependencies(ctx context.Context, task *models.Task)
 		return a.completeWithoutDependencies(task, runtimeSession, "no external dependencies detected")
 	}
 
+	// Dependency installation is the one step that legitimately needs egress.
+	// The runtime action approval already happened before this task started, so
+	// open the sandbox network for the install and always close it afterwards.
+	closeNetwork, networkErr := openSandboxNetwork(ctx, a.Sandbox, runtimeSession, "bridge")
+	if networkErr != nil {
+		task.Status = models.StatusFailed
+		task.Error = fmt.Sprintf("dependency installation needs network, but enabling it failed: %v", networkErr)
+		if task.Metadata == nil {
+			task.Metadata = map[string]any{}
+		}
+		task.Metadata["missing_requirements"] = []models.MissingRequirement{{
+			Kind:        "network_control_failed",
+			Name:        runtimeSession,
+			Detail:      networkErr.Error(),
+			Remediation: "检查 docker-sandbox 的网络策略（SANDBOX_ALLOW_NETWORK）与服务连通性后重试。",
+		}}
+		return fmt.Errorf("%s", task.Error)
+	}
+	defer closeNetwork()
+
 	// ReAct 依赖恢复：优先让模型根据 pip 日志给出结构化动作，
 	// 再由规则兜底，避免把“重试”做成纯盲试。
 	maxAttempts := 3
@@ -676,9 +697,11 @@ func (a *CoderAgent) installDependencies(ctx context.Context, task *models.Task)
 			task.Error = argsErr.Error()
 			return argsErr
 		}
+		execStarted := time.Now()
 		res, err := a.Sandbox.ExecCommandStream(ctx, runtimeSession, cmd, func(stream string, line string) {
 			logToContext(ctx, "[%s] pip %s: %s", a.Name, stream, line)
 		})
+		recordSandboxDuration(ctx, execStarted)
 		if err != nil {
 			task.Status = models.StatusFailed
 			task.Error = fmt.Sprintf("dependency installation failed: %v", err)
@@ -786,7 +809,7 @@ func (a *CoderAgent) planDependencyRecovery(ctx context.Context, dependencies []
 	}
 
 	userPrompt := prompts.DependencyRecoveryUserPrompt(mustJSON(dependencies), pipError)
-	msg, err := a.ChatModel.Generate(ctx, []*schema.Message{
+	msg, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
 		{Role: schema.System, Content: prompts.DependencyRecoverySystemPrompt},
 		{Role: schema.User, Content: userPrompt},
 	})
@@ -884,7 +907,7 @@ func (a *CoderAgent) recreateSandboxForDependencies(ctx context.Context, task *m
 	if a == nil || a.Sandbox == nil {
 		return "", fmt.Errorf("sandbox client is not configured")
 	}
-	newSandboxID, err := a.Sandbox.CreatePersistentSandbox(ctx, sandboxIdentityForTask(task), targetImage, mountPath)
+	newSandboxID, err := a.Sandbox.CreatePersistentSandboxWithOptions(ctx, sandboxIdentityForTask(task), targetImage, mountPath, sandboxOptionsForTask(task))
 	if err != nil {
 		return "", err
 	}
@@ -1183,7 +1206,7 @@ func (a *CoderAgent) repairGeneratedPythonCodeForRuntimeError(ctx context.Contex
 	taskType, _ := ctx.Value(coderTaskTypeContextKey).(string)
 	taskName, _ := ctx.Value(coderTaskNameContextKey).(string)
 	prompt := prompts.RuntimeCodeRepairUserPromptForTask(errText, code, intentType, taskType, taskName)
-	msg, err := a.ChatModel.Generate(ctx, []*schema.Message{
+	msg, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
 		{Role: schema.System, Content: coderSystemPromptFromContext(ctx, a.SystemPrompt)},
 		{Role: schema.User, Content: prompt},
 	})
@@ -1204,18 +1227,24 @@ func (a *CoderAgent) runPythonTaskInSandbox(ctx context.Context, sandboxID strin
 		if relErr == nil && !strings.HasPrefix(relPath, "..") {
 			cmd := []string{"bash", "-lc", buildMountedWorkspacePythonCommand(relPath)}
 			logToContext(ctx, "[%s] Executing repo entry file in mounted workspace: %s", a.Name, relPath)
-			return a.Sandbox.ExecCommandStream(ctx, sandboxID, cmd, func(stream string, line string) {
+			started := time.Now()
+			response, err := a.Sandbox.ExecCommandStream(ctx, sandboxID, cmd, func(stream string, line string) {
 				logToContext(ctx, "[%s] python %s: %s", a.Name, stream, line)
 			})
+			recordSandboxDuration(ctx, started)
+			return response, err
 		}
 	}
 
 	if err := a.validatePythonSyntaxInSandbox(ctx, sandboxID, code); err != nil {
 		return nil, err
 	}
-	return a.Sandbox.RunPythonCodeStream(ctx, sandboxID, code, func(stream string, line string) {
+	started := time.Now()
+	response, err := a.Sandbox.RunPythonCodeStream(ctx, sandboxID, code, func(stream string, line string) {
 		logToContext(ctx, "[%s] python %s: %s", a.Name, stream, line)
 	})
+	recordSandboxDuration(ctx, started)
+	return response, err
 }
 
 func (a *CoderAgent) installMissingPythonModule(ctx context.Context, sandboxID string, errText string) (bool, error) {
@@ -1235,9 +1264,16 @@ func (a *CoderAgent) installMissingPythonModule(ctx context.Context, sandboxID s
 	if pipArgsErr != nil {
 		return false, pipArgsErr
 	}
+	closeNetwork, networkErr := openSandboxNetwork(ctx, a.Sandbox, sandboxID, "bridge")
+	if networkErr != nil {
+		return false, networkErr
+	}
+	defer closeNetwork()
+	execStarted := time.Now()
 	res, err := a.Sandbox.ExecCommandStream(ctx, sandboxID, pipArgs, func(stream string, line string) {
 		logToContext(ctx, "[%s] pip %s: %s", a.Name, stream, line)
 	})
+	recordSandboxDuration(ctx, execStarted)
 	if err != nil {
 		return false, err
 	}
@@ -1276,7 +1312,7 @@ func (a *CoderAgent) executeCodeInSandbox(ctx context.Context, task *models.Task
 		}
 		logToContext(ctx, "[%s] Running %s in sandbox image %s", a.Name, task.Name, image)
 		var err error
-		sandboxID, err = a.Sandbox.CreatePersistentSandbox(ctx, sandboxIdentityForTask(task), image, "")
+		sandboxID, err = a.Sandbox.CreatePersistentSandboxWithOptions(ctx, sandboxIdentityForTask(task), image, "", sandboxOptionsForTask(task))
 		if err != nil {
 			task.Status = models.StatusFailed
 			task.Error = fmt.Sprintf("failed to create execution sandbox: %v", err)
@@ -1286,6 +1322,27 @@ func (a *CoderAgent) executeCodeInSandbox(ctx context.Context, task *models.Task
 	}
 	if ownsEphemeralSandbox {
 		defer a.Sandbox.CleanupSandbox(context.Background(), sandboxID)
+	}
+
+	// Network egress for code execution is only opened when the plan approved a
+	// network_access runtime action; otherwise the sandbox stays offline.
+	if taskNeedsNetwork(task) {
+		closeNetwork, networkErr := openSandboxNetwork(ctx, a.Sandbox, sandboxID, "bridge")
+		if networkErr != nil {
+			task.Status = models.StatusFailed
+			task.Error = fmt.Sprintf("execution needs network, but enabling it failed: %v", networkErr)
+			if task.Metadata == nil {
+				task.Metadata = map[string]any{}
+			}
+			task.Metadata["missing_requirements"] = []models.MissingRequirement{{
+				Kind:        "network_control_failed",
+				Name:        sandboxID,
+				Detail:      networkErr.Error(),
+				Remediation: "检查 docker-sandbox 网络策略后重试。",
+			}}
+			return fmt.Errorf("%s", task.Error)
+		}
+		defer closeNetwork()
 	}
 
 	executesMountedFile := strings.TrimSpace(workspacePath) != "" && strings.TrimSpace(codeFilePath) != ""

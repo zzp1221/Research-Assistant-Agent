@@ -40,11 +40,11 @@ func (a *ResearchCodingAgent) ExecuteTask(ctx context.Context, task *models.Task
 	logToContext(ctx, "[%s] executing %s", a.Name, task.Type)
 	switch task.Type {
 	case "experiment_dataset_prepare":
-		return a.executeExperimentDatasetPrepare(ctx, task)
+		return a.withTaskNetwork(ctx, task, func() error { return a.executeExperimentDatasetPrepare(ctx, task) })
 	case "experiment_spec":
 		return a.executeExperimentSpec(ctx, task)
 	case "experiment_run":
-		return a.executeExperimentRun(ctx, task)
+		return a.withTaskNetwork(ctx, task, func() error { return a.executeExperimentRun(ctx, task) })
 	case "experiment_validate":
 		return a.executeExperimentValidation(ctx, task)
 	case "dataset_profile":
@@ -52,24 +52,48 @@ func (a *ResearchCodingAgent) ExecuteTask(ctx context.Context, task *models.Task
 	case "benchmark_adapter_generate":
 		return a.executeAdapterGeneration(ctx, task)
 	case "benchmark_adapter_preflight":
-		return a.executeAdapterPreflight(ctx, task)
+		return a.withTaskNetwork(ctx, task, func() error { return a.executeAdapterPreflight(ctx, task) })
 	case "benchmark_execute":
-		return a.executeBenchmark(ctx, task)
+		return a.withTaskNetwork(ctx, task, func() error { return a.executeBenchmark(ctx, task) })
 	case "benchmark_validate":
 		return a.executeBenchmarkValidation(ctx, task)
 	case "autoresearch_spec":
 		return a.executeAutoResearchSpec(ctx, task)
 	case "autoresearch_run":
-		return a.executeAutoResearchRun(ctx, task)
+		return a.withTaskNetwork(ctx, task, func() error { return a.executeAutoResearchRun(ctx, task) })
 	case "autoresearch_validate":
-		return a.executeAutoResearchValidation(ctx, task)
+		return a.withTaskNetwork(ctx, task, func() error { return a.executeAutoResearchValidation(ctx, task) })
 	case "paper_code_execute", "fix_and_rerun":
-		return a.executePaperCodeTask(ctx, task, sharedContext)
+		return a.withTaskNetwork(ctx, task, func() error { return a.executePaperCodeTask(ctx, task, sharedContext) })
 	case "reproduction_spec":
 		return a.executeReproductionSpec(ctx, task)
 	default:
 		return failResearchCodingTask(task, fmt.Errorf("unsupported research coding task type %q", task.Type))
 	}
+}
+
+// withTaskNetwork opens sandbox egress for a network-approved execution task and
+// always restores the offline state afterwards.
+func (a *ResearchCodingAgent) withTaskNetwork(ctx context.Context, task *models.Task, run func() error) error {
+	if !taskNeedsNetwork(task) {
+		return run()
+	}
+	session := taskRuntimeSession(task)
+	closeNetwork, err := openSandboxNetwork(ctx, a.Sandbox, session, "bridge")
+	if err != nil {
+		if task.Metadata == nil {
+			task.Metadata = map[string]any{}
+		}
+		task.Metadata["missing_requirements"] = []models.MissingRequirement{{
+			Kind:        "network_control_failed",
+			Name:        session,
+			Detail:      err.Error(),
+			Remediation: "检查 docker-sandbox 网络策略（SANDBOX_ALLOW_NETWORK）与服务连通性后重试。",
+		}}
+		return failResearchCodingTask(task, fmt.Errorf("execution needs network, but enabling it failed: %w", err))
+	}
+	defer closeNetwork()
+	return run()
 }
 
 func setResearchCodingArtifacts(task *models.Task, values map[string]string) {

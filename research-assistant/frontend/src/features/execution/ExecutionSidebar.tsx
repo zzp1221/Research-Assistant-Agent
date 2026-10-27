@@ -1,9 +1,10 @@
-import { lazy, Suspense, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { lazy, Suspense, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import {
   ChartNoAxesCombined,
   Check,
   Code,
   Copy,
+  Download,
   Eye,
   GitBranch,
   Loader2,
@@ -16,8 +17,10 @@ import {
 } from 'lucide-react';
 import type { ExecutionDisplayMode } from '../../app/hooks/useResearchAssistantRuntime';
 import type { Task } from '../../contracts/api';
+import { formatApiError } from '../../services/api/apiError';
 import { parseBenchmarkReport } from '../benchmark/benchmarkReport';
 import { getAgentIcon, getAgentLabel } from '../shared/agentVisuals';
+import { DEFAULT_LOG_TAIL, filterLogs, splitLogLines, windowLogs, type LogLevel } from './logWindow';
 
 const BenchmarkReportView = lazy(() => import('../benchmark/BenchmarkReportView').then((module) => ({ default: module.BenchmarkReportView })));
 const AutoResearchTrialView = lazy(() => import('../autoresearch/AutoResearchTrialView').then((module) => ({ default: module.AutoResearchTrialView })));
@@ -66,7 +69,7 @@ interface ExecutionSidebarProps {
   executionImage: string;
   logsEndRef: RefObject<HTMLDivElement | null>;
   onClose: () => void;
-  onExecute: () => void;
+  onExecute: () => void | Promise<unknown>;
   onChangeDisplayMode: (mode: ExecutionDisplayMode) => void;
 }
 
@@ -209,6 +212,7 @@ export function ExecutionSidebar(props: ExecutionSidebarProps) {
         )
       ) : (
         <ExecutionSidebarShell
+          key={selectedTask.ID}
           selectedTask={selectedTask}
           isExecuting={isExecuting}
           requiresApproval={requiresApproval}
@@ -342,9 +346,16 @@ interface ExecutionSidebarShellProps {
   executionImage: string;
   logsEndRef: RefObject<HTMLDivElement | null>;
   onClose: () => void;
-  onExecute: () => void;
+  onExecute: () => void | Promise<unknown>;
   onChangeDisplayMode: (mode: ExecutionDisplayMode) => void;
 }
+
+const logLevelOptions: { value: LogLevel; label: string }[] = [
+  { value: 'all', label: '全部' },
+  { value: 'error', label: '错误' },
+  { value: 'warn', label: '警告' },
+  { value: 'info', label: '信息' },
+];
 
 function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
   const {
@@ -363,6 +374,32 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
     onChangeDisplayMode,
   } = props;
   const [copied, setCopied] = useState(false);
+  const [executeFailure, setExecuteFailure] = useState<{ taskId: string; error: unknown } | null>(null);
+  const [logLevel, setLogLevel] = useState<LogLevel>('all');
+  const [showAllLogs, setShowAllLogs] = useState(false);
+  const logLines = useMemo(() => splitLogLines(executionLogs), [executionLogs]);
+  const filteredLogLines = useMemo(() => filterLogs(logLines, logLevel), [logLines, logLevel]);
+  const visibleLogWindow = useMemo(
+    () => (showAllLogs ? { lines: filteredLogLines, hiddenCount: 0 } : windowLogs(filteredLogLines, DEFAULT_LOG_TAIL)),
+    [filteredLogLines, showAllLogs],
+  );
+  // Prefer a structured failure, then a task-level backend error, and finally
+  // the last streamed "[error]" line. All three are formatted through the same
+  // mapper so the panel never echoes an unfiltered stack trace.
+  const lastLogError = useMemo(() => {
+    for (let index = logLines.length - 1; index >= 0; index -= 1) {
+      const match = /\[(?:(?:plan|execution)\s+)?error\]\s*(.+)$/i.exec(logLines[index]);
+      if (match?.[1]) return match[1].trim();
+    }
+    return '';
+  }, [logLines]);
+  const executeErrorMessage = executeFailure && executeFailure.taskId === selectedTask.ID ? executeFailure.error : null;
+  const taskErrorMessage = selectedTask.Error || lastLogError;
+  const apiFailure = executeErrorMessage !== null
+    ? formatApiError(executeErrorMessage)
+    : taskErrorMessage.trim() !== ''
+      ? formatApiError(taskErrorMessage)
+      : null;
   const ablationBudget = selectedTask.Type === 'ablation_design' ? selectedTask.Inputs : undefined;
   const hasAblationEvidence = selectedTask.Type === 'ablation_design' && Boolean(executionStructuredData || executionResult);
   const hasAutoResearchEvidence = (selectedTask.Type === 'autoresearch_run' || selectedTask.Type === 'autoresearch_validate') && Boolean(executionStructuredData || executionResult);
@@ -415,6 +452,38 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
     } catch {
       // Clipboard access can be blocked; the log remains selectable.
     }
+  };
+
+  const handleExecute = () => {
+    setExecuteFailure(null);
+    try {
+      const result: unknown = onExecute();
+      if (result && typeof (result as Promise<unknown>).then === 'function') {
+        void (result as Promise<unknown>).catch((error: unknown) => {
+          setExecuteFailure({ taskId: selectedTask.ID, error });
+        });
+      }
+    } catch (error: unknown) {
+      setExecuteFailure({ taskId: selectedTask.ID, error });
+    }
+  };
+
+  const downloadLogs = () => {
+    if (typeof URL.createObjectURL !== 'function') return;
+    const blob = new Blob([executionLogs], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    const safeName = (selectedTask.Name || selectedTask.ID || 'execution')
+      .replace(/[\\/:*?"<>|\s]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48);
+    anchor.href = url;
+    anchor.download = `${safeName || 'execution'}.log`;
+    anchor.rel = 'noopener';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return (
@@ -473,7 +542,8 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
 
         <div className="border-b border-line px-4 py-2">
           <button
-            onClick={onExecute}
+            type="button"
+            onClick={handleExecute}
             disabled={isExecuting || requiresApproval}
             title={requiresApproval ? '计划尚未审批，请先使用右上角“审批并运行”' : '启动当前节点'}
             className="flex h-8 w-full items-center justify-center gap-1.5 border border-line-strong bg-surface px-3 text-[12px] font-semibold text-ink-soft transition-colors hover:border-ink hover:text-ink active:translate-y-px disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-muted disabled:text-muted"
@@ -504,6 +574,20 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
             )}
           </button>
         </div>
+
+        {apiFailure && (
+          <div role="alert" className="border-b border-line bg-proof-soft px-4 py-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="font-serif text-[12.5px] font-semibold text-proof">{apiFailure.title}</span>
+              <span className="journal-num text-[10px] uppercase text-muted">{apiFailure.code}</span>
+            </div>
+            <p className="mt-0.5 break-words text-[11.5px] leading-5 text-ink-soft">{apiFailure.detail}</p>
+            <p className="mt-1 break-words text-[11px] leading-5 text-ink-soft">
+              <span className="font-semibold">修复建议: </span>
+              {apiFailure.remediation}
+            </p>
+          </div>
+        )}
 
         {(executionResult || executionCode || executionStructuredData) && (
           <div className="flex items-center justify-between border-b border-line px-1">
@@ -542,25 +626,103 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
         >
           {activeMode === 'logs' ? (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="mb-1.5 flex items-center justify-between px-0.5">
+              <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
                 <span className="journal-caps flex items-center gap-1.5 text-[10px]">
                   <TerminalSquare className="h-3 w-3" />
                   校样日志
+                  {logLines.length > 0 && (
+                    <span className="journal-num text-[10px] text-faint">
+                      {visibleLogWindow.lines.length}/{filteredLogLines.length}
+                    </span>
+                  )}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => void copyLogs()}
-                  className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-faint transition-colors hover:bg-surface-muted hover:text-ink-soft"
-                  aria-label="复制运行日志"
-                >
-                  {copied ? <Check className="h-3 w-3 text-ok" /> : <Copy className="h-3 w-3" />}
-                  {copied ? '已复制' : '复制'}
-                </button>
+                <div className="flex items-center gap-0.5">
+                  {logLines.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={downloadLogs}
+                      className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-faint transition-colors hover:bg-surface-muted hover:text-ink-soft"
+                      title="下载完整日志"
+                      aria-label="下载完整日志文件"
+                    >
+                      <Download className="h-3 w-3" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void copyLogs()}
+                    className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-faint transition-colors hover:bg-surface-muted hover:text-ink-soft"
+                    aria-label="复制运行日志"
+                  >
+                    {copied ? <Check className="h-3 w-3 text-ok" /> : <Copy className="h-3 w-3" />}
+                    {copied ? '已复制' : '复制'}
+                  </button>
+                </div>
               </div>
-              <div className="min-h-[16rem] flex-1 overflow-y-auto border border-line-strong bg-[#17130f] px-3 py-2.5 font-mono text-[11.5px] leading-[1.75] text-[#e8e3d9] whitespace-pre-wrap break-words selection:bg-proof/40">
-                {executionLogs || '> 等待执行…'}
+              {logLines.length > 0 && (
+                <div className="mb-1.5 flex flex-wrap items-center gap-1.5 px-0.5">
+                  <div role="group" aria-label="日志级别筛选" className="flex items-stretch border border-line">
+                    {logLevelOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        aria-pressed={logLevel === option.value}
+                        onClick={() => setLogLevel(option.value)}
+                        className={`border-r border-line px-2 py-0.5 text-[10.5px] transition-colors last:border-r-0 ${
+                          logLevel === option.value
+                            ? 'bg-ink text-paper'
+                            : 'text-muted hover:bg-surface-muted hover:text-ink-soft'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  {filteredLogLines.length > DEFAULT_LOG_TAIL && (
+                    <button
+                      type="button"
+                      aria-pressed={showAllLogs}
+                      onClick={() => setShowAllLogs((value) => !value)}
+                      className="border border-line px-2 py-0.5 text-[10.5px] text-muted transition-colors hover:border-line-strong hover:text-ink-soft"
+                    >
+                      {showAllLogs ? `收起（最近 ${DEFAULT_LOG_TAIL} 行）` : `显示全部（${filteredLogLines.length} 行）`}
+                    </button>
+                  )}
+                </div>
+              )}
+              {visibleLogWindow.hiddenCount > 0 && (
+                <p className="mb-1.5 px-0.5 text-[10.5px] text-faint">
+                  已隐藏 {visibleLogWindow.hiddenCount} 行（
+                  <button
+                    type="button"
+                    onClick={downloadLogs}
+                    className="underline decoration-dotted underline-offset-2 transition-colors hover:text-ink-soft"
+                    aria-label="下载完整日志"
+                  >
+                    <Download className="mr-0.5 inline h-3 w-3 align-[-1px]" aria-hidden="true" />
+                    下载完整日志
+                  </button>
+                  ）
+                </p>
+              )}
+              <div className="min-h-[16rem] flex-1 overflow-y-auto border border-line-strong bg-[#17130f] px-3 py-2.5 font-mono text-[11.5px] leading-[1.75] text-[#e8e3d9] selection:bg-proof/40">
+                {logLines.length === 0 ? (
+                  <span className="whitespace-pre-wrap break-words">&gt; 等待执行…</span>
+                ) : filteredLogLines.length === 0 ? (
+                  <span className="text-[#9d968b]">当前级别没有匹配的日志；可切换到“全部”查看。</span>
+                ) : (
+                  visibleLogWindow.lines.map((line, index) => (
+                    <div
+                      key={`${index}-${line.slice(0, 24)}`}
+                      data-log-row=""
+                      className="whitespace-pre-wrap break-words"
+                    >
+                      {line || '\u00a0'}
+                    </div>
+                  ))
+                )}
                 {executionResult && !reportAgents.has(selectedTask.AssignedTo) && (
-                  <div className="mt-4 border-t border-white/10 pt-3 text-[#a9c9b5]">
+                  <div className="mt-4 whitespace-pre-wrap break-words border-t border-white/10 pt-3 text-[#a9c9b5]">
                     [输出]{'\n'}
                     {executionResult}
                   </div>

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"research-assistant-backend/internal/agentctx"
 	"strings"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
@@ -44,7 +45,7 @@ func (a *CoderAgent) initRealEinoChain() {
 		}
 		return messages, nil
 	}))
-	codeOnlyGraph.AddChatModelNode("LLM_Generate_Code", chatModel)
+	codeOnlyGraph.AddChatModelNode("LLM_Generate_Code", wrapUsageModel(chatModel))
 	codeOnlyGraph.AddLambdaNode("Code_Extractor", compose.InvokableLambda(func(ctx context.Context, msg *schema.Message) (string, error) {
 		logToContext(ctx, "[%s] Eino 节点 [Code_Extractor]: 开始提取大模型生成的代码", a.Name)
 		code := msg.Content
@@ -52,7 +53,7 @@ func (a *CoderAgent) initRealEinoChain() {
 		code = strings.TrimPrefix(code, "```python")
 		code = strings.TrimSuffix(code, "```")
 		logToContext(ctx, "[%s] 成功提取到可执行代码", a.Name)
-		if codeChan, ok := ctx.Value("codeChannel").(chan string); ok {
+		if codeChan, ok := agentctx.CodeChannel(ctx); ok {
 			codeChan <- code
 		}
 		return code, nil
@@ -82,7 +83,7 @@ func (a *CoderAgent) initRealEinoChain() {
 	}))
 
 	// 节点 2: LLM 生成代码 (调用真实的 ChatModel)
-	graph.AddChatModelNode("LLM_Generate_Code", chatModel)
+	graph.AddChatModelNode("LLM_Generate_Code", wrapUsageModel(chatModel))
 
 	// 节点 3: 清洗并提取代码
 	graph.AddLambdaNode("Code_Extractor", compose.InvokableLambda(func(ctx context.Context, msg *schema.Message) (string, error) {
@@ -95,7 +96,7 @@ func (a *CoderAgent) initRealEinoChain() {
 		logToContext(ctx, "[%s] 成功提取到可执行代码", a.Name)
 
 		// 保存代码到 Context，以便外部获取
-		if codeChan, ok := ctx.Value("codeChannel").(chan string); ok {
+		if codeChan, ok := agentctx.CodeChannel(ctx); ok {
 			codeChan <- code
 		}
 
@@ -111,7 +112,7 @@ func (a *CoderAgent) initRealEinoChain() {
 		}
 
 		// 获取预先创建好的长生命周期容器 ID
-		containerID, ok := ctx.Value("containerID").(string)
+		containerID, ok := agentctx.ContainerID(ctx)
 		if !ok || containerID == "" {
 			logToContext(ctx, "[Warning] 无法获取长生命周期容器 ID，降级为单次执行模式")
 			// 创建临时沙箱执行
@@ -129,7 +130,7 @@ func (a *CoderAgent) initRealEinoChain() {
 			// 处理图片输出
 			if len(res.Images) > 0 {
 				logToContext(ctx, "[%s] 检测到代码生成了 %d 张图表，正在推送至前端...", a.Name, len(res.Images))
-				if codeChan, ok := ctx.Value("codeChannel").(chan string); ok {
+				if codeChan, ok := agentctx.CodeChannel(ctx); ok {
 					for _, imgBase64 := range res.Images {
 						// 通过特殊的标识符发送图片给前端
 						codeChan <- "IMAGE:" + imgBase64
@@ -156,7 +157,7 @@ func (a *CoderAgent) initRealEinoChain() {
 				// 处理图片输出
 				if len(res.Images) > 0 {
 					logToContext(ctx, "[%s] 检测到代码生成了 %d 张图表，正在推送至前端...", a.Name, len(res.Images))
-					if codeChan, ok := ctx.Value("codeChannel").(chan string); ok {
+					if codeChan, ok := agentctx.CodeChannel(ctx); ok {
 						for _, imgBase64 := range res.Images {
 							codeChan <- "IMAGE:" + imgBase64
 						}
@@ -174,7 +175,7 @@ func (a *CoderAgent) initRealEinoChain() {
 				correctionPrompt := prompts.CoderSelfCorrectionUserPrompt(err, output)
 
 				logToContext(ctx, "[%s] 正在调用大模型进行代码自修复...", a.Name)
-				msg, err := chatModel.Generate(ctx, []*schema.Message{
+				msg, err := llmclient.GenerateWithUsage(ctx, chatModel, []*schema.Message{
 					{Role: schema.System, Content: coderSystemPromptFromContext(ctx, a.SystemPrompt)},
 					{Role: schema.User, Content: correctionPrompt},
 				})

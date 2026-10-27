@@ -68,6 +68,14 @@ func buildResearchContext(ownerID, sessionID, rawIntent string, attachments []ma
 			}
 			continue
 		}
+		// Provider metadata (arXiv/Crossref) corrects the known PDF extraction
+		// gaps: split author names, the arXiv stamp year and missing DOI.
+		if providerRaw := stringValue(item["paper_metadata"]); providerRaw != "" {
+			var provider models.PaperMetadata
+			if json.Unmarshal([]byte(providerRaw), &provider) == nil {
+				metadata = documents.ApplyProviderMetadata(metadata, provider)
+			}
+		}
 		if title := extractQuotedPaperTitle(rawIntent); title != "" {
 			metadata.Title = title
 			metadata.Source = "user"

@@ -8,10 +8,10 @@ import (
 func TestRewriteImageWithRegistryMirror(t *testing.T) {
 	t.Setenv("SANDBOX_REGISTRY_MIRROR", "docker.m.daocloud.io")
 	cases := map[string]string{
-		"python:3.11-bullseye":              "docker.m.daocloud.io/library/python:3.11-bullseye",
-		"library/python:3.11":               "docker.m.daocloud.io/library/python:3.11",
+		"python:3.11-bullseye":                     "docker.m.daocloud.io/library/python:3.11-bullseye",
+		"library/python:3.11":                      "docker.m.daocloud.io/library/python:3.11",
 		"docker.m.daocloud.io/library/python:3.11": "docker.m.daocloud.io/library/python:3.11",
-		"ghcr.io/org/image:tag":             "ghcr.io/org/image:tag",
+		"ghcr.io/org/image:tag":                    "ghcr.io/org/image:tag",
 	}
 	for input, expected := range cases {
 		if got := rewriteImageWithRegistryMirror(input); got != expected {

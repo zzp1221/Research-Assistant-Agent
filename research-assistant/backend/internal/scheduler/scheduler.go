@@ -7,12 +7,16 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"research-assistant-backend/internal/agentctx"
 	"research-assistant-backend/internal/blobstore"
+	"research-assistant-backend/internal/metrics"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/store"
+	"research-assistant-backend/internal/usage"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -60,7 +64,22 @@ type Scheduler struct {
 	// blobs externalises large artifact values (images/reports) so PlanGraph
 	// snapshots stay small and identical images are stored exactly once.
 	blobs *blobstore.Store
+	// notify wakes the execution loop immediately after a task transition so the
+	// scheduler no longer burns CPU polling every 150-200ms.
+	notify chan struct{}
+	// globalSlots bounds concurrent task execution across all plans.
+	globalSlots chan struct{}
+	// activity tracks the last observed progress per plan for the stall watchdog.
+	activityMu    sync.Mutex
+	lastActivity  map[string]time.Time
+	stallNotified map[string]time.Time
+	terminalMu    sync.Mutex
+	terminals     map[string]time.Time
 }
+
+// PollInterval is the idle fallback for the event-driven loop. Task completion
+// signals the loop immediately; this only bounds detection of external updates.
+const pollInterval = 1 * time.Second
 
 func NewScheduler(planStore store.PlanStore, executor TaskExecutor, publisher EventPublisher, maxConcurrent int) *Scheduler {
 	if executor == nil {
@@ -72,13 +91,200 @@ func NewScheduler(planStore store.PlanStore, executor TaskExecutor, publisher Ev
 	if maxConcurrent <= 0 {
 		maxConcurrent = 4
 	}
+	if configured := schedulerEnvInt("PLAN_MAX_CONCURRENT_TASKS", 0); configured > 0 {
+		maxConcurrent = configured
+	}
+	globalLimit := schedulerEnvInt("PLAN_GLOBAL_MAX_TASKS", 8)
+	if globalLimit <= 0 {
+		globalLimit = 8
+	}
 
 	return &Scheduler{
 		store:         planStore,
 		executor:      executor,
 		publisher:     publisher,
 		maxConcurrent: maxConcurrent,
+		notify:        make(chan struct{}, 1),
+		globalSlots:   make(chan struct{}, globalLimit),
+		lastActivity:  map[string]time.Time{},
+		stallNotified: map[string]time.Time{},
+		terminals:     map[string]time.Time{},
 	}
+}
+
+func schedulerEnvInt(key string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	return value
+}
+
+func (s *Scheduler) notifyProgress() {
+	if s == nil || s.notify == nil {
+		return
+	}
+	select {
+	case s.notify <- struct{}{}:
+	default:
+	}
+}
+
+func (s *Scheduler) touchActivity(planID string) {
+	if s == nil || strings.TrimSpace(planID) == "" {
+		return
+	}
+	s.activityMu.Lock()
+	defer s.activityMu.Unlock()
+	if s.lastActivity == nil {
+		s.lastActivity = map[string]time.Time{}
+	}
+	s.lastActivity[planID] = time.Now()
+}
+
+// wait blocks until the next wake-up, the fallback interval, or cancellation.
+func (s *Scheduler) wait(ctx context.Context, fallback time.Duration) bool {
+	if fallback <= 0 {
+		fallback = pollInterval
+	}
+	timer := time.NewTimer(fallback)
+	defer timer.Stop()
+	if s.notify == nil {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-timer.C:
+			return true
+		}
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	case <-s.notify:
+		return true
+	case <-timer.C:
+		return true
+	}
+}
+
+func (s *Scheduler) acquireGlobalSlot() bool {
+	if s.globalSlots == nil {
+		return true
+	}
+	select {
+	case s.globalSlots <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Scheduler) releaseGlobalSlot() {
+	if s.globalSlots == nil {
+		return
+	}
+	select {
+	case <-s.globalSlots:
+	default:
+	}
+}
+
+// recordTerminalMetrics records one terminal transition per execution. It is
+// idempotent so the different terminal paths cannot double count.
+func (s *Scheduler) recordTerminalMetrics(planID string) {
+	if s == nil || strings.TrimSpace(planID) == "" {
+		return
+	}
+	s.terminalMu.Lock()
+	if s.terminals == nil {
+		s.terminals = map[string]time.Time{}
+	}
+	if _, seen := s.terminals[planID]; seen {
+		s.terminalMu.Unlock()
+		return
+	}
+	s.terminals[planID] = time.Now()
+	s.terminalMu.Unlock()
+
+	plan, err := s.store.GetPlan(planID)
+	if err != nil || plan == nil {
+		return
+	}
+	metrics.Default().AddGauge("active_plans", -1, nil)
+	var duration time.Duration
+	if plan.Usage.StartedAt != nil && plan.Usage.FinishedAt != nil {
+		duration = plan.Usage.FinishedAt.Sub(*plan.Usage.StartedAt)
+	}
+	metrics.RecordPlanTerminal(string(plan.Status), string(plan.Outcome), duration)
+}
+
+func (s *Scheduler) clearTerminalMarker(planID string) {
+	s.terminalMu.Lock()
+	defer s.terminalMu.Unlock()
+	delete(s.terminals, planID)
+}
+
+// checkPlanStall publishes plan_stalled when an in-progress plan has no task
+// progress for PLAN_STALL_SECONDS (default 10 minutes). It never kills a plan:
+// long legitimately silent commands are common, so the event is advisory.
+func (s *Scheduler) checkPlanStall(ctx context.Context, plan *models.PlanGraph) {
+	_ = ctx
+	if plan == nil || plan.Status != models.StatusInProgress || plan.Paused {
+		return
+	}
+	if countInProgress(plan) == 0 {
+		return
+	}
+	threshold := time.Duration(schedulerEnvInt("PLAN_STALL_SECONDS", 600)) * time.Second
+	if threshold <= 0 {
+		return
+	}
+	now := time.Now()
+	s.activityMu.Lock()
+	last, ok := s.lastActivity[plan.ID]
+	if !ok {
+		last = plan.UpdatedAt
+		if last.IsZero() {
+			last = now
+		}
+		if s.lastActivity == nil {
+			s.lastActivity = map[string]time.Time{}
+		}
+		s.lastActivity[plan.ID] = last
+	}
+	s.activityMu.Unlock()
+	if now.Sub(last) < threshold {
+		return
+	}
+	s.activityMu.Lock()
+	if previous, notified := s.stallNotified[plan.ID]; notified && now.Sub(previous) < threshold {
+		s.activityMu.Unlock()
+		return
+	}
+	s.stallNotified[plan.ID] = now
+	s.activityMu.Unlock()
+
+	running := make([]string, 0, 4)
+	for _, node := range plan.Nodes {
+		if node != nil && node.Status == models.StatusInProgress {
+			running = append(running, node.ID)
+		}
+	}
+	s.publishAndStore(plan.ID, models.PlanEvent{
+		PlanID:    plan.ID,
+		EventType: "plan_stalled",
+		Payload: map[string]any{
+			"seconds_since_activity": int(now.Sub(last).Seconds()),
+			"threshold_seconds":      int(threshold.Seconds()),
+			"running_tasks":          running,
+		},
+		Timestamp: now,
+	})
+	metrics.Default().Inc("plan_stalled_total", nil)
 }
 
 func (s *Scheduler) SetOnTerminal(fn func(context.Context, *models.PlanGraph)) {
@@ -249,6 +455,8 @@ func (s *Scheduler) CancelPlanWithActor(planID, reason, actor string) error {
 	}
 	s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "plan_canceled", TaskStatus: string(models.StatusCanceled), Payload: payload, Timestamp: now})
 	s.cleanupPlanSandboxes(context.Background(), planID)
+	s.recordTerminalMetrics(planID)
+	s.notifyProgress()
 	return nil
 }
 
@@ -282,6 +490,147 @@ func (s *Scheduler) RetryTask(planID, taskID string) error {
 		return err
 	}
 	s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "task_retry_requested", TaskID: taskID, TaskStatus: string(models.StatusPending), Timestamp: now})
+	return nil
+}
+
+// PausePlan stops dispatching new tasks. Running tasks finish normally so a
+// pause never leaves a half-written task result.
+func (s *Scheduler) PausePlan(planID, actor string) error {
+	now := time.Now()
+	changed := false
+	if err := s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
+		switch plan.Status {
+		case models.StatusCompleted, models.StatusFailed, models.StatusCanceled:
+			return fmt.Errorf("plan cannot be paused from status %s", plan.Status)
+		}
+		if plan.Paused {
+			return nil
+		}
+		plan.Paused = true
+		plan.PausedAt = &now
+		plan.UpdatedAt = now
+		changed = true
+		return nil
+	}); err != nil {
+		return err
+	}
+	if changed {
+		s.publishAndStore(planID, models.PlanEvent{
+			PlanID:    planID,
+			EventType: "plan_paused",
+			Payload:   map[string]any{"actor": actor},
+			Timestamp: now,
+		})
+		metrics.Default().Inc("plan_paused_total", nil)
+	}
+	s.notifyProgress()
+	return nil
+}
+
+// ResumePlan clears the pause flag and wakes the execution loop.
+func (s *Scheduler) ResumePlan(planID, actor string) error {
+	now := time.Now()
+	changed := false
+	if err := s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
+		switch plan.Status {
+		case models.StatusCompleted, models.StatusFailed, models.StatusCanceled:
+			return fmt.Errorf("plan cannot be resumed from status %s", plan.Status)
+		}
+		if !plan.Paused {
+			return nil
+		}
+		plan.Paused = false
+		plan.PausedAt = nil
+		plan.UpdatedAt = now
+		changed = true
+		return nil
+	}); err != nil {
+		return err
+	}
+	if changed {
+		s.publishAndStore(planID, models.PlanEvent{
+			PlanID:    planID,
+			EventType: "plan_resumed",
+			Payload:   map[string]any{"actor": actor},
+			Timestamp: now,
+		})
+	}
+	s.notifyProgress()
+	return nil
+}
+
+// ResetFromNode rewinds one task and every descendant so a failed or
+// unsatisfactory node can be re-run without rebuilding the whole plan.
+func (s *Scheduler) ResetFromNode(planID, taskID string) error {
+	now := time.Now()
+	resetIDs := []string{}
+	if err := s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
+		target := getNodeByID(plan, taskID)
+		if target == nil {
+			return fmt.Errorf("task not found: %s", taskID)
+		}
+		for _, node := range plan.Nodes {
+			if node != nil && node.Status == models.StatusInProgress {
+				return fmt.Errorf("plan has running tasks; cancel or wait before rewinding")
+			}
+		}
+		affected := map[string]bool{target.ID: true}
+		queue := []string{target.ID}
+		for len(queue) > 0 {
+			current := queue[0]
+			queue = queue[1:]
+			for _, next := range getOutgoingNodes(plan, current) {
+				if next == nil || affected[next.ID] {
+					continue
+				}
+				affected[next.ID] = true
+				queue = append(queue, next.ID)
+			}
+		}
+		for _, node := range plan.Nodes {
+			if node == nil || !affected[node.ID] {
+				continue
+			}
+			resetTaskForRetry(node, now)
+			node.Usage = nil
+			resetIDs = append(resetIDs, node.ID)
+		}
+		for key, artifact := range plan.Artifacts {
+			if affected[artifact.ProducerTaskID] {
+				delete(plan.Artifacts, key)
+			}
+		}
+		for i := range plan.RuntimeActions {
+			action := &plan.RuntimeActions[i]
+			if affected[action.TaskID] && action.Status == models.RuntimeActionPending {
+				action.Status = models.RuntimeActionCanceled
+				action.DecidedAt = &now
+				action.DecidedBy = "rewind"
+				action.DecisionNote = "plan rewound from node " + taskID
+			}
+		}
+		plan.Status = models.StatusPending
+		plan.Outcome = ""
+		plan.OutcomeReason = ""
+		plan.MissingRequirements = nil
+		plan.Paused = false
+		plan.PausedAt = nil
+		plan.Usage.FinishedAt = nil
+		plan.UpdatedAt = now
+		fillMeta(plan)
+		return nil
+	}); err != nil {
+		return err
+	}
+	s.clearTerminalMarker(planID)
+	s.publishAndStore(planID, models.PlanEvent{
+		PlanID:    planID,
+		EventType: "plan_rewound",
+		TaskID:    taskID,
+		Payload:   map[string]any{"reset_tasks": resetIDs},
+		Timestamp: now,
+	})
+	s.notifyProgress()
 	return nil
 }
 
@@ -341,6 +690,9 @@ func (s *Scheduler) ExecutePlan(ctx context.Context, planID string) error {
 		EventType: "plan_started",
 		Timestamp: time.Now(),
 	})
+	s.clearTerminalMarker(planID)
+	metrics.Default().AddGauge("active_plans", 1, nil)
+	s.touchActivity(planID)
 
 executionLoop:
 	for {
@@ -375,6 +727,13 @@ executionLoop:
 		if plan.Status == models.StatusFailed && plan.Outcome == models.OutcomeBlocked {
 			return nil
 		}
+		// A paused plan keeps its running tasks but dispatches nothing new. The
+		// wait is interruptible so resume wakes the loop immediately.
+		if plan.Paused && !allTerminal(plan) {
+			s.wait(ctx, pollInterval)
+			continue
+		}
+		s.checkPlanStall(ctx, plan)
 		if budgetExceeded(plan) {
 			_ = s.CancelPlan(planID, "run budget exceeded")
 			return fmt.Errorf("run budget exceeded")
@@ -406,7 +765,7 @@ executionLoop:
 		ready := s.findReadyNodes(plan, availableSlots)
 		if len(ready) == 0 {
 			if hasAwaitingApproval(plan) {
-				time.Sleep(200 * time.Millisecond)
+				s.wait(ctx, 500*time.Millisecond)
 				continue
 			}
 			if allTerminal(plan) {
@@ -475,6 +834,7 @@ executionLoop:
 					Timestamp: time.Now(),
 				})
 				s.cleanupPlanSandboxes(context.Background(), planID)
+				s.recordTerminalMetrics(planID)
 				if s.onTerminal != nil {
 					if latest, getErr := s.store.GetPlan(planID); getErr == nil && latest != nil {
 						s.onTerminal(ctx, latest)
@@ -486,6 +846,12 @@ executionLoop:
 			}
 
 			if noRunning(plan) {
+				// Re-check the attempt budget against the refreshed plan: a task may
+				// have failed between the loop-top check and this deadlock check.
+				if budgetExceeded(plan) {
+					_ = s.CancelPlan(planID, "run budget exceeded")
+					return fmt.Errorf("run budget exceeded")
+				}
 				if err := s.store.UpdatePlan(planID, func(current *models.PlanGraph) error {
 					if current.Status == models.StatusCanceled {
 						return ErrPlanCanceled
@@ -515,6 +881,7 @@ executionLoop:
 					Timestamp: time.Now(),
 				})
 				s.cleanupPlanSandboxes(context.Background(), planID)
+				s.recordTerminalMetrics(planID)
 				if s.onTerminal != nil {
 					if latest, getErr := s.store.GetPlan(planID); getErr == nil && latest != nil {
 						s.onTerminal(ctx, latest)
@@ -525,7 +892,7 @@ executionLoop:
 				return nil
 			}
 
-			time.Sleep(200 * time.Millisecond)
+			s.wait(ctx, pollInterval)
 			continue
 		}
 
@@ -537,7 +904,7 @@ executionLoop:
 			return err
 		}
 
-		time.Sleep(150 * time.Millisecond)
+		s.wait(ctx, 250*time.Millisecond)
 	}
 }
 
@@ -690,23 +1057,39 @@ func (s *Scheduler) findReadyNodes(plan *models.PlanGraph, availableSlots int) [
 
 func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*models.TaskNode) error {
 	for _, task := range ready {
+		// The global slot bounds concurrent task execution across plans so one
+		// user cannot occupy every CPU/sandbox slot. When saturated the caller
+		// simply loops again after a wake-up.
+		if !s.acquireGlobalSlot() {
+			return nil
+		}
 		action, pending, err := s.prepareRuntimeGate(planID, task.ID)
 		if err != nil {
+			s.releaseGlobalSlot()
 			return err
 		}
 		if pending {
+			s.releaseGlobalSlot()
 			return nil
 		}
 		if action != nil && action.Status == models.RuntimeActionRejected {
+			s.releaseGlobalSlot()
 			return nil
 		}
 		executionID, leaseOwner, executionEpoch, err := s.markTaskStarted(planID, task.ID)
 		if err != nil {
+			s.releaseGlobalSlot()
 			return err
 		}
 
 		taskID := task.ID
+		taskType := task.Type
 		go func() {
+			// Wake the scheduler and free the global slot on every exit path.
+			defer s.notifyProgress()
+			defer s.releaseGlobalSlot()
+			defer s.touchActivity(planID)
+
 			plan, err := s.store.GetPlan(planID)
 			if err != nil {
 				log.Printf("scheduler: failed to load plan %s for task %s: %v", planID, taskID, err)
@@ -719,7 +1102,8 @@ func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*m
 			}
 
 			logChannel := make(chan string, 64)
-			execCtx := context.WithValue(ctx, "logChannel", logChannel)
+			recorder := usage.NewRecorder()
+			execCtx := usage.WithRecorder(agentctx.WithLogChannel(ctx, logChannel), recorder)
 			taskTimeout := time.Duration(currentTask.TimeoutSeconds) * time.Second
 			if taskTimeout <= 0 {
 				taskTimeout = 10 * time.Minute
@@ -727,6 +1111,7 @@ func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*m
 			taskCtx, cancelTask := context.WithTimeout(execCtx, taskTimeout)
 			forwardDone := make(chan struct{})
 			go s.forwardTaskLogs(planID, taskID, logChannel, forwardDone)
+			startedAt := time.Now()
 
 			result, execErr := s.executor.ExecuteTask(taskCtx, plan, currentTask)
 			if errors.Is(taskCtx.Err(), context.DeadlineExceeded) {
@@ -750,6 +1135,8 @@ func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*m
 					Error:  "task execution returned nil result",
 				}
 			}
+			result.Usage = taskUsageFromSnapshot(recorder.Snapshot(), time.Since(startedAt))
+			metrics.RecordTask(taskType, string(result.Status), time.Since(startedAt))
 
 			if result.Status != models.StatusCompleted {
 				if result.Error == "" {
@@ -787,6 +1174,42 @@ func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*m
 		}()
 	}
 	return nil
+}
+
+// taskUsageFromSnapshot converts the usage recorder output into the persisted
+// task usage shape. Duration is measured by the scheduler so it includes agent
+// overhead beyond the individual LLM calls.
+func taskUsageFromSnapshot(snapshot usage.Snapshot, duration time.Duration) *models.TaskUsage {
+	taskUsage := &models.TaskUsage{
+		LLMPromptTokens:     snapshot.PromptTokens,
+		LLMCompletionTokens: snapshot.CompletionTokens,
+		LLMCalls:            snapshot.LLMCalls,
+		LLMCostUSD:          snapshot.CostUSD,
+		LLMEstimated:        snapshot.Estimated,
+		SandboxSeconds:      snapshot.SandboxSeconds,
+		DurationSeconds:     duration.Seconds(),
+		Attempts:            1,
+	}
+	if len(snapshot.ByModel) > 0 {
+		taskUsage.Models = map[string]int{}
+		for model, entry := range snapshot.ByModel {
+			taskUsage.Models[model] = entry.Calls
+		}
+	}
+	return taskUsage
+}
+
+func applyTaskUsage(task *models.TaskNode, plan *models.PlanGraph, taskUsage *models.TaskUsage) {
+	if task == nil || taskUsage == nil {
+		return
+	}
+	if task.Usage == nil {
+		task.Usage = &models.TaskUsage{}
+	}
+	task.Usage.Add(taskUsage)
+	if plan != nil {
+		plan.Usage.AddTaskUsage(taskUsage)
+	}
 }
 
 func (s *Scheduler) forwardTaskLogs(planID, taskID string, logChannel <-chan string, done chan<- struct{}) {
@@ -884,6 +1307,7 @@ func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner st
 		task.LeaseExpiresAt = nil
 		task.FinishedAt = &now
 		task.UpdatedAt = now
+		applyTaskUsage(task, plan, result.Usage)
 
 		seenArtifacts := map[string]struct{}{}
 		for _, artifact := range result.Artifacts {
@@ -1003,6 +1427,7 @@ func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner strin
 		task.ExecutionID = ""
 		task.LeaseOwner = ""
 		task.LeaseExpiresAt = nil
+		applyTaskUsage(task, plan, result.Usage)
 		blocked := result.Status == models.StatusBlocked
 		if blocked {
 			task.Status = models.StatusBlocked
@@ -1153,6 +1578,8 @@ func (s *Scheduler) finishPlanTerminal(planID string, status models.TaskStatus, 
 		Timestamp: now,
 	})
 	s.cleanupPlanSandboxes(context.Background(), planID)
+	s.recordTerminalMetrics(planID)
+	s.notifyProgress()
 }
 
 func (s *Scheduler) expireStaleLeases(planID string) error {
@@ -1282,7 +1709,10 @@ func budgetExceeded(plan *models.PlanGraph) bool {
 	if plan == nil {
 		return false
 	}
-	if plan.Budget.MaxTaskAttempts > 0 && plan.Usage.TaskAttempts >= plan.Budget.MaxTaskAttempts && noRunning(plan) && !allTerminal(plan) {
+	// A plan that finished every task successfully must not be canceled just
+	// because it used its final allowed attempt. Any other terminal mix
+	// (failure/blocked/canceled) still means the budget was exhausted.
+	if plan.Budget.MaxTaskAttempts > 0 && plan.Usage.TaskAttempts >= plan.Budget.MaxTaskAttempts && noRunning(plan) && !allSucceeded(plan) {
 		return true
 	}
 	if plan.Budget.MaxDurationSec <= 0 || plan.Usage.StartedAt == nil {
@@ -1397,7 +1827,9 @@ func (s *Scheduler) expireApprovalActions(planID string) (bool, error) {
 			Timestamp: time.Now(),
 		})
 		s.cleanupPlanSandboxes(context.Background(), planID)
+		s.recordTerminalMetrics(planID)
 	}
+	s.notifyProgress()
 	return expired, nil
 }
 
@@ -1489,8 +1921,36 @@ func (s *Scheduler) publishAndStore(planID string, event models.PlanEvent) {
 	if event.SpanID == "" && event.TaskID != "" {
 		event.SpanID = "task_" + event.TaskID
 	}
-	_ = s.store.AppendEvent(planID, event)
+	stored, storeErr := s.store.AppendEventReturning(planID, event)
+	if storeErr == nil {
+		// Publish the stored copy so live SSE gets the assigned Seq (and thus an
+		// id: line). Without this, reconnects replay events already applied by the
+		// client because lastSeq never advances on live events.
+		published.Seq = stored.Seq
+		published.TraceID = stored.TraceID
+		published.SpanID = stored.SpanID
+	}
 	s.publisher.Publish(planID, published)
+	// Every persisted event is evidence of forward progress for the stall
+	// watchdog, including task logs from long-running commands.
+	s.touchActivity(planID)
+}
+
+func allSucceeded(plan *models.PlanGraph) bool {
+	if plan == nil || len(plan.Nodes) == 0 {
+		return false
+	}
+	for _, node := range plan.Nodes {
+		if node == nil {
+			continue
+		}
+		switch node.Status {
+		case models.StatusCompleted, models.StatusSkipped:
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func allTerminal(plan *models.PlanGraph) bool {

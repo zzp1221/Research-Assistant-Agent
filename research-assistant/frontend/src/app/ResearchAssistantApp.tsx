@@ -6,15 +6,16 @@ import { LeftWorkspaceChat, LeftWorkspacePdf } from './components/LeftWorkspace'
 import { useResearchAssistantRuntimeContext, type ResearchAssistantRuntimeContextValue } from './context/ResearchAssistantRuntimeContext';
 import { ResearchAssistantRuntimeProvider } from './context/ResearchAssistantRuntimeProvider';
 import { usePdfAssistFlow } from './hooks/usePdfAssistFlow';
-import { useResearchAssistantChatFlow } from './hooks/useResearchAssistantChatFlow';
+import { AutoRunOnCreateContext, useResearchAssistantChatFlow } from './hooks/useResearchAssistantChatFlow';
 import { useGraphState } from './hooks/useGraphState';
 import { useResearchAssistantLayoutState } from './hooks/useResearchAssistantLayoutState';
 import { useResearchAssistantRuntime } from './hooks/useResearchAssistantRuntime';
-import { useGraphExecutionViewModel } from './viewModels/useGraphExecutionViewModel';
+import { readPlanRunTrigger, useGraphExecutionViewModel, type PlanRunTrigger } from './viewModels/useGraphExecutionViewModel';
 import { ExecutionSidebar } from '../features/execution/ExecutionSidebar';
 import { GraphPanel } from '../features/plan-graph/GraphPanel';
 import { buildGraphLayout } from '../features/plan-graph/buildGraphLayout';
 import type { IntentContext, MissingRequirement, RuntimeAction } from '../contracts/api';
+import type { PlanExecutionTrigger } from '../services/api/researchAssistantApi';
 import { isPdfAttachment } from '../features/pdf-viewer/pdfAttachment';
 
 interface JournalMastheadProps {
@@ -223,6 +224,7 @@ interface ResearchAssistantWorkspaceContentProps {
     activePlanRuntimePolicyMode: string | null;
     activePlanPlannerSource: string | null;
     activePlanPlannerFallbackReason: string | null;
+    activePlanRunTrigger: PlanRunTrigger;
     runtimePermissionMode: 'confirm_important' | 'full_access';
     showFullAccessConfirm: boolean;
     handleRuntimePermissionModeChange: (mode: 'confirm_important' | 'full_access') => void;
@@ -260,6 +262,7 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
     activePlanRuntimePolicyMode: chatFlow.activePlanRuntimePolicyMode,
     activePlanPlannerSource: chatFlow.activePlanPlannerSource,
     activePlanPlannerFallbackReason: chatFlow.activePlanPlannerFallbackReason,
+    activePlanRunTrigger: chatFlow.activePlanRunTrigger,
     layout,
     logsEndRef,
   });
@@ -341,7 +344,7 @@ export default function ResearchAssistantApp() {
   const { nodes, setNodes, onNodesChange, edges, setEdges, onEdgesChange } = useGraphState();
   const [mobilePane, setMobilePane] = useState<'chat' | 'graph'>('chat');
   const logsEndRef = useRef<HTMLDivElement>(null);
-  const runtimeActionsRef = useRef<((planId: string) => void) | null>(null);
+  const runtimeActionsRef = useRef<((planId: string, trigger?: PlanExecutionTrigger) => void) | null>(null);
   const layout = useResearchAssistantLayoutState();
 
   const handlePlanGraphChanged = useCallback(
@@ -370,10 +373,17 @@ export default function ResearchAssistantApp() {
 
   const chatFlow = useResearchAssistantChatFlow({
     onPlanGraphChanged: handlePlanGraphChanged,
-    onPlanReady: (planGraph) => {
+    onPlanReady: (planGraph, planReadyOptions) => {
+      // Auto-run is opt-in and still limited to the one plan shape that has a
+      // deterministic plot step; approval-gated plans always wait for a human.
       const hasPlotNode = planGraph.nodes.some((node) => node.type === 'render_plot');
-      if (planGraph.intent_type === 'Code_Execution' && !planGraph.approval?.required && hasPlotNode) {
-        runtimeActionsRef.current?.(planGraph.id);
+      const shouldAutoRun =
+        planReadyOptions?.autoRun === true &&
+        planGraph.intent_type === 'Code_Execution' &&
+        !planGraph.approval?.required &&
+        hasPlotNode;
+      if (shouldAutoRun) {
+        runtimeActionsRef.current?.(planGraph.id, 'auto');
       }
     },
   });
@@ -390,8 +400,8 @@ export default function ResearchAssistantApp() {
   const runAllTasks = runtime.handleRunAllTasks;
 
   useEffect(() => {
-    runtimeActionsRef.current = (planId) => {
-      void runAllTasks(planId);
+    runtimeActionsRef.current = (planId, trigger = 'manual') => {
+      void runAllTasks(planId, trigger);
     };
   }, [runAllTasks]);
 
@@ -437,54 +447,57 @@ export default function ResearchAssistantApp() {
   );
 
   return (
-    <ResearchAssistantRuntimeProvider value={runtimeContextValue}>
-      <ResearchAssistantWorkspaceContent
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        logsEndRef={logsEndRef}
-        layout={layout}
-        chatFlow={{
-          chatHistory: chatFlow.chatHistory,
-          appendChatMessage: chatFlow.appendChatMessage,
-          loading: chatFlow.loading,
-          prompt: chatFlow.prompt,
-          setPrompt: chatFlow.setPrompt,
-          handleSendMessage: chatFlow.handleSendMessage,
-          pendingAttachments: chatFlow.pendingAttachments,
-          uploadingAttachments: chatFlow.uploadingAttachments,
-          attachmentError: chatFlow.attachmentError,
-          handleAttachFiles: chatFlow.handleAttachFiles,
-          handleRemoveAttachment: chatFlow.handleRemoveAttachment,
-          intentContext: chatFlow.intentContext,
-          activePlanId: chatFlow.activePlanId,
-          activePlanStatus: chatFlow.activePlanStatus,
-          activePlanOutcome: chatFlow.activePlanGraph?.outcome ?? null,
-          activePlanMissingRequirements: chatFlow.activePlanGraph?.missing_requirements ?? [],
-          activePlanRuntimeActions: chatFlow.activePlanGraph?.runtime_actions ?? [],
-          activePlanRuntimePolicyMode: chatFlow.activePlanGraph?.runtime_policy?.mode ?? null,
-          activePlanPlannerSource: chatFlow.activePlanGraph?.meta?.planner_source ?? null,
-          activePlanPlannerFallbackReason: chatFlow.activePlanGraph?.meta?.planner_fallback_reason ?? null,
-          runtimePermissionMode: chatFlow.runtimePermissionMode,
-          showFullAccessConfirm: chatFlow.showFullAccessConfirm,
-          handleRuntimePermissionModeChange: chatFlow.handleRuntimePermissionModeChange,
-          handleConfirmFullAccess: chatFlow.handleConfirmFullAccess,
-          handleCancelFullAccess: chatFlow.handleCancelFullAccess,
-          isLoggedIn: chatFlow.isLoggedIn,
-          userId: chatFlow.userId,
-          loginInput: chatFlow.loginInput,
-          setLoginInput: chatFlow.setLoginInput,
-          activeSessionId: chatFlow.activeSessionId,
-          sessionSummaries: chatFlow.sessionSummaries,
-          handleLogin: chatFlow.handleLogin,
-          handleCreateSession: chatFlow.handleCreateSession,
-          handleSwitchSession: chatFlow.handleSwitchSession,
-        }}
-        pdfFlow={pdfFlow}
-        mobilePane={mobilePane}
-        onMobilePaneChange={setMobilePane}
-      />
-    </ResearchAssistantRuntimeProvider>
+    <AutoRunOnCreateContext.Provider value={chatFlow.autoRunControl}>
+      <ResearchAssistantRuntimeProvider value={runtimeContextValue}>
+        <ResearchAssistantWorkspaceContent
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          logsEndRef={logsEndRef}
+          layout={layout}
+          chatFlow={{
+            chatHistory: chatFlow.chatHistory,
+            appendChatMessage: chatFlow.appendChatMessage,
+            loading: chatFlow.loading,
+            prompt: chatFlow.prompt,
+            setPrompt: chatFlow.setPrompt,
+            handleSendMessage: chatFlow.handleSendMessage,
+            pendingAttachments: chatFlow.pendingAttachments,
+            uploadingAttachments: chatFlow.uploadingAttachments,
+            attachmentError: chatFlow.attachmentError,
+            handleAttachFiles: chatFlow.handleAttachFiles,
+            handleRemoveAttachment: chatFlow.handleRemoveAttachment,
+            intentContext: chatFlow.intentContext,
+            activePlanId: chatFlow.activePlanId,
+            activePlanStatus: chatFlow.activePlanStatus,
+            activePlanOutcome: chatFlow.activePlanGraph?.outcome ?? null,
+            activePlanMissingRequirements: chatFlow.activePlanGraph?.missing_requirements ?? [],
+            activePlanRuntimeActions: chatFlow.activePlanGraph?.runtime_actions ?? [],
+            activePlanRuntimePolicyMode: chatFlow.activePlanGraph?.runtime_policy?.mode ?? null,
+            activePlanPlannerSource: chatFlow.activePlanGraph?.meta?.planner_source ?? null,
+            activePlanPlannerFallbackReason: chatFlow.activePlanGraph?.meta?.planner_fallback_reason ?? null,
+            activePlanRunTrigger: readPlanRunTrigger(chatFlow.activePlanGraph),
+            runtimePermissionMode: chatFlow.runtimePermissionMode,
+            showFullAccessConfirm: chatFlow.showFullAccessConfirm,
+            handleRuntimePermissionModeChange: chatFlow.handleRuntimePermissionModeChange,
+            handleConfirmFullAccess: chatFlow.handleConfirmFullAccess,
+            handleCancelFullAccess: chatFlow.handleCancelFullAccess,
+            isLoggedIn: chatFlow.isLoggedIn,
+            userId: chatFlow.userId,
+            loginInput: chatFlow.loginInput,
+            setLoginInput: chatFlow.setLoginInput,
+            activeSessionId: chatFlow.activeSessionId,
+            sessionSummaries: chatFlow.sessionSummaries,
+            handleLogin: chatFlow.handleLogin,
+            handleCreateSession: chatFlow.handleCreateSession,
+            handleSwitchSession: chatFlow.handleSwitchSession,
+          }}
+            pdfFlow={pdfFlow}
+            mobilePane={mobilePane}
+            onMobilePaneChange={setMobilePane}
+          />
+      </ResearchAssistantRuntimeProvider>
+    </AutoRunOnCreateContext.Provider>
   );
 }

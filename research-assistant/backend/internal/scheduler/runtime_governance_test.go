@@ -76,10 +76,11 @@ func TestSchedulerCancelsPlanWhenAttemptBudgetIsExhausted(t *testing.T) {
 	}
 	runner := NewScheduler(planStore, NewDefaultTaskExecutor(), &NoopEventPublisher{}, 1)
 
-	if err := runner.ExecutePlan(context.Background(), plan.ID); err == nil {
-		t.Fatal("expected execution to report exhausted budget")
-	}
+	execErr := runner.ExecutePlan(context.Background(), plan.ID)
 	finalPlan, _ := planStore.GetPlan(plan.ID)
+	if execErr == nil {
+		t.Fatalf("expected execution to report exhausted budget; final status=%s outcome=%s nodes=%v", finalPlan.Status, finalPlan.Outcome, nodeStatuses(finalPlan))
+	}
 	if finalPlan.Status != models.StatusCanceled || finalPlan.Usage.TaskAttempts != 1 {
 		t.Fatalf("budget did not cancel plan: status=%s usage=%#v", finalPlan.Status, finalPlan.Usage)
 	}
@@ -136,6 +137,16 @@ func TestCanceledPlanCannotBeResurrectedByLateTaskResult(t *testing.T) {
 	if finalPlan.Status != models.StatusCanceled || finalPlan.Nodes[0].Status != models.StatusCanceled || finalPlan.Nodes[0].Result != "" {
 		t.Fatalf("late task result resurrected canceled state: %#v", finalPlan.Nodes[0])
 	}
+}
+
+func nodeStatuses(plan *models.PlanGraph) map[string]string {
+	out := map[string]string{}
+	for _, node := range plan.Nodes {
+		if node != nil {
+			out[node.ID] = string(node.Status)
+		}
+	}
+	return out
 }
 
 func governanceTestPlan(id string, nodeCount int) *models.PlanGraph {

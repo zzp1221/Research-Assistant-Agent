@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"strings"
 
@@ -53,7 +52,7 @@ func (a *AnswerAgent) initEinoChain() {
 			{Role: schema.User, Content: input},
 		}, nil
 	}))
-	graph.AddChatModelNode("LLM_Answer", chatModel)
+	graph.AddChatModelNode("LLM_Answer", wrapUsageModel(chatModel))
 	graph.AddLambdaNode("Answer_Extractor", compose.InvokableLambda(func(ctx context.Context, msg *schema.Message) (string, error) {
 		return msg.Content, nil
 	}))
@@ -78,15 +77,7 @@ func (a *AnswerAgent) ExecuteTask(ctx context.Context, task *models.Task, shared
 		question = task.Name
 	}
 	if len(task.Inputs) > 0 {
-		payload, err := json.Marshal(task.Inputs)
-		if err == nil {
-			text := string(payload)
-			const maxInputChars = 30000
-			if len(text) > maxInputChars {
-				text = text[:maxInputChars] + "..."
-			}
-			question += "\n\n研究材料（只读，供回答使用）：\n" + text
-		}
+		question += "\n\n研究材料（只读，供回答使用）：\n" + formatTaskInputsForPrompt(task.Inputs, 20000)
 	}
 	output, err := a.EinoChain.Invoke(ctx, question)
 	if err != nil {
