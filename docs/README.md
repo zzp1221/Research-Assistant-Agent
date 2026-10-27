@@ -26,6 +26,7 @@
 ## 其他文档
 
 - [运行期模型配置与通用视觉校验设计](design/runtime-model-config-and-visual-verification.md)：per-user + 全局默认模型配置、视觉能力探测与路由、verify_result 通用图像校验（inconclusive/fail 语义）
+- [N-04 真实文献与网页检索 + N-07 文档智能：改进设计与实施方案](design/n04-n07-literature-and-document-intelligence.md)：基于现有 literature/documents 能力的增量设计，含现状、问题、方案、阶段与验收
 - [UI 升级设计说明](ui-research-console.md)：科研仪器风格的视觉与交互规范、三个方向的取舍与实现记录
 - [缺陷修复文档（2026-10-25）](defect-remediation-2026-10-25.md)：D1–D10 的「为什么修 / 哪里有问题 / 怎么修」，含落地顺序与验收清单
 - [根 README](../README.md)：项目定位、快速开始、API 摘要与运行边界

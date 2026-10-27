@@ -126,6 +126,8 @@
 
 ## N-04 真实文献与网页检索
 
+> 改进版设计见 [N-04/N-07 改进设计与实施方案](../design/n04-n07-literature-and-document-intelligence.md)：后端已有 arXiv/OpenAlex/Crossref/GitHub 检索与导入，重点补前端发现层、文献库、网页正文与引用图谱。
+
 **用户价值**
 
 - 没有真实检索的“Research Assistant”只是 LLM + 上传文件；用户需要文献综述、官方仓库、数据集、引用。
@@ -224,6 +226,8 @@
 ---
 
 ## N-07 文档智能（OCR/版面/表格/公式）
+
+> 改进版设计见 [N-04/N-07 改进设计与实施方案](../design/n04-n07-literature-and-document-intelligence.md)：Tesseract OCR 兜底已落地，重点补逐页混合 OCR、版面/表格/图注与质量报告。
 
 **用户价值**
 
