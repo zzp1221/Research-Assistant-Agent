@@ -124,6 +124,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Install frontend dependencies
+        working-directory: research-assistant/frontend
+        run: npm ci --no-audit --no-fund
       - name: UTF-8 and mojibake gate
         run: node research-assistant/scripts/check-utf8.mjs
       - name: CLI syntax check
@@ -133,6 +136,9 @@ jobs:
       - name: Install Playwright browser
         working-directory: research-assistant/frontend
         run: npx playwright install --with-deps chromium
+      - name: Build frontend
+        working-directory: research-assistant/frontend
+        run: npm run build
       - name: Accessibility smoke
         working-directory: research-assistant/frontend
         run: |
