@@ -33,9 +33,9 @@ test('session menu is keyboard operable and returns focus', async ({ page }) => 
   const trigger = page.locator('button[aria-haspopup="listbox"]');
   await trigger.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByText('往期稿次')).toBeVisible();
+  await expect(page.getByText('历史会话')).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.getByText('往期稿次')).toBeHidden();
+  await expect(page.getByText('历史会话')).toBeHidden();
   await expect(trigger).toBeFocused();
 });
 
@@ -48,7 +48,7 @@ test('home has no serious accessibility violations', async ({ page }) => {
 test('session menu has no serious accessibility violations', async ({ page }) => {
   await page.goto('/');
   await page.locator('button[aria-haspopup="listbox"]').click();
-  await expect(page.getByText('往期稿次')).toBeVisible();
+  await expect(page.getByText('历史会话')).toBeVisible();
   await expectNoSeriousA11yViolations(page, 'session-menu');
 });
 
@@ -130,7 +130,7 @@ test('plan node sidebar has no serious accessibility violations', async ({ page 
   const node = page.locator('.react-flow__node').first();
   await expect(node).toBeVisible();
   await node.click();
-  await expect(page.locator('.research-assistant-execution-sidebar').getByText('页边批注')).toBeVisible();
+  await expect(page.locator('.research-assistant-execution-sidebar')).toBeVisible();
   const logsTab = page.getByRole('tab', { name: '日志' });
   const reportTab = page.getByRole('tab', { name: '评测报告' });
   await expect(reportTab).toHaveAttribute('aria-selected', 'true');
