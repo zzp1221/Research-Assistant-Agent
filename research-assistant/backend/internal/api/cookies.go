@@ -108,20 +108,39 @@ func ensureAnonUserIDCookie(c *gin.Context) string {
 	return id
 }
 
+const (
+	resolvedUserContextKey    = "resolved_user_id"
+	resolvedSessionContextKey = "resolved_session_id"
+)
+
 // resolveUserID returns the authenticated principal of the request. The value
 // comes exclusively from a server-signed HttpOnly cookie; a bare X-User-Id
 // header is ignored (unless the explicit test-only switch is enabled).
+//
+// The result is memoized on the gin context: a handler that calls this helper
+// twice must not mint two different anonymous identities (each call would
+// otherwise issue a new cookie and the later Set-Cookie would win).
 func resolveUserID(c *gin.Context) string {
 	if c == nil {
 		return ""
 	}
+	if cached, ok := c.Get(resolvedUserContextKey); ok {
+		if value, ok := cached.(string); ok && value != "" {
+			return value
+		}
+	}
 	if legacyUserHeaderAllowed() {
 		if headerValue := sanitizeIdentityValue(c.GetHeader(userIDHeaderName)); headerValue != "" {
 			setHTTPOnlyCookie(c, anonUserCookieName, signIdentityCookie(headerValue), cookieMaxAgeSeconds())
+			c.Set(resolvedUserContextKey, headerValue)
 			return headerValue
 		}
 	}
-	return ensureAnonUserIDCookie(c)
+	resolved := ensureAnonUserIDCookie(c)
+	if resolved != "" {
+		c.Set(resolvedUserContextKey, resolved)
+	}
+	return resolved
 }
 
 func ensureSessionIDCookie(c *gin.Context) string {
@@ -144,13 +163,23 @@ func resolveSessionID(c *gin.Context) string {
 	if c == nil {
 		return ""
 	}
+	if cached, ok := c.Get(resolvedSessionContextKey); ok {
+		if value, ok := cached.(string); ok && value != "" {
+			return value
+		}
+	}
 	if legacyUserHeaderAllowed() {
 		if headerValue := sanitizeIdentityValue(c.GetHeader(sessionHeaderName)); headerValue != "" {
 			setHTTPOnlyCookie(c, sessionCookieName, signIdentityCookie(headerValue), cookieMaxAgeSeconds())
+			c.Set(resolvedSessionContextKey, headerValue)
 			return headerValue
 		}
 	}
-	return ensureSessionIDCookie(c)
+	resolved := ensureSessionIDCookie(c)
+	if resolved != "" {
+		c.Set(resolvedSessionContextKey, resolved)
+	}
+	return resolved
 }
 
 func cookieMaxAgeSeconds() int {

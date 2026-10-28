@@ -21,7 +21,7 @@ func TestOCRCommandArgumentBuilders(t *testing.T) {
 	}
 
 	t.Setenv("PDF_OCR_LANG", "")
-	if got := ocrTesseractArgs("/tmp/page-0001.png"); !reflect.DeepEqual(got, []string{"/tmp/page-0001.png", "stdout", "-l", "eng"}) {
+	if got := ocrTesseractArgs("/tmp/page-0001.png"); !reflect.DeepEqual(got, []string{"/tmp/page-0001.png", "stdout", "-l", "eng+chi_sim"}) {
 		t.Fatalf("default tesseract args=%#v", got)
 	}
 	t.Setenv("PDF_OCR_LANG", "eng+chi_sim")

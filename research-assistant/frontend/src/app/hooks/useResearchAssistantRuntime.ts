@@ -395,6 +395,24 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
             if (event.event_type === PLAN_EVENTS.RUNTIME_ACTION_RESOLVED) {
               void refreshPlanState?.();
             }
+            if ((event.event_type === PLAN_EVENTS.VERIFICATION_COMPLETED || event.event_type === PLAN_EVENTS.VERIFICATION_FAILED) && event.task_id) {
+              const verification = event.payload?.verification as Task['Verification'] | undefined;
+              if (verification) {
+                patchNodeState(event.task_id, (prev) => ({
+                  ...prev,
+                  logs: prev.logs ? `${prev.logs}\n[Plan] verification_${verification.status}` : `[Plan] verification_${verification.status}`,
+                }));
+                setNodes((current) => current.map((node) => node.id === event.task_id
+                  ? updateNodeStatus(node, String(node.data.status || 'completed'), {
+                      Verification: verification,
+                      Result: (node.data.task as Task | undefined)?.Result,
+                      Code: (node.data.task as Task | undefined)?.Code,
+                      StructuredData: (node.data.task as Task | undefined)?.StructuredData,
+                    })
+                  : node));
+                void refreshPlanState?.();
+              }
+            }
             if (event.event_type === PLAN_EVENTS.TASK_FAILED && event.task_id) {
               const errorText = String(event.payload?.error || 'Task failed');
               patchNodeState(event.task_id, (prev) => ({

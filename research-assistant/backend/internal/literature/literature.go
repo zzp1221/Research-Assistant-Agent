@@ -11,6 +11,7 @@ package literature
 import (
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"unicode"
@@ -18,11 +19,15 @@ import (
 
 // Supported result sources.
 const (
-	SourceArxiv    = "arxiv"
-	SourceOpenAlex = "openalex"
-	SourceCrossref = "crossref"
-	SourceGitHub   = "github"
-	SourceURL      = "url"
+	SourceArxiv           = "arxiv"
+	SourceOpenAlex        = "openalex"
+	SourceCrossref        = "crossref"
+	SourceGitHub          = "github"
+	SourceSemanticScholar = "semanticscholar"
+	SourcePubMed          = "pubmed"
+	SourceDBLP            = "dblp"
+	SourceUnpaywall       = "unpaywall"
+	SourceURL             = "url"
 )
 
 // Error codes carried by Error.Code.
@@ -73,6 +78,15 @@ type Result struct {
 	Abstract      string   `json:"abstract,omitempty"`
 	Citations     int      `json:"citations,omitempty"`
 	RepositoryURL string   `json:"repository_url,omitempty"`
+	// OpenAccess and License describe the best available copy when the
+	// provider exposes it (Unpaywall/OpenAlex/Semantic Scholar).
+	OpenAccess bool   `json:"open_access,omitempty"`
+	License    string `json:"license,omitempty"`
+	// Rank is the 1-based position in the final result list; Score is a
+	// normalized 0..1 relevance signal; RankReason explains the ordering.
+	Rank       int     `json:"rank,omitempty"`
+	Score      float64 `json:"score,omitempty"`
+	RankReason string  `json:"rank_reason,omitempty"`
 }
 
 // SearchOptions controls one literature search. Sources is a subset of
@@ -83,6 +97,8 @@ type SearchOptions struct {
 	Sources  []string `json:"sources,omitempty"`
 	Limit    int      `json:"limit,omitempty"`
 	YearFrom int      `json:"year_from,omitempty"`
+	// Sort is "relevance" (default), "citations" or "year".
+	Sort string `json:"sort,omitempty"`
 }
 
 // ImportResult is the metadata and raw PDF bytes for one imported reference.
@@ -182,10 +198,6 @@ func pdfUnavailableError(source, ref, message string) *Error {
 	return &Error{Code: CodePDFUnavailable, Source: source, Ref: ref, Message: message, Err: ErrPDFUnavailable}
 }
 
-func errorIsNotFound(err error) bool {
-	return errors.Is(err, ErrNotFound) || IsCode(err, CodeNotFound)
-}
-
 func resolveSources(raw []string) ([]string, []Warning) {
 	if len(raw) == 0 {
 		return append([]string(nil), defaultSources...), nil
@@ -209,7 +221,8 @@ func resolveSources(raw []string) ([]string, []Warning) {
 			for _, source := range defaultSources {
 				add(source)
 			}
-		case SourceArxiv, SourceOpenAlex, SourceCrossref, SourceGitHub:
+		case SourceArxiv, SourceOpenAlex, SourceCrossref, SourceGitHub,
+			SourceSemanticScholar, SourcePubMed, SourceDBLP:
 			add(name)
 		default:
 			warnings = append(warnings, Warning{
@@ -320,6 +333,12 @@ func mergeResult(destination *Result, source Result) {
 	if len(source.Abstract) > len(destination.Abstract) {
 		destination.Abstract = source.Abstract
 	}
+	if !destination.OpenAccess && source.OpenAccess {
+		destination.OpenAccess = true
+	}
+	if destination.License == "" {
+		destination.License = source.License
+	}
 }
 
 func sortResults(results []Result, order []string) {
@@ -342,6 +361,54 @@ func sortResults(results []Result, order []string) {
 		}
 		return results[i].Year > results[j].Year
 	})
+}
+
+// applyRanking orders results according to sortMode and stamps rank/score/
+// rank_reason so the API can explain why a result is where it is.
+func applyRanking(results []Result, order []string, sortMode string) {
+	switch strings.ToLower(strings.TrimSpace(sortMode)) {
+	case "citations", "citation":
+		sort.SliceStable(results, func(i, j int) bool {
+			if results[i].Citations != results[j].Citations {
+				return results[i].Citations > results[j].Citations
+			}
+			if results[i].Year != results[j].Year {
+				return results[i].Year > results[j].Year
+			}
+			return strings.ToLower(results[i].Title) < strings.ToLower(results[j].Title)
+		})
+		for index := range results {
+			results[index].Rank = index + 1
+			results[index].RankReason = "citations desc"
+			results[index].Score = normalizedRankScore(index, len(results))
+		}
+	case "year", "newest":
+		sort.SliceStable(results, func(i, j int) bool {
+			if results[i].Year != results[j].Year {
+				return results[i].Year > results[j].Year
+			}
+			return results[i].Citations > results[j].Citations
+		})
+		for index := range results {
+			results[index].Rank = index + 1
+			results[index].RankReason = "year desc"
+			results[index].Score = normalizedRankScore(index, len(results))
+		}
+	default:
+		sortResults(results, order)
+		for index := range results {
+			results[index].Rank = index + 1
+			results[index].RankReason = "provider relevance order"
+			results[index].Score = normalizedRankScore(index, len(results))
+		}
+	}
+}
+
+func normalizedRankScore(index, total int) float64 {
+	if total <= 0 {
+		return 0
+	}
+	return math.Round((1-float64(index)/float64(total))*100) / 100
 }
 
 func filterByYear(results []Result, yearFrom int) []Result {

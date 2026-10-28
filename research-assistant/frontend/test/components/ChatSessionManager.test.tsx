@@ -36,7 +36,7 @@ describe('ChatSessionManager', () => {
     );
 
     await user.click(screen.getByRole('button', { name: /工业检索多策略实验/ }));
-    expect(screen.getByText('往期稿次')).toBeInTheDocument();
+    expect(screen.getByText('历史会话')).toBeInTheDocument();
 
     await user.click(screen.getByRole('option', { name: /Apriori 论文复现/ }));
     expect(onSwitchSession).toHaveBeenCalledWith('s-2');

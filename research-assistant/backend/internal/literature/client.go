@@ -32,6 +32,11 @@ type Config struct {
 	UserAgent      string
 	GitHubToken    string
 	OpenAlexMailto string
+	// MaxRetries is the number of retries for 429/503 provider responses.
+	// Zero uses the default (2); negative disables retries.
+	MaxRetries int
+	// RetryBaseDelay is the base exponential backoff. Zero uses 200ms.
+	RetryBaseDelay time.Duration
 }
 
 // Client is a concurrency-safe literature search and import client.
@@ -47,6 +52,8 @@ type Client struct {
 	openAlexMailto string
 	maxPDFBytes    int64
 	endpoints      map[string]string
+	maxRetries     int
+	retryBaseDelay time.Duration
 }
 
 // NewClient builds a client with conservative defaults. Invalid or absent
@@ -69,6 +76,17 @@ func NewClient(cfg Config) *Client {
 	if userAgent == "" {
 		userAgent = defaultUserAgent
 	}
+	maxRetries := cfg.MaxRetries
+	if maxRetries == 0 {
+		maxRetries = 2
+	}
+	if maxRetries < 0 {
+		maxRetries = 0
+	}
+	retryBaseDelay := cfg.RetryBaseDelay
+	if retryBaseDelay <= 0 {
+		retryBaseDelay = 200 * time.Millisecond
+	}
 	return &Client{
 		httpClient:     httpClient,
 		cache:          newCache(cfg.CacheDir, cacheTTL),
@@ -79,6 +97,8 @@ func NewClient(cfg Config) *Client {
 		openAlexMailto: strings.TrimSpace(cfg.OpenAlexMailto),
 		maxPDFBytes:    maxPDFBytesFromEnv(),
 		endpoints:      defaultEndpoints(),
+		maxRetries:     maxRetries,
+		retryBaseDelay: retryBaseDelay,
 	}
 }
 
@@ -107,7 +127,8 @@ func (c *Client) WithEndpoint(source, baseURL string) *Client {
 		return c
 	}
 	switch name {
-	case SourceArxiv, SourceOpenAlex, SourceCrossref, SourceGitHub:
+	case SourceArxiv, SourceOpenAlex, SourceCrossref, SourceGitHub,
+		SourceSemanticScholar, SourcePubMed, SourceDBLP, SourceUnpaywall:
 	default:
 		return c
 	}
@@ -187,6 +208,12 @@ func (c *Client) search(ctx context.Context, query string, opts SearchOptions) (
 			results, sourceErr = c.searchCrossref(ctx, query, limit, opts.YearFrom)
 		case SourceGitHub:
 			results, sourceErr = c.searchGitHub(ctx, query, limit, opts.YearFrom)
+		case SourceSemanticScholar:
+			results, sourceErr = c.searchSemanticScholar(ctx, query, limit, opts.YearFrom)
+		case SourcePubMed:
+			results, sourceErr = c.searchPubMed(ctx, query, limit, opts.YearFrom)
+		case SourceDBLP:
+			results, sourceErr = c.searchDBLP(ctx, query, limit, opts.YearFrom)
 		default:
 			sourceErr = newError(CodeInvalidQuery, source, "", "unsupported literature source")
 		}
@@ -198,7 +225,7 @@ func (c *Client) search(ctx context.Context, query string, opts SearchOptions) (
 	}
 	warnings = append(warnings, failed...)
 	deduped := dedupeResults(collected)
-	sortResults(deduped, sources)
+	applyRanking(deduped, sources, opts.Sort)
 	deduped = limitResults(deduped, limit)
 	if ctx.Err() != nil {
 		return deduped, warnings, wrapError(CodeCanceled, "", "", ctx.Err(), "search canceled")
@@ -214,10 +241,14 @@ func (c *Client) search(ctx context.Context, query string, opts SearchOptions) (
 
 func defaultEndpoints() map[string]string {
 	return map[string]string{
-		SourceArxiv:    "https://export.arxiv.org/api/query",
-		SourceOpenAlex: "https://api.openalex.org/works",
-		SourceCrossref: "https://api.crossref.org/works",
-		SourceGitHub:   "https://api.github.com/search/repositories",
+		SourceArxiv:           "https://export.arxiv.org/api/query",
+		SourceOpenAlex:        "https://api.openalex.org/works",
+		SourceCrossref:        "https://api.crossref.org/works",
+		SourceGitHub:          "https://api.github.com/search/repositories",
+		SourceSemanticScholar: "https://api.semanticscholar.org/graph/v1/paper/search",
+		SourcePubMed:          "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi",
+		SourceDBLP:            "https://dblp.org/search/publ/api",
+		SourceUnpaywall:       "https://api.unpaywall.org/v2",
 	}
 }
 

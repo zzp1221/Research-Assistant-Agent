@@ -120,7 +120,11 @@ export function TranslationPanel(props: TranslationPanelProps) {
       {!job && !isStarting && (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
           <p className="font-serif text-[13.5px] text-ink-soft">按页翻译整篇论文</p>
-          <p className="max-w-[16rem] text-[11px] leading-5 text-muted">逐页缓存，可随时取消。翻译调用真实模型，页数较多时请留意耗时。</p>
+          <p className="max-w-[16rem] text-[11px] leading-5 text-muted">
+            逐页缓存，可随时取消。翻译调用真实模型，页数较多时请留意耗时。
+            <br />
+            只想翻译某一句？直接在 PDF 中选中文字即可。
+          </p>
         </div>
       )}
 

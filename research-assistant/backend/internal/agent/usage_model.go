@@ -26,10 +26,22 @@ func wrapUsageModel(inner model.BaseChatModel) model.BaseChatModel {
 	return &usageChatModel{inner: inner}
 }
 
+// modelNameFor prefers the runtime proxy's resolved model name. The dynamic
+// proxy pins the name on its local context inside Generate, but that context is
+// not visible to the outer usage wrapper, which used to record the env model.
+func modelNameFor(ctx context.Context, inner model.BaseChatModel) string {
+	if provider, ok := inner.(interface{ ResolvedModelName(context.Context) string }); ok {
+		if name := provider.ResolvedModelName(ctx); name != "" {
+			return name
+		}
+	}
+	return llmclient.ModelName(ctx)
+}
+
 func (m *usageChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
 	started := time.Now()
 	message, err := m.inner.Generate(ctx, input, opts...)
-	llmclient.RecordUsage(ctx, input, message, time.Since(started))
+	llmclient.RecordUsage(llmclient.WithModelName(ctx, modelNameFor(ctx, m.inner)), input, message, time.Since(started))
 	return message, err
 }
 
@@ -63,7 +75,7 @@ func (m *usageChatModel) Stream(ctx context.Context, input []*schema.Message, op
 		if tokenUsage != nil {
 			recorded.ResponseMeta = &schema.ResponseMeta{Usage: tokenUsage}
 		}
-		llmclient.RecordUsage(ctx, input, recorded, time.Since(started))
+		llmclient.RecordUsage(llmclient.WithModelName(ctx, modelNameFor(ctx, m.inner)), input, recorded, time.Since(started))
 	}()
 	return copies[0], nil
 }

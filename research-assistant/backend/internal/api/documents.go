@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"encoding/csv"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -56,16 +58,26 @@ func documentSummary(document *documents.Document) map[string]any {
 	return gin.H{
 		"status":       document.Status,
 		"page_count":   document.PageCount,
+		"total_pages":  document.TotalPages,
 		"characters":   document.Characters,
 		"extractor":    document.Extractor,
 		"error":        document.Error,
 		"extracted_at": document.ExtractedAt,
+		"ocr_stats":    document.OCRStats,
+		"tables":       len(document.Tables),
+		"figures":      len(document.Figures),
+		"blocks":       len(document.Blocks),
 	}
 }
 
 func registerDocumentRoutes(apiGroup *gin.RouterGroup) {
 	apiGroup.GET("/uploads/:id/document", getUploadDocument)
 	apiGroup.GET("/uploads/:id/document/pages/:page", getUploadDocumentPage)
+	apiGroup.GET("/uploads/:id/document/pages/:page/layout", getUploadDocumentPageLayout)
+	apiGroup.GET("/uploads/:id/document/locate", getUploadDocumentQuoteLocation)
+	apiGroup.GET("/uploads/:id/document/quality", getUploadDocumentQuality)
+	apiGroup.GET("/uploads/:id/document/tables/:tableId", getUploadDocumentTable)
+	apiGroup.GET("/uploads/:id/document/figures/:figureId", getUploadDocumentFigure)
 	apiGroup.GET("/uploads/:id/document/search", getUploadDocumentSearch)
 	apiGroup.GET("/uploads/:id/document/sections/:section", getUploadDocumentSection)
 	apiGroup.POST("/uploads/:id/assist", postUploadAssist)
@@ -97,13 +109,31 @@ func getUploadDocument(c *gin.Context) {
 	}
 	pages := make([]gin.H, 0, len(document.Pages))
 	for _, page := range document.Pages {
-		pages = append(pages, gin.H{"number": page.Number, "chars": page.Chars})
+		pages = append(pages, gin.H{"number": page.Number, "chars": page.Chars, "source": page.Source})
+	}
+	tables := make([]gin.H, 0, len(document.Tables))
+	for _, table := range document.Tables {
+		tables = append(tables, gin.H{
+			"id": table.ID, "page": table.Page, "caption": table.Caption,
+			"rows": len(table.Rows), "confidence": table.Confidence, "csv_ref": table.CSVRef,
+		})
+	}
+	figures := make([]gin.H, 0, len(document.Figures))
+	for _, figure := range document.Figures {
+		figures = append(figures, gin.H{
+			"id": figure.ID, "page": figure.Page, "caption": figure.Caption,
+			"image_ref": figure.ImageRef, "warning": figure.Warning,
+		})
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"upload_id": metadata.ID,
 		"name":      metadata.Name,
 		"document":  documentSummary(document),
 		"pages":     pages,
+		"tables":    tables,
+		"figures":   figures,
+		"quality":   document.Quality,
+		"ocr_stats": document.OCRStats,
 	})
 }
 
@@ -127,6 +157,184 @@ func getUploadDocumentPage(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"upload_id": metadata.ID, "page": document.Pages[page-1]})
+}
+
+func getUploadDocumentPageLayout(c *gin.Context) {
+	metadata, ok := ownedUpload(c)
+	if !ok {
+		return
+	}
+	page, err := strconv.Atoi(c.Param("page"))
+	if err != nil || page < 1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "page must be a positive integer"})
+		return
+	}
+	document, err := loadUploadDocument(c, metadata)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+	if page > len(document.Pages) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "page not found"})
+		return
+	}
+	blocks := make([]documents.Block, 0)
+	for _, block := range document.Blocks {
+		if block.Page == page {
+			blocks = append(blocks, block)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"upload_id": metadata.ID,
+		"page":      page,
+		"blocks":    blocks,
+		"quality":   document.PageQualityFor(page),
+	})
+}
+
+func getUploadDocumentQuoteLocation(c *gin.Context) {
+	metadata, ok := ownedUpload(c)
+	if !ok {
+		return
+	}
+	quote := strings.TrimSpace(c.Query("quote"))
+	if quote == "" || len([]rune(quote)) > 2000 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "quote is required and must be at most 2000 characters"})
+		return
+	}
+	document, err := loadUploadDocument(c, metadata)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+	location := documents.LocateQuoteLocation(document, quote)
+	if !location.Found {
+		c.JSON(http.StatusNotFound, gin.H{"error": "quote not found", "code": "quote_not_found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"upload_id": metadata.ID, "location": location})
+}
+
+func getUploadDocumentQuality(c *gin.Context) {
+	metadata, ok := ownedUpload(c)
+	if !ok {
+		return
+	}
+	document, err := loadUploadDocument(c, metadata)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"upload_id":   metadata.ID,
+		"status":      document.Status,
+		"total_pages": document.TotalPages,
+		"ocr_stats":   document.OCRStats,
+		"pages":       document.Quality,
+	})
+}
+
+func findDocumentTable(document *documents.Document, tableID string) *documents.Table {
+	if document == nil {
+		return nil
+	}
+	for index := range document.Tables {
+		if document.Tables[index].ID == tableID {
+			return &document.Tables[index]
+		}
+	}
+	return nil
+}
+
+func getUploadDocumentTable(c *gin.Context) {
+	metadata, ok := ownedUpload(c)
+	if !ok {
+		return
+	}
+	document, err := loadUploadDocument(c, metadata)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+	table := findDocumentTable(document, c.Param("tableId"))
+	if table == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "table not found", "code": "table_not_found"})
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(c.Query("format")), "csv") {
+		var buffer strings.Builder
+		writer := csv.NewWriter(&buffer)
+		if err := writer.WriteAll(table.Rows); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot encode table csv"})
+			return
+		}
+		writer.Flush()
+		filename := sanitizeDownloadName(table.ID) + ".csv"
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+		c.Data(http.StatusOK, "text/csv; charset=utf-8", []byte(buffer.String()))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"upload_id": metadata.ID, "table": table})
+}
+
+func getUploadDocumentFigure(c *gin.Context) {
+	metadata, ok := ownedUpload(c)
+	if !ok {
+		return
+	}
+	document, err := loadUploadDocument(c, metadata)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+	var figure *documents.Figure
+	for index := range document.Figures {
+		if document.Figures[index].ID == c.Param("figureId") {
+			figure = &document.Figures[index]
+			break
+		}
+	}
+	if figure == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "figure not found", "code": "figure_not_found"})
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(c.Query("format")), "json") || figure.ImageRef == "" {
+		c.JSON(http.StatusOK, gin.H{"upload_id": metadata.ID, "figure": figure})
+		return
+	}
+	relative := filepath.Clean(filepath.FromSlash(figure.ImageRef))
+	if relative != "figures" && !strings.HasPrefix(relative, "figures"+string(os.PathSeparator)) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid figure reference"})
+		return
+	}
+	path := filepath.Join(filepath.Dir(metadata.StoredPath), relative)
+	if info, statErr := os.Stat(path); statErr != nil || info.IsDir() {
+		c.JSON(http.StatusNotFound, gin.H{"error": "figure image is unavailable", "code": "figure_image_missing"})
+		return
+	}
+	c.Header("Cache-Control", "private, max-age=3600")
+	c.File(path)
+}
+
+func sanitizeDownloadName(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "table"
+	}
+	var builder strings.Builder
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			builder.WriteRune(r)
+		default:
+			builder.WriteByte('-')
+		}
+	}
+	cleaned := strings.Trim(builder.String(), "-")
+	if cleaned == "" {
+		return "table"
+	}
+	return cleaned
 }
 
 func getUploadDocumentSearch(c *gin.Context) {

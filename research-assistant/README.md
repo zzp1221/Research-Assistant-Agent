@@ -90,6 +90,11 @@ research-assistant/
 | `REQUIRE_API_AUTH` | Compose 强制 `true`；Token 为空时 API fail-closed |
 | `CORS_ALLOWED_ORIGINS` | 允许的前端 Origin 列表 |
 | `SANDBOX_API_TOKEN` | 后端与沙箱之间的 Bearer Token；gateway/executor 均 fail-closed |
+| `GENERAL_PLAN_FAST_PATH` | 默认 `true`：General 计划按 direct/research/paper/literature 形状生成；`false` 回退旧 3 节点 |
+| `PROMPT_CONTEXT_V2` | 默认 `true`：单一 prompt 组装（plan_context/task_instruction/task_inputs/volatile）；`false` 回退旧拼接 |
+| `COMPLEXITY_ROUTER_ENABLED` | 默认 `true`：L0-L4 复杂度路由；`false` 回退按 intent_type 二选一 |
+| `PLANNER_MAX_NODES_L3` / `PLANNER_MAX_NODES_L4` | agent planner 在 L3/L4 的节点上限（默认 16 / 24） |
+| `PROMPT_CONTEXT_WINDOW` / `PROMPT_MAX_OUTPUT_TOKENS` / `PROMPT_SAFETY_TOKENS` | prompt token 预算默认值（128000 / 8192 / 2000）；模型 profile 的 `context_window_tokens` 优先 |
 
 ## 常用命令
 
@@ -134,8 +139,13 @@ make docker-down      # Docker Compose 停止
 - 审计日志（`AUDIT_LOG_PATH`）与 `GET /api/audit/export`；OpenAPI 3.1 文档在 `/openapi.json`；CLI 在 `scripts/ra.mjs`。
 
 **检索、文献与数据**
-- `documents` 使用真正的 BM25（IDF/k1/b/长度归一化）、页码/章节过滤与两阶段 Librarian 检索；扫描版 PDF 回退 tesseract OCR（`PDF_OCR_MAX_PAGES`），不可用时返回明确 missing requirement。
-- `GET /api/literature/search` 支持 arXiv/OpenAlex/Crossref/GitHub；`POST /api/literature/import` 支持 arXiv URL/ID、DOI、PDF URL 导入并自动落盘为论文附件；计划意图中的 arXiv/DOI 会自动导入。
+- `documents` 使用真正的 BM25（IDF/k1/b/长度归一化）、页码/章节过滤与两阶段 Librarian 检索；逐页混合 OCR（文本页保留文本层，仅低文本页 OCR；`PDF_OCR_MAX_PAGES` 是 OCR 预算，`PDF_OCR_LANG` 默认 `eng+chi_sim`）；`partial` 状态明确列出跳过/失败页。
+- 文档智能：`pdftotext -bbox-layout` blocks/reading order（双栏左→右）、页眉页脚标记、表格行对齐抽取（CSV）、图注绑定与图片导出、per-page 质量报告（OCR 置信度/失败/跳过）；API `/document/quality`、`/document/pages/:page/layout`、`/document/tables/:tableId`、`/document/figures/:figureId`。
+- `GET /api/literature/search` 支持 arXiv/OpenAlex/Crossref/GitHub/Semantic Scholar/PubMed/DBLP，支持 relevance/citations/year 排序与 rank/rank_reason；429/503 按 Retry-After 退避。
+- 文献库：`GET/POST/DELETE /api/literature/records`、`/records/:id/attach`、`/records/:id/bibtex`（owner 隔离、标签、BibTeX、加入会话）；导入自动落库并按 DOI/arXiv/标题去重；`GET /api/literature/citations/:doi` 返回引用/被引。
+- `POST /api/web/fetch` 抽取公开网页正文（SSRF/robots/content-type/大小/超时/缓存/段落链接）。
+- planner 新增 `literature_search` 节点：真实检索 → top K 导入 PDF → metadata-only 写 `pdf_unavailable` missing requirement。
+- `POST /api/literature/import` 支持 arXiv URL/ID、DOI、PDF URL 导入并自动落盘为论文附件；计划意图中的 arXiv/DOI 会自动导入。
 - 上传按 SHA-256 去重、per-user 配额、可选 ClamAV 扫描、`DELETE /api/uploads/:id`、`DELETE /api/sessions/:id`、`GET /api/plans/:id/export?format=md|json|zip`（最小复现包）。
 - PDF 解析限制输入大小与超时（`PDF_PARSE_MAX_MB` / `PDF_PARSE_TIMEOUT_SECONDS`），解析失败可见。
 
@@ -143,6 +153,81 @@ make docker-down      # Docker Compose 停止
 - 计划审批与运行时审批严格分离；运行时标题按计划上下文生成；自动运行开关（默认关闭）与触发方式展示。
 - SSE 断线指数退避重连、刷新 ticket、按 `after_seq` 增量续传；创建计划带幂等键。
 - 结构化错误码 + 修复建议；执行日志级别过滤/窗口化/下载；窄屏可打开节点详情。
+
+
+## 2026-10-27 第四轮：N-04 文献检索与 N-07 文档智能
+
+按 `docs/design/n04-n07-literature-and-document-intelligence.md` 落地，详见 `docs/improvement-2026-10-26/FIX-REPORT-ROUND4.md`。
+
+**N-04 文献与网页**
+- provider 扩展：Semantic Scholar、PubMed、DBLP、Unpaywall；搜索支持 `sort=relevance|citations|year`，结果附 `rank/score/rank_reason`；429/503 使用 Retry-After + 指数退避。
+- 文献库：owner 隔离 JSON 存储、标签、BibTeX、加入会话；导入/元数据导入自动 Upsert，重复 DOI/arXiv/标题合并。
+- 引用图谱：OpenAlex references/cited_by。
+- 网页正文：readability 评分、SSRF、robots、content-type、2MB/15s 限制与 URL 缓存。
+- 计划：`literature_search` 真实检索节点（Librarian），top K 导入 PDF，失败写 `pdf_unavailable`。
+
+**N-07 文档智能**
+- 逐页 OCR：文本页/扫描页/混合页；`PDF_OCR_MAX_PAGES` 为预算，保留 `total_pages`，预算不足 `partial`。
+- 版面：bbox blocks、两栏 reading order、页眉/页脚/标题；OCR 置信度来自 Tesseract TSV。
+- 结构：表格抽取 + CSV、图注 + 图片导出、BM25 table/figure chunks、LocateQuote block 偏移。
+- 质量：per-page source/chars/OCR 置信度/失败/跳过 + `OCRStats`；前端摘要 badge、低置信度提示、表格/图注面板。
+- 缓存：`sha256(pdf)+ocr_config` → document.json。
+
+## 2026-10-27 第五轮：Agent 链路优化与意图复杂度路由
+
+按 `docs/design/2026-10-27-agent-chain-optimization.md` 与 `docs/design/intent-complexity-routing.md` 落地，详见 `docs/improvement-2026-10-26/FIX-REPORT-ROUND5.md`。
+
+**General 计划形状（A）**
+- `classifyGeneralPlanShape` 确定性选择 direct（1 节点）/ research（2 节点）/ paper（4 节点）/ literature（3 节点）；`GENERAL_PLAN_FAST_PATH=false` 回退旧 3 节点。
+- `plan.Meta.GeneralPlanShape` 与 `plan_general_shape_total` / `plan_llm_nodes_total` 指标。
+
+**单一 Prompt 组装（B）**
+- `prompts.BuildTaskPrompt`：plan_context → task_instruction → task_inputs → volatile，同一 artifact 只出现一次；executor 不再追加 Global user intent / 500 字 artifact 摘要。
+- `PROMPT_CONTEXT_V2=false` 可回退。
+
+**Repair 会话（C）**
+- `internal/agent/conversation.Session`：保留 system + first user，assistant 上一轮输出作为对话历史，只追加反馈；Planner / PaperDebug / BenchmarkAdapter / AutoResearch / Coder self-correction 已接入；`task.Metadata["repair_session"]` 记录轮数与 prefix hash。
+
+**Token / Context 预算（D）**
+- `prompts.PromptBudget` / `Section` / `PromptReport`：section 级预算、rune-safe 截断、超预算 fail-closed；AutoResearch / PaperDebug / Claim / Benchmark / Visual 均有 token 上限。
+- 模型 profile 新增 `context_window_tokens`（默认 128000）；`TaskUsage.prompt_budget_limit` / `prompt_truncated_sections` 与 `llm_prompt_truncated_sections_total` 指标可见。
+
+**复杂度路由（L0-L4）**
+- Python intent 服务一次返回 `complexity/capabilities/route_hint/complexity_confidence/complexity_reason`；Go `ComplexityRouter` 在附件/论文上下文之后二次修正，LLM 不得降级。
+- 模板变体：General / Code_Execution / Framework_Evaluation / Paper_Reproduction 支持 simple/standard/full（Paper 为 light/standard/full）。
+- L0/L1 不调用 planner LLM；L2 标准模板；L3/L4 skeleton + agent 增强（`PLANNER_MAX_NODES_L3/L4`）；失败回退 standard。
+- `plan.Meta` 新增 `planning_route/complexity/complexity_source/template_variant`，SSE `plan_created`、`/api/plans/:id` 与 `/api/metrics` 可见；golden set `backend/evals/route_eval_dataset.json`。
+
+## 2026-10-27 第三轮：运行期模型配置与通用视觉校验
+
+按 `docs/design/runtime-model-config-and-visual-verification.md` 落地，详见 `docs/improvement-2026-10-26/FIX-REPORT-ROUND3.md`。
+
+**运行期模型配置**
+- 新增 `internal/modelprofile`（AES-256-GCM 加密、原子文件存储、per-user + 全局 profile、routing、红/蓝视觉探测）与 `internal/modelresolver`（按 owner/role 解析、revision 缓存、保存即热更新）。
+- `GET/POST /api/model-profiles`、`PUT/DELETE /api/model-profiles/:id`、`POST /api/model-profiles/:id/test`、`POST /api/model-profiles/:id/probe-vision`、`GET/PUT /api/model-routing`。
+- API Key 只写不回显；无 `MODEL_PROFILE_ENCRYPTION_KEY` 时拒绝保存（fail closed）；全局 profile 需要 `ADMIN_TOKEN`；`base_url` 默认要求 https 且拒绝私网（测试可用 `ALLOW_PRIVATE_MODEL_ENDPOINTS`）。
+- 计划创建时冻结 `model_snapshot`（profile id + revision）；运行中的计划不受后续编辑影响。
+- Eino 链不再在启动时固化模型：`dynamicChatModel` / `runtimePlannerModel` 在每次调用时解析当前 profile，因此修改配置无需重启。
+
+**verify_result 通用视觉校验**
+- 结构门禁（`internal/agent/visual_verifier.go`）：PNG/JPEG 解码、尺寸、颜色方差/熵/边缘密度/透明比例；纯色、全透明、1×1、损坏图直接 fail(structural)。
+- 视觉路由：主模型 `supports_vision=yes` 优先；否则按 routing 的 vision 列表依次尝试；全部失败/无候选返回 `inconclusive`，绝不伪装 pass。
+- 多模态调用走 OpenAI-compatible `image_url` data URI；最长边缩放到 `VISION_MAX_EDGE_PX`；严格 JSON verdict（`pass|fail|inconclusive`）；解析失败一次修复重试；按 `VISION_MAX_IMAGES` 限制张数；结果按图像 sha256 + rubric + profile revision + intent 缓存。
+- 汇总：任一图 fail -> fail(visual)；无 fail 但有 inconclusive -> inconclusive；全部 pass -> pass(visual)；无图像 -> skipped。
+- 视觉 fail 时计划仍 `completed`，但 `plan.verification / node.verification / artifact.metadata.verification` 与 `verification_failed` 事件、`verification_total` 指标同时标记（advisory）。
+- 文本报告 prompt 注入权威 verdict，要求不得把 inconclusive 说成 pass。
+- 前端：工作台“模型设置”面板（profile 列表/编辑/测试/探测/删除/routing/成本与隐私提示）；计划头与节点详情展示校验徽标、issues、置信度与判图模型。
+
+**新增配置**
+| 变量 | 说明 |
+|---|---|
+| `MODEL_PROFILE_DIR` | profile 存储目录；默认 `<PLAN_STORE_PATH>.model-profiles` |
+| `MODEL_PROFILE_ENCRYPTION_KEY` | 32 字节 base64 密钥；未配置时禁止保存 profile |
+| `ADMIN_TOKEN` | 可创建/修改全局 profile 的运营 token |
+| `MODEL_PROFILE_MAX_PER_USER` / `MODEL_PROBE_RATE_LIMIT_SECONDS` | 每用户 profile 上限 / probe/test 频率限制 |
+| `VISION_MAX_EDGE_PX` / `VISION_MAX_IMAGES` / `VISION_TIMEOUT_SECONDS` / `VISION_MIN_EDGE_PX` | 视觉预处理与预算 |
+| `FEATURE_VISION_VERIFICATION` | `false` 时退回纯文本 verify（保留字段） |
+| `ALLOW_PRIVATE_MODEL_ENDPOINTS` | 仅本地/容器测试：允许 mock provider 的私网地址 |
 
 ## 运行边界
 

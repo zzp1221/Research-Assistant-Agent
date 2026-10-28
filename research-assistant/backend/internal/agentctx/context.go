@@ -23,11 +23,6 @@ func LogChannel(ctx context.Context) (chan string, bool) {
 	return channel, ok
 }
 
-// WithCodeChannel attaches a streaming code channel for Eino code generation.
-func WithCodeChannel(ctx context.Context, channel chan string) context.Context {
-	return context.WithValue(ctx, codeChannelKey{}, channel)
-}
-
 // CodeChannel returns the attached code channel, if any.
 func CodeChannel(ctx context.Context) (chan string, bool) {
 	if ctx == nil {
@@ -35,11 +30,6 @@ func CodeChannel(ctx context.Context) (chan string, bool) {
 	}
 	channel, ok := ctx.Value(codeChannelKey{}).(chan string)
 	return channel, ok
-}
-
-// WithContainerID attaches the sandbox container id.
-func WithContainerID(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, containerIDKey{}, id)
 }
 
 // ContainerID returns the attached sandbox container id.

@@ -1,0 +1,380 @@
+{
+  "version": "route-eval/v1",
+  "cases": [
+    {
+      "id": "l0-greeting",
+      "text": "你好",
+      "intent_type": "General",
+      "entities": {},
+      "expected_complexity": "L0",
+      "expected_route": "fast_path"
+    },
+    {
+      "id": "l0-explain",
+      "text": "解释一下什么是傅里叶变换",
+      "intent_type": "General",
+      "entities": {},
+      "expected_complexity": "L0",
+      "expected_route": "fast_path"
+    },
+    {
+      "id": "l0-translate",
+      "text": "把这句话翻译成英文：研究助理可以帮我读论文",
+      "intent_type": "General",
+      "entities": {},
+      "expected_complexity": "L0",
+      "expected_route": "fast_path"
+    },
+    {
+      "id": "l0-what-is-rag",
+      "text": "什么是 RAG",
+      "intent_type": "General",
+      "entities": {},
+      "expected_complexity": "L0",
+      "expected_route": "fast_path"
+    },
+    {
+      "id": "l0-list-comprehension",
+      "text": "介绍一下 Python 的列表推导式",
+      "intent_type": "General",
+      "entities": {},
+      "expected_complexity": "L0",
+      "expected_route": "fast_path"
+    },
+    {
+      "id": "l0-chitchat",
+      "text": "今天过得怎么样",
+      "intent_type": "General",
+      "entities": {},
+      "expected_complexity": "L0",
+      "expected_route": "fast_path"
+    },
+    {
+      "id": "l1-calc",
+      "text": "用 Python 计算 1+1",
+      "intent_type": "Code_Execution",
+      "entities": {},
+      "expected_complexity": "L1",
+      "expected_route": "fast_path"
+    },
+    {
+      "id": "l1-mean",
+      "text": "写一段 Python 代码计算均值",
+      "intent_type": "Code_Execution",
+      "entities": {},
+      "expected_complexity": "L1",
+      "expected_route": "fast_path"
+    },
+    {
+      "id": "l1-print-table",
+      "text": "用 Python 打印九九乘法表",
+      "intent_type": "Code_Execution",
+      "entities": {},
+      "expected_complexity": "L1",
+      "expected_route": "fast_path"
+    },
+    {
+      "id": "l1-random",
+      "text": "生成一个随机数",
+      "intent_type": "Code_Execution",
+      "entities": {},
+      "expected_complexity": "L1",
+      "expected_route": "fast_path"
+    },
+    {
+      "id": "l1-sort",
+      "text": "用 Python 给列表排序",
+      "intent_type": "Code_Execution",
+      "entities": {},
+      "expected_complexity": "L1",
+      "expected_route": "fast_path"
+    },
+    {
+      "id": "l2-summary",
+      "text": "总结 RAG 技术的最新进展",
+      "intent_type": "General",
+      "entities": {},
+      "expected_complexity": "L2",
+      "expected_route": "standard_template"
+    },
+    {
+      "id": "l2-survey",
+      "text": "帮我调研向量数据库选型",
+      "intent_type": "General",
+      "entities": {},
+      "expected_complexity": "L2",
+      "expected_route": "standard_template"
+    },
+    {
+      "id": "l2-report",
+      "text": "写一份关于多智能体协作的报告",
+      "intent_type": "General",
+      "entities": {},
+      "expected_complexity": "L2",
+      "expected_route": "standard_template"
+    },
+    {
+      "id": "l2-framework-2",
+      "text": "对比 LangChain 和 LlamaIndex 的响应时间",
+      "intent_type": "Framework_Evaluation",
+      "entities": {
+        "frameworks": [
+          "langchain",
+          "llamaindex"
+        ]
+      },
+      "expected_complexity": "L2",
+      "expected_route": "standard_template"
+    },
+    {
+      "id": "l2-framework-haystack",
+      "text": "对比 Haystack 和 DSPy 的易用性",
+      "intent_type": "Framework_Evaluation",
+      "entities": {
+        "frameworks": [
+          "haystack",
+          "dspy"
+        ]
+      },
+      "expected_complexity": "L2",
+      "expected_route": "standard_template"
+    },
+    {
+      "id": "l2-plot",
+      "text": "画一个正弦函数图",
+      "intent_type": "Code_Execution",
+      "entities": {
+        "needs_plot": true
+      },
+      "expected_complexity": "L2",
+      "expected_route": "standard_template"
+    },
+    {
+      "id": "l2-paper-baseline",
+      "text": "复现这篇论文并跑通 baseline",
+      "intent_type": "Paper_Reproduction",
+      "entities": {
+        "paper_metadata": {
+          "title": "Attention Is All You Need"
+        }
+      },
+      "expected_complexity": "L2",
+      "expected_route": "standard_template"
+    },
+    {
+      "id": "l2-bar-chart",
+      "text": "用 Python 画一个柱状图",
+      "intent_type": "Code_Execution",
+      "entities": {
+        "needs_plot": true
+      },
+      "expected_complexity": "L2",
+      "expected_route": "standard_template"
+    },
+    {
+      "id": "l2-compare-algorithms",
+      "text": "对比两种排序算法的性能并写报告",
+      "intent_type": "General",
+      "entities": {},
+      "expected_complexity": "L2",
+      "expected_route": "standard_template"
+    },
+    {
+      "id": "l3-multi-dataset",
+      "text": "使用多个数据集训练模型，并对比多个指标",
+      "intent_type": "Code_Execution",
+      "entities": {},
+      "expected_complexity": "L3",
+      "expected_route": "agent_planner"
+    },
+    {
+      "id": "l3-paper-repo",
+      "text": "复现论文并使用 GitHub 仓库修复失败",
+      "intent_type": "Paper_Reproduction",
+      "entities": {
+        "paper_metadata": {
+          "title": "BERT"
+        },
+        "repo_url": "https://github.com/example/bert"
+      },
+      "expected_complexity": "L3",
+      "expected_route": "agent_planner"
+    },
+    {
+      "id": "l3-three-frameworks",
+      "text": "对比三个框架并在多个数据集上跑 benchmark",
+      "intent_type": "Framework_Evaluation",
+      "entities": {
+        "frameworks": [
+          "langchain",
+          "llamaindex",
+          "haystack"
+        ]
+      },
+      "expected_complexity": "L4",
+      "expected_route": "agent_planner"
+    },
+    {
+      "id": "l3-custom-claim",
+      "text": "先实现自定义流程，再生成 claim evidence",
+      "intent_type": "Paper_Reproduction",
+      "entities": {
+        "paper_metadata": {
+          "title": "Custom"
+        },
+        "needs_claim_evidence": true
+      },
+      "expected_complexity": "L4",
+      "expected_route": "agent_planner"
+    },
+    {
+      "id": "l3-multistep-dataset",
+      "text": "先加载数据集，再训练模型，然后评估多个指标",
+      "intent_type": "Code_Execution",
+      "entities": {},
+      "expected_complexity": "L3",
+      "expected_route": "agent_planner"
+    },
+    {
+      "id": "l3-repo-custom",
+      "text": "使用 repo 复现论文，并做自定义评估和多个数据集实验",
+      "intent_type": "Paper_Reproduction",
+      "entities": {
+        "paper_metadata": {
+          "title": "Repro"
+        },
+        "repo_url": "https://github.com/example/repro"
+      },
+      "expected_complexity": "L4",
+      "expected_route": "agent_planner"
+    },
+    {
+      "id": "l4-attention",
+      "text": "复现 Attention Is All You Need，使用自定义数据集，跑 3 个 seed，生成 claim evidence 和 hidden holdout，并对比多个指标",
+      "intent_type": "Paper_Reproduction",
+      "entities": {
+        "paper_metadata": {
+          "title": "Attention Is All You Need"
+        },
+        "repo_url": "https://github.com/example/attention"
+      },
+      "expected_complexity": "L4",
+      "expected_route": "agent_planner"
+    },
+    {
+      "id": "l4-full-repro",
+      "text": "完整论文复现，自定义评估，多个数据集，多种子，生成 claim evidence",
+      "intent_type": "Paper_Reproduction",
+      "entities": {
+        "paper_metadata": {
+          "title": "Full Repro"
+        },
+        "repo_url": "https://github.com/example/full"
+      },
+      "expected_complexity": "L4",
+      "expected_route": "agent_planner"
+    },
+    {
+      "id": "l4-autoresearch",
+      "text": "AutoResearch 自动实验，先搜索多个数据集，再用自定义评估和多种子验证",
+      "intent_type": "AutoResearch",
+      "entities": {},
+      "expected_complexity": "L4",
+      "expected_route": "agent_planner"
+    },
+    {
+      "id": "l4-benchmark",
+      "text": "复杂 benchmark，自定义评估器，hidden holdout，多阶段流程，多个数据集",
+      "intent_type": "Custom_Benchmark",
+      "entities": {
+        "uploaded_files": [
+          {
+            "name": "data.csv"
+          }
+        ]
+      },
+      "expected_complexity": "L4",
+      "expected_route": "agent_planner"
+    },
+    {
+      "id": "l4-claim",
+      "text": "复现论文并生成 claim evidence、hidden holdout、custom evaluator、多个数据集结果",
+      "intent_type": "Paper_Reproduction",
+      "entities": {
+        "paper_metadata": {
+          "title": "Claim Paper"
+        },
+        "repo_url": "https://github.com/example/claim"
+      },
+      "expected_complexity": "L4",
+      "expected_route": "agent_planner"
+    },
+    {
+      "id": "l4-multi-framework-dataset",
+      "text": "对比三个框架，使用多个数据集和多个指标，自定义评估流程",
+      "intent_type": "Framework_Evaluation",
+      "entities": {
+        "frameworks": [
+          "langchain",
+          "llamaindex",
+          "haystack"
+        ],
+        "needs_benchmark": true
+      },
+      "expected_complexity": "L4",
+      "expected_route": "agent_planner"
+    },
+    {
+      "id": "l2-with-attachment",
+      "text": "总结这份 PDF 报告的主要内容",
+      "intent_type": "General",
+      "entities": {
+        "uploaded_files": [
+          {
+            "name": "report.pdf"
+          }
+        ]
+      },
+      "expected_complexity": "L3",
+      "expected_route": "agent_planner"
+    },
+    {
+      "id": "l1-plot-simple",
+      "text": "用 Python 画一条直线",
+      "intent_type": "Code_Execution",
+      "entities": {
+        "needs_plot": true
+      },
+      "expected_complexity": "L2",
+      "expected_route": "standard_template"
+    },
+    {
+      "id": "l0-explain-rag",
+      "text": "解释一下 RAG 是什么",
+      "intent_type": "General",
+      "entities": {},
+      "expected_complexity": "L0",
+      "expected_route": "fast_path"
+    },
+    {
+      "id": "l2-review",
+      "text": "综述一下图神经网络的研究现状",
+      "intent_type": "General",
+      "entities": {},
+      "expected_complexity": "L2",
+      "expected_route": "standard_template"
+    },
+    {
+      "id": "l3-claim-only",
+      "text": "先解析论文，再生成 claim evidence 和 benchmark contract",
+      "intent_type": "Paper_Reproduction",
+      "entities": {
+        "paper_metadata": {
+          "title": "Contract Paper"
+        }
+      },
+      "expected_complexity": "L3",
+      "expected_route": "agent_planner"
+    }
+  ]
+}

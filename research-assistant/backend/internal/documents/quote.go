@@ -6,6 +6,17 @@ import (
 	"unicode/utf8"
 )
 
+// QuoteLocation is a located quote with page/byte offsets plus the layout
+// block that contains it (when block data exists).
+type QuoteLocation struct {
+	Page        int    `json:"page"`
+	Start       int    `json:"start"`
+	End         int    `json:"end"`
+	BlockID     string `json:"block_id,omitempty"`
+	BlockOffset int    `json:"block_offset,omitempty"`
+	Found       bool   `json:"found"`
+}
+
 // LocateQuote finds quote inside document and returns its 1-based page plus
 // byte offsets into that page's Text. ok is false when the quote does not
 // appear in any page.
@@ -21,12 +32,19 @@ import (
 // The returned start/end offsets address the original, unnormalized page text,
 // so callers can highlight the exact span they were given.
 func LocateQuote(document *Document, quote string) (page int, start int, end int, ok bool) {
+	location := LocateQuoteLocation(document, quote)
+	return location.Page, location.Start, location.End, location.Found
+}
+
+// LocateQuoteLocation is LocateQuote with block provenance. When the quote
+// matches text inside a layout block, BlockID and BlockOffset are populated.
+func LocateQuoteLocation(document *Document, quote string) QuoteLocation {
 	if document == nil || len(document.Pages) == 0 {
-		return 0, 0, 0, false
+		return QuoteLocation{}
 	}
 	normalizedQuote := normalizeMatchText(strings.TrimSpace(quote))
 	if normalizedQuote.text == "" {
-		return 0, 0, 0, false
+		return QuoteLocation{}
 	}
 	needles := []string{normalizedQuote.text}
 	if withoutHyphens := strings.ReplaceAll(normalizedQuote.text, "-", ""); withoutHyphens != normalizedQuote.text && withoutHyphens != "" {
@@ -41,10 +59,40 @@ func LocateQuote(document *Document, quote string) (page int, start int, end int
 				continue
 			}
 			last := index + len(needle) - 1
-			return candidate.Number, normalizedPage.starts[index], normalizedPage.ends[last], true
+			location := QuoteLocation{
+				Page:  candidate.Number,
+				Start: normalizedPage.starts[index],
+				End:   normalizedPage.ends[last],
+				Found: true,
+			}
+			attachBlockProvenance(document, &location, candidate.Number, needles)
+			return location
 		}
 	}
-	return 0, 0, 0, false
+	return QuoteLocation{}
+}
+
+// attachBlockProvenance finds the block containing the quote so callers can
+// cite page + block instead of only a page offset.
+func attachBlockProvenance(document *Document, location *QuoteLocation, page int, needles []string) {
+	if document == nil || location == nil {
+		return
+	}
+	for _, block := range document.Blocks {
+		if block.Page != page {
+			continue
+		}
+		normalizedBlock := normalizeMatchText(block.Text)
+		for _, needle := range needles {
+			index := strings.Index(normalizedBlock.text, needle)
+			if index < 0 {
+				continue
+			}
+			location.BlockID = block.ID
+			location.BlockOffset = normalizedBlock.starts[index]
+			return
+		}
+	}
 }
 
 // normalizedMatchText is text plus a byte-offset mapping back into the

@@ -149,6 +149,16 @@ func mergeAndValidate(rule models.IntentContext, classified Classification, mode
 	merged.Metadata["intent_model"] = classified.Model
 	merged.Metadata["intent_latency_ms"] = classified.LatencyMS
 	merged.Metadata["intent_attempts"] = classified.Attempts
+	// Complexity is merged conservatively: the model may raise the level but
+	// never lower a rule-derived level. Unknown enum values fall back to L2.
+	merged.Complexity = mergeComplexityLevels(merged.Complexity, classified.Complexity)
+	merged.Capabilities = normalizeCapabilities(append(merged.Capabilities, classified.Capabilities...))
+	merged.RouteHint = normalizeRouteHint(classified.RouteHint)
+	merged.ComplexityConfidence = clamp01(classified.ComplexityConfidence)
+	merged.ComplexityReason = strings.TrimSpace(classified.ComplexityReason)
+	if merged.RouteHint == "" {
+		merged.RouteHint = RouteHintForComplexity(merged.Complexity)
+	}
 	for key, value := range classified.Entities {
 		merged.Entities[key] = value
 	}
@@ -165,6 +175,9 @@ func mergeAndValidate(rule models.IntentContext, classified Classification, mode
 func postValidate(ctx models.IntentContext) models.IntentContext {
 	ctx.Entities = ensureEntities(ctx.Entities)
 	ctx.Metadata = ensureMetadata(ctx.Metadata)
+	ctx.Complexity = normalizeComplexity(ctx.Complexity)
+	ctx.RouteHint = normalizeRouteHint(ctx.RouteHint)
+	ctx.Capabilities = normalizeCapabilities(ctx.Capabilities)
 
 	// needs_plot is an output requirement, not a separate intent type.
 	if ContainsPlotIntent(ctx.RawIntent) {
@@ -358,6 +371,99 @@ func appendReasoning(ctx *models.IntentContext, detail string) {
 		return
 	}
 	ctx.Reasoning = strings.TrimSpace(ctx.Reasoning) + "; " + detail
+}
+
+// complexityRank orders L0..L4. Unknown values rank -1.
+func complexityRank(value string) int {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "L0":
+		return 0
+	case "L1":
+		return 1
+	case "L2":
+		return 2
+	case "L3":
+		return 3
+	case "L4":
+		return 4
+	default:
+		return -1
+	}
+}
+
+// normalizeComplexity validates an enum value. Empty stays empty (the rule
+// router computes it); unknown non-empty values conservatively become L2.
+func normalizeComplexity(value string) string {
+	value = strings.ToUpper(strings.TrimSpace(value))
+	if value == "" {
+		return ""
+	}
+	if complexityRank(value) < 0 {
+		return "L2"
+	}
+	return value
+}
+
+// mergeComplexityLevels keeps the higher of the rule and model levels so the
+// model can never downgrade a task.
+func mergeComplexityLevels(ruleLevel, llmLevel string) string {
+	ruleLevel = normalizeComplexity(ruleLevel)
+	llmLevel = normalizeComplexity(llmLevel)
+	if ruleLevel == "" {
+		return llmLevel
+	}
+	if llmLevel == "" {
+		return ruleLevel
+	}
+	if complexityRank(llmLevel) > complexityRank(ruleLevel) {
+		return llmLevel
+	}
+	return ruleLevel
+}
+
+// normalizeRouteHint validates the route hint enum.
+func normalizeRouteHint(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "fast_path", "standard_template", "agent_planner":
+		return strings.ToLower(strings.TrimSpace(value))
+	case "":
+		return ""
+	default:
+		return "standard_template"
+	}
+}
+
+// RouteHintForComplexity maps a complexity level to the default route hint.
+func RouteHintForComplexity(level string) string {
+	switch complexityRank(level) {
+	case 0, 1:
+		return "fast_path"
+	case 3, 4:
+		return "agent_planner"
+	default:
+		return "standard_template"
+	}
+}
+
+// normalizeCapabilities trims, dedupes and bounds the capability list.
+func normalizeCapabilities(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+		if len(out) >= 16 {
+			break
+		}
+	}
+	return out
 }
 
 func clamp01(value float64) float64 {

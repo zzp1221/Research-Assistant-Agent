@@ -22,10 +22,11 @@ export interface PdfViewerSurfaceProps {
   };
   onAskAI: (text: string) => void;
   onAssist: (mode: AssistMode, text: string, page: number) => Promise<AssistResponse>;
+  onOpenHelp?: () => void;
 }
 
 export default function PdfViewerSurface(props: PdfViewerSurfaceProps) {
-  const { pdfUrl, documentInfo, onPageChange, translation, onAskAI, onAssist } = props;
+  const { pdfUrl, documentInfo, onPageChange, translation, onAskAI, onAssist, onOpenHelp } = props;
   // defaultLayoutPlugin() uses React hooks internally; it must be called at the
   // component top level, never inside useMemo or a conditional.
   // Keep the viewer toolbar intentionally small. The default toolbar renders
@@ -62,6 +63,7 @@ export default function PdfViewerSurface(props: PdfViewerSurfaceProps) {
       defaultLayoutPluginInstance={defaultLayoutPluginInstance}
       aiTranslationPluginInstance={aiTranslationPluginInstance}
       translation={translation}
+      onOpenHelp={onOpenHelp}
     />
   );
 }

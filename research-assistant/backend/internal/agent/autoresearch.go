@@ -13,7 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"research-assistant-backend/internal/llmclient"
+	"research-assistant-backend/internal/agent/conversation"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,8 +22,6 @@ import (
 
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
-
-	"github.com/cloudwego/eino/schema"
 )
 
 const (
@@ -526,6 +524,7 @@ func (a *ResearchCodingAgent) executeAutoResearchRun(ctx context.Context, task *
 	candidateSpecJSON := autoResearchCandidateSpecJSON(spec)
 	readOnlyContext := autoResearchReadOnlySourceContext(workspacePath, spec)
 	rejectedCandidateFeedback := "{}"
+	var candidateSession *conversation.Session
 	logToContext(ctx, "[%s] AutoResearch baseline %s=%.8g", a.Name, spec.MetricKey, baselineMetric)
 
 	for trialNumber := 1; trialNumber <= spec.MaxTrials; trialNumber++ {
@@ -533,7 +532,11 @@ func (a *ResearchCodingAgent) executeAutoResearchRun(ctx context.Context, task *
 			ledger.StopReason = "wall_time_budget_exhausted"
 			break
 		}
-		proposal, proposalErr := a.proposeAutoResearchCandidate(runCtx, spec, candidateSpecJSON, ledger, bestSnapshots, readOnlyContext, rejectedCandidateFeedback)
+		proposal, session, proposalErr := a.proposeAutoResearchCandidateWithSession(runCtx, spec, candidateSpecJSON, ledger, bestSnapshots, readOnlyContext, rejectedCandidateFeedback, candidateSession)
+		candidateSession = session
+		if candidateSession != nil {
+			candidateSession.Record(task)
+		}
 		if proposalErr != nil {
 			if runCtx.Err() != nil {
 				ledger.StopReason = "wall_time_budget_exhausted"
@@ -1393,24 +1396,25 @@ func validateAutoResearchBestCandidate(best models.ResearchBestCandidate, ledger
 	return nil
 }
 
-func (a *ResearchCodingAgent) proposeAutoResearchCandidate(ctx context.Context, spec models.ResearchSpec, specJSON []byte, ledger models.ResearchTrialLedger, snapshots []autoResearchFileSnapshot, readOnlyContext, rejectedCandidateFeedback string) (autoResearchCandidateResponse, error) {
+// proposeAutoResearchCandidateWithSession keeps trial proposals in one
+// conversation: the previous proposal stays an assistant message and only the
+// compact ledger/feedback delta is appended.
+func (a *ResearchCodingAgent) proposeAutoResearchCandidateWithSession(ctx context.Context, spec models.ResearchSpec, specJSON []byte, ledger models.ResearchTrialLedger, snapshots []autoResearchFileSnapshot, readOnlyContext, rejectedCandidateFeedback string, session *conversation.Session) (autoResearchCandidateResponse, *conversation.Session, error) {
 	var response autoResearchCandidateResponse
 	contextText := autoResearchSourceContext(snapshots)
-	ledgerSummary, _ := json.Marshal(map[string]any{
-		"baseline_score": ledger.BaselineScore, "best_score": ledger.BestScore,
-		"completed_trials": ledger.CompletedTrials, "accepted_trials": ledger.AcceptedTrials,
-		"recent_trials":             recentAutoResearchTrials(ledger.Trials, 4),
-		"latest_evaluator_evidence": latestAutoResearchEvaluatorEvidence(ledger.Trials),
-	})
-	message, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
-		{Role: schema.System, Content: prompts.AutoResearchCandidateSystemPrompt},
-		{Role: schema.User, Content: prompts.AutoResearchCandidateUserPrompt(string(specJSON), string(ledgerSummary), contextText, readOnlyContext, rejectedCandidateFeedback)},
-	})
+	ledgerSummary := autoResearchLedgerSummaryJSON(ledger)
+	if session == nil {
+		session = conversation.NewSession("autoresearch-candidate", prompts.AutoResearchCandidateSystemPrompt,
+			prompts.AutoResearchCandidateUserPrompt(string(specJSON), ledgerSummary, contextText, readOnlyContext, rejectedCandidateFeedback))
+	} else {
+		session.AddUser("Trial result update:\n" + ledgerSummary + "\nFeedback:\n" + rejectedCandidateFeedback)
+	}
+	message, err := session.Generate(ctx, a.ChatModel)
 	if err != nil {
-		return response, fmt.Errorf("candidate generation failed: %w", err)
+		return response, session, fmt.Errorf("candidate generation failed: %w", err)
 	}
 	if err := json.Unmarshal([]byte(cleanJSONResponse(message.Content)), &response); err != nil {
-		return response, fmt.Errorf("decode candidate response: %w", err)
+		return response, session, fmt.Errorf("decode candidate response: %w", err)
 	}
 	response.Status = strings.ToLower(strings.TrimSpace(response.Status))
 	response.Diagnosis = strings.TrimSpace(response.Diagnosis)
@@ -1419,14 +1423,14 @@ func (a *ResearchCodingAgent) proposeAutoResearchCandidate(ctx context.Context, 
 	switch response.Status {
 	case "propose":
 		if response.Diagnosis == "" || response.Hypothesis == "" || len(response.Patches) == 0 || len(response.Patches) > autoResearchMaxPatchFiles {
-			return response, fmt.Errorf("candidate proposal requires a diagnosis, hypothesis and 1-%d patches", autoResearchMaxPatchFiles)
+			return response, session, fmt.Errorf("candidate proposal requires a diagnosis, hypothesis and 1-%d patches", autoResearchMaxPatchFiles)
 		}
 	case "stop", "unsupported":
 		response.Patches = nil
 	default:
-		return response, fmt.Errorf("invalid candidate status %q", response.Status)
+		return response, session, fmt.Errorf("invalid candidate status %q", response.Status)
 	}
-	return response, nil
+	return response, session, nil
 }
 
 func autoResearchRejectedCandidateFeedback(proposal autoResearchCandidateResponse, failure string, evaluation autoResearchEvaluation) string {
@@ -1678,14 +1682,64 @@ func verifyAutoResearchImmutableFingerprint(workspacePath string, editableFiles 
 }
 
 func autoResearchSourceContext(snapshots []autoResearchFileSnapshot) string {
+	budget := agentEnvInt("AUTORESEARCH_SOURCE_MAX_TOKENS", 50000)
+	perFile := budget
+	if len(snapshots) > 0 {
+		perFile = budget / len(snapshots)
+		if perFile < 2000 {
+			perFile = 2000
+		}
+	}
 	files := make([]map[string]string, 0, len(snapshots))
 	for _, snapshot := range snapshots {
+		content := string(snapshot.Content)
+		if perFile > 0 {
+			content = truncateToTokens(content, perFile)
+		}
 		files = append(files, map[string]string{
-			"path": filepath.ToSlash(snapshot.Relative), "content": string(snapshot.Content),
+			"path": filepath.ToSlash(snapshot.Relative), "content": content,
 		})
 	}
 	encoded, _ := json.Marshal(files)
 	return string(encoded)
+}
+
+// autoResearchLedgerSummaryJSON builds a compact, bounded ledger summary. It
+// keeps only the fields the model needs and drops old trials first when the
+// token budget is exceeded, so the JSON always stays valid.
+func autoResearchLedgerSummaryJSON(ledger models.ResearchTrialLedger) string {
+	budget := agentEnvInt("AUTORESEARCH_LEDGER_MAX_TOKENS", 4000)
+	recent := make([]map[string]any, 0, 2)
+	for _, trial := range recentAutoResearchTrials(ledger.Trials, 2) {
+		recent = append(recent, map[string]any{
+			"number":     trial.Number,
+			"status":     trial.Status,
+			"hypothesis": truncateToRunes(trial.Hypothesis, 500),
+			"decision":   trial.Decision,
+			"reason":     truncateToRunes(trial.Reason, 500),
+			"metric":     trial.Metric,
+			"delta":      trial.DeltaFromBest,
+		})
+	}
+	counter := prompts.EstimatedCounter{}
+	for {
+		payload := map[string]any{
+			"baseline_score":            ledger.BaselineScore,
+			"best_score":                ledger.BestScore,
+			"completed_trials":          ledger.CompletedTrials,
+			"accepted_trials":           ledger.AcceptedTrials,
+			"recent_trials":             recent,
+			"latest_evaluator_evidence": latestAutoResearchEvaluatorEvidence(ledger.Trials),
+		}
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			return "{}"
+		}
+		if counter.Count(string(encoded)) <= budget || len(recent) == 0 {
+			return string(encoded)
+		}
+		recent = recent[1:]
+	}
 }
 
 func autoResearchCandidateSpecJSON(spec models.ResearchSpec) []byte {
@@ -1771,7 +1825,8 @@ func latestAutoResearchEvaluatorEvidence(trials []models.ResearchTrial) map[stri
 		}
 		return map[string]any{
 			"trial": trial.Number, "status": trial.Status, "metric": trial.Metric,
-			"stdout": trial.EvalResult.StdoutPreview, "stderr": trial.EvalResult.StderrPreview,
+			"stdout": truncateToRunes(trial.EvalResult.StdoutPreview, 2000),
+			"stderr": truncateToRunes(trial.EvalResult.StderrPreview, 2000),
 		}
 	}
 	return map[string]any{}

@@ -13,6 +13,7 @@ import (
 	"research-assistant-backend/internal/agent"
 	"research-assistant-backend/internal/documents"
 	intentpkg "research-assistant-backend/internal/intent"
+	"research-assistant-backend/internal/modelresolver"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/paperid"
 	"research-assistant-backend/internal/planner"
@@ -85,6 +86,9 @@ func SetupRoutes(r *gin.Engine) {
 	r.Use(CORSMiddleware())
 	r.Use(metricsMiddleware())
 
+	// Runtime model profiles must exist before any agent is built so their
+	// Eino chains resolve the configured profile instead of a frozen model.
+	bootstrapRuntimeModels()
 	p := planner.NewPlanner()
 
 	// Initialize Agents
@@ -99,7 +103,9 @@ func SetupRoutes(r *gin.Engine) {
 	optimizerURL := strings.TrimSpace(os.Getenv("RESEARCH_OPTIMIZER_URL"))
 	librarianAgent := agent.NewLibrarianAgent()
 	librarianAgent.Documents = documents.NewStore("")
-	dataAgent := agent.NewDataAgent()
+	librarianAgent.Literature = getLiteratureClient()
+	librarianAgent.Library = getLiteratureLibrary()
+	dataAgent := agent.NewDataAgentWithRuntime(coderAgent.Runtime, agent.NewVisualVerifier(modelresolver.Default()))
 	chatAgent := agent.NewChatAgent(coderAgent)
 	answerAgent := agent.NewAnswerAgent()
 
@@ -115,8 +121,10 @@ func SetupRoutes(r *gin.Engine) {
 		})
 
 		RegisterPlanRuntimeRoutes(apiGroup, p, librarianAgent, dataAgent, coderAgent, researchCodingAgent, benchmarkAgent, chatAgent, answerAgent)
+		registerModelProfileRoutes(apiGroup)
 		RegisterUploadRoutes(apiGroup)
 		RegisterLiteratureRoutes(apiGroup)
+		RegisterWebRoutes(apiGroup)
 
 		apiGroup.GET("/hello", func(c *gin.Context) {
 			c.String(200, "hello api group")

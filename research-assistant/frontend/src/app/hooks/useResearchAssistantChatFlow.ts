@@ -456,6 +456,24 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
 		setAttachmentError('');
 	}, []);
 
+	// Literature records and search results become ordinary chat attachments.
+	// Keeping this in the flow hook means the composer, the literature panel and
+	// the PDF reader all agree on the same eight-slot attachment budget.
+	const attachUploadToSession = useCallback((upload: UploadedFile): 'added' | 'duplicate' | 'full' => {
+		if (pendingAttachments.some((attachment) => attachment.id === upload.id)) return 'duplicate';
+		if (pendingAttachments.length >= 8) {
+			setAttachmentError('每个计划最多添加 8 个附件');
+			return 'full';
+		}
+		setPendingAttachments((current) => (
+			current.some((attachment) => attachment.id === upload.id)
+				? current
+				: [...current, upload].slice(0, 8)
+		));
+		setAttachmentError('');
+		return 'added';
+	}, [pendingAttachments]);
+
   const updateSessionPlanState = useCallback(
     (sessionId: string, payload: { activePlanId: string | null; intentContext: IntentContext | null; planGraph: PlanGraph | null }) => {
       const now = new Date().toISOString();
@@ -653,6 +671,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     handleCancelFullAccess: () => setShowFullAccessConfirm(false),
 	handleAttachFiles,
 	handleRemoveAttachment,
+	attachUploadToSession,
 	refreshActivePlan,
   };
 }

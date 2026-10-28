@@ -87,6 +87,12 @@
           },
           "runtime_policy": {
             "type": "object"
+          },
+          "verification": {
+            "$ref": "#/components/schemas/Verification"
+          },
+          "model_snapshot": {
+            "type": "object"
           }
         }
       },
@@ -251,6 +257,277 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MissingRequirement"
+            }
+          }
+        }
+      },
+      "Verification": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail",
+              "inconclusive",
+              "skipped"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "structural",
+              "text",
+              "visual",
+              "none"
+            ]
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "verified_by": {
+            "type": "object",
+            "properties": {
+              "profile_id": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              }
+            }
+          },
+          "rubric_version": {
+            "type": "string"
+          },
+          "image_sha256": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "duration_ms": {
+            "type": "integer"
+          },
+          "token_usage": {
+            "type": "object",
+            "properties": {
+              "prompt": {
+                "type": "integer"
+              },
+              "completion": {
+                "type": "integer"
+              },
+              "estimated": {
+                "type": "boolean"
+              }
+            }
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "status",
+          "level",
+          "verified"
+        ]
+      },
+      "ModelProfile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "owner_id": {
+            "type": "string",
+            "description": "Empty string means a global profile"
+          },
+          "global": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "openai_compatible"
+            ]
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "api_key_masked": {
+            "type": "string",
+            "description": "Only the last four characters are ever returned"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "main",
+                "vision",
+                "fallback"
+              ]
+            }
+          },
+          "supports_vision": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ]
+          },
+          "vision_probe_reason": {
+            "type": "string"
+          },
+          "vision_probed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "timeout_seconds": {
+            "type": "integer"
+          },
+          "max_output_tokens": {
+            "type": "integer"
+          },
+          "context_window_tokens": {
+            "type": "integer",
+            "description": "Model context window used for prompt budgeting (default 128000)"
+          },
+          "prompt_price_per_1k": {
+            "type": "number"
+          },
+          "completion_price_per_1k": {
+            "type": "number"
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "bootstrap": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ModelProfileInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "api_key": {
+            "type": "string",
+            "description": "Write-only; empty on update keeps the existing secret"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "supports_vision": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ]
+          },
+          "timeout_seconds": {
+            "type": "integer"
+          },
+          "max_output_tokens": {
+            "type": "integer"
+          },
+          "context_window_tokens": {
+            "type": "integer",
+            "description": "Model context window used for prompt budgeting (default 128000)"
+          },
+          "prompt_price_per_1k": {
+            "type": "number"
+          },
+          "completion_price_per_1k": {
+            "type": "number"
+          },
+          "global": {
+            "type": "boolean",
+            "description": "Requires ADMIN_TOKEN"
+          }
+        },
+        "required": [
+          "name",
+          "base_url",
+          "model",
+          "api_key"
+        ]
+      },
+      "ModelRouting": {
+        "type": "object",
+        "properties": {
+          "owner_id": {
+            "type": "string"
+          },
+          "main_profile_id": {
+            "type": "string"
+          },
+          "vision_profile_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "fallback_profile_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         }
@@ -974,6 +1251,28 @@
       }
     },
     "/api/uploads/{id}": {
+      "get": {
+        "operationId": "getUpload",
+        "summary": "Get owner-scoped upload metadata",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Upload metadata and document summary"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
       "delete": {
         "operationId": "deleteUpload",
         "summary": "Delete an upload",
@@ -1021,7 +1320,7 @@
     "/api/literature/search": {
       "get": {
         "operationId": "searchLiterature",
-        "summary": "Search arXiv/OpenAlex/Crossref/GitHub",
+        "summary": "Search arXiv/OpenAlex/Crossref/GitHub/Semantic Scholar/PubMed/DBLP",
         "parameters": [
           {
             "name": "q",
@@ -1036,7 +1335,16 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "description": "Comma-separated: arxiv,openalex,crossref,github"
+              "description": "Comma-separated: arxiv,openalex,crossref,github,semanticscholar,pubmed,dblp"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["relevance", "citations", "year"],
+              "default": "relevance"
             }
           },
           {
@@ -1104,6 +1412,10 @@
                   "attach": {
                     "type": "boolean",
                     "description": "Store the PDF as an upload for the caller (default true)"
+                  },
+                  "metadata_only": {
+                    "type": "boolean",
+                    "description": "Save metadata to the library without downloading the PDF"
                   }
                 }
               }
@@ -1128,6 +1440,148 @@
             "description": "Provider or download failure"
           }
         }
+      }
+    },
+    "/api/literature/records": {
+      "get": {
+        "operationId": "listLiteratureRecords",
+        "summary": "List the caller's literature library",
+        "parameters": [
+          {"name": "q", "in": "query", "schema": {"type": "string"}},
+          {"name": "tag", "in": "query", "schema": {"type": "string"}},
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 200}},
+          {"name": "cursor", "in": "query", "schema": {"type": "integer", "minimum": 0}}
+        ],
+        "responses": {
+          "200": {"description": "Owner-scoped records", "content": {"application/json": {"schema": {"type": "object"}}}}
+        }
+      }
+    },
+    "/api/literature/records/{id}": {
+      "get": {
+        "operationId": "getLiteratureRecord",
+        "summary": "Read one literature record",
+        "responses": {"200": {"description": "Record"}, "404": {"description": "Not found"}}
+      },
+      "delete": {
+        "operationId": "deleteLiteratureRecord",
+        "summary": "Delete one literature record (the upload is kept)",
+        "responses": {"200": {"description": "Deleted"}, "404": {"description": "Not found"}}
+      }
+    },
+    "/api/literature/records/{id}/attach": {
+      "post": {
+        "operationId": "attachLiteratureRecord",
+        "summary": "Attach a record to the current session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {"type": "object", "properties": {"session_id": {"type": "string"}}}
+            }
+          }
+        },
+        "responses": {"200": {"description": "Record"}, "404": {"description": "Not found"}}
+      },
+      "delete": {
+        "operationId": "detachLiteratureRecord",
+        "summary": "Remove a record from a chat session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {"type": "object", "properties": {"session_id": {"type": "string"}}}
+            }
+          }
+        },
+        "responses": {"200": {"description": "Record"}, "404": {"description": "Not found"}}
+      }
+    },
+    "/api/literature/records/{id}/bibtex": {
+      "get": {
+        "operationId": "exportLiteratureBibTeX",
+        "summary": "Export one record as BibTeX",
+        "responses": {
+          "200": {"description": "BibTeX", "content": {"text/plain": {"schema": {"type": "string"}}}},
+          "404": {"description": "Not found"}
+        }
+      }
+    },
+    "/api/literature/citations/{doi}": {
+      "get": {
+        "operationId": "getLiteratureCitations",
+        "summary": "References and citing works for a DOI (OpenAlex)",
+        "parameters": [
+          {"name": "doi", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 100}}
+        ],
+        "responses": {
+          "200": {"description": "Citation graph", "content": {"application/json": {"schema": {"type": "object"}}}},
+          "404": {"description": "DOI not found"}
+        }
+      }
+    },
+    "/api/web/fetch": {
+      "post": {
+        "operationId": "fetchWebPage",
+        "summary": "Fetch and extract readable text from a public web page",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["url"],
+                "properties": {"url": {"type": "string", "format": "uri"}, "max_bytes": {"type": "integer"}}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "Extracted page", "content": {"application/json": {"schema": {"type": "object"}}}},
+          "403": {"description": "SSRF or robots.txt denial"},
+          "415": {"description": "Unsupported content type"},
+          "504": {"description": "Fetch timeout"}
+        }
+      }
+    },
+    "/api/uploads/{id}/document/locate": {
+      "get": {
+        "operationId": "getUploadDocumentQuoteLocation",
+        "summary": "Locate a quote with page, byte offset and layout block id",
+        "parameters": [
+          {"name": "quote", "in": "query", "required": true, "schema": {"type": "string", "maxLength": 2000}}
+        ],
+        "responses": {
+          "200": {"description": "Quote location", "content": {"application/json": {"schema": {"type": "object"}}}},
+          "404": {"description": "Quote not found"}
+        }
+      }
+    },
+    "/api/uploads/{id}/document/quality": {
+      "get": {
+        "operationId": "getUploadDocumentQuality",
+        "summary": "Per-page OCR/text quality report",
+        "responses": {"200": {"description": "Quality report", "content": {"application/json": {"schema": {"type": "object"}}}}}
+      }
+    },
+    "/api/uploads/{id}/document/pages/{page}/layout": {
+      "get": {
+        "operationId": "getUploadDocumentPageLayout",
+        "summary": "Layout blocks with bounding boxes for one page",
+        "responses": {"200": {"description": "Blocks", "content": {"application/json": {"schema": {"type": "object"}}}}}
+      }
+    },
+    "/api/uploads/{id}/document/tables/{tableId}": {
+      "get": {
+        "operationId": "getUploadDocumentTable",
+        "summary": "Structured table as JSON or CSV (format=csv)",
+        "responses": {"200": {"description": "Table"}, "404": {"description": "Table not found"}}
+      }
+    },
+    "/api/uploads/{id}/document/figures/{figureId}": {
+      "get": {
+        "operationId": "getUploadDocumentFigure",
+        "summary": "Figure image (PNG) or metadata (format=json)",
+        "responses": {"200": {"description": "Figure"}, "404": {"description": "Figure not found"}}
       }
     },
     "/api/metrics": {
@@ -1187,6 +1641,238 @@
         "responses": {
           "200": {
             "description": "OpenAPI 3.1 document"
+          }
+        }
+      }
+    },
+    "/api/model-profiles": {
+      "get": {
+        "operationId": "listModelProfiles",
+        "summary": "List visible model profiles (own plus global, secrets masked)",
+        "responses": {
+          "200": {
+            "description": "Profiles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "profiles": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ModelProfile"
+                      }
+                    },
+                    "encryption_available": {
+                      "type": "boolean"
+                    },
+                    "is_admin": {
+                      "type": "boolean"
+                    },
+                    "max_per_user": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createModelProfile",
+        "summary": "Create a model profile (global profiles require ADMIN_TOKEN)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelProfileInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid profile or blocked base_url"
+          },
+          "403": {
+            "description": "Global profile requires an administrator"
+          },
+          "503": {
+            "description": "MODEL_PROFILE_ENCRYPTION_KEY is not configured"
+          }
+        }
+      }
+    },
+    "/api/model-profiles/{id}": {
+      "put": {
+        "operationId": "updateModelProfile",
+        "summary": "Update a model profile (empty api_key keeps the current secret)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelProfileInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelProfile"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteModelProfile",
+        "summary": "Delete a model profile; refused while routing references it",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "409": {
+            "description": "Referenced by routing"
+          }
+        }
+      }
+    },
+    "/api/model-profiles/{id}/test": {
+      "post": {
+        "operationId": "testModelProfile",
+        "summary": "Text connectivity test",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Probe result"
+          },
+          "429": {
+            "description": "Probe rate limited"
+          },
+          "502": {
+            "description": "Provider rejected the probe"
+          }
+        }
+      }
+    },
+    "/api/model-profiles/{id}/probe-vision": {
+      "post": {
+        "operationId": "probeModelVision",
+        "summary": "Red/blue dual-image vision capability probe",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Probe result with supports_vision outcome"
+          },
+          "429": {
+            "description": "Probe rate limited"
+          }
+        }
+      }
+    },
+    "/api/model-routing": {
+      "get": {
+        "operationId": "getModelRouting",
+        "summary": "Read the caller routing and the global default routing",
+        "responses": {
+          "200": {
+            "description": "Routing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "routing": {
+                      "$ref": "#/components/schemas/ModelRouting"
+                    },
+                    "global_routing": {
+                      "$ref": "#/components/schemas/ModelRouting"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "saveModelRouting",
+        "summary": "Save the caller routing (hot reload, no restart)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelRouting"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved"
+          },
+          "400": {
+            "description": "Referenced profile is not visible"
           }
         }
       }

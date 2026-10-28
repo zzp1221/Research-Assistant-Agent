@@ -3,6 +3,7 @@
 package documents
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,17 +13,40 @@ import (
 	"unicode/utf8"
 )
 
-const Version = "document.text/v1"
+const Version = "document.text/v2"
+
+// LegacyVersion is the document format written before blocks/tables/figures
+// and per-page OCR quality existed. Load keeps accepting it.
+const LegacyVersion = "document.text/v1"
 
 // Status describes whether a usable text layer could be extracted.
 type Status string
 
 const (
 	StatusExtracted   Status = "extracted"
+	StatusPartial     Status = "partial"
 	StatusEmpty       Status = "empty"
 	StatusEncrypted   Status = "encrypted"
 	StatusFailed      Status = "failed"
 	StatusUnsupported Status = "unsupported"
+)
+
+// Block types produced by the layout pass.
+const (
+	BlockTitle     = "title"
+	BlockParagraph = "paragraph"
+	BlockHeader    = "header"
+	BlockFooter    = "footer"
+	BlockTable     = "table"
+	BlockFigure    = "figure"
+	BlockFormula   = "formula"
+)
+
+// Page source values.
+const (
+	PageSourceText  = "text"
+	PageSourceOCR   = "ocr"
+	PageSourceMixed = "mixed"
 )
 
 const (
@@ -38,24 +62,93 @@ type Page struct {
 	Number int    `json:"number"`
 	Text   string `json:"text"`
 	Chars  int    `json:"chars"`
+	// Source is "text", "ocr" or "mixed"; empty on legacy documents.
+	Source string `json:"source,omitempty"`
 }
 
-// Document is the persisted text representation of one uploaded PDF.
+// Block is one layout block with a bounding box in PDF points. BBox is
+// [xMin, yMin, xMax, yMax]. Confidence is 1 for text-layer blocks and the
+// mean OCR word confidence (0..1) for OCR blocks.
+type Block struct {
+	ID         string     `json:"id"`
+	Type       string     `json:"type"`
+	BBox       [4]float64 `json:"bbox"`
+	Text       string     `json:"text"`
+	Confidence float64    `json:"confidence"`
+	Page       int        `json:"page"`
+}
+
+// Table is one structured table extracted from a page. Rows excludes the
+// caption; CSVRef is a path relative to the upload directory.
+type Table struct {
+	ID         string     `json:"id"`
+	Page       int        `json:"page"`
+	Caption    string     `json:"caption,omitempty"`
+	BBox       [4]float64 `json:"bbox,omitempty"`
+	Rows       [][]string `json:"rows"`
+	CSVRef     string     `json:"csv_ref,omitempty"`
+	Confidence float64    `json:"confidence,omitempty"`
+	Warning    string     `json:"warning,omitempty"`
+}
+
+// Figure is one figure caption bound (when possible) to an extracted image.
+type Figure struct {
+	ID       string     `json:"id"`
+	Page     int        `json:"page"`
+	Caption  string     `json:"caption,omitempty"`
+	BBox     [4]float64 `json:"bbox,omitempty"`
+	ImageRef string     `json:"image_ref,omitempty"`
+	Warning  string     `json:"warning,omitempty"`
+}
+
+// PageQuality explains how one page's text was obtained.
+type PageQuality struct {
+	Page          int     `json:"page"`
+	Source        string  `json:"source"`
+	Chars         int     `json:"chars"`
+	OCRConfidence float64 `json:"ocr_confidence,omitempty"`
+	Failed        bool    `json:"failed,omitempty"`
+	Skipped       bool    `json:"skipped,omitempty"`
+	Error         string  `json:"error,omitempty"`
+}
+
+// OCRStats aggregates OCR work for one document.
+type OCRStats struct {
+	Engine            string  `json:"engine,omitempty"`
+	Language          string  `json:"language,omitempty"`
+	OCRPages          int     `json:"ocr_pages"`
+	AverageConfidence float64 `json:"average_confidence,omitempty"`
+	FailedPages       int     `json:"failed_pages"`
+	SkippedPages      int     `json:"skipped_pages"`
+	TotalPages        int     `json:"total_pages"`
+	Partial           bool    `json:"partial,omitempty"`
+}
+
+// Document is the persisted representation of one uploaded PDF.
 type Document struct {
-	Version     string    `json:"version"`
-	UploadID    string    `json:"upload_id"`
-	Status      Status    `json:"status"`
-	Extractor   string    `json:"extractor,omitempty"`
-	PageCount   int       `json:"page_count"`
-	Characters  int       `json:"characters"`
-	Pages       []Page    `json:"pages"`
-	Error       string    `json:"error,omitempty"`
-	ExtractedAt time.Time `json:"extracted_at"`
+	Version     string        `json:"version"`
+	UploadID    string        `json:"upload_id"`
+	Status      Status        `json:"status"`
+	Extractor   string        `json:"extractor,omitempty"`
+	PageCount   int           `json:"page_count"`
+	TotalPages  int           `json:"total_pages,omitempty"`
+	Characters  int           `json:"characters"`
+	Pages       []Page        `json:"pages"`
+	Blocks      []Block       `json:"blocks,omitempty"`
+	Tables      []Table       `json:"tables,omitempty"`
+	Figures     []Figure      `json:"figures,omitempty"`
+	Quality     []PageQuality `json:"quality,omitempty"`
+	OCRStats    OCRStats      `json:"ocr_stats,omitempty"`
+	Error       string        `json:"error,omitempty"`
+	ExtractedAt time.Time     `json:"extracted_at"`
 }
 
 // HasText reports whether the document can be used for assist or extraction.
 func (d *Document) HasText() bool {
-	return d != nil && d.Status == StatusExtracted && d.PageCount > 0
+	if d == nil || d.PageCount <= 0 {
+		return false
+	}
+	return d.Status == StatusExtracted || d.Status == StatusPartial
 }
 
 // Path returns the metadata file location inside one upload directory.
@@ -63,10 +156,14 @@ func Path(directory string) string {
 	return filepath.Join(directory, fileName)
 }
 
-// Save writes the document atomically with owner-only permissions.
+// Save writes the document atomically with owner-only permissions. Table CSV
+// files referenced by Rows are written under <directory>/tables first.
 func Save(directory string, document *Document) error {
 	if document == nil {
 		return fmt.Errorf("document is nil")
+	}
+	if err := writeTableArtifacts(directory, document); err != nil {
+		return err
 	}
 	raw, err := json.Marshal(document)
 	if err != nil {
@@ -87,6 +184,70 @@ func Save(directory string, document *Document) error {
 	return nil
 }
 
+// writeTableArtifacts persists each structured table as CSV. The CSV path is
+// relative so a document directory can be moved without breaking references.
+func writeTableArtifacts(directory string, document *Document) error {
+	if len(document.Tables) == 0 {
+		return nil
+	}
+	tableDir := filepath.Join(directory, "tables")
+	if err := os.MkdirAll(tableDir, 0o700); err != nil {
+		return fmt.Errorf("create table directory: %w", err)
+	}
+	for index := range document.Tables {
+		table := &document.Tables[index]
+		if len(table.Rows) == 0 {
+			continue
+		}
+		if table.ID == "" {
+			table.ID = fmt.Sprintf("table-p%d-%d", table.Page, index+1)
+		}
+		name := sanitizeArtifactName(table.ID) + ".csv"
+		target := filepath.Join(tableDir, name)
+		file, err := os.Create(target)
+		if err != nil {
+			return fmt.Errorf("create table csv: %w", err)
+		}
+		writer := csv.NewWriter(file)
+		writeErr := writer.WriteAll(table.Rows)
+		writer.Flush()
+		closeErr := file.Close()
+		if writeErr != nil {
+			return fmt.Errorf("write table csv: %w", writeErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("close table csv: %w", closeErr)
+		}
+		table.CSVRef = filepath.ToSlash(filepath.Join("tables", name))
+	}
+	return nil
+}
+
+// sanitizeArtifactName keeps IDs safe for filenames.
+func sanitizeArtifactName(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "artifact"
+	}
+	var builder strings.Builder
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			builder.WriteRune(r)
+		default:
+			builder.WriteByte('-')
+		}
+	}
+	cleaned := strings.Trim(builder.String(), "-")
+	if cleaned == "" {
+		return "artifact"
+	}
+	if len(cleaned) > 80 {
+		cleaned = cleaned[:80]
+	}
+	return cleaned
+}
+
 // Load reads a previously extracted document.
 func Load(directory string) (*Document, error) {
 	raw, err := os.ReadFile(Path(directory))
@@ -99,6 +260,12 @@ func Load(directory string) (*Document, error) {
 	}
 	if document.Pages == nil {
 		document.Pages = []Page{}
+	}
+	if document.PageCount == 0 {
+		document.PageCount = len(document.Pages)
+	}
+	if document.TotalPages == 0 {
+		document.TotalPages = document.PageCount
 	}
 	return &document, nil
 }
@@ -206,4 +373,18 @@ func ContextForPage(document *Document, page int, radius int) string {
 		fmt.Fprintf(&builder, "[Page %d]\n%s", document.Pages[index].Number, text)
 	}
 	return builder.String()
+}
+
+// PageQualityFor returns the quality row for one page, or nil when the
+// document has no quality report.
+func (d *Document) PageQualityFor(page int) *PageQuality {
+	if d == nil {
+		return nil
+	}
+	for index := range d.Quality {
+		if d.Quality[index].Page == page {
+			return &d.Quality[index]
+		}
+	}
+	return nil
 }

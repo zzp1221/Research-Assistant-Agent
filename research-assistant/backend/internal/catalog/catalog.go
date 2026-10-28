@@ -190,27 +190,3 @@ func Template(recipe SmokeRecipe) (string, error) {
 	}
 	return string(raw), nil
 }
-
-// RecipeByID looks up one recipe.
-func RecipeByID(id string) (SmokeRecipe, bool) {
-	for _, recipe := range Recipes() {
-		if recipe.ID == id {
-			return recipe, true
-		}
-	}
-	return SmokeRecipe{}, false
-}
-
-// TemplateIDs returns the embedded template names, used by catalog tests.
-func TemplateIDs() []string {
-	entries, err := files.ReadDir("templates")
-	if err != nil {
-		return nil
-	}
-	out := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		out = append(out, entry.Name())
-	}
-	sort.Strings(out)
-	return out
-}

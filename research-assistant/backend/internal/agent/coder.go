@@ -57,6 +57,8 @@ type CoderAgent struct {
 	ChatModel     *openai.ChatModel
 	CodeOnlyChain compose.Runnable[string, string]
 	EinoChain     compose.Runnable[string, string] // 使用 Eino 编排的执行链
+	// Runtime resolves the plan owner's model profile per request.
+	Runtime *dynamicChatModel
 }
 
 func BuildCoderSystemPrompt() string {
@@ -83,6 +85,7 @@ func NewCoderAgent(sandbox *sandbox.SandboxClient) *CoderAgent {
 		Name:         "coder_agent",
 		SystemPrompt: prompts.CoderSystemPrompt,
 		Sandbox:      sandbox,
+		Runtime:      newDynamicChatModel(nil),
 	}
 	agent.initRealEinoChain()
 
@@ -326,7 +329,7 @@ func (a *CoderAgent) ExecuteTask(ctx context.Context, task *models.Task, sharedC
 	}
 	ctx = a.contextWithTaskPrompt(ctx, task, sharedContext)
 	if shouldRunDirectCodeExecution(task) && a.Sandbox != nil {
-		return a.generateAndExecuteCodeTask(ctx, task)
+		return a.generateAndExecuteCodeTask(ctx, task, sharedContext)
 	}
 	// sandbox_agent tasks must run through the deterministic sandbox path so that:
 	// - runtime_session / prepared_runtime artifacts are produced consistently
@@ -366,7 +369,18 @@ func (a *CoderAgent) ExecuteTask(ctx context.Context, task *models.Task, sharedC
 	} else {
 		logToContext(ctx, "[%s] 当前节点为 %s，仅执行代码生成/检查链路，不触发沙箱创建", a.Name, task.AssignedTo)
 	}
-	output, err := selectedChain.Invoke(ctx, task.Description)
+	intentType := sharedContextValue(sharedContext, "intent_type")
+	systemPrompt := coderSystemPromptFromContext(ctx, prompts.CoderSystemPromptForTask(intentType, task.Type, task.Name, task.Description))
+	promptText, promptReport, promptErr := buildAgentPromptText(sharedContext, task, systemPrompt, "", 12000)
+	if promptErr != nil {
+		close(codeChan)
+		codeCollector.Wait()
+		task.Status = models.StatusFailed
+		task.Error = promptErr.Error()
+		return promptErr
+	}
+	recordPromptReport(task, promptReport)
+	output, err := selectedChain.Invoke(ctx, promptText)
 	close(codeChan) // 关闭通道让 goroutine 退出
 	codeCollector.Wait()
 
@@ -408,13 +422,6 @@ func isPlotTask(task *models.Task) bool {
 	}
 }
 
-func plotArtifactKeyForTask(task *models.Task) string {
-	if task != nil && strings.EqualFold(strings.TrimSpace(task.Type), "result_visualization") {
-		return "result_plot"
-	}
-	return "plot_image"
-}
-
 // upstreamPlotImage returns a base64 PNG already produced upstream (for example
 // by execute_code) so render_plot can reuse it instead of generating new code
 // and rebuilding a sandbox. Non-image values are ignored.
@@ -440,7 +447,7 @@ func upstreamPlotImage(task *models.Task) string {
 	return ""
 }
 
-func (a *CoderAgent) generateAndExecuteCodeTask(ctx context.Context, task *models.Task) error {
+func (a *CoderAgent) generateAndExecuteCodeTask(ctx context.Context, task *models.Task, sharedContext map[string]interface{}) error {
 	if task == nil {
 		return fmt.Errorf("task is nil")
 	}
@@ -464,20 +471,26 @@ func (a *CoderAgent) generateAndExecuteCodeTask(ctx context.Context, task *model
 	}
 
 	logToContext(ctx, "[%s] 直接代码执行任务：先生成代码，再复用沙箱运行", a.Name)
-	prompt := strings.TrimSpace(task.Description)
-	if prompt == "" {
-		prompt = task.Name
+	description := strings.TrimSpace(task.Description)
+	if description == "" {
+		description = task.Name
 	}
 	// Plot tasks must not rely on the model to re-install packages: the plan
 	// already installed declared dependencies in prepared_runtime. Keep the
 	// prompt explicit so the generated code only saves the figure.
 	if isPlotTask(task) {
-		prompt += "\n\n这是绘图任务：直接使用已安装好的 matplotlib/numpy，不要执行 pip install，不要调用 plt.show()。" +
+		description += "\n\n这是绘图任务：直接使用已安装好的 matplotlib/numpy，不要执行 pip install，不要调用 plt.show()。" +
 			"必须把图像保存到 os.environ.get('RA_OUTPUT_DIR', '/workspace/output') 目录下（例如 os.path.join(os.environ['RA_OUTPUT_DIR'], 'result.png')），并保证生成的图片非空。"
 	}
-	if len(task.Inputs) > 0 {
-		prompt += "\n\n上游输入（只读，供绘图/分析使用）：\n" + formatTaskInputsForPrompt(task.Inputs, 12000)
+	intentType := sharedContextValue(sharedContext, "intent_type")
+	systemPrompt := coderSystemPromptFromContext(ctx, prompts.CoderSystemPromptForTask(intentType, task.Type, task.Name, task.Description))
+	prompt, promptReport, promptErr := buildAgentPromptTextWithDescription(sharedContext, task, systemPrompt, description, "", 12000)
+	if promptErr != nil {
+		task.Status = models.StatusFailed
+		task.Error = promptErr.Error()
+		return promptErr
 	}
+	recordPromptReport(task, promptReport)
 	code, err := a.CodeOnlyChain.Invoke(ctx, prompt)
 	if err != nil {
 		task.Status = models.StatusFailed
@@ -808,6 +821,7 @@ func (a *CoderAgent) planDependencyRecovery(ctx context.Context, dependencies []
 		return nil, fmt.Errorf("chat model is not configured")
 	}
 
+	pipError = truncateToTokens(pipError, agentEnvInt("DEPENDENCY_ERROR_MAX_TOKENS", 8000))
 	userPrompt := prompts.DependencyRecoveryUserPrompt(mustJSON(dependencies), pipError)
 	msg, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
 		{Role: schema.System, Content: prompts.DependencyRecoverySystemPrompt},
@@ -1205,6 +1219,8 @@ func (a *CoderAgent) repairGeneratedPythonCodeForRuntimeError(ctx context.Contex
 	intentType, _ := ctx.Value(coderIntentTypeContextKey).(string)
 	taskType, _ := ctx.Value(coderTaskTypeContextKey).(string)
 	taskName, _ := ctx.Value(coderTaskNameContextKey).(string)
+	code = truncateToTokens(code, agentEnvInt("CODER_REPAIR_CODE_MAX_TOKENS", 24000))
+	errText = truncateToTokens(errText, agentEnvInt("CODER_REPAIR_ERROR_MAX_TOKENS", 8000))
 	prompt := prompts.RuntimeCodeRepairUserPromptForTask(errText, code, intentType, taskType, taskName)
 	msg, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
 		{Role: schema.System, Content: coderSystemPromptFromContext(ctx, a.SystemPrompt)},
@@ -1564,25 +1580,6 @@ func extractTaskInputLike(task *models.Task, key string) string {
 		}
 	}
 	return ""
-}
-
-func shouldUseDeterministicSandboxPath(task *models.Task) bool {
-	if task == nil {
-		return false
-	}
-	if strings.TrimSpace(task.Type) != "" {
-		return true
-	}
-	if strings.TrimSpace(extractTaskInputLike(task, "generated_code")) != "" {
-		return true
-	}
-	if strings.TrimSpace(extractTaskInputLike(task, "dependency_spec")) != "" {
-		return true
-	}
-	if strings.TrimSpace(extractTaskInputLike(task, "runtime_session")) != "" || strings.TrimSpace(extractTaskInputLike(task, "prepared_runtime")) != "" || strings.TrimSpace(extractTaskInputLike(task, "runtime_env")) != "" {
-		return true
-	}
-	return false
 }
 
 func shouldRunDirectCodeExecution(task *models.Task) bool {

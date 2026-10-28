@@ -950,12 +950,3 @@ func experimentErrorText(err error) string {
 	}
 	return err.Error()
 }
-
-func sortedExperimentMetricKeys(metrics map[string]float64) []string {
-	keys := make([]string, 0, len(metrics))
-	for key := range metrics {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
-}

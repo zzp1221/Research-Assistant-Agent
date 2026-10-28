@@ -19,6 +19,7 @@ import type { ExecutionDisplayMode } from '../../app/hooks/useResearchAssistantR
 import type { Task } from '../../contracts/api';
 import { formatApiError } from '../../services/api/apiError';
 import { parseBenchmarkReport } from '../benchmark/benchmarkReport';
+import { VerificationBadge, VerificationDetails } from '../verification/VerificationBadge';
 import { getAgentIcon, getAgentLabel } from '../shared/agentVisuals';
 import { DEFAULT_LOG_TAIL, filterLogs, splitLogLines, windowLogs, type LogLevel } from './logWindow';
 
@@ -71,6 +72,7 @@ interface ExecutionSidebarProps {
   onClose: () => void;
   onExecute: () => void | Promise<unknown>;
   onChangeDisplayMode: (mode: ExecutionDisplayMode) => void;
+  onOpenModelSettings?: () => void;
 }
 
 const resolveCompactMode = (displayMode: ExecutionDisplayMode): CompactMode => {
@@ -174,6 +176,7 @@ export function ExecutionSidebar(props: ExecutionSidebarProps) {
     onClose,
     onExecute,
     onChangeDisplayMode,
+    onOpenModelSettings,
   } = props;
 
   const activeMode = resolveCompactMode(displayMode);
@@ -226,6 +229,7 @@ export function ExecutionSidebar(props: ExecutionSidebarProps) {
           onClose={onClose}
           onExecute={onExecute}
           onChangeDisplayMode={onChangeDisplayMode}
+          onOpenModelSettings={onOpenModelSettings}
         />
       )}
     </div>
@@ -348,6 +352,7 @@ interface ExecutionSidebarShellProps {
   onClose: () => void;
   onExecute: () => void | Promise<unknown>;
   onChangeDisplayMode: (mode: ExecutionDisplayMode) => void;
+  onOpenModelSettings?: () => void;
 }
 
 const logLevelOptions: { value: LogLevel; label: string }[] = [
@@ -372,6 +377,7 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
     onClose,
     onExecute,
     onChangeDisplayMode,
+    onOpenModelSettings,
   } = props;
   const [copied, setCopied] = useState(false);
   const [executeFailure, setExecuteFailure] = useState<{ taskId: string; error: unknown } | null>(null);
@@ -491,7 +497,7 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
       <div className="flex shrink-0 items-start justify-between gap-3 border-b border-ink bg-surface px-4 py-2.5">
         <div className="min-w-0">
           <div className="flex items-baseline gap-2">
-            <span className="journal-caps text-[10px]">页边批注</span>
+            <span className="journal-caps text-[10px]">节点详情</span>
             <span className="journal-num text-[10.5px] text-muted">{getAgentLabel(selectedTask.AssignedTo)}</span>
           </div>
           <h3 className="mt-0.5 truncate font-serif text-[14px] font-semibold leading-5 text-ink" title={selectedTask.Name}>{selectedTask.Name}</h3>
@@ -508,6 +514,7 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        {selectedTask.Verification ? <VerificationDetails verification={selectedTask.Verification} onOpenSettings={onOpenModelSettings} /> : null}
         <table className="w-full border-collapse border-b border-line">
           <caption className="sr-only">节点规格</caption>
           <tbody>
@@ -629,7 +636,7 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
               <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
                 <span className="journal-caps flex items-center gap-1.5 text-[10px]">
                   <TerminalSquare className="h-3 w-3" />
-                  校样日志
+                  运行日志
                   {logLines.length > 0 && (
                     <span className="journal-num text-[10px] text-faint">
                       {visibleLogWindow.lines.length}/{filteredLogLines.length}
@@ -745,7 +752,12 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
               </pre>
             </div>
           ) : activeMode === 'plot' ? (
-            <div className="flex min-h-[20rem] flex-1 flex-col items-center justify-center overflow-hidden rounded-[2px] border border-line bg-surface-muted p-3">
+            <div className="relative flex min-h-[20rem] flex-1 flex-col items-center justify-center overflow-hidden rounded-[2px] border border-line bg-surface-muted p-3">
+              {selectedTask.Verification ? (
+                <div className="absolute right-2 top-2 z-10">
+                  <VerificationBadge verification={selectedTask.Verification} onOpenSettings={onOpenModelSettings} />
+                </div>
+              ) : null}
               <img src={`data:image/png;base64,${executionImage}`} alt="Generated Plot" className="max-h-full max-w-full rounded-[2px] object-contain shadow-[var(--shadow-card)]" />
               <div className="mt-2 text-[11px] text-faint">使用右上角按钮全屏查看</div>
             </div>

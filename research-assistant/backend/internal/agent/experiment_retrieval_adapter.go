@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	_ "embed"
 	"encoding/csv"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -820,15 +819,6 @@ func optionalExperimentTaskFloat(task *models.Task, key string, minimum, maximum
 		return nil, fmt.Errorf("%s must be between %g and %g", key, minimum, maximum)
 	}
 	return &value, nil
-}
-
-func experimentJSONSHA256(value any) (string, error) {
-	payload, err := json.Marshal(value)
-	if err != nil {
-		return "", err
-	}
-	hash := sha256.Sum256(payload)
-	return hex.EncodeToString(hash[:]), nil
 }
 
 func experimentHasAny(value string, needles ...string) bool {

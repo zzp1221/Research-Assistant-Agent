@@ -10,11 +10,17 @@ import (
 )
 
 // Chunk is one retrievable unit of a document with page/section provenance.
+// Kind distinguishes body text from structured tables and figure captions so
+// callers can prioritize evidence types.
 type Chunk struct {
 	ID         string  `json:"id"`
 	DocumentID string  `json:"document_id"`
 	Page       int     `json:"page"`
 	Section    string  `json:"section,omitempty"`
+	Kind       string  `json:"kind,omitempty"`
+	BlockID    string  `json:"block_id,omitempty"`
+	TableID    string  `json:"table_id,omitempty"`
+	FigureID   string  `json:"figure_id,omitempty"`
 	Text       string  `json:"text"`
 	Score      float64 `json:"score,omitempty"`
 }
@@ -107,7 +113,7 @@ func buildChunks(document *Document) []Chunk {
 	if document == nil {
 		return nil
 	}
-	chunks := make([]Chunk, 0, len(document.Pages)*2)
+	chunks := make([]Chunk, 0, len(document.Pages)*2+len(document.Tables)+len(document.Figures))
 	section := ""
 	for _, page := range document.Pages {
 		lines := strings.Split(page.Text, "\n")
@@ -120,6 +126,7 @@ func buildChunks(document *Document) []Chunk {
 					DocumentID: document.UploadID,
 					Page:       page.Number,
 					Section:    section,
+					Kind:       "text",
 					Text:       text,
 				})
 			}
@@ -142,6 +149,42 @@ func buildChunks(document *Document) []Chunk {
 			builder.WriteString(clean)
 		}
 		flush()
+	}
+
+	for index, table := range document.Tables {
+		var builder strings.Builder
+		fmt.Fprintf(&builder, "Table %d", index+1)
+		if strings.TrimSpace(table.Caption) != "" {
+			fmt.Fprintf(&builder, ": %s", strings.TrimSpace(table.Caption))
+		}
+		for _, row := range table.Rows {
+			builder.WriteString("\n")
+			builder.WriteString(strings.Join(row, " | "))
+		}
+		chunks = append(chunks, Chunk{
+			ID:         fmt.Sprintf("%s-%s", document.UploadID, table.ID),
+			DocumentID: document.UploadID,
+			Page:       table.Page,
+			Section:    section,
+			Kind:       "table",
+			TableID:    table.ID,
+			Text:       strings.TrimSpace(builder.String()),
+		})
+	}
+	for index, figure := range document.Figures {
+		caption := strings.TrimSpace(figure.Caption)
+		if caption == "" {
+			caption = fmt.Sprintf("Figure %d", index+1)
+		}
+		chunks = append(chunks, Chunk{
+			ID:         fmt.Sprintf("%s-%s", document.UploadID, figure.ID),
+			DocumentID: document.UploadID,
+			Page:       figure.Page,
+			Section:    section,
+			Kind:       "figure",
+			FigureID:   figure.ID,
+			Text:       caption,
+		})
 	}
 	return chunks
 }

@@ -9,14 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"research-assistant-backend/internal/llmclient"
+	"research-assistant-backend/internal/agent/conversation"
 	"sort"
 	"strings"
 
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
-
-	"github.com/cloudwego/eino/schema"
 )
 
 const (
@@ -111,6 +109,8 @@ func (a *ResearchCodingAgent) executePaperCodeTask(ctx context.Context, task *mo
 	backups := map[string]paperCodeBackup{}
 	repairCount := 0
 	diagnostic := ""
+	var repairSession *conversation.Session
+	var repairContextFiles map[string]string
 
 	if task.Type == "fix_and_rerun" {
 		diagnostic = chooseNonEmpty(
@@ -119,9 +119,13 @@ func (a *ResearchCodingAgent) executePaperCodeTask(ctx context.Context, task *mo
 			extractTaskInputLike(task, "run_metrics"),
 			task.Description,
 		)
-		response, contextFiles, planErr := a.planPaperCodeRepair(ctx, task, workspacePath, entryPath, diagnostic, repairCount+1)
+		response, contextFiles, session, planErr := a.planPaperCodeRepairWithSession(ctx, task, workspacePath, entryPath, diagnostic, repairCount+1, repairSession)
 		if planErr != nil {
 			return failPaperCodeDebugTask(task, workspacePath, backups, &report, planErr)
+		}
+		repairSession = session
+		if repairContextFiles == nil {
+			repairContextFiles = contextFiles
 		}
 		report.Diagnosis = response.Diagnosis
 		if response.Status != "patched" {
@@ -130,7 +134,7 @@ func (a *ResearchCodingAgent) executePaperCodeTask(ctx context.Context, task *mo
 			return completePaperCodeDebugTask(task, workspacePath, entryPath, &report, extractTaskInputLike(task, "run_metrics"))
 		}
 		repairCount++
-		applied, applyErr := applyPaperCodePatches(workspacePath, response.Patches, contextFiles, backups, repairCount)
+		applied, applyErr := applyPaperCodePatches(workspacePath, response.Patches, repairContextFiles, backups, repairCount)
 		if applyErr != nil {
 			return failPaperCodeDebugTask(task, workspacePath, backups, &report, applyErr)
 		}
@@ -163,16 +167,20 @@ func (a *ResearchCodingAgent) executePaperCodeTask(ctx context.Context, task *mo
 			return failPaperCodeDebugTask(task, workspacePath, backups, &report, fmt.Errorf("paper code failed and the research coding model is unavailable: %s", diagnostic))
 		}
 
-		response, contextFiles, planErr := a.planPaperCodeRepair(ctx, task, workspacePath, entryPath, diagnostic, repairCount+1)
+		response, contextFiles, session, planErr := a.planPaperCodeRepairWithSession(ctx, task, workspacePath, entryPath, diagnostic, repairCount+1, repairSession)
 		if planErr != nil {
 			return failPaperCodeDebugTask(task, workspacePath, backups, &report, planErr)
+		}
+		repairSession = session
+		if repairContextFiles == nil {
+			repairContextFiles = contextFiles
 		}
 		report.Diagnosis = response.Diagnosis
 		if response.Status != "patched" {
 			return failPaperCodeDebugTask(task, workspacePath, backups, &report, fmt.Errorf("paper code repair stopped with status %s: %s", response.Status, response.Diagnosis))
 		}
 		repairCount++
-		applied, applyErr := applyPaperCodePatches(workspacePath, response.Patches, contextFiles, backups, repairCount)
+		applied, applyErr := applyPaperCodePatches(workspacePath, response.Patches, repairContextFiles, backups, repairCount)
 		if applyErr != nil {
 			return failPaperCodeDebugTask(task, workspacePath, backups, &report, applyErr)
 		}
@@ -238,46 +246,58 @@ func (a *ResearchCodingAgent) runPaperCodeOnce(ctx context.Context, runtimeSessi
 	return attempt, nil
 }
 
-func (a *ResearchCodingAgent) planPaperCodeRepair(ctx context.Context, task *models.Task, workspacePath, entryPath, diagnostic string, repairNumber int) (paperCodeRepairResponse, map[string]string, error) {
+// planPaperCodeRepairWithSession continues one conversation across repair
+// rounds. The first round carries the source context; later rounds only append
+// the failure feedback, so the previous patch remains an assistant message.
+func (a *ResearchCodingAgent) planPaperCodeRepairWithSession(ctx context.Context, task *models.Task, workspacePath, entryPath, diagnostic string, repairNumber int, session *conversation.Session) (paperCodeRepairResponse, map[string]string, *conversation.Session, error) {
 	var response paperCodeRepairResponse
 	if a == nil || a.ChatModel == nil {
-		return response, nil, fmt.Errorf("research coding model is not configured")
+		return response, nil, session, fmt.Errorf("research coding model is not configured")
 	}
-	contextText, contextFiles, err := collectPaperDebugContext(workspacePath, entryPath, diagnostic, extractTaskInputLike(task, "repo_manifest"))
+	diagnostic = truncateToTokens(diagnostic, agentEnvInt("PAPER_DEBUG_DIAGNOSTIC_MAX_TOKENS", 8000))
+	var contextFiles map[string]string
+	if session == nil {
+		contextText, files, err := collectPaperDebugContext(workspacePath, entryPath, diagnostic, extractTaskInputLike(task, "repo_manifest"))
+		if err != nil {
+			return response, nil, session, err
+		}
+		contextFiles = files
+		// Section-level token budget: source context is the largest prompt block.
+		contextText = truncateToTokens(contextText, agentEnvInt("PAPER_DEBUG_CONTEXT_MAX_TOKENS", 48000))
+		session = conversation.NewSession("paper-debug-"+task.ID, prompts.ResearchCodingDebugSystemPrompt,
+			prompts.ResearchCodingDebugUserPrompt(task.Description, diagnostic, contextText, repairNumber))
+	} else {
+		session.AddUser(fmt.Sprintf("Run failed: %s\nRepair round %d. Continue from the previous patch; do not repeat it.", diagnostic, repairNumber))
+	}
+	message, err := session.Generate(ctx, a.ChatModel)
 	if err != nil {
-		return response, nil, err
+		return response, nil, session, fmt.Errorf("paper code repair planning failed: %w", err)
 	}
-	message, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
-		{Role: schema.System, Content: prompts.ResearchCodingDebugSystemPrompt},
-		{Role: schema.User, Content: prompts.ResearchCodingDebugUserPrompt(task.Description, diagnostic, contextText, repairNumber)},
-	})
-	if err != nil {
-		return response, nil, fmt.Errorf("paper code repair planning failed: %w", err)
-	}
+	session.Record(task)
 	if err := json.Unmarshal([]byte(cleanJSONResponse(message.Content)), &response); err != nil {
-		return response, nil, fmt.Errorf("decode paper code repair response: %w", err)
+		return response, nil, session, fmt.Errorf("decode paper code repair response: %w", err)
 	}
 	response.Status = strings.ToLower(strings.TrimSpace(response.Status))
 	response.Diagnosis = strings.TrimSpace(response.Diagnosis)
 	switch response.Status {
 	case "patched":
 		if len(response.Patches) == 0 || len(response.Patches) > paperDebugMaxPatchFiles {
-			return response, nil, fmt.Errorf("paper code repair must contain 1-%d patches", paperDebugMaxPatchFiles)
+			return response, nil, session, fmt.Errorf("paper code repair must contain 1-%d patches", paperDebugMaxPatchFiles)
 		}
 		if response.Diagnosis == "" {
-			return response, nil, fmt.Errorf("paper code repair must include an evidence-based diagnosis")
+			return response, nil, session, fmt.Errorf("paper code repair must include an evidence-based diagnosis")
 		}
 		for _, patch := range response.Patches {
 			if strings.TrimSpace(patch.Reason) == "" {
-				return response, nil, fmt.Errorf("paper code patch %q must include a reason", patch.Path)
+				return response, nil, session, fmt.Errorf("paper code patch %q must include a reason", patch.Path)
 			}
 		}
 	case "no_change", "unsupported":
 		response.Patches = nil
 	default:
-		return response, nil, fmt.Errorf("invalid paper code repair status %q", response.Status)
+		return response, nil, session, fmt.Errorf("invalid paper code repair status %q", response.Status)
 	}
-	return response, contextFiles, nil
+	return response, contextFiles, session, nil
 }
 
 func collectPaperDebugContext(workspacePath, entryPath, diagnostic, repoManifest string) (string, map[string]string, error) {
@@ -647,7 +667,7 @@ func truncatePaperDebugText(value string, limit int) string {
 	if len(value) <= limit {
 		return value
 	}
-	return value[:limit] + "...[truncated]"
+	return prompts.TruncateUTF8Bytes(value, limit) + "...[truncated]"
 }
 
 func paperRunCommand(task *models.Task) []string {

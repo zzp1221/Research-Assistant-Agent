@@ -70,6 +70,7 @@ export const graphTaskToTask = (task: GraphTask): Task => ({
   StructuredData: task.structured_data,
   ImageBase64: task.image_base64 || task.image_base_64,
   Error: task.error,
+  Verification: task.verification,
 });
 
 // Go marshals a nil slice as JSON null, so a plan created before a dependency

@@ -76,6 +76,7 @@ func (a *LibrarianAgent) executeClaimRubricExtraction(ctx context.Context, task 
 		return failClaimTask(task, fmt.Errorf("claim rubric extraction requires parsed_paper"))
 	}
 	parsedPaper = truncateClaimBytes(parsedPaper, claimMaxPaperBytes)
+	parsedPaper = truncateToTokens(parsedPaper, agentEnvInt("CLAIM_PAPER_MAX_TOKENS", 24000))
 
 	message, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
 		{Role: schema.System, Content: prompts.ClaimRubricSystemPrompt},
@@ -334,7 +335,9 @@ func collectClaimEvidence(task *models.Task) ([]models.ClaimEvidenceNode, map[st
 		}
 		contextBuilder.WriteString("END ARTIFACT\n\n")
 	}
-	return evidence, values, contextBuilder.String()
+	contextText := contextBuilder.String()
+	contextText = truncateToTokens(contextText, agentEnvInt("CLAIM_EVIDENCE_MAX_TOKENS", 32000))
+	return evidence, values, contextText
 }
 
 func buildClaimEvidenceResults(rubric models.ClaimRubric, proposal claimEvidenceProposal, evidence []models.ClaimEvidenceNode, evidenceValues map[string]string, requireComplete bool, fallbackReason string) ([]models.ClaimEvidenceResult, error) {

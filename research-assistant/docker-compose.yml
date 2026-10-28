@@ -151,12 +151,33 @@ services:
       - PDF_PARSE_MAX_MB=${PDF_PARSE_MAX_MB:-128}
       - PDF_OCR_MAX_PAGES=${PDF_OCR_MAX_PAGES:-5}
       - PDF_OCR_TIMEOUT_SECONDS=${PDF_OCR_TIMEOUT_SECONDS:-60}
+      - PDF_OCR_LANG=${PDF_OCR_LANG:-eng+chi_sim}
+      - PDF_OCR_MIN_TEXT_CHARS=${PDF_OCR_MIN_TEXT_CHARS:-20}
+      - DOCUMENT_CACHE_DIR=${DOCUMENT_CACHE_DIR:-/app/data/document-cache}
       - LITERATURE_CACHE_DIR=/app/data/literature-cache
+      - LITERATURE_LIBRARY_DIR=${LITERATURE_LIBRARY_DIR:-/app/data/literature-library}
+      - LITERATURE_MAX_RETRIES=${LITERATURE_MAX_RETRIES:-2}
+      - WEB_FETCH_MAX_MB=${WEB_FETCH_MAX_MB:-2}
+      - WEB_FETCH_TIMEOUT_SECONDS=${WEB_FETCH_TIMEOUT_SECONDS:-15}
+      - WEB_FETCH_RESPECT_ROBOTS=${WEB_FETCH_RESPECT_ROBOTS:-true}
+      - WEB_FETCH_CACHE_TTL_SECONDS=${WEB_FETCH_CACHE_TTL_SECONDS:-3600}
+      - ALLOW_PRIVATE_WEB_FETCH=${ALLOW_PRIVATE_WEB_FETCH:-false}
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - OPENALEX_MAILTO=${OPENALEX_MAILTO:-}
       - LLM_PRICE_PROMPT_PER_1K_USD=${LLM_PRICE_PROMPT_PER_1K_USD:-0}
       - LLM_PRICE_COMPLETION_PER_1K_USD=${LLM_PRICE_COMPLETION_PER_1K_USD:-0}
       - HEALTH_VERBOSE=${HEALTH_VERBOSE:-false}
+      - MODEL_PROFILE_DIR=${MODEL_PROFILE_DIR:-/app/data/model-profiles}
+      - MODEL_PROFILE_ENCRYPTION_KEY=${MODEL_PROFILE_ENCRYPTION_KEY:-}
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-}
+      - MODEL_PROFILE_MAX_PER_USER=${MODEL_PROFILE_MAX_PER_USER:-10}
+      - MODEL_PROBE_RATE_LIMIT_SECONDS=${MODEL_PROBE_RATE_LIMIT_SECONDS:-5}
+      - VISION_MAX_EDGE_PX=${VISION_MAX_EDGE_PX:-1280}
+      - VISION_MAX_IMAGES=${VISION_MAX_IMAGES:-4}
+      - VISION_TIMEOUT_SECONDS=${VISION_TIMEOUT_SECONDS:-120}
+      - FEATURE_VISION_VERIFICATION=${FEATURE_VISION_VERIFICATION:-true}
+      - ALLOW_PRIVATE_MODEL_ENDPOINTS=${ALLOW_PRIVATE_MODEL_ENDPOINTS:-false}
+      - PLANNER_AGENT_ENABLED=${PLANNER_AGENT_ENABLED:-true}
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -170,6 +191,23 @@ services:
         condition: service_healthy
       intent-recognition:
         condition: service_healthy
+    networks:
+      - research-assistant-network
+
+  # 3b. Deterministic OpenAI-compatible mock used only by the E2E suite.
+  # It plays text-only / vision / failing / garbage providers so the vision
+  # routing scenarios are reproducible without a paid third-party provider.
+  mock-vision:
+    image: python:3.11-bullseye
+    volumes:
+      - ./test/mock:/mock:ro
+    command: ["python", "/mock/mock_vision_server.py", "9099"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9099/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    profiles: ["e2e"]
     networks:
       - research-assistant-network
 

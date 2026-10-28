@@ -38,6 +38,44 @@ class IntentServiceTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             main._parse_intent('{"intent_type":"Made_Up","confidence":0.9,"entities":{}}', "model", 1, 1)
 
+    def test_parse_intent_reads_complexity_fields(self):
+        parsed = main._parse_intent(
+            '{"intent_type":"Paper_Reproduction","confidence":0.93,"entities":{},'
+            '"complexity":"L4","capabilities":["attachment","claim_evidence","claim_evidence"],'
+            '"route_hint":"agent_planner","complexity_confidence":0.88,'
+            '"complexity_reason":"需要复现论文并生成 claim evidence"}',
+            "model",
+            10,
+            1,
+        )
+        self.assertEqual(parsed.complexity, "L4")
+        self.assertEqual(parsed.capabilities, ["attachment", "claim_evidence"])
+        self.assertEqual(parsed.route_hint, "agent_planner")
+        self.assertAlmostEqual(parsed.complexity_confidence, 0.88)
+        self.assertIn("claim evidence", parsed.complexity_reason)
+
+    def test_parse_intent_defaults_complexity_when_missing(self):
+        parsed = main._parse_intent(
+            '{"intent_type":"General","confidence":0.9,"entities":{}}',
+            "model",
+            1,
+            1,
+        )
+        self.assertIsNone(parsed.complexity)
+        self.assertEqual(parsed.route_hint, "standard_template")
+        self.assertEqual(parsed.capabilities, [])
+
+    def test_parse_intent_normalises_unknown_complexity(self):
+        parsed = main._parse_intent(
+            '{"intent_type":"General","confidence":0.9,"entities":{},'
+            '"complexity":"L9","route_hint":"teleport"}',
+            "model",
+            1,
+            1,
+        )
+        self.assertEqual(parsed.complexity, "L2")
+        self.assertEqual(parsed.route_hint, "standard_template")
+
     def test_health_reports_configured_state(self):
         old_key = os.environ.get("OPENAI_API_KEY")
         try:

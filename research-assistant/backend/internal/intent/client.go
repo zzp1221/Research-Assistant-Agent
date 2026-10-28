@@ -19,9 +19,16 @@ type Classification struct {
 	Confidence float64        `json:"confidence"`
 	Entities   map[string]any `json:"entities"`
 	Reasoning  string         `json:"reasoning,omitempty"`
-	Model      string         `json:"model"`
-	LatencyMS  int            `json:"latency_ms"`
-	Attempts   int            `json:"attempts"`
+	// Optional complexity fields returned by newer intent services. Missing
+	// fields fall back to the Go-side rule router.
+	Complexity           string   `json:"complexity,omitempty"`
+	Capabilities         []string `json:"capabilities,omitempty"`
+	RouteHint            string   `json:"route_hint,omitempty"`
+	ComplexityConfidence float64  `json:"complexity_confidence,omitempty"`
+	ComplexityReason     string   `json:"complexity_reason,omitempty"`
+	Model                string   `json:"model"`
+	LatencyMS            int      `json:"latency_ms"`
+	Attempts             int      `json:"attempts"`
 }
 
 // Classifier is the small seam used by the resolver and by tests.

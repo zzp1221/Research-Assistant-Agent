@@ -1,10 +1,18 @@
-import { lazy, Suspense, type ReactNode } from 'react';
-import { X } from 'lucide-react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
+import { BookOpen, X } from 'lucide-react';
 import { ChatPanel } from '../../features/chat/ChatPanel';
-import type { AssistResponse, ChatMessage, DocumentInfoResponse, TranslationJob, UploadedFile } from '../../contracts/api';
+import type {
+  AssistResponse,
+  ChatMessage,
+  DocumentInfoResponse,
+  LiteratureRecord,
+  TranslationJob,
+  UploadedFile,
+} from '../../contracts/api';
 import type { AssistMode } from '../../hooks/useAITranslationPlugin';
 
 const PdfViewerSurface = lazy(() => import('../../features/pdf-viewer/PdfViewerSurface'));
+const LiteraturePanel = lazy(() => import('../../features/literature/LiteraturePanel'));
 
 interface LeftWorkspaceShellProps {
   widthPercent: number;
@@ -92,10 +100,18 @@ interface LeftWorkspaceChatProps {
   taskActions: {
     onOpenTaskView: (taskId: string, mode: 'plot' | 'report') => void;
   };
+  literatureActions: {
+    activeSessionId: string | null;
+    onAttachToSession: (upload: UploadedFile, record: LiteratureRecord) => 'added' | 'duplicate' | 'full';
+    onDetachFromSession: (uploadId: string) => void;
+    onOpenPdf: (upload: UploadedFile) => void;
+    onOpenHelp: () => void;
+  };
 }
 
 export function LeftWorkspaceChat(props: LeftWorkspaceChatProps) {
-  const { widthPercent, state, chatActions, pdfActions, taskActions } = props;
+  const { widthPercent, state, chatActions, pdfActions, taskActions, literatureActions } = props;
+  const [activeTab, setActiveTab] = useState<'chat' | 'literature'>('chat');
   return (
     <LeftWorkspaceShell
       widthPercent={widthPercent}
@@ -103,7 +119,57 @@ export function LeftWorkspaceChat(props: LeftWorkspaceChatProps) {
       onClosePdf={pdfActions.onClosePdf}
       accountLabel={state.userId ? `会话 ${state.userId.slice(0, 8)}` : '正在建立安全会话…'}
     >
-      <ChatPanel state={state} chatActions={chatActions} pdfActions={pdfActions} taskActions={taskActions} />
+      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-line bg-surface px-2" role="tablist" aria-label="工作区">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'chat'}
+          onClick={() => setActiveTab('chat')}
+          className={`h-6 border px-2 text-[11.5px] transition-colors ${
+            activeTab === 'chat'
+              ? 'border-accent/35 bg-accent-soft text-accent-ink'
+              : 'border-transparent text-muted hover:border-line-strong hover:text-ink-soft'
+          }`}
+        >
+          对话
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'literature'}
+          onClick={() => setActiveTab('literature')}
+          className={`inline-flex h-6 items-center gap-1 border px-2 text-[11.5px] transition-colors ${
+            activeTab === 'literature'
+              ? 'border-accent/35 bg-accent-soft text-accent-ink'
+              : 'border-transparent text-muted hover:border-line-strong hover:text-ink-soft'
+          }`}
+        >
+          <BookOpen className="h-3 w-3" />
+          文献库
+        </button>
+      </div>
+      <div className="min-h-0 flex-1">
+        {activeTab === 'chat' ? (
+          <ChatPanel
+            state={state}
+            chatActions={chatActions}
+            pdfActions={pdfActions}
+            taskActions={taskActions}
+            onOpenLiterature={() => setActiveTab('literature')}
+          />
+        ) : (
+          <Suspense fallback={<div className="p-4 text-[11px] text-faint">正在加载文献面板…</div>}>
+            <LiteraturePanel
+              activeSessionId={literatureActions.activeSessionId}
+              onAttachToSession={literatureActions.onAttachToSession}
+              onDetachFromSession={literatureActions.onDetachFromSession}
+              onOpenPdf={literatureActions.onOpenPdf}
+              onOpenHelp={literatureActions.onOpenHelp}
+              onGoToChat={() => setActiveTab('chat')}
+            />
+          </Suspense>
+        )}
+      </div>
     </LeftWorkspaceShell>
   );
 }
@@ -117,6 +183,7 @@ interface LeftWorkspacePdfProps {
   translation: TranslationPanelState;
   onAskAI: (text: string) => void;
   onAssist: (mode: AssistMode, text: string, page: number) => Promise<AssistResponse>;
+  onOpenHelp?: () => void;
 }
 
 export interface TranslationPanelState {
@@ -146,7 +213,7 @@ function PdfViewerSkeleton() {
 }
 
 export function LeftWorkspacePdf(props: LeftWorkspacePdfProps) {
-  const { widthPercent, pdfUrl, documentInfo, onClosePdf, onPageChange, translation, onAskAI, onAssist } = props;
+  const { widthPercent, pdfUrl, documentInfo, onClosePdf, onPageChange, translation, onAskAI, onAssist, onOpenHelp } = props;
   return (
     <LeftWorkspaceShell
       widthPercent={widthPercent}
@@ -162,6 +229,7 @@ export function LeftWorkspacePdf(props: LeftWorkspacePdfProps) {
           translation={translation}
           onAskAI={onAskAI}
           onAssist={onAssist}
+          onOpenHelp={onOpenHelp}
         />
       </Suspense>
     </LeftWorkspaceShell>

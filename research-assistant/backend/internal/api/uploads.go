@@ -54,6 +54,7 @@ type uploadResponse struct {
 
 func RegisterUploadRoutes(apiGroup *gin.RouterGroup) {
 	apiGroup.POST("/uploads", createUpload)
+	apiGroup.GET("/uploads/:id", getUpload)
 	apiGroup.GET("/uploads/:id/content", serveUploadContent)
 	apiGroup.DELETE("/uploads/:id", deleteUpload)
 	registerDocumentRoutes(apiGroup)
@@ -229,6 +230,24 @@ func persistUpload(source multipart.File, header *multipart.FileHeader, path str
 	return metadata, nil
 }
 
+// getUpload returns owner-scoped metadata for one upload. The literature panel
+// uses it to turn a saved record's upload_id into an attachment without asking
+// the user to pick the same PDF again.
+func getUpload(c *gin.Context) {
+	metadata, err := loadOwnedUpload(resolveUserID(c), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "upload not found", "code": "upload_not_found"})
+		return
+	}
+	response := uploadResponseFromMetadata(metadata)
+	if strings.EqualFold(filepath.Ext(metadata.Name), ".pdf") {
+		if document, loadErr := documents.Load(filepath.Dir(metadata.StoredPath)); loadErr == nil {
+			response.Document = documentSummary(document)
+		}
+	}
+	c.JSON(http.StatusOK, response)
+}
+
 func serveUploadContent(c *gin.Context) {
 	metadata, err := loadOwnedUpload(resolveUserID(c), c.Param("id"))
 	if err != nil {
@@ -337,10 +356,6 @@ func uploadResponseFromMetadata(metadata uploadMetadata) uploadResponse {
 
 func uploadDirectory(ownerID, uploadID string) string {
 	return uploadspkg.Directory(ownerID, uploadID)
-}
-
-func uploadRoot() string {
-	return uploadspkg.Root()
 }
 
 func attachmentRole(name string) string {

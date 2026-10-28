@@ -12,15 +12,13 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"research-assistant-backend/internal/llmclient"
+	"research-assistant-backend/internal/agent/conversation"
 	"sort"
 	"strconv"
 	"strings"
 
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
-
-	"github.com/cloudwego/eino/schema"
 )
 
 func (a *ResearchCodingAgent) executeAdapterPreflight(ctx context.Context, task *models.Task) error {
@@ -71,6 +69,7 @@ func (a *ResearchCodingAgent) executeAdapterPreflight(ctx context.Context, task 
 	maxAttempts := boundedTaskInt(task, "benchmark_max_preflight_attempts", 3, 1, 3)
 	attempts := make([]models.BenchmarkAttempt, 0, maxAttempts)
 	var validated models.BenchmarkHarnessReport
+	var repairSession *conversation.Session
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		codeHash := sha256.Sum256([]byte(code))
 		spec.AdapterCodeSHA256 = hex.EncodeToString(codeHash[:])
@@ -114,11 +113,12 @@ func (a *ResearchCodingAgent) executeAdapterPreflight(ctx context.Context, task 
 		if attempt == maxAttempts || a.ChatModel == nil {
 			break
 		}
-		repaired, repairReason, repairErr := a.repairBenchmarkAdapter(ctx, manifestJSON, string(specJSONBytes), code, runErr.Error())
+		repaired, repairReason, session, repairErr := a.repairBenchmarkAdapterWithSession(ctx, manifestJSON, string(specJSONBytes), code, runErr.Error(), repairSession)
 		if repairErr != nil {
 			attempts[len(attempts)-1].Error += "; repair failed: " + repairErr.Error()
 			break
 		}
+		repairSession = session
 		logToContext(ctx, "[%s] benchmark adapter repair %d: %s", a.Name, attempt, repairReason)
 		code = repaired
 	}
@@ -535,26 +535,32 @@ func readBenchmarkFeatureIDs(path string) (map[string]struct{}, error) {
 	return ids, nil
 }
 
-func (a *ResearchCodingAgent) repairBenchmarkAdapter(ctx context.Context, manifestJSON, specJSON, code, failure string) (string, string, error) {
-	message, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
-		{Role: schema.System, Content: prompts.BenchmarkAdapterSystemPrompt},
-		{Role: schema.User, Content: prompts.BenchmarkAdapterRepairUserPrompt(manifestJSON, specJSON, code, truncateBenchmarkText(failure, 12000))},
-	})
+// repairBenchmarkAdapterWithSession keeps the adapter repair loop in one
+// conversation: the previous repaired code stays an assistant message and only
+// the new failure is appended.
+func (a *ResearchCodingAgent) repairBenchmarkAdapterWithSession(ctx context.Context, manifestJSON, specJSON, code, failure string, session *conversation.Session) (string, string, *conversation.Session, error) {
+	if session == nil {
+		session = conversation.NewSession("benchmark-adapter", prompts.BenchmarkAdapterSystemPrompt,
+			prompts.BenchmarkAdapterRepairUserPrompt(manifestJSON, specJSON, code, truncateBenchmarkText(failure, 12000)))
+	} else {
+		session.AddUser("Preflight still failed:\n" + truncateBenchmarkText(failure, 12000) + "\nReturn a corrected adapter that fixes this failure.")
+	}
+	message, err := session.Generate(ctx, a.ChatModel)
 	if err != nil {
-		return "", "", err
+		return "", "", session, err
 	}
 	var response benchmarkAdapterRepairResponse
 	if err := json.Unmarshal([]byte(cleanJSONResponse(message.Content)), &response); err != nil {
-		return "", "", fmt.Errorf("parse benchmark adapter repair: %w", err)
+		return "", "", session, fmt.Errorf("parse benchmark adapter repair: %w", err)
 	}
 	response.AdapterCode = strings.TrimSpace(response.AdapterCode)
 	if response.AdapterCode == code {
-		return "", "", fmt.Errorf("repair returned unchanged adapter")
+		return "", "", session, fmt.Errorf("repair returned unchanged adapter")
 	}
 	if err := validateBenchmarkAdapterCode(response.AdapterCode); err != nil {
-		return "", "", err
+		return "", "", session, err
 	}
-	return response.AdapterCode, strings.TrimSpace(response.Reason), nil
+	return response.AdapterCode, strings.TrimSpace(response.Reason), session, nil
 }
 
 func benchmarkRunStatusOK(status string) bool {

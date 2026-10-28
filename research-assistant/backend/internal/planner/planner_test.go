@@ -435,7 +435,7 @@ func TestGeneralSummaryPlanStillPassesValidation(t *testing.T) {
 	}
 }
 
-func TestGeneralPlanHasRealContextAndFinalAnswer(t *testing.T) {
+func TestGeneralDirectPlanHasSingleAnswerNode(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "")
 	plan, err := NewPlanner().BuildPlan(t.Context(), models.IntentContext{
 		RawIntent:  "帮我处理一下这个请求",
@@ -445,23 +445,24 @@ func TestGeneralPlanHasRealContextAndFinalAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var final *models.TaskNode
-	for _, node := range plan.Nodes {
-		if node != nil && node.Type == "general_process" && containsArtifact(node.OutputArtifacts, "final_answer") {
-			final = node
-			break
-		}
+	if len(plan.Nodes) != 1 {
+		t.Fatalf("direct general plan must have exactly 1 node, got %#v", plan.Nodes)
 	}
-	if final == nil {
-		t.Fatalf("general plan has no final_answer general_process node: %#v", plan.Nodes)
+	final := plan.Nodes[0]
+	if final.Type != "general_synthesis" || final.AssignedTo != "answer_agent" {
+		t.Fatalf("direct general plan node=%s/%s, want general_synthesis/answer_agent", final.Type, final.AssignedTo)
 	}
-	if len(final.Dependencies) < 2 {
-		t.Fatalf("final answer must consume explicit scope/research dependencies: %#v", final.Dependencies)
+	if !containsArtifact(final.OutputArtifacts, "general_response") {
+		t.Fatalf("direct general plan outputs=%#v, want general_response", final.OutputArtifacts)
+	}
+	if plan.Meta.GeneralPlanShape != "direct" {
+		t.Fatalf("general_plan_shape=%q, want direct", plan.Meta.GeneralPlanShape)
 	}
 }
 
-func TestGeneralProcessUsesGeneralAgent(t *testing.T) {
+func TestGeneralLegacyPlanUsesGeneralAgent(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("GENERAL_PLAN_FAST_PATH", "false")
 	plan, err := NewPlanner().BuildPlan(t.Context(), models.IntentContext{
 		RawIntent:  "帮我处理一下这个请求",
 		IntentType: "General",
@@ -469,6 +470,9 @@ func TestGeneralProcessUsesGeneralAgent(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(plan.Nodes) != 3 {
+		t.Fatalf("legacy general plan must keep 3 nodes, got %d", len(plan.Nodes))
 	}
 	var process *models.TaskNode
 	for _, node := range plan.Nodes {
@@ -482,6 +486,9 @@ func TestGeneralProcessUsesGeneralAgent(t *testing.T) {
 	}
 	if process.AssignedTo != "general_agent" {
 		t.Fatalf("general_process assigned to %s, want general_agent", process.AssignedTo)
+	}
+	if plan.Meta.GeneralPlanShape != "legacy" {
+		t.Fatalf("general_plan_shape=%q, want legacy", plan.Meta.GeneralPlanShape)
 	}
 }
 

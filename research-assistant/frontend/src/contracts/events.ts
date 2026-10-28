@@ -13,6 +13,8 @@ export const PLAN_EVENTS = {
 	PLAN_CANCELED: 'plan_canceled',
 	RUNTIME_ACTION_REQUESTED: 'runtime_action_requested',
 	RUNTIME_ACTION_RESOLVED: 'runtime_action_resolved',
+	VERIFICATION_COMPLETED: 'verification_completed',
+	VERIFICATION_FAILED: 'verification_failed',
 } as const;
 
 export const DIRECT_EXECUTION_EVENTS = {

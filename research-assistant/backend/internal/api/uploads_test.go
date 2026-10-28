@@ -63,6 +63,59 @@ func TestUploadLifecycleEnforcesOwnership(t *testing.T) {
 	}
 }
 
+func TestGetUploadReturnsOwnerScopedMetadata(t *testing.T) {
+	t.Setenv("UPLOAD_ROOT", t.TempDir())
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	RegisterUploadRoutes(router.Group("/api"))
+
+	metadata := uploadMetadata{
+		ID:          "3d2f6f0e-9d9a-4a3e-9b0e-5f0e6f7a8b9c",
+		Name:        "attention.pdf",
+		ContentType: "application/pdf",
+		OwnerID:     "upload-owner",
+		SessionID:   "upload-session",
+		CreatedAt:   time.Date(2026, 10, 27, 0, 0, 0, 0, time.UTC),
+	}
+	directory := uploadDirectory(metadata.OwnerID, metadata.ID)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	metadata.StoredPath = filepath.Join(directory, "content.pdf")
+	content := []byte("%PDF-1.4")
+	if err := os.WriteFile(metadata.StoredPath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	metadata.Size = int64(len(content))
+	metadata.SHA256 = "test"
+	if err := writeUploadMetadata(metadata); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/uploads/"+metadata.ID, nil)
+	request.Header.Set(userIDHeaderName, "upload-owner")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	var fetched uploadResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &fetched); err != nil {
+		t.Fatal(err)
+	}
+	if fetched.ID != metadata.ID || fetched.Name != "attention.pdf" || fetched.ContentURL != "/api/uploads/"+metadata.ID+"/content" {
+		t.Fatalf("fetched=%#v", fetched)
+	}
+
+	foreign := httptest.NewRequest(http.MethodGet, "/api/uploads/"+metadata.ID, nil)
+	foreign.Header.Set(userIDHeaderName, "other-owner")
+	foreignResponse := httptest.NewRecorder()
+	router.ServeHTTP(foreignResponse, foreign)
+	if foreignResponse.Code != http.StatusNotFound {
+		t.Fatalf("foreign status=%d body=%s", foreignResponse.Code, foreignResponse.Body.String())
+	}
+}
+
 func TestResolvePlanUploadsIncludesTextExcerpt(t *testing.T) {
 	t.Setenv("UPLOAD_ROOT", t.TempDir())
 	metadata := uploadMetadata{

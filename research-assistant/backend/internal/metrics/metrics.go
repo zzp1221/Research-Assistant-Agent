@@ -387,3 +387,53 @@ func RecordSandboxExecution(duration time.Duration, ok bool) {
 		Default().Inc("sandbox_errors_total", nil)
 	}
 }
+
+// RecordVerification records the advisory verdict of a verify_result node.
+func RecordVerification(status, level string) {
+	Default().Inc("verification_total", Labels{"status": status, "level": level})
+}
+
+// RecordVisionCall records one multimodal model invocation and its outcome.
+func RecordVisionCall(profileID, mode, result string) {
+	Default().Inc("vision_calls_total", Labels{"profile_id": profileID, "mode": mode, "result": result})
+}
+
+// RecordModelProfileChange records a profile create/update/delete audit metric.
+func RecordModelProfileChange(action string) {
+	Default().Inc("model_profile_changes_total", Labels{"action": action})
+}
+
+// RecordPlanGeneralShape records the deterministic General plan shape.
+func RecordPlanGeneralShape(shape string) {
+	Default().Inc("plan_general_shape_total", Labels{"shape": shape})
+}
+
+// RecordPlanLLMNodes records how many LLM nodes a plan contains.
+func RecordPlanLLMNodes(intentType, shape string, nodes int) {
+	Default().Add("plan_llm_nodes_total", float64(nodes), Labels{"intent_type": intentType, "shape": shape})
+}
+
+// RecordPlanRoute records the complexity route chosen for a plan.
+func RecordPlanRoute(complexity, routeSource, variant string) {
+	Default().Inc("plan_route_total", Labels{"complexity": complexity, "route_source": routeSource, "template_variant": variant})
+}
+
+// RecordPlannerFallback records why a plan fell back to the deterministic template.
+func RecordPlannerFallback(reason string) {
+	Default().Inc("planner_fallback_total", Labels{"reason": reason})
+}
+
+// RecordPlanCreateDuration records plan creation latency by route.
+func RecordPlanCreateDuration(complexity, routeSource string, duration time.Duration) {
+	Default().Observe("plan_create_duration_seconds", duration.Seconds(), Labels{"complexity": complexity, "route_source": routeSource})
+}
+
+// RecordPromptTruncatedSection records that a prompt section was truncated or dropped.
+func RecordPromptTruncatedSection(section string) {
+	Default().Inc("llm_prompt_truncated_sections_total", Labels{"section": section})
+}
+
+// RecordPromptOverBudget records a prompt that could not fit its budget.
+func RecordPromptOverBudget(model string) {
+	Default().Inc("llm_prompt_over_budget_total", Labels{"model": model})
+}

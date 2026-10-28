@@ -190,6 +190,14 @@ var taskTypeRegistry = map[string]TaskTypeSpec{
 		EvidenceClass: EvidenceLLM,
 		Description:   "LLM background research report; no dedicated retrieval tool",
 	},
+	"literature_search": {
+		AllowedAgents:           []string{"librarian_agent"},
+		ExecutionKind:           ExecutionReal,
+		OutputKind:              OutputArtifactRef,
+		EvidenceClass:           EvidencePaper,
+		RequiredOutputArtifacts: []string{"literature_results"},
+		Description:             "real multi-provider literature search with PDF import and metadata-only fallback",
+	},
 	"general_synthesis": {
 		AllowedAgents:           []string{"answer_agent"},
 		ExecutionKind:           ExecutionLLM,

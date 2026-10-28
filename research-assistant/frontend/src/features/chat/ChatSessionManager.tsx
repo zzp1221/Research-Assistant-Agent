@@ -89,7 +89,7 @@ export function ChatSessionManager(props: ChatSessionManagerProps) {
           className="group flex min-w-0 flex-1 items-start gap-2 text-left"
         >
           <span className="min-w-0 flex-1">
-            <span className="journal-caps block text-[10px]">当前稿次</span>
+            <span className="journal-caps block text-[10px]">当前会话</span>
             <span className="mt-0.5 block truncate font-serif text-[14px] font-semibold leading-5 text-ink">
               {activeSession?.title || '未命名会话'}
             </span>
@@ -117,7 +117,7 @@ export function ChatSessionManager(props: ChatSessionManagerProps) {
       {open && (
         <div className="proof-fade absolute left-3 right-3 top-[calc(100%+2px)] z-40 border border-ink bg-surface shadow-float">
           <div className="flex items-baseline justify-between border-b border-line px-3 py-2">
-            <span className="journal-caps text-[10px]">往期稿次</span>
+            <span className="journal-caps text-[10px]">历史会话</span>
             <span className="journal-num text-[10.5px] text-muted">{state.sessions.length} 篇</span>
           </div>
 
@@ -161,7 +161,7 @@ export function ChatSessionManager(props: ChatSessionManagerProps) {
               </span>
             </div>
             <p className="mt-1 text-[10.5px] leading-4 text-muted">
-              身份由服务端签名 Cookie 签发，刷新或换设备后仍可找回计划。
+              会话由服务端安全保存，刷新页面后可继续；计划与产物会保留在服务器。
             </p>
           </div>
         </div>

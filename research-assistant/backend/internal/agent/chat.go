@@ -20,6 +20,8 @@ type ChatAgent struct {
 	SystemPrompt string
 	EinoChain    compose.Runnable[string, string]
 	Coder        *CoderAgent // 注入 CoderAgent 以便在需要时执行代码
+	// Runtime resolves the caller's model profile per request.
+	Runtime *dynamicChatModel
 }
 
 func NewChatAgent(coder *CoderAgent) *ChatAgent {
@@ -27,6 +29,7 @@ func NewChatAgent(coder *CoderAgent) *ChatAgent {
 		Name:         "chat_agent",
 		Coder:        coder,
 		SystemPrompt: prompts.ChatSystemPrompt,
+		Runtime:      newDynamicChatModel(nil),
 	}
 
 	agent.initEinoChain()
@@ -34,18 +37,21 @@ func NewChatAgent(coder *CoderAgent) *ChatAgent {
 }
 
 func (a *ChatAgent) initEinoChain() {
+	var chatModel *openai.ChatModel
 	llmCfg, err := appconfig.LoadLLMConfig()
 	if err != nil {
-		log.Fatalf("加载 LLM 配置失败: %v", err)
-	}
-
-	chatModel, err := llmclient.NewChatModel(context.Background(), &openai.ChatModelConfig{
-		BaseURL: llmCfg.BaseURL,
-		APIKey:  llmCfg.APIKey,
-		Model:   llmCfg.Model,
-	})
-	if err != nil {
-		log.Fatalf("初始化聊天模型失败: %v", err)
+		log.Printf("加载 LLM 配置失败，聊天链将使用运行期模型: %v", err)
+	} else {
+		created, createErr := llmclient.NewChatModel(context.Background(), &openai.ChatModelConfig{
+			BaseURL: llmCfg.BaseURL,
+			APIKey:  llmCfg.APIKey,
+			Model:   llmCfg.Model,
+		})
+		if createErr != nil {
+			log.Printf("初始化聊天模型失败，聊天链将使用运行期模型: %v", createErr)
+		} else {
+			chatModel = created
+		}
 	}
 
 	graph := compose.NewGraph[string, string]()
@@ -58,20 +64,26 @@ func (a *ChatAgent) initEinoChain() {
 		return messages, nil
 	}))
 
-	graph.AddChatModelNode("LLM_Chat", wrapUsageModel(chatModel))
+	model := wrapRuntimeModel(a.Runtime, chatModel)
+	if model != nil {
+		graph.AddChatModelNode("LLM_Chat", wrapUsageModel(model))
+	}
 
 	graph.AddLambdaNode("Response_Extractor", compose.InvokableLambda(func(ctx context.Context, msg *schema.Message) (string, error) {
 		return msg.Content, nil
 	}))
 
 	graph.AddEdge(compose.START, "Prompt_Builder")
-	graph.AddEdge("Prompt_Builder", "LLM_Chat")
-	graph.AddEdge("LLM_Chat", "Response_Extractor")
+	if model != nil {
+		graph.AddEdge("Prompt_Builder", "LLM_Chat")
+		graph.AddEdge("LLM_Chat", "Response_Extractor")
+	}
 	graph.AddEdge("Response_Extractor", compose.END)
 
 	runnable, err := graph.Compile(context.Background())
 	if err != nil {
-		log.Fatalf("编译 Eino 链失败: %v", err)
+		log.Printf("编译 Eino 链失败: %v", err)
+		return
 	}
 
 	a.EinoChain = runnable
@@ -117,12 +129,15 @@ func min(a, b int) int {
 }
 
 func (a *ChatAgent) ExecuteTask(ctx context.Context, task *models.Task, sharedContext map[string]interface{}) error {
-	question := strings.TrimSpace(task.Description)
-	if question == "" {
-		question = task.Name
+	question, promptReport, promptErr := buildAgentPromptText(sharedContext, task, prompts.ChatSystemPrompt, "", 12000)
+	if promptErr != nil {
+		task.Status = models.StatusFailed
+		task.Error = promptErr.Error()
+		return promptErr
 	}
-	if len(task.Inputs) > 0 {
-		question += "\n\n上游输入（只读，供回答使用）：\n" + formatTaskInputsForPrompt(task.Inputs, 12000)
+	recordPromptReport(task, promptReport)
+	if strings.TrimSpace(question) == "" {
+		question = task.Name
 	}
 	output, err := a.Answer(ctx, question)
 	if err != nil {

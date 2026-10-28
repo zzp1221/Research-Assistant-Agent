@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"research-assistant-backend/internal/agent/conversation"
 	"research-assistant-backend/internal/agentctx"
 	"strings"
 
@@ -18,21 +19,25 @@ import (
 
 // initRealEinoChain 使用字节跳动 Eino 框架和真实的 LLM 模型编排逻辑流
 func (a *CoderAgent) initRealEinoChain() {
-	// 1. 初始化真实的 LLM ChatModel
+	// 1. 初始化真实的 LLM ChatModel（同时保留运行期 profile 解析）
+	var chatModel *openai.ChatModel
 	llmCfg, err := appconfig.LoadLLMConfig()
 	if err != nil {
-		log.Fatalf("加载 LLM 配置失败: %v", err)
+		log.Printf("[%s] LLM 配置不可用，代码链将使用运行期模型: %v", a.Name, err)
+	} else {
+		created, createErr := llmclient.NewChatModel(context.Background(), &openai.ChatModelConfig{
+			BaseURL: llmCfg.BaseURL,
+			APIKey:  llmCfg.APIKey,
+			Model:   llmCfg.Model,
+		})
+		if createErr != nil {
+			log.Printf("[%s] 初始化大模型失败: %v", a.Name, createErr)
+		} else {
+			chatModel = created
+			a.ChatModel = created
+		}
 	}
-
-	chatModel, err := llmclient.NewChatModel(context.Background(), &openai.ChatModelConfig{
-		BaseURL: llmCfg.BaseURL,
-		APIKey:  llmCfg.APIKey,
-		Model:   llmCfg.Model,
-	})
-	if err != nil {
-		log.Fatalf("初始化大模型失败: %v", err)
-	}
-	a.ChatModel = chatModel
+	codeModel := wrapRuntimeModel(a.Runtime, chatModel)
 
 	// 2. 构建 Eino Graph
 	codeOnlyGraph := compose.NewGraph[string, string]()
@@ -45,7 +50,9 @@ func (a *CoderAgent) initRealEinoChain() {
 		}
 		return messages, nil
 	}))
-	codeOnlyGraph.AddChatModelNode("LLM_Generate_Code", wrapUsageModel(chatModel))
+	if codeModel != nil {
+		codeOnlyGraph.AddChatModelNode("LLM_Generate_Code", wrapUsageModel(codeModel))
+	}
 	codeOnlyGraph.AddLambdaNode("Code_Extractor", compose.InvokableLambda(func(ctx context.Context, msg *schema.Message) (string, error) {
 		logToContext(ctx, "[%s] Eino 节点 [Code_Extractor]: 开始提取大模型生成的代码", a.Name)
 		code := msg.Content
@@ -59,13 +66,16 @@ func (a *CoderAgent) initRealEinoChain() {
 		return code, nil
 	}))
 	codeOnlyGraph.AddEdge(compose.START, "Prompt_Builder")
-	codeOnlyGraph.AddEdge("Prompt_Builder", "LLM_Generate_Code")
-	codeOnlyGraph.AddEdge("LLM_Generate_Code", "Code_Extractor")
+	if codeModel != nil {
+		codeOnlyGraph.AddEdge("Prompt_Builder", "LLM_Generate_Code")
+		codeOnlyGraph.AddEdge("LLM_Generate_Code", "Code_Extractor")
+	}
 	codeOnlyGraph.AddEdge("Code_Extractor", compose.END)
 
 	codeOnlyRunnable, err := codeOnlyGraph.Compile(context.Background())
 	if err != nil {
-		log.Fatalf("编译 Eino CodeOnly 链失败: %v", err)
+		log.Printf("[%s] 编译 Eino CodeOnly 链失败: %v", a.Name, err)
+		return
 	}
 	a.CodeOnlyChain = codeOnlyRunnable
 
@@ -83,7 +93,9 @@ func (a *CoderAgent) initRealEinoChain() {
 	}))
 
 	// 节点 2: LLM 生成代码 (调用真实的 ChatModel)
-	graph.AddChatModelNode("LLM_Generate_Code", wrapUsageModel(chatModel))
+	if codeModel != nil {
+		graph.AddChatModelNode("LLM_Generate_Code", wrapUsageModel(codeModel))
+	}
 
 	// 节点 3: 清洗并提取代码
 	graph.AddLambdaNode("Code_Extractor", compose.InvokableLambda(func(ctx context.Context, msg *schema.Message) (string, error) {
@@ -144,6 +156,7 @@ func (a *CoderAgent) initRealEinoChain() {
 		maxRetries := 3
 		currentCode := code
 		var finalOutput string
+		var correctionSession *conversation.Session
 
 		for i := 0; i < maxRetries; i++ {
 			logToContext(ctx, "[%s] 开始在持久化容器中执行代码 (第 %d/%d 次)...", a.Name, i+1, maxRetries)
@@ -171,14 +184,15 @@ func (a *CoderAgent) initRealEinoChain() {
 				}
 				logToContext(ctx, "[%s] 代码执行失败，触发 Self-Correction 机制。错误: %v", a.Name, err)
 
-				// 构建修正 Prompt 再次调用大模型
-				correctionPrompt := prompts.CoderSelfCorrectionUserPrompt(err, output)
-
 				logToContext(ctx, "[%s] 正在调用大模型进行代码自修复...", a.Name)
-				msg, err := llmclient.GenerateWithUsage(ctx, chatModel, []*schema.Message{
-					{Role: schema.System, Content: coderSystemPromptFromContext(ctx, a.SystemPrompt)},
-					{Role: schema.User, Content: correctionPrompt},
-				})
+				if correctionSession == nil {
+					correctionSession = conversation.NewSession("coder-self-correction",
+						coderSystemPromptFromContext(ctx, a.SystemPrompt),
+						prompts.CoderSelfCorrectionUserPromptWithCode(currentCode, err, output))
+				} else {
+					correctionSession.AddUser(fmt.Sprintf("Execution still failed: %v\nOutput:\n%s", err, output))
+				}
+				msg, err := correctionSession.Generate(ctx, codeModel)
 				if err != nil {
 					logToContext(ctx, "[%s] 错误: 自修复调用大模型失败: %v", a.Name, err)
 					return "", fmt.Errorf("Self-Correction 调用大模型失败: %w", err)
@@ -203,15 +217,18 @@ func (a *CoderAgent) initRealEinoChain() {
 
 	// 3. 定义边 (Edges) 将节点串联起来
 	graph.AddEdge(compose.START, "Prompt_Builder")
-	graph.AddEdge("Prompt_Builder", "LLM_Generate_Code")
-	graph.AddEdge("LLM_Generate_Code", "Code_Extractor")
-	graph.AddEdge("Code_Extractor", "Sandbox_Execute")
+	if codeModel != nil {
+		graph.AddEdge("Prompt_Builder", "LLM_Generate_Code")
+		graph.AddEdge("LLM_Generate_Code", "Code_Extractor")
+		graph.AddEdge("Code_Extractor", "Sandbox_Execute")
+	}
 	graph.AddEdge("Sandbox_Execute", compose.END)
 
 	// 4. 编译成 Runnable 链
 	runnable, err := graph.Compile(context.Background())
 	if err != nil {
-		log.Fatalf("编译 Eino 链失败: %v", err)
+		log.Printf("[%s] 编译 Eino 链失败: %v", a.Name, err)
+		return
 	}
 
 	a.EinoChain = runnable

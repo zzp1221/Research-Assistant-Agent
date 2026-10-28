@@ -21,8 +21,3 @@ func Directory(ownerID, uploadID string) string {
 	ownerHash := sha256.Sum256([]byte(ownerID))
 	return filepath.Join(Root(), hex.EncodeToString(ownerHash[:16]), uploadID)
 }
-
-// MetadataPath returns metadata.json for an upload.
-func MetadataPath(ownerID, uploadID string) string {
-	return filepath.Join(Directory(ownerID, uploadID), "metadata.json")
-}

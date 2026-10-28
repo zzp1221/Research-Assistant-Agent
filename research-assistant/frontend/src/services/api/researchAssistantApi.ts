@@ -2,6 +2,10 @@ import { API_AUTH_TOKEN, API_BASE_URL } from '../../config/env';
 import type {
   ChatResponse,
   ExecutePlanResponse,
+  ModelProfile,
+  ModelProfileListResponse,
+  ModelProfilePayload,
+  ModelRouting,
   PlanEvent,
   PlanGraph,
   PlanResponse,
@@ -134,6 +138,13 @@ export const uploadFile = async (file: File, identity: RequestIdentity): Promise
     headers: buildIdentityHeaders(identity),
     timeout: 120_000,
   });
+  return response.data;
+};
+
+// Upload metadata is owner-scoped and used when a library record is opened or
+// attached to a session without going through the file picker.
+export const getUpload = async (uploadId: string): Promise<UploadedFile> => {
+  const response = await httpClient.get<UploadedFile>(`/api/uploads/${uploadId}`);
   return response.data;
 };
 
@@ -335,4 +346,55 @@ export const executePlanTaskStream = async (
   if (!receivedResult) {
     throw new Error('任务流已结束，但没有收到结果事件；请检查后端日志后重试。');
   }
+};
+export const listModelProfiles = async (): Promise<ModelProfileListResponse> => {
+  const response = await httpClient.get<ModelProfileListResponse>('/api/model-profiles');
+  return response.data;
+};
+
+export const createModelProfile = async (payload: ModelProfilePayload): Promise<ModelProfile> => {
+  const response = await httpClient.post<ModelProfile>('/api/model-profiles', payload);
+  return response.data;
+};
+
+export const updateModelProfile = async (id: string, payload: ModelProfilePayload): Promise<ModelProfile> => {
+  const response = await httpClient.put<ModelProfile>('/api/model-profiles/' + id, payload);
+  return response.data;
+};
+
+export const deleteModelProfile = async (id: string): Promise<{ deleted: boolean }> => {
+  const response = await httpClient.delete<{ deleted: boolean }>('/api/model-profiles/' + id);
+  return response.data;
+};
+
+export const testModelProfile = async (id: string): Promise<{ ok: boolean; status: string; detail?: string; latency_ms?: number; model?: string }> => {
+  const response = await httpClient.post<{ ok: boolean; status: string; detail?: string; latency_ms?: number; model?: string }>(
+    '/api/model-profiles/' + id + '/test',
+    {},
+    { validateStatus: () => true },
+  );
+  return response.data;
+};
+
+export const probeModelVision = async (id: string): Promise<{ status: string; detail?: string; latency_ms?: number; model?: string }> => {
+  const response = await httpClient.post<{ status: string; detail?: string; latency_ms?: number; model?: string }>(
+    '/api/model-profiles/' + id + '/probe-vision',
+    {},
+    { timeout: 240_000 },
+  );
+  return response.data;
+};
+
+export const getModelRouting = async (): Promise<{ routing: ModelRouting; global_routing: ModelRouting }> => {
+  const response = await httpClient.get<{ routing: ModelRouting; global_routing: ModelRouting }>('/api/model-routing');
+  return response.data;
+};
+
+export const saveModelRouting = async (payload: {
+  main_profile_id: string;
+  vision_profile_ids?: string[];
+  fallback_profile_ids?: string[];
+}): Promise<ModelRouting> => {
+  const response = await httpClient.put<{ routing: ModelRouting }>('/api/model-routing', payload);
+  return response.data.routing;
 };

@@ -1,9 +1,10 @@
 import { lazy, memo, Suspense, useEffect, useRef, useState } from 'react';
 import type { Edge, Node, OnEdgesChange, OnNodesChange } from '@xyflow/react';
 import { Eye, Play, RotateCcw, ShieldCheck, Square } from 'lucide-react';
-import type { IntentContext, MissingRequirement, RuntimeAction } from '../../contracts/api';
+import type { IntentContext, MissingRequirement, RuntimeAction, Verification } from '../../contracts/api';
 import type { Task } from '../../contracts/api';
 import { getProofMark } from '../shared/agentVisuals';
+import { VerificationBadge } from '../verification/VerificationBadge';
 
 const GraphCanvas = lazy(() => import('./GraphCanvas'));
 
@@ -20,7 +21,12 @@ interface GraphPanelProps {
   runtimePermissionMode?: string | null;
   plannerSource?: string | null;
   plannerFallbackReason?: string | null;
+  complexity?: string | null;
+  planningRoute?: string | null;
+  templateVariant?: string | null;
   runTrigger?: 'manual' | 'auto' | '' | null;
+  verification?: Verification | null;
+  onOpenModelSettings?: () => void;
   onRuntimeActionDecision?: (actionId: string, decision: 'approve' | 'reject') => Promise<boolean | void> | boolean | void;
   runAllText: string;
   graphTitle: string;
@@ -109,7 +115,7 @@ const statusInk = (status: string) => {
 
 function GraphCanvasSkeleton() {
   return (
-    <div className="plate-frame absolute inset-0 flex items-center justify-center" aria-busy="true" aria-label="正在加载图版">
+    <div className="plate-frame absolute inset-0 flex items-center justify-center" aria-busy="true" aria-label="正在加载执行图">
       <div className="flex items-center gap-2" aria-hidden="true">
         <span className="h-10 w-20 animate-pulse border border-line bg-surface" />
         <span className="h-px w-8 bg-line-strong" />
@@ -135,7 +141,12 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
     runtimePermissionMode,
     plannerSource,
     plannerFallbackReason,
+    complexity,
+    planningRoute,
+    templateVariant,
     runTrigger,
+    verification,
+    onOpenModelSettings,
     onRuntimeActionDecision,
     runAllText,
     graphTitle,
@@ -221,6 +232,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
               <span className="journal-num text-[11px] text-muted">{planId ? planId.slice(0, 8).toUpperCase() : 'PLAN'}</span>
               {intentLabel && <span className="journal-caps text-[10px]">〔{intentLabel}〕</span>}
               {outcome && <span className="proof-stamp">{outcomeLabels[outcome] ?? outcome}</span>}
+              <VerificationBadge verification={verification} onOpenSettings={onOpenModelSettings} />
               {plannerSource === 'template' && (
                 <span className="journal-caps text-[10px] text-warn" title={plannerFallbackReason || '该计划由模板规划生成'}>
                   ◦ 模板规划
@@ -307,6 +319,22 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
             <dd className="text-ink-soft">{intentLabel ?? '未识别'}</dd>
             <dt className="text-muted">规划来源</dt>
             <dd className="text-ink-soft">{plannerSource === 'template' ? '模板规划' : plannerSource === 'agent' ? 'Agent 规划' : '未知'}</dd>
+            <dt className="text-muted">复杂度</dt>
+            <dd className="text-ink-soft" data-testid="plan-complexity">{complexity ?? '未评估'}</dd>
+            <dt className="text-muted">规划路径</dt>
+            <dd className="text-ink-soft" data-testid="plan-planning-route">
+              {planningRoute === 'fast_path'
+                ? '快速路径'
+                : planningRoute === 'standard_template'
+                  ? '标准模板'
+                  : planningRoute === 'agent_augmented'
+                    ? 'Agent 增强'
+                    : planningRoute === 'template_fallback'
+                      ? '模板回退'
+                      : '未知'}
+            </dd>
+            <dt className="text-muted">模板变体</dt>
+            <dd className="text-ink-soft" data-testid="plan-template-variant">{templateVariant ?? '—'}</dd>
             <dt className="text-muted">运行权限</dt>
             <dd className="text-ink-soft">{runtimePermissionMode === 'full_access' ? '完全权限' : '确认模式'}</dd>
             <dt className="text-muted">运行方式</dt>
@@ -315,28 +343,36 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
             </dd>
             <dt className="text-muted">结果状态</dt>
             <dd className="text-ink-soft">{outcome ? outcomeLabels[outcome] ?? outcome : '尚未产出'}</dd>
+            <dt className="text-muted">校验</dt>
+            <dd className="text-ink-soft">
+              {verification ? (
+                <VerificationBadge verification={verification} onOpenSettings={onOpenModelSettings} />
+              ) : (
+                '未校验（旧计划或尚未产出图像）'
+              )}
+            </dd>
           </dl>
         )}
       </header>
 
       <dl className="research-assistant-plate-meta grid shrink-0 grid-cols-5 border-b border-line bg-surface-muted">
         <div className="border-r border-line px-4 py-2">
-          <dt className="journal-caps text-[10px]">图版</dt>
+          <dt className="journal-caps text-[10px]">节点</dt>
           <dd className="journal-num mt-0.5 text-[12.5px] text-ink">{nodes.length}</dd>
         </div>
         <div className="border-r border-line px-4 py-2">
-          <dt className="journal-caps text-[10px]">已校</dt>
+          <dt className="journal-caps text-[10px]">已完成</dt>
           <dd className="journal-num mt-0.5 text-[12.5px] text-ink">
             <span className="text-ok">{completedCount}</span>
             <span className="text-muted"> / {nodes.length}</span>
           </dd>
         </div>
         <div className="border-r border-line px-4 py-2">
-          <dt className="journal-caps text-[10px]">在排</dt>
+          <dt className="journal-caps text-[10px]">运行中</dt>
           <dd className="journal-num mt-0.5 text-[12.5px] text-ink">{runningCount}</dd>
         </div>
         <div className="border-r border-line px-4 py-2">
-          <dt className="journal-caps text-[10px]">校样批注</dt>
+          <dt className="journal-caps text-[10px]">待处理</dt>
           <dd className="mt-0.5 text-[12.5px] text-ink">
             {pendingRuntimeActions.length > 0
               ? <span className="font-semibold text-proof">{pendingRuntimeActions.length} 项待批</span>
@@ -346,7 +382,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
           </dd>
         </div>
         <div className="px-4 py-2">
-          <dt className="journal-caps text-[10px]">校次</dt>
+          <dt className="journal-caps text-[10px]">权限</dt>
           <dd className="mt-0.5 text-[12.5px] text-ink-soft">{runtimePermissionMode === 'full_access' ? '完全权限' : '确认模式'}</dd>
         </div>
       </dl>
@@ -354,7 +390,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
       {pendingRuntimeActions.length > 0 && (
         <div className="shrink-0 border-b border-line bg-proof-soft px-5 py-2.5">
           <div className="mb-1.5 flex items-baseline gap-2">
-            <span className="journal-caps text-[10.5px] font-semibold text-proof">校样批注 · 需要作者决定</span>
+            <span className="journal-caps text-[10.5px] font-semibold text-proof">需要你批准的操作</span>
             <span className="journal-num text-[11px] text-muted">{pendingRuntimeActions.length} 项</span>
           </div>
           <div className="space-y-1.5">
@@ -430,10 +466,10 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
         {nodes.length === 0 && (
           <div className="plate-frame absolute inset-4 flex items-center justify-center p-8">
             <div className="max-w-md">
-              <div className="journal-caps text-[10px]">图 1 · 执行拓扑（待排版）</div>
-              <p className="mt-3 font-serif text-[17px] font-semibold leading-7 text-ink">本页尚无图版</p>
+              <div className="journal-caps text-[10px]">执行拓扑（待生成）</div>
+              <p className="mt-3 font-serif text-[17px] font-semibold leading-7 text-ink">还没有执行图</p>
               <p className="mt-1.5 font-serif text-[13px] leading-6 text-ink-soft">
-                在左侧写下研究目标。系统会先固定指标与约束，再把执行拆成可审计的节点，逐条落在这张校样上。
+                在左侧写下研究目标。系统会先固定指标与约束，再把执行拆成可审计的节点，逐条画在这张图上。
               </p>
               <ol className="mt-4 border-t border-line">
                 <li className="border-b border-line py-1.5 font-serif text-[12.5px] text-ink-soft"><span className="journal-num mr-2 text-muted">一</span>复现论文核心方法并跑通最小测试</li>
@@ -473,8 +509,8 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
       {nodes.length > 0 && (
         <div className="shrink-0 border-t border-ink bg-surface">
           <div className="flex items-baseline justify-between px-5 pb-1.5 pt-2">
-            <span className="journal-caps text-[10px]">表 1 · 执行记录摘要</span>
-            <span className="journal-caps text-[10px]">按计划顺序 · 点击行查看批注</span>
+            <span className="journal-caps text-[10px]">执行记录</span>
+            <span className="journal-caps text-[10px]">按计划顺序 · 点击行查看详情</span>
           </div>
           <div
             className="research-assistant-node-table"
@@ -510,7 +546,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
                     <span className="truncate border-r border-line/70 px-2 py-1 journal-caps text-[10px] text-muted">{task?.AssignedTo ? task.AssignedTo.replace('_agent', '').replace('research_coding', '科研 Coding').replace('benchmark', '评测').replace('sandbox', '沙箱').replace('librarian', '文献').replace('general', '通用').replace('data', '数据').replace('coder', '代码').replace('answer', '回答') : '—'}</span>
                     <span className={`flex items-center justify-end gap-1 px-2 py-1 journal-caps text-[10px] ${statusInk(status)}`}>
                       <span aria-hidden="true">{getProofMark(status)}</span>
-                      {status === 'completed' ? '已校' : status === 'in_progress' ? '在排' : status === 'failed' ? '退改' : status === 'awaiting_approval' ? '待批' : status === 'blocked' ? '受阻' : status === 'canceled' ? '已撤' : status === 'skipped' ? '跳过' : status === 'ready' ? '待排' : '待校'}
+                      {status === 'completed' ? '已完成' : status === 'in_progress' ? '运行中' : status === 'failed' ? '失败' : status === 'awaiting_approval' ? '待批准' : status === 'blocked' ? '受阻' : status === 'canceled' ? '已取消' : status === 'skipped' ? '已跳过' : status === 'ready' ? '等待中' : '待运行'}
                     </span>
                   </button>
                 );

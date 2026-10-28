@@ -70,6 +70,8 @@ func (a *ResearchCodingAgent) executeAdapterGeneration(ctx context.Context, task
 	if err != nil {
 		return failResearchCodingTask(task, err)
 	}
+	// Token-level budget on top of the byte hard cap.
+	repositoryContext = truncateToTokens(repositoryContext, agentEnvInt("BENCHMARK_REPO_MAX_TOKENS", 8000))
 
 	planMessage, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
 		{Role: schema.System, Content: prompts.BenchmarkAdapterSystemPrompt},
@@ -494,7 +496,7 @@ func truncateBenchmarkText(value string, limit int) string {
 	if len(value) <= limit {
 		return value
 	}
-	return value[:limit] + "..."
+	return prompts.TruncateUTF8Bytes(value, limit) + "..."
 }
 
 func benchmarkMinInt(left, right int) int {

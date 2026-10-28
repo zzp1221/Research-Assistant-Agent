@@ -57,10 +57,11 @@ interface ChatPanelProps {
   chatActions: ChatActions;
   pdfActions: PdfActions;
   taskActions: TaskActions;
+  onOpenLiterature: () => void;
 }
 
 export function ChatPanel(props: ChatPanelProps) {
-  const { state, chatActions, pdfActions, taskActions } = props;
+  const { state, chatActions, pdfActions, taskActions, onOpenLiterature } = props;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -102,6 +103,7 @@ export function ChatPanel(props: ChatPanelProps) {
         onAttachFiles={chatActions.onAttachFiles}
         onRemoveAttachment={chatActions.onRemoveAttachment}
         onOpenAttachment={chatActions.onOpenAttachment}
+        onOpenLiterature={onOpenLiterature}
         runtimePermissionMode={state.runtimePermissionMode}
         onRuntimePermissionModeChange={chatActions.onRuntimePermissionModeChange}
       />

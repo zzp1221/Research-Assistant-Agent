@@ -40,6 +40,9 @@ type TaskUsage struct {
 	DurationSeconds     float64        `json:"duration_seconds,omitempty"`
 	Attempts            int            `json:"attempts,omitempty"`
 	Models              map[string]int `json:"models,omitempty"`
+	// Prompt budget diagnostics (design: agent-chain-optimization D).
+	PromptBudgetLimit       int `json:"prompt_budget_limit,omitempty"`
+	PromptTruncatedSections int `json:"prompt_truncated_sections,omitempty"`
 }
 
 // Empty reports whether no usage was observed.

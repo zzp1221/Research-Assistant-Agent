@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	intentpkg "research-assistant-backend/internal/intent"
+	"research-assistant-backend/internal/metrics"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/paperid"
 	"research-assistant-backend/internal/prompts"
@@ -30,10 +31,16 @@ func NewPlanner() *Planner {
 	}
 }
 
-// BuildPlan creates the new graph-based plan structure described in the refactor docs.
+// BuildPlan creates the graph-based plan using the default complexity route.
+// It is the compatibility entry point; callers that already resolved
+// attachments/research context should prefer BuildPlanWithRoute.
 func (p *Planner) BuildPlan(ctx context.Context, intent models.IntentContext) (*models.PlanGraph, error) {
-	_ = ctx
+	return p.BuildPlanWithRoute(ctx, intent, RouteDecision{})
+}
 
+// BuildPlanWithRoute creates the plan for an explicit RouteDecision.
+func (p *Planner) BuildPlanWithRoute(ctx context.Context, intent models.IntentContext, route RouteDecision) (*models.PlanGraph, error) {
+	startedAt := time.Now()
 	plan := &models.PlanGraph{
 		ID:         uuid.New().String(),
 		TraceID:    "trace_" + strings.ReplaceAll(uuid.New().String(), "-", ""),
@@ -51,57 +58,27 @@ func (p *Planner) BuildPlan(ctx context.Context, intent models.IntentContext) (*
 		UpdatedAt: time.Now(),
 	}
 
-	var nodes []*models.TaskNode
-	var err error
-	plannerSource := "template"
-	plannerFallbackReason := ""
-	if isDatasetExperimentIntent(intent) {
-		nodes = buildDatasetExperimentNodes(intent)
-	} else if isCustomDatasetBenchmarkIntent(intent) {
-		nodes = buildCustomDatasetBenchmarkNodes(intent)
-	} else if isAutoResearchIntent(intent) {
-		nodes = buildAutoResearchNodes(intent)
-	} else if intent.IntentType == "General" {
-		// General requests always use the deterministic builder: the same prompt
-		// must not produce 1/2/3-node plans on different runs. The agent planner
-		// remains an optional optimisation for execution-heavy intents.
-		nodes = buildGeneralNodesV2(intent)
-	} else if p.agent != nil {
-		nodes, err = p.agent.BuildNodes(ctx, intent)
-		if err == nil {
-			nodes = postProcessPlannerNodes(nodes)
-			if len(nodes) > maxAgentPlanNodes {
-				err = fmt.Errorf("planner produced %d nodes, above the %d node limit", len(nodes), maxAgentPlanNodes)
-			} else if validationErr := validateAgentPlannedNodes(intent, nodes); validationErr != nil {
-				// One bounded self-repair round with the validation error JSON
-				// before falling back to the deterministic template.
-				if repaired, repairErr := p.agent.RepairNodes(ctx, intent, nodes, validationErr); repairErr == nil {
-					repaired = postProcessPlannerNodes(repaired)
-					if len(repaired) <= maxAgentPlanNodes && validateAgentPlannedNodes(intent, repaired) == nil {
-						log.Printf("[PlannerAgent] self-repair succeeded after: %v", validationErr)
-						nodes = repaired
-						err = nil
-					} else {
-						err = validationErr
-					}
-				} else {
-					err = validationErr
-				}
-			}
-		}
-		if err != nil {
-			plannerFallbackReason = err.Error()
-			logPlannerFallback(intent, err)
-			nodes = nil
-		} else {
-			plannerSource = "agent"
-		}
+	router := NewComplexityRouterFromEnv()
+	if route.IsZero() {
+		route = router.Decide(ctx, intent, nil, nil)
 	}
+	plan.Meta.PlanningRoute = planningRouteFor(route)
+	plan.Meta.Complexity = string(route.Complexity)
+	plan.Meta.ComplexitySource = route.Source
+	plan.Meta.TemplateVariant = route.Variant
+
+	nodes, plannerSource, plannerFallbackReason := p.selectPlanNodes(ctx, intent, route)
 	if len(nodes) == 0 {
 		nodes = buildFallbackNodes(intent)
 		plannerSource = "template"
 	}
+	if plannerFallbackReason != "" {
+		metrics.RecordPlannerFallback(plannerFallbackCategory(plannerFallbackReason))
+	}
+	_ = startedAt
 
+	normalizeArtifactContracts(nodes)
+	nodes = ensureVerificationNode(nodes)
 	normalizeArtifactContracts(nodes)
 	edges := buildEdgesFromNodes(nodes)
 	fillInitialStatuses(nodes)
@@ -120,6 +97,15 @@ func (p *Planner) BuildPlan(ctx context.Context, intent models.IntentContext) (*
 	}
 	plan.Meta.PlannerSource = plannerSource
 	plan.Meta.PlannerFallbackReason = plannerFallbackReason
+	if intent.IntentType == "General" {
+		shape := "legacy"
+		if generalPlanFastPathEnabled() && route.Source != "disabled" {
+			shape = string(classifyGeneralPlanShape(intent))
+		}
+		plan.Meta.GeneralPlanShape = shape
+		metrics.RecordPlanGeneralShape(shape)
+		metrics.RecordPlanLLMNodes(intent.IntentType, shape, countGeneralLLMNodes(nodes))
+	}
 	fillGraphMeta(plan)
 
 	// A planner-agent blueprint can pass its own contract checks yet still leave
@@ -127,6 +113,7 @@ func (p *Planner) BuildPlan(ctx context.Context, intent models.IntentContext) (*
 	// template rather than failing the whole request.
 	if err := validatePlanGraph(plan); err != nil {
 		logPlannerFallback(intent, err)
+		metrics.RecordPlannerFallback("graph_validation")
 		if intent.IntentType != "" {
 			templateNodes := buildFallbackNodes(intent)
 			if len(templateNodes) > 0 {
@@ -138,12 +125,163 @@ func (p *Planner) BuildPlan(ctx context.Context, intent models.IntentContext) (*
 				plan.Edges = edges
 				plan.Meta.PlannerSource = "template"
 				plan.Meta.PlannerFallbackReason = err.Error()
+				plan.Meta.PlanningRoute = "template_fallback"
 				fillGraphMeta(plan)
 			}
 		}
+		metrics.RecordPlanRoute(string(route.Complexity), route.Source, route.Variant)
+		metrics.RecordPlanCreateDuration(string(route.Complexity), route.Source, time.Since(startedAt))
 		return plan, validatePlanGraph(plan)
 	}
+	metrics.RecordPlanRoute(string(route.Complexity), route.Source, route.Variant)
+	metrics.RecordPlanCreateDuration(string(route.Complexity), route.Source, time.Since(startedAt))
 	return plan, nil
+}
+
+// planningRouteFor maps a route decision to the observable planning path.
+func planningRouteFor(route RouteDecision) string {
+	if route.Source == "disabled" {
+		return "template_fallback"
+	}
+	switch levelRank(route.Complexity) {
+	case 0, 1:
+		return "fast_path"
+	case 2:
+		return "standard_template"
+	default:
+		return "agent_augmented"
+	}
+}
+
+// plannerFallbackCategory reduces a free-form error to a bounded metric label.
+func plannerFallbackCategory(reason string) string {
+	lower := strings.ToLower(reason)
+	switch {
+	case strings.Contains(lower, "disabled"):
+		return "agent_disabled"
+	case strings.Contains(lower, "node limit"), strings.Contains(lower, "above the"):
+		return "node_limit"
+	case strings.Contains(lower, "validation"), strings.Contains(lower, "validate"):
+		return "validation"
+	case strings.Contains(lower, "parse"):
+		return "parse_error"
+	default:
+		return "error"
+	}
+}
+
+func maxAgentPlanNodesForRoute(route RouteDecision) int {
+	switch levelRank(route.Complexity) {
+	case 3:
+		return envIntDefault("PLANNER_MAX_NODES_L3", 16)
+	case 4:
+		return envIntDefault("PLANNER_MAX_NODES_L4", 24)
+	default:
+		return maxAgentPlanNodes
+	}
+}
+
+func envIntDefault(key string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+// selectPlanNodes chooses the plan builder for a route. L0-L2 use deterministic
+// templates, L3/L4 use the planner agent with a deterministic skeleton, and the
+// legacy path (router disabled) keeps the previous agent-first behavior.
+func (p *Planner) selectPlanNodes(ctx context.Context, intent models.IntentContext, route RouteDecision) ([]*models.TaskNode, string, string) {
+	if isDatasetExperimentIntent(intent) {
+		return buildDatasetExperimentNodes(intent), "template", ""
+	}
+	if isCustomDatasetBenchmarkIntent(intent) {
+		return buildCustomDatasetBenchmarkNodes(intent), "template", ""
+	}
+	if isAutoResearchIntent(intent) {
+		return buildAutoResearchNodes(intent), "template", ""
+	}
+	if intent.IntentType == "General" {
+		// Both rollback switches restore the legacy 3-node General shape:
+		// GENERAL_PLAN_FAST_PATH targets the General fast path, while
+		// COMPLEXITY_ROUTER_ENABLED=false must restore the pre-routing planner.
+		if !generalPlanFastPathEnabled() || route.Source == "disabled" {
+			return buildGeneralNodesLegacy(intent), "template", ""
+		}
+		// General shape is deterministic (direct/research/paper/literature);
+		// complexity only decides whether the research shape gets an explicit
+		// verification stage.
+		if route.Source != "disabled" && levelRank(route.Complexity) >= 4 {
+			return buildGeneralFullNodes(intent), "template", ""
+		}
+		return buildGeneralNodesV2(intent), "template", ""
+	}
+	if route.IsZero() || route.Source == "disabled" {
+		return p.buildAgentPlan(ctx, intent, nil, maxAgentPlanNodes)
+	}
+	switch levelRank(route.Complexity) {
+	case 0, 1, 2:
+		nodes, err := buildRegisteredNodesWithVariant(ctx, intent, route.Variant)
+		if err != nil || len(nodes) == 0 {
+			return nil, "template", errText(err)
+		}
+		return nodes, "template", ""
+	default:
+		skeleton, err := buildRegisteredNodesWithVariant(ctx, intent, "standard")
+		if err != nil {
+			skeleton = nil
+		}
+		return p.buildAgentPlan(ctx, intent, skeleton, maxAgentPlanNodesForRoute(route))
+	}
+}
+
+// buildAgentPlan runs the planner agent with one bounded repair round. When a
+// skeleton is supplied the agent output is merged onto it.
+func (p *Planner) buildAgentPlan(ctx context.Context, intent models.IntentContext, skeleton []*models.TaskNode, limit int) ([]*models.TaskNode, string, string) {
+	if p.agent == nil {
+		return nil, "template", "planner agent is nil"
+	}
+	nodes, session, err := p.agent.BuildNodesWithSession(ctx, intent, skeleton)
+	if err == nil {
+		nodes = postProcessPlannerNodes(nodes)
+		if len(nodes) > limit {
+			err = fmt.Errorf("planner produced %d nodes, above the %d node limit", len(nodes), limit)
+		} else if validationErr := validateAgentPlannedNodes(intent, nodes); validationErr != nil {
+			// One bounded self-repair round with the validation error JSON
+			// before falling back to the deterministic template. The repair
+			// continues the same conversation so the previous nodes stay as an
+			// assistant message.
+			if repaired, repairErr := p.agent.RepairNodesWithSession(ctx, intent, nodes, skeleton, validationErr, session); repairErr == nil {
+				repaired = postProcessPlannerNodes(repaired)
+				if len(repaired) <= limit && validateAgentPlannedNodes(intent, repaired) == nil {
+					log.Printf("[PlannerAgent] self-repair succeeded after: %v", validationErr)
+					nodes = repaired
+					err = nil
+				} else {
+					err = validationErr
+				}
+			} else {
+				err = validationErr
+			}
+		}
+	}
+	if err != nil {
+		logPlannerFallback(intent, err)
+		return nil, "template", err.Error()
+	}
+	return nodes, "agent", ""
+}
+
+func errText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 // buildFallbackNodes selects the deterministic template through the
@@ -931,6 +1069,11 @@ func fillGraphMeta(plan *models.PlanGraph) {
 		TotalNodes:            len(plan.Nodes),
 		PlannerSource:         plan.Meta.PlannerSource,
 		PlannerFallbackReason: plan.Meta.PlannerFallbackReason,
+		PlanningRoute:         plan.Meta.PlanningRoute,
+		Complexity:            plan.Meta.Complexity,
+		ComplexitySource:      plan.Meta.ComplexitySource,
+		TemplateVariant:       plan.Meta.TemplateVariant,
+		GeneralPlanShape:      plan.Meta.GeneralPlanShape,
 	}
 
 	for _, node := range plan.Nodes {
@@ -1413,19 +1556,61 @@ func workspaceUploadReferences(value any) any {
 	return files
 }
 
+// ensureVerificationNode appends a verify_result close-out when a plan produces
+// images but no verification node exists. The LLM planner is free-form, so this
+// guard is what guarantees every image-producing plan gets the generic
+// structural + visual verification (design 4.5), regardless of planner source.
+func ensureVerificationNode(nodes []*models.TaskNode) []*models.TaskNode {
+	if len(nodes) == 0 {
+		return nodes
+	}
+	hasVerify := false
+	imageProducers := make([]*models.TaskNode, 0, 2)
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		if node.Type == "verify_result" {
+			hasVerify = true
+		}
+		for _, artifact := range node.OutputArtifacts {
+			lower := strings.ToLower(artifact)
+			if strings.Contains(lower, "plot") || strings.Contains(lower, "image") {
+				imageProducers = append(imageProducers, node)
+				break
+			}
+		}
+	}
+	if hasVerify || len(imageProducers) == 0 {
+		return nodes
+	}
+	// Attach the verifier to the deepest image producer so it runs after every
+	// figure is on disk.
+	producer := imageProducers[len(imageProducers)-1]
+	for _, candidate := range imageProducers {
+		if candidate.ID != producer.ID && len(candidate.Dependencies) > len(producer.Dependencies) {
+			producer = candidate
+		}
+	}
+	verify := newNode(
+		"Verify And Summarize Result",
+		"verify_result",
+		"data_agent",
+		[]string{producer.ID},
+		append([]string(nil), producer.OutputArtifacts...),
+		[]string{"verification_report"},
+		true,
+		"",
+	)
+	nodes = append(nodes, verify)
+	return nodes
+}
+
 func buildCodeExecutionNodesV2(intent models.IntentContext) []*models.TaskNode {
 	context := intent.RawIntent
 	normalized := strings.ToLower(context)
 	needsPlot := boolEntity(intent.Entities, "needs_plot") || intentpkg.ContainsPlotIntent(context)
-	needsAnalysis := boolEntity(intent.Entities, "needs_report") || hasAny(normalized,
-		"analyze",
-		"analysis",
-		"\u5206\u6790",
-		"\u89e3\u91ca",
-		"report",
-		"\u62a5\u544a",
-		"\u590d\u6742\u5ea6",
-	)
+	_ = normalized
 
 	t1 := newNode("Generate Code", "generate_code", "coder_agent", nil, nil, []string{"generated_code"}, true, context)
 	t2 := newNode("Resolve Dependencies", "resolve_dependencies", "coder_agent", []string{t1.ID}, []string{"generated_code"}, []string{"dependency_spec"}, true, context)
@@ -1443,16 +1628,72 @@ func buildCodeExecutionNodesV2(intent models.IntentContext) []*models.TaskNode {
 		lastID = t6.ID
 		lastArtifact = "plot_image"
 	}
-	if needsAnalysis || !needsPlot {
-		t7 := newNode("Verify And Summarize Result", "verify_result", "data_agent", []string{lastID}, []string{lastArtifact}, []string{"verification_report"}, true, context)
-		nodes = append(nodes, t7)
-	}
+	// verify_result is the close-out node for every executable plan: it runs the
+	// generic structural + visual verification of the produced artifacts and
+	// writes the advisory verdict. Plot plans must not skip it, otherwise a
+	// figure could ship without any verification record (design 4.5).
+	t7 := newNode("Verify And Summarize Result", "verify_result", "data_agent", []string{lastID}, []string{lastArtifact}, []string{"verification_report"}, true, context)
+	nodes = append(nodes, t7)
 	return nodes
 }
 
 func buildGeneralNodesV2(intent models.IntentContext) []*models.TaskNode {
+	if !generalPlanFastPathEnabled() {
+		return buildGeneralNodesLegacy(intent)
+	}
+	context := intent.RawIntent
+	switch classifyGeneralPlanShape(intent) {
+	case generalPlanLiterature:
+		t1 := newNode("Search Literature", "literature_search", "librarian_agent", nil, nil, []string{"literature_results"}, true, context)
+		t1.Inputs = map[string]any{
+			"query":   literatureSearchQuery(intent),
+			"sources": literatureSearchSources(intent),
+			"limit":   5,
+		}
+		t2 := newNode("Collect Background Context", "general_research", "librarian_agent", []string{t1.ID}, []string{"literature_results"}, []string{"background_context"}, true, context)
+		t3 := newNode("Synthesize Response", "general_synthesis", "answer_agent", []string{t2.ID}, []string{"background_context"}, []string{"general_response"}, false, context)
+		return []*models.TaskNode{t1, t2, t3}
+	case generalPlanPaper:
+		// D10: fixed four-node shape for General + paper analysis. The claim
+		// rubric stays exclusive to Paper_Reproduction, so general analysis uses
+		// research -> verify -> answer without claim extraction.
+		t1 := newNode("Parse Paper & Extract Method", "paper_parse", "librarian_agent", nil, nil, []string{"parsed_paper", "paper_metadata", "paper_summary"}, true, context)
+		t1.InputBindings = []models.InputBinding{
+			{Target: "document_id", Source: models.BindingSource{Kind: "context_document"}, Required: false},
+			{Target: "paper_metadata", Source: models.BindingSource{Kind: "context_paper"}, Required: false},
+		}
+		t2 := newNode("Collect Paper Background", "general_research", "librarian_agent", []string{t1.ID}, []string{"paper_summary", "paper_metadata"}, []string{"background_context"}, true, context)
+		t3 := newNode("Verify And Summarize Result", "verify_result", "data_agent", []string{t2.ID}, []string{"background_context", "paper_summary"}, []string{"verification_report"}, true, context)
+		t4 := newNode("Synthesize Response", "general_synthesis", "answer_agent", []string{t3.ID}, []string{"verification_report", "paper_summary", "paper_metadata"}, []string{"general_response"}, false, context)
+		return []*models.TaskNode{t1, t2, t3, t4}
+	case generalPlanResearch:
+		t1 := newNode("Collect Background Context", "general_research", "librarian_agent", nil, nil, []string{"background_context"}, true, context)
+		t1.InputBindings = documentBindingsIfPresent(intent)
+		t2 := newNode("Synthesize Response", "general_synthesis", "answer_agent", []string{t1.ID}, []string{"background_context"}, []string{"general_response"}, false, context)
+		return []*models.TaskNode{t1, t2}
+	default:
+		t1 := newNode("Answer Request", "general_synthesis", "answer_agent", nil, nil, []string{"general_response"}, true, context)
+		t1.InputBindings = documentBindingsIfPresent(intent)
+		return []*models.TaskNode{t1}
+	}
+}
+
+// buildGeneralNodesLegacy is the pre-fast-path General shape. It is kept behind
+// GENERAL_PLAN_FAST_PATH=false for rollback and A/B comparison.
+func buildGeneralNodesLegacy(intent models.IntentContext) []*models.TaskNode {
 	context := intent.RawIntent
 	normalized := strings.ToLower(context)
+	if isLiteratureDiscoveryIntent(intent) {
+		t1 := newNode("Search Literature", "literature_search", "librarian_agent", nil, nil, []string{"literature_results"}, true, context)
+		t1.Inputs = map[string]any{
+			"query":   literatureSearchQuery(intent),
+			"sources": literatureSearchSources(intent),
+			"limit":   5,
+		}
+		t2 := newNode("Collect Background Context", "general_research", "librarian_agent", []string{t1.ID}, []string{"literature_results"}, []string{"background_context"}, true, context)
+		t3 := newNode("Synthesize Response", "general_synthesis", "answer_agent", []string{t2.ID}, []string{"background_context"}, []string{"general_response"}, false, context)
+		return []*models.TaskNode{t1, t2, t3}
+	}
 	paperAnalysis := isPaperAnalysisIntent(intent)
 	if paperAnalysis {
 		// D10: fixed four-node shape for General + paper analysis. The claim
@@ -1492,6 +1733,79 @@ func isPaperAnalysisIntent(intent models.IntentContext) bool {
 	}
 	normalized := strings.ToLower(intent.RawIntent)
 	return hasAny(normalized, "\u8bba\u6587", "paper", "\u6587\u732e", "\u8d21\u732e", "\u5c40\u9650")
+}
+
+// isLiteratureDiscoveryIntent reports whether a General request asks to find
+// or survey papers rather than to analyze one uploaded paper.
+func isLiteratureDiscoveryIntent(intent models.IntentContext) bool {
+	if intent.IntentType != "General" {
+		return false
+	}
+	if intent.Entities["paper_metadata"] != nil {
+		return false
+	}
+	if _, ok := intent.Entities["uploaded_files"]; ok {
+		return false
+	}
+	lower := strings.ToLower(intent.RawIntent)
+	for _, phrase := range []string{
+		"分析这篇", "总结这篇", "这篇论文的", "该论文的", "创新点", "局限性",
+		"analyze this paper", "summarize this paper",
+	} {
+		if strings.Contains(lower, phrase) {
+			return false
+		}
+	}
+	discovery := hasAny(lower,
+		"找", "搜索", "搜一下", "查找", "调研", "综述", "文献检索", "论文检索",
+		"相关论文", "literature review", "survey", "find papers", "search papers",
+		"search literature", "related papers", "paper search",
+	)
+	topic := hasAny(lower, "论文", "文献", "paper", "literature", "survey", "综述", "research")
+	return discovery && topic
+}
+
+// literatureSearchQuery returns the most specific search string available.
+func literatureSearchQuery(intent models.IntentContext) string {
+	for _, key := range []string{"paper_search_query", "paper_title", "research_topic", "topic"} {
+		if value, ok := intent.Entities[key]; ok {
+			if text := strings.TrimSpace(fmt.Sprint(value)); text != "" && text != "<nil>" {
+				return text
+			}
+		}
+	}
+	return strings.TrimSpace(intent.RawIntent)
+}
+
+// literatureSearchSources reads an optional source restriction from entities.
+// The default is the academic provider set; GitHub repositories are useful in
+// other plans but are not papers for a literature review.
+func literatureSearchSources(intent models.IntentContext) []string {
+	raw, ok := intent.Entities["literature_sources"]
+	if !ok || raw == nil {
+		return []string{"arxiv", "openalex", "crossref", "semanticscholar"}
+	}
+	switch value := raw.(type) {
+	case []string:
+		return append([]string(nil), value...)
+	case []any:
+		items := make([]string, 0, len(value))
+		for _, entry := range value {
+			if text := strings.TrimSpace(fmt.Sprint(entry)); text != "" {
+				items = append(items, text)
+			}
+		}
+		return items
+	case string:
+		items := make([]string, 0, 4)
+		for _, entry := range strings.Split(value, ",") {
+			if text := strings.TrimSpace(entry); text != "" {
+				items = append(items, text)
+			}
+		}
+		return items
+	}
+	return nil
 }
 
 func hasAny(s string, keywords ...string) bool {
@@ -1556,13 +1870,6 @@ func stringEntity(entities map[string]any, key string, fallback string) string {
 		return fallback
 	}
 	return value
-}
-
-func frameworkDisplayName(frameworks []string, index int, fallback string) string {
-	if index < len(frameworks) {
-		return frameworks[index]
-	}
-	return fallback
 }
 
 func frameworkArtifactPrefix(framework string, index int) string {

@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/planner"
+	"research-assistant-backend/internal/prompts"
 	"research-assistant-backend/internal/workspace"
 	"strings"
 	"time"
@@ -182,6 +184,21 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		"task_type":     task.Type,
 		"artifact_keys": append([]string(nil), task.RequiredArtifacts...),
 	}
+	if promptContextV2Enabled() {
+		// Plan-level stable context is injected once here; agents render it as
+		// the plan_context section instead of appending the user intent again.
+		sharedContext["plan_graph"] = plan
+		budget := prompts.DefaultPromptBudget()
+		if plan.ModelSnapshot != nil && plan.ModelSnapshot.Text != nil {
+			if plan.ModelSnapshot.Text.ContextWindowTokens > 0 {
+				budget.ContextWindow = plan.ModelSnapshot.Text.ContextWindowTokens
+			}
+			if plan.ModelSnapshot.Text.MaxOutputTokens > 0 {
+				budget.MaxOutput = plan.ModelSnapshot.Text.MaxOutputTokens
+			}
+		}
+		sharedContext["prompt_budget"] = budget
+	}
 
 	runner, err := e.resolveRunner(task.AssignedTo)
 	if err != nil {
@@ -216,7 +233,46 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		Error:               runtimeTask.Error,
 		Artifacts:           buildArtifacts(task, runtimeTask),
 		MissingRequirements: missingRequirementsFromTask(runtimeTask),
+		Verification:        verificationFromTask(runtimeTask),
+		Metadata:            promptMetadataFromTask(runtimeTask),
 	}, nil
+}
+
+// promptMetadataFromTask copies prompt-budget diagnostics from the runtime task
+// so the scheduler can persist them on the plan node.
+func promptMetadataFromTask(runtimeTask *models.Task) map[string]any {
+	if runtimeTask == nil || runtimeTask.Metadata == nil {
+		return nil
+	}
+	out := map[string]any{}
+	if report, ok := runtimeTask.Metadata["prompt_budget"]; ok {
+		out["prompt_budget"] = report
+	}
+	if truncated, ok := runtimeTask.Metadata["prompt_truncated_sections"]; ok {
+		out["prompt_truncated_sections"] = truncated
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// verificationFromTask reads the advisory verdict a verify_result agent stored
+// on the runtime task.
+func verificationFromTask(runtimeTask *models.Task) *models.Verification {
+	if runtimeTask == nil {
+		return nil
+	}
+	if runtimeTask.Verification != nil {
+		return runtimeTask.Verification
+	}
+	if runtimeTask.Metadata == nil {
+		return nil
+	}
+	if value, ok := runtimeTask.Metadata["verification"].(*models.Verification); ok {
+		return value
+	}
+	return nil
 }
 
 // missingRequirementsFromTask reads the actionable missing-requirement list an
@@ -349,9 +405,24 @@ func validateUploadedFilePaths(raw any) error {
 	return nil
 }
 
+// promptContextV2Enabled reports whether the single-assembly prompt path is
+// active. PROMPT_CONTEXT_V2=false restores the legacy duplicated prompt.
+func promptContextV2Enabled() bool {
+	raw := strings.TrimSpace(os.Getenv("PROMPT_CONTEXT_V2"))
+	if raw == "" {
+		return true
+	}
+	return !strings.EqualFold(raw, "false") && raw != "0"
+}
+
 func buildTaskDescription(plan *models.PlanGraph, task *models.TaskNode) string {
 	if task == nil {
 		return ""
+	}
+	if promptContextV2Enabled() {
+		// Only the node-local description: plan context and artifacts are
+		// injected exactly once by prompts.BuildTaskPrompt.
+		return task.Description
 	}
 
 	var builder strings.Builder

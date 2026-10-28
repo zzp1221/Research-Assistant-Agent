@@ -1,5 +1,5 @@
 import { useId, useRef } from 'react';
-import { ChevronDown, ChevronUp, Eye, FileText, HelpCircle, Loader2, Paperclip, Send, ShieldCheck, X } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronUp, Eye, FileText, HelpCircle, Loader2, Paperclip, Send, ShieldCheck, X } from 'lucide-react';
 import { useAutoRunOnCreateControl } from '../../app/hooks/useResearchAssistantChatFlow';
 import { uiText } from '../../app/constants/uiText';
 import type { UploadedFile } from '../../contracts/api';
@@ -20,6 +20,7 @@ interface ChatComposerProps {
   onAttachFiles: (files: File[]) => void;
   onRemoveAttachment: (uploadId: string) => void;
   onOpenAttachment: (attachment: UploadedFile) => void;
+  onOpenLiterature?: () => void;
   runtimePermissionMode?: 'confirm_important' | 'full_access';
   onRuntimePermissionModeChange?: (mode: 'confirm_important' | 'full_access') => void;
 }
@@ -36,7 +37,7 @@ const suggestions = [
 export function ChatComposer(props: ChatComposerProps) {
   const {
     prompt, hasConversation = false, loading, isLoggedIn, showSuggestions, pendingAttachments, uploadingAttachments, attachmentError,
-    setPrompt, setShowSuggestions, onSendMessage, onAttachFiles, onRemoveAttachment, onOpenAttachment,
+    setPrompt, setShowSuggestions, onSendMessage, onAttachFiles, onRemoveAttachment, onOpenAttachment, onOpenLiterature,
     runtimePermissionMode = 'confirm_important', onRuntimePermissionModeChange = () => undefined,
   } = props;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -53,15 +54,15 @@ export function ChatComposer(props: ChatComposerProps) {
             className="flex items-center gap-1 journal-caps text-[10px] transition-colors hover:text-ink"
             aria-expanded={showSuggestions}
           >
-            起始选题
+            示例任务
             {showSuggestions ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </button>
-          <span className="journal-caps text-[10px]">PDF · 数据 · 代码</span>
+          <span className="journal-caps text-[10px]">PDF 可划词翻译</span>
         </div>
       ) : (
         <div className="mb-1.5 flex items-baseline justify-between">
-          <span className="journal-caps text-[10px]">投稿说明</span>
-          <span className="journal-caps text-[10px]">PDF · 数据 · 代码</span>
+          <span className="journal-caps text-[10px]">输入指令</span>
+          <span className="journal-caps text-[10px]">PDF 可划词翻译</span>
         </div>
       )}
 
@@ -136,7 +137,7 @@ export function ChatComposer(props: ChatComposerProps) {
           placeholder={
             isLoggedIn
               ? '写下研究目标，或上传论文让助手复现实验…'
-              : '游客模式下也可直接提问；登录后按稿次持久保存'
+              : '游客模式下可直接提问；会话保存在本机，登录后可跨设备恢复'
           }
           aria-label="消息输入框"
           className="block min-h-[76px] w-full resize-none bg-transparent px-3 pb-2 pt-2.5 font-serif text-[13.5px] leading-6 text-ink outline-none placeholder:text-muted"
@@ -154,6 +155,18 @@ export function ChatComposer(props: ChatComposerProps) {
             >
               {uploadingAttachments ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
             </button>
+            {onOpenLiterature ? (
+              <button
+                type="button"
+                onClick={onOpenLiterature}
+                className="flex h-7 items-center gap-1 px-1.5 text-[10.5px] text-ink-soft transition-colors hover:bg-surface-strong"
+                title="从文献库选择论文并加入当前会话"
+                aria-label="从文献库添加"
+              >
+                <BookOpen className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">从文献库添加</span>
+              </button>
+            ) : null}
             <span className="hidden journal-caps text-[10px] sm:inline">Enter 提交 · Shift+Enter 换行</span>
           </div>
           <button

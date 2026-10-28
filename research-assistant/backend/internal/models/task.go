@@ -44,6 +44,8 @@ type Task struct {
 	StructuredData    string // Machine-readable JSON produced by structured tasks
 	ImageBase64       string // Base64 encoded image if the task generated a plot
 	Error             string // Error message if failed
+	// Verification is the advisory verdict of a verify_result task.
+	Verification      *Verification
 	Metadata          map[string]any
 	StartedAt         *time.Time
 	FinishedAt        *time.Time

@@ -10,7 +10,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -669,13 +668,4 @@ func benchmarkMetricTargetReached(contract models.BenchmarkMetricContract, score
 		return score <= *contract.TargetScore
 	}
 	return score >= *contract.TargetScore
-}
-
-func sortedBenchmarkMetricNames(metrics map[string]float64) []string {
-	keys := make([]string, 0, len(metrics))
-	for key := range metrics {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
 }

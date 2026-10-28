@@ -1,6 +1,6 @@
 import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Edge, Node, OnEdgesChange, OnNodesChange } from '@xyflow/react';
-import { GitBranch, MessageSquareText } from 'lucide-react';
+import { BookOpen, GitBranch, MessageSquareText } from 'lucide-react';
 
 import { LeftWorkspaceChat, LeftWorkspacePdf } from './components/LeftWorkspace';
 import { useResearchAssistantRuntimeContext, type ResearchAssistantRuntimeContextValue } from './context/ResearchAssistantRuntimeContext';
@@ -12,9 +12,11 @@ import { useResearchAssistantLayoutState } from './hooks/useResearchAssistantLay
 import { useResearchAssistantRuntime } from './hooks/useResearchAssistantRuntime';
 import { readPlanRunTrigger, useGraphExecutionViewModel, type PlanRunTrigger } from './viewModels/useGraphExecutionViewModel';
 import { ExecutionSidebar } from '../features/execution/ExecutionSidebar';
+import { HelpDrawer, type HelpSection } from '../features/help/HelpDrawer';
 import { GraphPanel } from '../features/plan-graph/GraphPanel';
 import { buildGraphLayout } from '../features/plan-graph/buildGraphLayout';
-import type { IntentContext, MissingRequirement, RuntimeAction } from '../contracts/api';
+import { ModelSettingsPanel } from '../features/settings/ModelSettingsPanel';
+import type { IntentContext, MissingRequirement, RuntimeAction, UploadedFile } from '../contracts/api';
 import type { PlanExecutionTrigger } from '../services/api/researchAssistantApi';
 import { isPdfAttachment } from '../features/pdf-viewer/pdfAttachment';
 
@@ -27,6 +29,8 @@ interface JournalMastheadProps {
   isExecuting: boolean;
   permissionMode: string | null;
   account: string;
+  onOpenModelSettings?: () => void;
+  onOpenHelp: () => void;
 }
 
 /**
@@ -34,48 +38,69 @@ interface JournalMastheadProps {
  * manuscript under review, and every run is one issue of the same journal.
  */
 function JournalMasthead(props: JournalMastheadProps) {
-  const { planTitle, planId, stepCount, completedCount, pendingCount, isExecuting, permissionMode, account } = props;
+  const { planTitle, planId, stepCount, completedCount, pendingCount, isExecuting, permissionMode, account, onOpenModelSettings, onOpenHelp } = props;
+  const finished = stepCount > 0 && completedCount === stepCount && !isExecuting;
+  const statusLabel = isExecuting ? '运行中' : stepCount === 0 ? '未创建计划' : finished ? '已完成' : '计划已就绪';
+  const statusDot = isExecuting ? 'proof-pulse bg-proof' : finished ? 'bg-ok' : stepCount > 0 ? 'bg-ink-soft' : 'bg-line-strong';
   return (
     <>
-      <header className="research-assistant-masthead masthead-rule flex h-16 shrink-0 items-center gap-6 bg-surface px-6">
-        <div className="flex-1 journal-caps leading-4">
-          Research Assistant
-          <br />
-          Manuscript Workbench
-        </div>
-        <div className="text-center">
-          <div className="journal-serif text-[22px] font-semibold leading-none tracking-[0.01em] text-ink">The Research Proof</div>
-          <div className="journal-caps mt-1.5 text-[10.5px]">
-            执行校样 · {new Date().toLocaleDateString('zh-CN')} {planId ? `· ${planId.slice(0, 8).toUpperCase()}` : ''}
+      <header className="research-assistant-masthead masthead-rule flex h-14 shrink-0 items-center gap-4 bg-surface px-5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center border border-ink bg-ink font-serif text-[15px] font-semibold text-paper">R</div>
+          <div className="min-w-0 leading-4">
+            <div className="truncate font-serif text-[15px] font-semibold text-ink">Research Assistant</div>
+            <div className="journal-caps text-[9px]">研究工作台</div>
           </div>
         </div>
-        <div className="flex-1 text-right journal-num text-[11px] leading-4 text-muted">
-          {planId ?? 'S-0000'}
-          <br />
-          {account}
+        <div className="flex min-w-0 flex-1 items-baseline justify-center gap-3">
+          <h1 className="truncate font-serif text-[20px] font-semibold leading-6 tracking-[-0.01em] text-ink">研究执行台</h1>
+          <span className="journal-caps hidden text-[9px] text-muted sm:inline">文献 · 阅读 · 计划 · 执行</span>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="hidden max-w-[13rem] truncate journal-num text-[10px] text-muted lg:inline">
+            {planId ? `计划 ${planId.slice(0, 8).toUpperCase()}` : '尚无计划'} · {account}
+          </span>
+          <button
+            type="button"
+            onClick={onOpenHelp}
+            aria-label="打开使用手册"
+            className="inline-flex h-7 items-center gap-1 border border-line-strong bg-surface px-2 text-[11px] text-ink-soft transition-colors hover:border-ink hover:text-ink"
+          >
+            <BookOpen className="h-3 w-3" /> 使用手册
+          </button>
+          {onOpenModelSettings && (
+            <button
+              type="button"
+              onClick={onOpenModelSettings}
+              aria-label="模型设置"
+              title="工作台设置 · 模型"
+              className="inline-flex h-7 items-center gap-1 border border-line-strong bg-surface px-2 text-[11px] text-ink-soft transition-colors hover:border-ink hover:text-ink"
+            >
+              模型设置
+            </button>
+          )}
         </div>
       </header>
-      <div className="flex h-9 shrink-0 items-center gap-5 border-b border-line bg-surface px-6">
-        <span className="journal-caps shrink-0">运行校样 · {planTitle ? '计划进行中' : '尚无计划'}</span>
-        <div className="flex min-w-0 flex-1 items-center justify-center gap-5 journal-num text-[11px] text-ink-soft">
-          <span>{stepCount} 节点</span>
+      <div className="flex h-9 shrink-0 items-center gap-5 border-b border-line bg-surface px-5">
+        <span className="journal-caps shrink-0">执行状态</span>
+        <div className="flex min-w-0 flex-1 items-center justify-center gap-4 journal-num text-[10.5px] text-ink-soft">
+          <span>{stepCount} 个节点</span>
           <span className="h-3 w-px bg-line-strong" aria-hidden="true" />
-          <span>{completedCount} 完成</span>
+          <span>{completedCount} 已完成</span>
           {pendingCount > 0 && (
             <>
               <span className="h-3 w-px bg-line-strong" aria-hidden="true" />
-              <span className="text-proof">{pendingCount} 待批</span>
+              <span className="text-proof">{pendingCount} 项待批准</span>
             </>
           )}
-          {planTitle && <span className="max-w-[22rem] truncate text-muted">{planTitle}</span>}
+          {planTitle && <span className="max-w-[20rem] truncate text-muted" title={planTitle}>{planTitle}</span>}
         </div>
         <div className="flex shrink-0 items-center gap-3">
-          {isExecuting ? <span className="proof-stamp">未经最终验收</span> : <span className="journal-caps">已就绪</span>}
           <span className="flex items-center gap-1.5 journal-caps">
-            <span className={`h-1.5 w-1.5 rounded-full ${isExecuting ? 'proof-pulse bg-proof' : completedCount > 0 && stepCount > 0 ? 'bg-ok' : 'bg-line-strong'}`} aria-hidden="true" />
-            {isExecuting ? '计划运行中' : stepCount > 0 ? '已就绪' : '空闲'}
+            <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} aria-hidden="true" />
+            {statusLabel}
           </span>
-          <span className="journal-caps border-l border-line pl-3">{permissionMode === 'full_access' ? '完全权限' : '确认模式'}</span>
+          <span className="journal-caps border-l border-line pl-3">{permissionMode === 'full_access' ? '完全权限' : '逐项确认'}</span>
         </div>
       </div>
     </>
@@ -89,10 +114,13 @@ interface ResearchAssistantAppShellProps {
   mobilePane: 'chat' | 'graph';
   onMobilePaneChange: (pane: 'chat' | 'graph') => void;
   accountLabel: string;
+  showModelSettings?: boolean;
+  onOpenModelSettings?: () => void;
+  onOpenHelp: () => void;
 }
 
 function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
-  const { layout, leftWorkspace, graphExecutionViewModel, mobilePane, onMobilePaneChange, accountLabel } = props;
+  const { layout, leftWorkspace, graphExecutionViewModel, mobilePane, onMobilePaneChange, accountLabel, onOpenModelSettings, onOpenHelp } = props;
   const graphNodeCount = graphExecutionViewModel.graphPanelProps.nodes.length;
   const isResizing = layout.isResizing || layout.isResizingSidebar;
 
@@ -129,6 +157,8 @@ function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
         isExecuting={graphProps.isExecuting}
         permissionMode={graphProps.runtimePermissionMode ?? null}
         account={accountLabel}
+        onOpenModelSettings={onOpenModelSettings}
+        onOpenHelp={onOpenHelp}
       />
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <div className="research-assistant-mobile-tabbar">
@@ -139,7 +169,7 @@ function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
             className={mobilePane === 'chat' ? 'is-active' : ''}
           >
             <MessageSquareText className="h-4 w-4" />
-            校样
+            对话
           </button>
           <button
             type="button"
@@ -148,7 +178,7 @@ function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
             className={mobilePane === 'graph' ? 'is-active' : ''}
           >
             <GitBranch className="h-4 w-4" />
-            图版{graphNodeCount > 0 ? ` ${graphNodeCount}` : ''}
+            执行图{graphNodeCount > 0 ? ` ${graphNodeCount}` : ''}
           </button>
         </div>
 
@@ -161,10 +191,10 @@ function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
             layout.startResizingLeftPanel();
           }}
           onDoubleClick={layout.resetLeftPanel}
-          title="拖动调整校样栏宽度 · 双击恢复默认"
+          title="拖动调整对话栏宽度 · 双击恢复默认"
           role="separator"
           aria-orientation="vertical"
-          aria-label="调整校样栏宽度"
+          aria-label="调整对话栏宽度"
         >
           <div className={`h-12 w-px transition-colors ${layout.isResizing ? 'bg-proof' : 'bg-line-strong group-hover:bg-ink'}`} />
         </div>
@@ -180,10 +210,10 @@ function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
                 layout.startResizingSidebar();
               }}
               onDoubleClick={layout.resetSidebar}
-              title="拖动调整批注栏宽度 · 双击恢复默认"
+              title="拖动调整详情栏宽度 · 双击恢复默认"
               role="separator"
               aria-orientation="vertical"
-              aria-label="调整批注栏宽度"
+              aria-label="调整详情栏宽度"
             >
               <div className={`h-12 w-px transition-colors ${layout.isResizingSidebar ? 'bg-proof' : 'bg-line-strong group-hover:bg-ink'}`} />
             </div>
@@ -202,6 +232,9 @@ interface ResearchAssistantWorkspaceContentProps {
   onNodesChange: OnNodesChange<Node>;
   onEdgesChange: OnEdgesChange<Edge>;
   logsEndRef: RefObject<HTMLDivElement | null>;
+  showModelSettings: boolean;
+  onOpenModelSettings: () => void;
+  onCloseModelSettings: () => void;
   layout: ReturnType<typeof useResearchAssistantLayoutState>;
   chatFlow: {
     chatHistory: ReturnType<typeof useResearchAssistantChatFlow>['chatHistory'];
@@ -215,6 +248,7 @@ interface ResearchAssistantWorkspaceContentProps {
     attachmentError: string;
     handleAttachFiles: (files: File[]) => void;
     handleRemoveAttachment: (uploadId: string) => void;
+    attachUploadToSession: (upload: UploadedFile) => 'added' | 'duplicate' | 'full';
     intentContext: IntentContext | null;
     activePlanId: string | null;
     activePlanStatus: string | null;
@@ -224,7 +258,11 @@ interface ResearchAssistantWorkspaceContentProps {
     activePlanRuntimePolicyMode: string | null;
     activePlanPlannerSource: string | null;
     activePlanPlannerFallbackReason: string | null;
+    activePlanComplexity: string | null;
+    activePlanPlanningRoute: string | null;
+    activePlanTemplateVariant: string | null;
     activePlanRunTrigger: PlanRunTrigger;
+    activePlanVerification: import('../contracts/api').Verification | null;
     runtimePermissionMode: 'confirm_important' | 'full_access';
     showFullAccessConfirm: boolean;
     handleRuntimePermissionModeChange: (mode: 'confirm_important' | 'full_access') => void;
@@ -243,10 +281,11 @@ interface ResearchAssistantWorkspaceContentProps {
   pdfFlow: ReturnType<typeof usePdfAssistFlow>;
   mobilePane: 'chat' | 'graph';
   onMobilePaneChange: (pane: 'chat' | 'graph') => void;
+  onOpenHelp: (section?: HelpSection) => void;
 }
 
 function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceContentProps) {
-  const { nodes, edges, onNodesChange, onEdgesChange, logsEndRef, layout, chatFlow, pdfFlow, mobilePane, onMobilePaneChange } = props;
+  const { nodes, edges, onNodesChange, onEdgesChange, logsEndRef, showModelSettings, onOpenModelSettings, onCloseModelSettings, layout, chatFlow, pdfFlow, mobilePane, onMobilePaneChange, onOpenHelp } = props;
   const runtime = useResearchAssistantRuntimeContext();
   const graphExecutionViewModel = useGraphExecutionViewModel({
     nodes,
@@ -262,7 +301,12 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
     activePlanRuntimePolicyMode: chatFlow.activePlanRuntimePolicyMode,
     activePlanPlannerSource: chatFlow.activePlanPlannerSource,
     activePlanPlannerFallbackReason: chatFlow.activePlanPlannerFallbackReason,
+    activePlanComplexity: chatFlow.activePlanComplexity,
+    activePlanPlanningRoute: chatFlow.activePlanPlanningRoute,
+    activePlanTemplateVariant: chatFlow.activePlanTemplateVariant,
     activePlanRunTrigger: chatFlow.activePlanRunTrigger,
+    activePlanVerification: chatFlow.activePlanVerification ?? null,
+    onOpenModelSettings,
     layout,
     logsEndRef,
   });
@@ -276,6 +320,7 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
       translation={pdfFlow.translation}
       onAskAI={pdfFlow.handleAskAI}
       onAssist={pdfFlow.assistWithUpload}
+      onOpenHelp={() => onOpenHelp('pdf')}
     />
   ) : (
     <LeftWorkspaceChat
@@ -325,27 +370,79 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
       taskActions={{
         onOpenTaskView: runtime.actions.handleOpenTaskView,
       }}
+      literatureActions={{
+        activeSessionId: chatFlow.activeSessionId,
+        onAttachToSession: chatFlow.attachUploadToSession,
+        onDetachFromSession: chatFlow.handleRemoveAttachment,
+        onOpenPdf: pdfFlow.openPdfFromUpload,
+        onOpenHelp: () => onOpenHelp('library'),
+      }}
     />
   );
 
   return (
-    <ResearchAssistantAppShell
-      layout={layout}
-      leftWorkspace={leftWorkspace}
-      graphExecutionViewModel={graphExecutionViewModel}
-      mobilePane={mobilePane}
-      onMobilePaneChange={onMobilePaneChange}
-      accountLabel={chatFlow.userId ?? '游客'}
-    />
+    <>
+      <ResearchAssistantAppShell
+        layout={layout}
+        leftWorkspace={leftWorkspace}
+        graphExecutionViewModel={graphExecutionViewModel}
+        mobilePane={mobilePane}
+        onMobilePaneChange={onMobilePaneChange}
+        accountLabel={chatFlow.userId ? `账户 ${chatFlow.userId.slice(0, 8)}` : '游客'}
+        onOpenModelSettings={onOpenModelSettings}
+        onOpenHelp={() => onOpenHelp('start')}
+      />
+      {showModelSettings && (
+        <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-ink/25 p-3 md:p-8">
+          <div className="w-full max-w-5xl overflow-hidden border border-ink bg-paper shadow-2xl">
+            <ModelSettingsPanel onClose={onCloseModelSettings} />
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
 export default function ResearchAssistantApp() {
   const { nodes, setNodes, onNodesChange, edges, setEdges, onEdgesChange } = useGraphState();
   const [mobilePane, setMobilePane] = useState<'chat' | 'graph'>('chat');
+  const [showModelSettings, setShowModelSettings] = useState(() =>
+    typeof window !== 'undefined' && window.location.hash === '#settings:models',
+  );
+  const [showHelp, setShowHelp] = useState(false);
+  const [helpSection, setHelpSection] = useState<HelpSection>('start');
   const logsEndRef = useRef<HTMLDivElement>(null);
   const runtimeActionsRef = useRef<((planId: string, trigger?: PlanExecutionTrigger) => void) | null>(null);
   const layout = useResearchAssistantLayoutState();
+
+  const openHelp = useCallback((section: HelpSection = 'start') => {
+    setHelpSection(section);
+    setShowHelp(true);
+  }, []);
+
+  const openModelSettings = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', '#settings:models');
+    }
+    setShowModelSettings(true);
+  }, []);
+  const closeModelSettings = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+    setShowModelSettings(false);
+  }, []);
+
+  useEffect(() => {
+    const onHashChange = () => setShowModelSettings(window.location.hash === '#settings:models');
+    const onOpenEvent = () => setShowModelSettings(true);
+    window.addEventListener('hashchange', onHashChange);
+    window.addEventListener('ra:open-model-settings', onOpenEvent);
+    return () => {
+      window.removeEventListener('hashchange', onHashChange);
+      window.removeEventListener('ra:open-model-settings', onOpenEvent);
+    };
+  }, []);
 
   const handlePlanGraphChanged = useCallback(
     (planGraph: ReturnType<typeof useResearchAssistantChatFlow>['intentContext'] extends never ? never : Parameters<Parameters<typeof useResearchAssistantChatFlow>[0]['onPlanGraphChanged']>[0]) => {
@@ -455,6 +552,9 @@ export default function ResearchAssistantApp() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           logsEndRef={logsEndRef}
+          showModelSettings={showModelSettings}
+          onOpenModelSettings={openModelSettings}
+          onCloseModelSettings={closeModelSettings}
           layout={layout}
           chatFlow={{
             chatHistory: chatFlow.chatHistory,
@@ -468,6 +568,7 @@ export default function ResearchAssistantApp() {
             attachmentError: chatFlow.attachmentError,
             handleAttachFiles: chatFlow.handleAttachFiles,
             handleRemoveAttachment: chatFlow.handleRemoveAttachment,
+            attachUploadToSession: chatFlow.attachUploadToSession,
             intentContext: chatFlow.intentContext,
             activePlanId: chatFlow.activePlanId,
             activePlanStatus: chatFlow.activePlanStatus,
@@ -477,7 +578,11 @@ export default function ResearchAssistantApp() {
             activePlanRuntimePolicyMode: chatFlow.activePlanGraph?.runtime_policy?.mode ?? null,
             activePlanPlannerSource: chatFlow.activePlanGraph?.meta?.planner_source ?? null,
             activePlanPlannerFallbackReason: chatFlow.activePlanGraph?.meta?.planner_fallback_reason ?? null,
+            activePlanComplexity: chatFlow.activePlanGraph?.meta?.complexity ?? null,
+            activePlanPlanningRoute: chatFlow.activePlanGraph?.meta?.planning_route ?? null,
+            activePlanTemplateVariant: chatFlow.activePlanGraph?.meta?.template_variant ?? null,
             activePlanRunTrigger: readPlanRunTrigger(chatFlow.activePlanGraph),
+            activePlanVerification: chatFlow.activePlanGraph?.verification ?? null,
             runtimePermissionMode: chatFlow.runtimePermissionMode,
             showFullAccessConfirm: chatFlow.showFullAccessConfirm,
             handleRuntimePermissionModeChange: chatFlow.handleRuntimePermissionModeChange,
@@ -496,7 +601,9 @@ export default function ResearchAssistantApp() {
             pdfFlow={pdfFlow}
             mobilePane={mobilePane}
             onMobilePaneChange={setMobilePane}
+            onOpenHelp={openHelp}
           />
+        {showHelp ? <HelpDrawer onClose={() => setShowHelp(false)} initialSection={helpSection} /> : null}
       </ResearchAssistantRuntimeProvider>
     </AutoRunOnCreateContext.Provider>
   );

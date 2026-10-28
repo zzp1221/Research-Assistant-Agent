@@ -67,8 +67,17 @@ func TestPlanRuntimeExecutesStoredGraphAndReplaysEvents(t *testing.T) {
 	if created.PlanGraph.ID == "" {
 		t.Fatal("create plan response did not include plan_graph.id")
 	}
-	if len(created.PlanGraph.Nodes) < 5 {
+	if len(created.PlanGraph.Nodes) < 3 {
 		t.Fatalf("expected executable graph, got %d nodes", len(created.PlanGraph.Nodes))
+	}
+	nodeTypes := map[string]bool{}
+	for _, node := range created.PlanGraph.Nodes {
+		nodeTypes[node.Type] = true
+	}
+	for _, want := range []string{"generate_code", "execute_code", "verify_result"} {
+		if !nodeTypes[want] {
+			t.Fatalf("expected executable graph to contain %s, got %#v", want, nodeTypes)
+		}
 	}
 
 	executeRequest := httptest.NewRequest(http.MethodPost, "/api/plans/"+created.PlanGraph.ID+"/execute", nil)

@@ -95,17 +95,6 @@ func buildResearchContext(ownerID, sessionID, rawIntent string, attachments []ma
 	return ctx, nil
 }
 
-func requiresPaperMetadata(intentType, rawIntent string) bool {
-	if intentType == "Paper_Reproduction" {
-		return true
-	}
-	if intentType == "General" {
-		lower := strings.ToLower(rawIntent)
-		return strings.Contains(lower, "论文") || strings.Contains(lower, "paper") || strings.Contains(lower, "文献")
-	}
-	return false
-}
-
 func paperMetadataMap(paper *models.PaperMetadata) map[string]any {
 	if paper == nil {
 		return map[string]any{}

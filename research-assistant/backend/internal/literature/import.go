@@ -131,6 +131,13 @@ func (c *Client) importDOI(ctx context.Context, doi string) (*ImportResult, erro
 		return nil, err
 	}
 	if strings.TrimSpace(result.PDFURL) == "" {
+		// Crossref rarely advertises an OA PDF; ask Unpaywall before giving up.
+		if pdfURL := c.unpaywallPDF(ctx, doi); pdfURL != "" {
+			result.PDFURL = pdfURL
+			result.OpenAccess = true
+		}
+	}
+	if strings.TrimSpace(result.PDFURL) == "" {
 		return nil, pdfUnavailableError(SourceCrossref, doi, "no open-access PDF is advertised for this DOI; upload the PDF manually")
 	}
 	pdf, err := c.downloadPDF(ctx, SourceCrossref, result.PDFURL)

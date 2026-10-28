@@ -11,4 +11,11 @@ type IntentContext struct {
 	Confidence      float64        `json:"confidence,omitempty"`
 	Reasoning       string         `json:"reasoning,omitempty"`
 	Source          string         `json:"source,omitempty"` // "llm" or "rule_fallback"
+	// Complexity routing fields (design: intent-complexity-routing.md). All are
+	// optional so old intent services and old plan JSON keep working.
+	Complexity           string   `json:"complexity,omitempty"` // L0 | L1 | L2 | L3 | L4
+	Capabilities         []string `json:"capabilities,omitempty"`
+	RouteHint            string   `json:"route_hint,omitempty"` // fast_path | standard_template | agent_planner
+	ComplexityConfidence float64  `json:"complexity_confidence,omitempty"`
+	ComplexityReason     string   `json:"complexity_reason,omitempty"`
 }

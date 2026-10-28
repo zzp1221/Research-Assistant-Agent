@@ -2,22 +2,25 @@ package planner
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"research-assistant-backend/internal/agent/conversation"
 	"research-assistant-backend/internal/llmclient"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
 	"strings"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
-	"github.com/cloudwego/eino/schema"
+	"github.com/cloudwego/eino/components/model"
 )
 
 type plannerAgent struct {
 	enabled   bool
-	chatModel *openai.ChatModel
+	chatModel model.BaseChatModel
 }
 
 type plannerAgentResponse struct {
@@ -39,74 +42,102 @@ type plannerNodeBlueprint struct {
 }
 
 func newPlannerAgent() *plannerAgent {
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if strings.TrimSpace(apiKey) == "" {
+	// Network-free/deterministic deployments (and the container E2E suite) can
+	// force the template planner while keeping every runtime model feature on.
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("PLANNER_AGENT_ENABLED")), "false") {
 		return &plannerAgent{enabled: false}
 	}
-
-	baseURL := os.Getenv("OPENAI_BASE_URL")
-	if baseURL == "" {
-		baseURL = "https://api.deepseek.com/v1"
+	// The runtime resolver is installed by the API at startup; the env-built
+	// model remains as a fallback for env-only deployments and tests.
+	runtime := newRuntimePlannerModel(nil)
+	apiKey := strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
+	if apiKey != "" {
+		baseURL := strings.TrimSpace(os.Getenv("OPENAI_BASE_URL"))
+		if baseURL == "" {
+			baseURL = "https://api.deepseek.com/v1"
+		}
+		modelName := strings.TrimSpace(os.Getenv("OPENAI_MODEL_NAME"))
+		if modelName == "" {
+			modelName = "deepseek-chat"
+		}
+		fixed, err := llmclient.NewChatModel(context.Background(), &openai.ChatModelConfig{
+			BaseURL: baseURL,
+			APIKey:  apiKey,
+			Model:   modelName,
+		})
+		if err != nil {
+			log.Printf("[PlannerAgent] init failed, runtime profiles will be used: %v", err)
+		} else {
+			runtime.fallback = fixed
+		}
 	}
-	modelName := os.Getenv("OPENAI_MODEL_NAME")
-	if modelName == "" {
-		modelName = "deepseek-chat"
-	}
-
-	chatModel, err := llmclient.NewChatModel(context.Background(), &openai.ChatModelConfig{
-		BaseURL: baseURL,
-		APIKey:  apiKey,
-		Model:   modelName,
-	})
-	if err != nil {
-		log.Printf("[PlannerAgent] init failed, fallback to templates: %v", err)
-		return &plannerAgent{enabled: false}
-	}
-
 	return &plannerAgent{
-		enabled:   true,
-		chatModel: chatModel,
+		enabled:   runtime.available(),
+		chatModel: runtime,
 	}
 }
 
-func (p *plannerAgent) BuildNodes(ctx context.Context, intent models.IntentContext) ([]*models.TaskNode, error) {
+// BuildNodesWithSession runs the planner agent and returns the conversation so
+// the bounded repair round can continue it instead of rebuilding the prompt.
+func (p *plannerAgent) BuildNodesWithSession(ctx context.Context, intent models.IntentContext, skeleton []*models.TaskNode) ([]*models.TaskNode, *conversation.Session, error) {
 	if p == nil || !p.enabled || p.chatModel == nil {
-		return nil, fmt.Errorf("planner agent is disabled")
+		return nil, nil, fmt.Errorf("planner agent is disabled")
 	}
 
 	intentPayload, _ := json.MarshalIndent(intent, "", "  ")
-	userPrompt := prompts.PlannerAgentUserPrompt(string(intentPayload))
-	msg, err := llmclient.GenerateWithUsage(ctx, p.chatModel, []*schema.Message{
-		{Role: schema.System, Content: prompts.PlannerAgentSystemPrompt},
-		{Role: schema.User, Content: userPrompt},
-	})
+	intentText, _ := prompts.TruncateByTokens(string(intentPayload), 24000, prompts.EstimatedCounter{})
+	userPrompt := prompts.PlannerAgentUserPrompt(intentText)
+	if len(skeleton) > 0 {
+		userPrompt += "\n\n" + prompts.PlannerSkeletonSection(skeleton)
+	}
+	session := conversation.NewSession(plannerSessionID(intent), prompts.PlannerAgentSystemPrompt, userPrompt)
+	msg, err := session.Generate(ctx, p.chatModel)
 	if err != nil {
-		return nil, err
+		return nil, session, err
 	}
 
 	parsed, err := parsePlannerAgentResponse(msg.Content)
 	if err != nil {
-		return nil, err
+		return nil, session, err
 	}
-	return materializePlannerNodes(parsed.Nodes, intent)
+	nodes, err := materializePlannerNodes(parsed.Nodes, intent)
+	if err != nil {
+		return nil, session, err
+	}
+	if len(skeleton) > 0 {
+		nodes = mergeAgentPlanWithSkeleton(skeleton, nodes)
+	}
+	return nodes, session, nil
 }
 
-// RepairNodes feeds a validation error back to the model once so it can fix
-// the blueprint instead of immediately falling back to a template plan.
-func (p *plannerAgent) RepairNodes(ctx context.Context, intent models.IntentContext, nodes []*models.TaskNode, validationErr error) ([]*models.TaskNode, error) {
+func plannerSessionID(intent models.IntentContext) string {
+	payload, _ := json.Marshal(intent)
+	sum := sha256.Sum256(payload)
+	return "planner-" + hex.EncodeToString(sum[:8])
+}
+
+// RepairNodesWithSession appends the validation feedback to an existing
+// conversation. When session is nil it rebuilds the initial conversation with
+// the previous node list as the assistant message.
+func (p *plannerAgent) RepairNodesWithSession(ctx context.Context, intent models.IntentContext, nodes []*models.TaskNode, skeleton []*models.TaskNode, validationErr error, session *conversation.Session) ([]*models.TaskNode, error) {
 	if p == nil || !p.enabled || p.chatModel == nil {
 		return nil, fmt.Errorf("planner agent is disabled")
 	}
-	intentPayload, _ := json.MarshalIndent(intent, "", "  ")
-	nodesPayload, _ := json.MarshalIndent(nodes, "", "  ")
-	userPrompt := "原始意图 JSON:\n" + string(intentPayload) +
-		"\n\n上一次生成的节点 JSON:\n" + string(nodesPayload) +
-		"\n\n校验错误:\n" + validationErr.Error() +
+	feedback := "校验错误:\n" + validationErr.Error() +
 		"\n\n请修复节点列表并只返回严格的 JSON：{\"nodes\":[{\"ref\",\"name\",\"type\",\"assigned_to\",\"dependencies\",\"required_artifacts\",\"output_artifacts\",\"parallelizable\"}]}。要求：每个节点必须有非空 output_artifacts；不同分支不得重复使用同一个 artifact key（用分支前缀）；最多 14 个节点。"
-	msg, err := llmclient.GenerateWithUsage(ctx, p.chatModel, []*schema.Message{
-		{Role: schema.System, Content: prompts.PlannerAgentSystemPrompt},
-		{Role: schema.User, Content: userPrompt},
-	})
+	if len(skeleton) > 0 {
+		feedback += "\n\n" + prompts.PlannerSkeletonSection(skeleton)
+	}
+	if session == nil {
+		intentPayload, _ := json.MarshalIndent(intent, "", "  ")
+		session = conversation.NewSession(plannerSessionID(intent), prompts.PlannerAgentSystemPrompt, prompts.PlannerAgentUserPrompt(string(intentPayload)))
+		if nodesPayload, err := json.MarshalIndent(nodes, "", "  "); err == nil {
+			nodesText, _ := prompts.TruncateByTokens(string(nodesPayload), 24000, prompts.EstimatedCounter{})
+			session.AddAssistant(nodesText)
+		}
+	}
+	session.AddUser(feedback)
+	msg, err := session.Generate(ctx, p.chatModel)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +145,71 @@ func (p *plannerAgent) RepairNodes(ctx context.Context, intent models.IntentCont
 	if err != nil {
 		return nil, err
 	}
-	return materializePlannerNodes(parsed.Nodes, intent)
+	repaired, err := materializePlannerNodes(parsed.Nodes, intent)
+	if err != nil {
+		return nil, err
+	}
+	if len(skeleton) > 0 {
+		repaired = mergeAgentPlanWithSkeleton(skeleton, repaired)
+	}
+	return repaired, nil
+}
+
+// mergeAgentPlanWithSkeleton merges agent output onto the deterministic
+// skeleton: matched nodes keep the skeleton identity and artifact contract,
+// unmatched skeleton nodes are preserved, and new agent nodes are appended
+// with dependencies remapped onto skeleton IDs.
+func mergeAgentPlanWithSkeleton(skeleton, agentNodes []*models.TaskNode) []*models.TaskNode {
+	if len(skeleton) == 0 {
+		return agentNodes
+	}
+	byName := make(map[string]*models.TaskNode, len(agentNodes))
+	for _, node := range agentNodes {
+		if node == nil {
+			continue
+		}
+		byName[normalizePlanNodeName(node.Name)] = node
+	}
+	used := map[string]bool{}
+	idMap := map[string]string{}
+	out := make([]*models.TaskNode, 0, len(skeleton)+len(agentNodes))
+	for _, skeletonNode := range skeleton {
+		if skeletonNode == nil {
+			continue
+		}
+		match := byName[normalizePlanNodeName(skeletonNode.Name)]
+		if match == nil {
+			out = append(out, skeletonNode)
+			continue
+		}
+		used[match.ID] = true
+		idMap[match.ID] = skeletonNode.ID
+		merged := *skeletonNode
+		if strings.TrimSpace(match.Description) != "" {
+			merged.Description = match.Description
+		}
+		out = append(out, &merged)
+	}
+	for _, node := range agentNodes {
+		if node == nil || used[node.ID] {
+			continue
+		}
+		for index, dep := range node.Dependencies {
+			if mapped, ok := idMap[dep]; ok {
+				node.Dependencies[index] = mapped
+			}
+		}
+		out = append(out, node)
+	}
+	return out
+}
+
+// normalizePlanNodeName normalises a node name for skeleton matching.
+func normalizePlanNodeName(name string) string {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	lower = strings.ReplaceAll(lower, "&", " and ")
+	fields := strings.Fields(lower)
+	return strings.Join(fields, " ")
 }
 
 func parsePlannerAgentResponse(raw string) (*plannerAgentResponse, error) {
@@ -554,6 +649,9 @@ func normalizePlannerTaskType(bp plannerNodeBlueprint) string {
 		if containsAny(context, "paper_parse", "extract method", "parse paper") {
 			return "paper_parse"
 		}
+		if containsAny(context, "literature_search", "search literature", "find papers", "search papers", "literature review", "文献检索", "论文检索") {
+			return "literature_search"
+		}
 		if containsAny(context, "framework_research", "candidate framework", "research framework", "documentation", "best practice") {
 			return "framework_research"
 		}
@@ -579,7 +677,7 @@ func normalizePlannerTaskType(bp plannerNodeBlueprint) string {
 	}
 
 	switch rawType {
-	case "framework_research", "framework_recommendation", "generate_code", "resolve_dependencies", "prepare_runtime", "install_dependencies", "execute_code", "paper_code_execute", "paper_parse", "claim_rubric_extract", "repo_discovery", "repo_prepare", "ablation_design", "paper_compare", "claim_evidence_build", "result_visualization", "fix_and_rerun", "verify_result", "render_plot", "general_research", "general_synthesis", "general_process", "dataset_profile", "benchmark_dataset_audit", "benchmark_split_materialize", "benchmark_contract_freeze", "benchmark_adapter_generate", "benchmark_adapter_preflight", "benchmark_execute", "benchmark_validate", "autoresearch_spec", "autoresearch_run", "autoresearch_validate", "experiment_dataset_prepare", "experiment_spec", "experiment_run", "experiment_validate":
+	case "framework_research", "framework_recommendation", "generate_code", "resolve_dependencies", "prepare_runtime", "install_dependencies", "execute_code", "paper_code_execute", "paper_parse", "claim_rubric_extract", "repo_discovery", "repo_prepare", "ablation_design", "paper_compare", "claim_evidence_build", "result_visualization", "fix_and_rerun", "verify_result", "render_plot", "general_research", "literature_search", "general_synthesis", "general_process", "dataset_profile", "benchmark_dataset_audit", "benchmark_split_materialize", "benchmark_contract_freeze", "benchmark_adapter_generate", "benchmark_adapter_preflight", "benchmark_execute", "benchmark_validate", "autoresearch_spec", "autoresearch_run", "autoresearch_validate", "experiment_dataset_prepare", "experiment_spec", "experiment_run", "experiment_validate":
 		return rawType
 	}
 
@@ -625,6 +723,15 @@ func attachPlannerContextBindings(node *models.TaskNode, intent models.IntentCon
 			node.Inputs = buildRepoDiscoveryInputs(intent)
 		}
 		node.Description = buildRepoDiscoveryDescription(intent.RawIntent)
+	case "literature_search":
+		node.OutputArtifacts = ensureArtifacts(node.OutputArtifacts, "literature_results")
+		if len(node.Inputs) == 0 {
+			node.Inputs = map[string]any{
+				"query":   literatureSearchQuery(intent),
+				"sources": literatureSearchSources(intent),
+				"limit":   5,
+			}
+		}
 	case "general_synthesis":
 		if intent.Entities != nil && intent.Entities["paper_metadata"] != nil {
 			node.RequiredArtifacts = ensureArtifacts(node.RequiredArtifacts, "paper_summary", "paper_metadata")
@@ -678,7 +785,7 @@ func normalizePlannerAssignedTo(bp plannerNodeBlueprint) string {
 		return "coder_agent"
 	case "prepare_runtime", "install_dependencies", "execute_code":
 		return "sandbox_agent"
-	case "framework_research", "paper_parse", "claim_rubric_extract", "general_research":
+	case "framework_research", "paper_parse", "claim_rubric_extract", "general_research", "literature_search":
 		return "librarian_agent"
 	case "framework_recommendation", "ablation_design", "paper_compare", "claim_evidence_build", "verify_result":
 		return "data_agent"

@@ -7,6 +7,7 @@ import (
 	"log"
 	"research-assistant-backend/internal/appconfig"
 	"research-assistant-backend/internal/documents"
+	"research-assistant-backend/internal/literature"
 	"research-assistant-backend/internal/llmclient"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
@@ -27,6 +28,12 @@ type LibrarianAgent struct {
 	EinoChain    compose.Runnable[string, string]
 	ChatModel    *openai.ChatModel
 	Documents    *documents.Store
+	// Literature is the provider client used by literature_search tasks.
+	Literature *literature.Client
+	// Library stores literature records discovered during a search.
+	Library *literature.LibraryStore
+	// Runtime resolves the plan owner's model profile per request.
+	Runtime *dynamicChatModel
 }
 
 type librarianContextKey string
@@ -37,6 +44,7 @@ func NewLibrarianAgent() *LibrarianAgent {
 	agent := &LibrarianAgent{
 		Name:         "librarian_agent",
 		SystemPrompt: prompts.LibrarianSystemPrompt,
+		Runtime:      newDynamicChatModel(nil),
 	}
 
 	agent.initEinoChain()
@@ -44,20 +52,23 @@ func NewLibrarianAgent() *LibrarianAgent {
 }
 
 func (a *LibrarianAgent) initEinoChain() {
+	var chatModel *openai.ChatModel
 	llmCfg, err := appconfig.LoadLLMConfig()
 	if err != nil {
-		log.Fatalf("加载 LLM 配置失败: %v", err)
+		log.Printf("[%s] LLM 配置不可用，文献链将使用运行期模型: %v", a.Name, err)
+	} else {
+		created, createErr := llmclient.NewChatModel(context.Background(), &openai.ChatModelConfig{
+			BaseURL: llmCfg.BaseURL,
+			APIKey:  llmCfg.APIKey,
+			Model:   llmCfg.Model,
+		})
+		if createErr != nil {
+			log.Printf("[%s] 初始化文献分析模型失败: %v", a.Name, createErr)
+		} else {
+			chatModel = created
+			a.ChatModel = created
+		}
 	}
-
-	chatModel, err := llmclient.NewChatModel(context.Background(), &openai.ChatModelConfig{
-		BaseURL: llmCfg.BaseURL,
-		APIKey:  llmCfg.APIKey,
-		Model:   llmCfg.Model,
-	})
-	if err != nil {
-		log.Fatalf("初始化文献分析模型失败: %v", err)
-	}
-	a.ChatModel = chatModel
 
 	graph := compose.NewGraph[string, string]()
 
@@ -75,7 +86,10 @@ func (a *LibrarianAgent) initEinoChain() {
 	}))
 
 	// 使用支持流式的 ChatModelNode
-	graph.AddChatModelNode("LLM_Analyze_Literature", wrapUsageModel(chatModel))
+	model := wrapRuntimeModel(a.Runtime, chatModel)
+	if model != nil {
+		graph.AddChatModelNode("LLM_Analyze_Literature", wrapUsageModel(model))
+	}
 
 	graph.AddLambdaNode("Report_Extractor", compose.InvokableLambda(func(ctx context.Context, msg *schema.Message) (string, error) {
 		logToContext(ctx, "[%s] Eino 节点 [Report_Extractor]: 文献分析报告生成完毕", a.Name)
@@ -83,13 +97,16 @@ func (a *LibrarianAgent) initEinoChain() {
 	}))
 
 	graph.AddEdge(compose.START, "Prompt_Builder")
-	graph.AddEdge("Prompt_Builder", "LLM_Analyze_Literature")
-	graph.AddEdge("LLM_Analyze_Literature", "Report_Extractor")
+	if model != nil {
+		graph.AddEdge("Prompt_Builder", "LLM_Analyze_Literature")
+		graph.AddEdge("LLM_Analyze_Literature", "Report_Extractor")
+	}
 	graph.AddEdge("Report_Extractor", compose.END)
 
 	runnable, err := graph.Compile(context.Background())
 	if err != nil {
-		log.Fatalf("编译 Eino 链失败: %v", err)
+		log.Printf("[%s] 编译 Eino 链失败: %v", a.Name, err)
+		return
 	}
 
 	a.EinoChain = runnable
@@ -100,11 +117,11 @@ func (a *LibrarianAgent) ExecuteTask(ctx context.Context, task *models.Task, sha
 	if task != nil && task.Type == "claim_rubric_extract" {
 		return a.executeClaimRubricExtraction(ctx, task)
 	}
-
-	input := task.Description
-	if task != nil && len(task.Inputs) > 0 {
-		input = fmt.Sprintf("%s\n\n上游输入:\n%s", task.Description, formatTaskInputsForPrompt(task.Inputs, 6000))
+	if task != nil && task.Type == "literature_search" {
+		return a.executeLiteratureSearch(ctx, task)
 	}
+
+	volatile := ""
 	var loadedDocument *documents.Document
 	if task != nil && (task.Type == "paper_parse" || task.Type == "general_research") && a.Documents != nil {
 		documentID := strings.TrimSpace(fmt.Sprint(task.Inputs["document_id"]))
@@ -122,11 +139,19 @@ func (a *LibrarianAgent) ExecuteTask(ctx context.Context, task *models.Task, sha
 			// stream so retrieval quality is observable per task.
 			retrieval := a.retrieveDocumentContext(ctx, ownerID, documentID, task.Description, document)
 			logToContext(ctx, "%s", retrieval.traceLine())
-			input += "\n\n论文检索片段（带页码/章节，供分析/引用）：\n" + retrieval.Context
+			volatile = "论文检索片段（带页码/章节，供分析/引用）：\n" + retrieval.Context
 		}
 	}
 	intentType := sharedContextValue(sharedContext, "intent_type")
-	ctx = context.WithValue(ctx, librarianSystemPromptContextKey, prompts.LibrarianSystemPromptForTask(intentType, task.Type, task.Name, task.Description))
+	systemPrompt := prompts.LibrarianSystemPromptForTask(intentType, task.Type, task.Name, task.Description)
+	input, promptReport, promptErr := buildAgentPromptText(sharedContext, task, systemPrompt, volatile, 6000)
+	if promptErr != nil {
+		task.Status = models.StatusFailed
+		task.Error = promptErr.Error()
+		return promptErr
+	}
+	recordPromptReport(task, promptReport)
+	ctx = context.WithValue(ctx, librarianSystemPromptContextKey, systemPrompt)
 
 	output, err := a.EinoChain.Invoke(ctx, input)
 	if err != nil {

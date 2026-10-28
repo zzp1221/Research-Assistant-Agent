@@ -11,13 +11,39 @@ export interface ChatMessage {
   taskId?: string;
 }
 
+export interface OCRStats {
+  engine?: string;
+  language?: string;
+  ocr_pages: number;
+  average_confidence?: number;
+  failed_pages: number;
+  skipped_pages: number;
+  total_pages: number;
+  partial?: boolean;
+}
+
+export interface DocumentPageQuality {
+  page: number;
+  source: string;
+  chars: number;
+  ocr_confidence?: number;
+  failed?: boolean;
+  skipped?: boolean;
+  error?: string;
+}
+
 export interface UploadDocumentSummary {
   status: string;
   page_count: number;
+  total_pages?: number;
   characters: number;
   extractor?: string;
   error?: string;
   extracted_at?: string;
+  ocr_stats?: OCRStats;
+  tables?: number;
+  figures?: number;
+  blocks?: number;
 }
 
 export interface UploadedFile {
@@ -34,6 +60,33 @@ export interface UploadedFile {
 export interface DocumentPageInfo {
   number: number;
   chars: number;
+  source?: string;
+}
+
+export interface DocumentTableSummary {
+  id: string;
+  page: number;
+  caption?: string;
+  rows: number;
+  confidence?: number;
+  csv_ref?: string;
+}
+
+export interface DocumentFigureSummary {
+  id: string;
+  page: number;
+  caption?: string;
+  image_ref?: string;
+  warning?: string;
+}
+
+export interface DocumentBlock {
+  id: string;
+  type: string;
+  bbox: [number, number, number, number];
+  text: string;
+  confidence: number;
+  page: number;
 }
 
 export interface DocumentInfoResponse {
@@ -41,6 +94,18 @@ export interface DocumentInfoResponse {
   name: string;
   document: UploadDocumentSummary;
   pages: DocumentPageInfo[];
+  tables?: DocumentTableSummary[];
+  figures?: DocumentFigureSummary[];
+  quality?: DocumentPageQuality[];
+  ocr_stats?: OCRStats;
+}
+
+export interface DocumentQualityResponse {
+  upload_id: string;
+  status: string;
+  total_pages: number;
+  ocr_stats: OCRStats;
+  pages: DocumentPageQuality[];
 }
 
 export interface AssistTerm {
@@ -98,6 +163,7 @@ export interface Task {
   StructuredData?: string;
   ImageBase64?: string;
   Error?: string;
+  Verification?: Verification;
 }
 
 export interface GraphTask {
@@ -133,6 +199,7 @@ export interface GraphTask {
   image_base64?: string;
   image_base_64?: string;
   error?: string;
+  verification?: Verification;
 }
 
 export interface PlanArtifact {
@@ -194,6 +261,8 @@ export interface PlanGraph {
   paused?: boolean;
   paused_at?: string;
   run_trigger?: 'manual' | 'auto';
+  verification?: Verification;
+  model_snapshot?: Record<string, unknown>;
   missing_requirements?: MissingRequirement[];
   runtime_policy?: RuntimePolicy;
   runtime_actions?: RuntimeAction[];
@@ -235,6 +304,11 @@ export interface PlanGraph {
     ready_nodes: number;
     planner_source?: 'agent' | 'template' | string;
     planner_fallback_reason?: string;
+    planning_route?: 'fast_path' | 'standard_template' | 'agent_augmented' | 'template_fallback' | string;
+    complexity?: 'L0' | 'L1' | 'L2' | 'L3' | 'L4' | string;
+    complexity_source?: 'rule' | 'llm' | 'merged' | 'fallback' | 'disabled' | string;
+    template_variant?: 'simple' | 'standard' | 'full' | 'light' | string;
+    general_plan_shape?: 'direct' | 'research' | 'paper' | 'literature' | 'legacy' | string;
   };
 }
 
@@ -336,4 +410,208 @@ export interface ExecuteTaskResultEvent {
   structured_data?: string;
   image_base64?: string;
   image_base_64?: string;
+  verification?: Verification;
+}
+
+export type VerificationStatus = 'pass' | 'fail' | 'inconclusive' | 'skipped';
+export type VerificationLevel = 'structural' | 'text' | 'visual' | 'none';
+
+export interface VerificationVerifiedBy {
+  profile_id?: string;
+  model?: string;
+  mode?: string;
+}
+
+export interface ImageVerification {
+  source_key?: string;
+  sha256?: string;
+  width?: number;
+  height?: number;
+  bytes?: number;
+  structural_status?: string;
+  structural_issues?: string[];
+  visual_status?: string;
+  summary?: string;
+  issues?: string[];
+  evidence?: string[];
+  confidence?: number;
+  profile_id?: string;
+  model?: string;
+  error?: string;
+}
+
+export interface Verification {
+  status: VerificationStatus;
+  level: VerificationLevel;
+  verified: boolean;
+  verified_by?: VerificationVerifiedBy;
+  rubric_version?: string;
+  image_sha256?: string[];
+  issues?: string[];
+  evidence?: string[];
+  confidence?: number;
+  reason?: string;
+  checked_at?: string;
+  duration_ms?: number;
+  token_usage?: { prompt: number; completion: number; estimated?: boolean };
+  images?: ImageVerification[];
+  warnings?: string[];
+}
+
+export interface ModelProfile {
+  id: string;
+  owner_id: string;
+  global: boolean;
+  name: string;
+  provider: string;
+  base_url: string;
+  model: string;
+  api_key_masked: string;
+  api_key_last4?: string;
+  roles: string[];
+  supports_vision: 'yes' | 'no' | 'unknown' | string;
+  vision_probe_reason?: string;
+  vision_probed_at?: string;
+  vision_overridden_at?: string;
+  timeout_seconds: number;
+  max_output_tokens?: number;
+  context_window_tokens?: number;
+  prompt_price_per_1k?: number;
+  completion_price_per_1k?: number;
+  revision: number;
+  bootstrap?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ModelRouting {
+  owner_id: string;
+  main_profile_id: string;
+  vision_profile_ids?: string[];
+  fallback_profile_ids?: string[];
+  updated_at?: string;
+}
+
+export interface ModelProfileListResponse {
+  profiles: ModelProfile[];
+  encryption_available: boolean;
+  is_admin: boolean;
+  max_per_user: number;
+}
+
+export interface LiteratureResult {
+  source: string;
+  id: string;
+  title: string;
+  authors?: string[];
+  year?: number;
+  venue?: string;
+  doi?: string;
+  arxiv_id?: string;
+  url?: string;
+  pdf_url?: string;
+  abstract?: string;
+  citations?: number;
+  repository_url?: string;
+  open_access?: boolean;
+  license?: string;
+  rank?: number;
+  score?: number;
+  rank_reason?: string;
+}
+
+export interface LiteratureWarning {
+  source: string;
+  message: string;
+}
+
+export interface LiteratureSearchResponse {
+  query: string;
+  results: LiteratureResult[];
+  count: number;
+  warnings?: LiteratureWarning[];
+  sources?: string[];
+  sort?: string;
+}
+
+export interface LiteratureRecord {
+  id: string;
+  source: string;
+  external_id?: string;
+  title: string;
+  authors?: string[];
+  year?: number;
+  venue?: string;
+  abstract?: string;
+  doi?: string;
+  arxiv_id?: string;
+  url?: string;
+  pdf_url?: string;
+  citations?: number;
+  open_access?: boolean;
+  license?: string;
+  tags?: string[];
+  upload_id?: string;
+  attached_sessions?: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LiteratureRecordListResponse {
+  records: LiteratureRecord[];
+  count: number;
+  next_cursor: number;
+}
+
+export interface LiteratureImportResponse {
+  metadata: LiteratureResult;
+  source: string;
+  attached: boolean;
+  metadata_only?: boolean;
+  record?: LiteratureRecord;
+  upload?: UploadedFile;
+}
+
+export interface LiteratureAttachResponse {
+  record: LiteratureRecord;
+  upload?: UploadedFile;
+  attached_session?: string;
+}
+
+export interface CitationGraph {
+  doi: string;
+  openalex_id?: string;
+  title?: string;
+  cited_by_count: number;
+  references: LiteratureResult[];
+  cited_by: LiteratureResult[];
+  warnings?: LiteratureWarning[];
+}
+
+export interface WebFetchResult {
+  title: string;
+  url: string;
+  text: string;
+  excerpt: string;
+  links: string[];
+  fetched_at: string;
+  content_type: string;
+  word_count: number;
+  cached: boolean;
+}
+
+export interface ModelProfilePayload {
+  name?: string;
+  provider?: string;
+  base_url?: string;
+  model?: string;
+  api_key?: string;
+  roles?: string[];
+  supports_vision?: string;
+  timeout_seconds?: number;
+  max_output_tokens?: number;
+  context_window_tokens?: number;
+  prompt_price_per_1k?: number;
+  completion_price_per_1k?: number;
+  global?: boolean;
 }

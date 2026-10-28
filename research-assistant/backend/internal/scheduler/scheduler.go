@@ -10,7 +10,9 @@ import (
 	"research-assistant-backend/internal/agentctx"
 	"research-assistant-backend/internal/blobstore"
 	"research-assistant-backend/internal/metrics"
+	"research-assistant-backend/internal/modelresolver"
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/prompts"
 	"research-assistant-backend/internal/store"
 	"research-assistant-backend/internal/usage"
 	"sort"
@@ -285,10 +287,6 @@ func (s *Scheduler) checkPlanStall(ctx context.Context, plan *models.PlanGraph) 
 		Timestamp: now,
 	})
 	metrics.Default().Inc("plan_stalled_total", nil)
-}
-
-func (s *Scheduler) SetOnTerminal(fn func(context.Context, *models.PlanGraph)) {
-	s.onTerminal = fn
 }
 
 func (s *Scheduler) SetFinalizer(finalizer PlanFinalizer) {
@@ -942,7 +940,7 @@ func (s *Scheduler) ExecuteTask(ctx context.Context, planID, taskID string) (*mo
 	if timeout <= 0 {
 		timeout = 10 * time.Minute
 	}
-	taskCtx, cancel := context.WithTimeout(ctx, timeout)
+	taskCtx, cancel := context.WithTimeout(modelresolver.WithOwner(ctx, plan.OwnerID), timeout)
 	defer cancel()
 
 	result, execErr := s.executor.ExecuteTask(taskCtx, plan, task)
@@ -1103,7 +1101,8 @@ func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*m
 
 			logChannel := make(chan string, 64)
 			recorder := usage.NewRecorder()
-			execCtx := usage.WithRecorder(agentctx.WithLogChannel(ctx, logChannel), recorder)
+			// Bind the plan owner so runtime model profiles resolve per user.
+			execCtx := modelresolver.WithOwner(usage.WithRecorder(agentctx.WithLogChannel(ctx, logChannel), recorder), plan.OwnerID)
 			taskTimeout := time.Duration(currentTask.TimeoutSeconds) * time.Second
 			if taskTimeout <= 0 {
 				taskTimeout = 10 * time.Minute
@@ -1210,6 +1209,19 @@ func applyTaskUsage(task *models.TaskNode, plan *models.PlanGraph, taskUsage *mo
 	if plan != nil {
 		plan.Usage.AddTaskUsage(taskUsage)
 	}
+	// Prompt-budget diagnostics live in task metadata; surface them in usage
+	// and metrics so truncation is observable.
+	if task.Metadata != nil {
+		if report, ok := task.Metadata["prompt_budget"].(prompts.PromptReport); ok {
+			task.Usage.PromptBudgetLimit = report.Budget
+			task.Usage.PromptTruncatedSections = len(report.TruncatedSections())
+			for _, section := range report.Sections {
+				if section.Truncated || section.Dropped {
+					metrics.RecordPromptTruncatedSection(section.Name)
+				}
+			}
+		}
+	}
 }
 
 func (s *Scheduler) forwardTaskLogs(planID, taskID string, logChannel <-chan string, done chan<- struct{}) {
@@ -1307,7 +1319,25 @@ func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner st
 		task.LeaseExpiresAt = nil
 		task.FinishedAt = &now
 		task.UpdatedAt = now
+		if len(result.Metadata) > 0 {
+			if task.Metadata == nil {
+				task.Metadata = map[string]any{}
+			}
+			for key, value := range result.Metadata {
+				task.Metadata[key] = value
+			}
+		}
 		applyTaskUsage(task, plan, result.Usage)
+		if result.Verification != nil {
+			task.Verification = result.Verification
+			plan.Verification = result.Verification
+			// Stamp every image artifact the plan has produced so the UI can show a
+			// per-figure badge without joining the verification record.
+			for key, artifact := range plan.Artifacts {
+				annotateArtifactVerification(&artifact, result.Verification)
+				plan.Artifacts[key] = artifact
+			}
+		}
 
 		seenArtifacts := map[string]struct{}{}
 		for _, artifact := range result.Artifacts {
@@ -1330,6 +1360,9 @@ func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner st
 				strings.TrimSpace(existing.ProducerTaskID) != "" &&
 				existing.ProducerTaskID != taskID {
 				return fmt.Errorf("artifact %q was already produced by task %s", key, existing.ProducerTaskID)
+			}
+			if result.Verification != nil {
+				annotateArtifactVerification(&artifact, result.Verification)
 			}
 			seenArtifacts[key] = struct{}{}
 			plan.Artifacts[key] = artifact
@@ -1374,7 +1407,61 @@ func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner st
 		},
 		Timestamp: now,
 	})
+	if result.Verification != nil {
+		eventType := "verification_completed"
+		if result.Verification.Status != models.VerificationPass && result.Verification.Status != models.VerificationSkipped {
+			eventType = "verification_failed"
+		}
+		s.publishAndStore(planID, models.PlanEvent{
+			PlanID:     planID,
+			EventType:  eventType,
+			TaskID:     taskID,
+			TaskStatus: string(models.StatusCompleted),
+			Payload:    verificationEventPayload(result.Verification),
+			Timestamp:  now,
+		})
+	}
 	return nil
+}
+
+// annotateArtifactVerification stamps the per-artifact verdict onto image
+// artifacts so the UI can show a corner badge without joining the plan.
+func annotateArtifactVerification(artifact *models.Artifact, verification *models.Verification) {
+	if artifact == nil || verification == nil {
+		return
+	}
+	key := strings.ToLower(artifact.Key)
+	if !strings.Contains(key, "image") && !strings.Contains(key, "plot") {
+		return
+	}
+	if artifact.Metadata == nil {
+		artifact.Metadata = map[string]any{}
+	}
+	artifact.Metadata["verification"] = map[string]any{
+		"status":   verification.Status,
+		"level":    verification.Level,
+		"verified": verification.Verified,
+		"reason":   verification.Reason,
+		"issues":   verification.Issues,
+	}
+}
+
+func verificationEventPayload(verification *models.Verification) map[string]any {
+	if verification == nil {
+		return nil
+	}
+	return map[string]any{
+		"verification": map[string]any{
+			"status":      verification.Status,
+			"level":       verification.Level,
+			"verified":    verification.Verified,
+			"reason":      verification.Reason,
+			"issues":      verification.Issues,
+			"confidence":  verification.Confidence,
+			"verified_by": verification.VerifiedBy,
+			"checked_at":  verification.CheckedAt,
+		},
+	}
 }
 
 func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner string, executionEpoch int, result *models.TaskExecutionResult, allowRetry bool) (bool, error) {

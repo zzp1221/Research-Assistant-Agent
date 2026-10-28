@@ -22,6 +22,7 @@ import (
 	"research-assistant-backend/internal/events"
 	intentpkg "research-assistant-backend/internal/intent"
 	"research-assistant-backend/internal/metrics"
+	"research-assistant-backend/internal/modelresolver"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/planner"
 	"research-assistant-backend/internal/sandbox"
@@ -34,11 +35,12 @@ import (
 const planStreamEventName = "plan_event"
 
 type planRuntime struct {
-	planner        *planner.Planner
-	store          store.PlanStore
-	scheduler      *scheduler.Scheduler
-	events         *events.Bus
-	intentResolver *intentpkg.Resolver
+	planner          *planner.Planner
+	store            store.PlanStore
+	scheduler        *scheduler.Scheduler
+	events           *events.Bus
+	intentResolver   *intentpkg.Resolver
+	complexityRouter *planner.ComplexityRouter
 
 	mu          sync.Mutex
 	running     map[string]context.CancelFunc
@@ -48,14 +50,15 @@ type planRuntime struct {
 
 func newPlanRuntime(p *planner.Planner, planStore store.PlanStore, runner *scheduler.Scheduler, eventBus *events.Bus) *planRuntime {
 	return &planRuntime{
-		planner:        p,
-		store:          planStore,
-		scheduler:      runner,
-		events:         eventBus,
-		intentResolver: intentpkg.NewResolverFromEnv(),
-		running:        map[string]context.CancelFunc{},
-		planLimiter:    planRateLimitFromEnv(),
-		idempotency:    newIdempotencyCache(24 * time.Hour),
+		planner:          p,
+		store:            planStore,
+		scheduler:        runner,
+		events:           eventBus,
+		intentResolver:   intentpkg.NewResolverFromEnv(),
+		complexityRouter: planner.NewComplexityRouterFromEnv(),
+		running:          map[string]context.CancelFunc{},
+		planLimiter:      planRateLimitFromEnv(),
+		idempotency:      newIdempotencyCache(24 * time.Hour),
 	}
 }
 
@@ -303,7 +306,15 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 			intentContext.Entities["paper_search_query"] = researchContext.Paper.Title
 		}
 	}
-	plan, err := r.planner.BuildPlan(c.Request.Context(), intentContext)
+	// The final route must be computed after attachments and paper metadata are
+	// resolved: the text-only intent classifier cannot see them.
+	route := r.complexityRouter.Decide(c.Request.Context(), intentContext, attachments, researchContext)
+	intentContext.Complexity = string(route.Complexity)
+	intentContext.Capabilities = route.Capabilities
+	intentContext.RouteHint = route.RouteHint
+	intentContext.ComplexityConfidence = route.Confidence
+	intentContext.ComplexityReason = route.Reason
+	plan, err := r.planner.BuildPlanWithRoute(c.Request.Context(), intentContext, route)
 	if err != nil {
 		log.Printf("Error generating plan graph: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate plan"})
@@ -319,6 +330,13 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		}
 	}
 	plan.RuntimePolicy = runtimePolicy
+	// Freeze the resolved model profiles so this run stays reproducible even if
+	// the user edits profiles while the plan is executing.
+	if resolver := modelresolver.Default(); resolver != nil {
+		snapshot := resolver.Snapshot(userID)
+		snapshot.CreatedAt = time.Now().UTC()
+		plan.ModelSnapshot = &snapshot
+	}
 	configurePlanGovernance(plan, intentContext, userID, sessionID)
 	if err := r.store.SavePlan(plan); err != nil {
 		log.Printf("Error saving plan graph: %v", err)
@@ -329,9 +347,15 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		PlanID:    plan.ID,
 		EventType: "plan_created",
 		Payload: map[string]any{
-			"actor":       userID,
-			"session_id":  sessionID,
-			"intent_type": plan.IntentType,
+			"actor":              userID,
+			"session_id":         sessionID,
+			"intent_type":        plan.IntentType,
+			"planner_source":     plan.Meta.PlannerSource,
+			"planning_route":     plan.Meta.PlanningRoute,
+			"complexity":         plan.Meta.Complexity,
+			"complexity_source":  plan.Meta.ComplexitySource,
+			"template_variant":   plan.Meta.TemplateVariant,
+			"general_plan_shape": plan.Meta.GeneralPlanShape,
 		},
 		Timestamp: time.Now(),
 	})
@@ -1046,13 +1070,6 @@ func planRequestsFullReproduction(plan *models.PlanGraph) bool {
 		}
 	}
 	return false
-}
-
-func planTimeout(plan *models.PlanGraph) time.Duration {
-	if plan != nil && plan.Budget.MaxDurationSec > 0 {
-		return time.Duration(plan.Budget.MaxDurationSec) * time.Second
-	}
-	return 35 * time.Minute
 }
 
 func buildRuleIntentContext(rawIntent string) models.IntentContext {

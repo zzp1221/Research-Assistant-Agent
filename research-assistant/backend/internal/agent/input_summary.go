@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
+
+	"research-assistant-backend/internal/prompts"
 )
 
 // formatTaskInputsForPrompt serializes upstream inputs for an LLM prompt while
 // preventing image bytes and huge payloads from being sent as text. The agents
 // still receive the original task.Inputs for execution; only the prompt copy is
-// bounded.
+// bounded. Truncation is UTF-8 safe: multi-byte characters are never split.
 func formatTaskInputsForPrompt(inputs map[string]any, perValueLimit int) string {
 	if len(inputs) == 0 {
 		return ""
@@ -41,12 +44,12 @@ func previewPromptValue(value any, limit int) string {
 	case string:
 		trimmed := strings.TrimSpace(typed)
 		if looksLikeBase64Image(trimmed) {
-			return fmt.Sprintf("[image/base64 artifact omitted from prompt: %d chars]", len(typed))
+			return fmt.Sprintf("[image/base64 artifact omitted from prompt: %d chars]", utf8.RuneCountInString(typed))
 		}
 		if len(typed) <= limit {
 			return typed
 		}
-		return typed[:limit] + fmt.Sprintf("...[truncated, %d chars total]", len(typed))
+		return prompts.TruncateUTF8Bytes(typed, limit) + fmt.Sprintf("...[truncated, %d chars total]", utf8.RuneCountInString(typed))
 	case []any:
 		encoded, err := json.Marshal(typed)
 		if err != nil {
@@ -55,7 +58,7 @@ func previewPromptValue(value any, limit int) string {
 		if len(encoded) <= limit {
 			return string(encoded)
 		}
-		return string(encoded[:limit]) + "...[truncated]"
+		return prompts.TruncateUTF8Bytes(string(encoded), limit) + "...[truncated]"
 	case map[string]any, []string:
 		encoded, err := json.Marshal(typed)
 		if err != nil {
@@ -64,16 +67,16 @@ func previewPromptValue(value any, limit int) string {
 		if len(encoded) <= limit {
 			return string(encoded)
 		}
-		return string(encoded[:limit]) + "...[truncated]"
+		return prompts.TruncateUTF8Bytes(string(encoded), limit) + "...[truncated]"
 	default:
 		text := fmt.Sprint(value)
 		if looksLikeBase64Image(strings.TrimSpace(text)) {
-			return fmt.Sprintf("[image/base64 artifact omitted from prompt: %d chars]", len(text))
+			return fmt.Sprintf("[image/base64 artifact omitted from prompt: %d chars]", utf8.RuneCountInString(text))
 		}
 		if len(text) <= limit {
 			return text
 		}
-		return text[:limit] + "...[truncated]"
+		return prompts.TruncateUTF8Bytes(text, limit) + "...[truncated]"
 	}
 }
 

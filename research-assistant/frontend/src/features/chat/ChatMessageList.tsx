@@ -22,8 +22,8 @@ interface ChatMessageListProps {
 }
 
 const roleLabel = (role: string) => {
-  if (role === 'user') return '作者';
-  if (role === 'system') return '校样';
+  if (role === 'user') return '你';
+  if (role === 'system') return '助手';
   return '助手';
 };
 
@@ -62,8 +62,8 @@ export function ChatMessageList(props: ChatMessageListProps) {
   return (
     <div className="relative min-h-0 flex-1">
       <div className="flex h-8 shrink-0 items-baseline justify-between border-b border-line bg-surface px-4">
-        <span className="journal-caps text-[10px]">正文 · 校样批注</span>
-        <span className="journal-num text-[10.5px] text-muted">{chatHistory.length} 段</span>
+        <span className="journal-caps text-[10px]">对话记录</span>
+        <span className="journal-num text-[10.5px] text-muted">{chatHistory.length} 条</span>
       </div>
       <div
         ref={scrollRef}
@@ -73,7 +73,7 @@ export function ChatMessageList(props: ChatMessageListProps) {
         // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
         tabIndex={0}
         role="log"
-        aria-label="校样正文"
+        aria-label="对话记录"
         className="h-[calc(100%-2rem)] overflow-y-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-proof"
       >
         {!isLoggedIn && (
@@ -129,7 +129,7 @@ export function ChatMessageList(props: ChatMessageListProps) {
                         className="inline-flex h-6 items-center gap-1.5 border border-line-strong bg-surface px-2 text-[11.5px] text-ink-soft transition-colors hover:border-ink hover:text-ink"
                       >
                         <Maximize2 className="h-3 w-3" />
-                        查看图版
+                        查看图表
                       </button>
                     )}
                     {msg.actions.includes('view_report') && msg.taskId && (
@@ -138,7 +138,7 @@ export function ChatMessageList(props: ChatMessageListProps) {
                         className="inline-flex h-6 items-center gap-1.5 border border-line-strong bg-surface px-2 text-[11.5px] text-ink-soft transition-colors hover:border-ink hover:text-ink"
                       >
                         <FileText className="h-3 w-3" />
-                        查看批注报告
+                        查看报告
                       </button>
                     )}
                   </div>
@@ -152,11 +152,11 @@ export function ChatMessageList(props: ChatMessageListProps) {
           <div className="proof-in border-b border-line/70 bg-surface-muted/60 px-4 py-3">
             <div className="flex items-baseline justify-between">
               <span className="journal-num text-[10.5px] text-muted">§·</span>
-              <span className="journal-caps text-[10px] text-muted">校样</span>
+              <span className="journal-caps text-[10px] text-muted">助手</span>
             </div>
             <p className="mt-1 flex items-center gap-2 font-serif text-[12.5px] leading-6 text-ink-soft">
               <span className="proof-pulse h-1.5 w-1.5 shrink-0 bg-proof" aria-hidden="true" />
-              正在排版：解析意图、绑定上下文、编排节点依赖
+              正在生成执行计划：解析意图、绑定上下文、编排节点依赖
             </p>
           </div>
         )}
@@ -170,7 +170,7 @@ export function ChatMessageList(props: ChatMessageListProps) {
           className="proof-in absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 border border-ink bg-surface px-3 py-1.5 text-[11.5px] text-ink shadow-float transition-colors hover:bg-surface-muted"
         >
           <ArrowDown className="h-3 w-3" />
-          回到末页
+          回到底部
         </button>
       )}
     </div>
