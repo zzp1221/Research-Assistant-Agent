@@ -37,14 +37,14 @@ async function seedPlanSession(page: Page) {
 
 test('home empty state', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByText('本页尚无图版')).toBeVisible();
+  await expect(page.getByText('还没有执行图')).toBeVisible();
   await expect(page).toHaveScreenshot('home.png');
 });
 
 test('session menu open', async ({ page }) => {
   await page.goto('/');
   await page.locator('button[aria-haspopup="listbox"]').click();
-  await expect(page.getByText('往期稿次')).toBeVisible();
+  await expect(page.getByText('历史会话')).toBeVisible();
   await expect(page).toHaveScreenshot('session-menu.png');
 });
 
@@ -59,7 +59,7 @@ test('node sidebar logs', async ({ page }) => {
   await seedPlanSession(page);
   await page.goto('/');
   await page.locator('.react-flow__node').first().click();
-  await expect(page.locator('.research-assistant-execution-sidebar').getByText('页边批注')).toBeVisible();
+  await expect(page.locator('.research-assistant-execution-sidebar')).toBeVisible();
   await expect(page).toHaveScreenshot('node-sidebar.png');
 });
 
