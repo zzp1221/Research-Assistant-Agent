@@ -26,7 +26,10 @@
 ## 其他文档
 
 - [运行期模型配置与通用视觉校验设计](design/runtime-model-config-and-visual-verification.md)：per-user + 全局默认模型配置、视觉能力探测与路由、verify_result 通用图像校验（inconclusive/fail 语义）
+- [第三轮修复报告（运行期模型配置与视觉校验）](improvement-2026-10-26/FIX-REPORT-ROUND3.md)：modelprofile/modelresolver、动态模型、视觉探测与 verify_result 落地
+- [第四轮修复报告（N-04 文献 + N-07 文档智能）](improvement-2026-10-26/FIX-REPORT-ROUND4.md)：文献 provider/文献库/引用图、PDF OCR/版面/表格/图注/质量报告
 - [第五轮修复报告（Agent 链路优化 + 复杂度路由）](improvement-2026-10-26/FIX-REPORT-ROUND5.md)：A/B/C/D 四个优化点与 L0-L4 路由的落地、差异、验证证据与回滚开关
+- [第六轮大规模测试报告](improvement-2026-10-26/TEST-REPORT-ROUND6.md)：全量回归、专项测试、缺陷与清理记录
 - [意图复杂度路由与计划生成选择设计](design/intent-complexity-routing.md)：方案 C，把复杂度判断合并进 intent 分类；L0-L4 路由、模板变体、skeleton + agent 增强、验收与风险
 - [Agent 链路优化设计（General / Prompt / Repair / Token 预算）](design/2026-10-27-agent-chain-optimization.md)：四个具体优化点的“问题在哪、为什么、怎么做”、代码位置与验收清单
 - [N-04 真实文献与网页检索 + N-07 文档智能：改进设计与实施方案](design/n04-n07-literature-and-document-intelligence.md)：基于现有 literature/documents 能力的增量设计，含现状、问题、方案、阶段与验收
@@ -37,6 +40,7 @@
 - [research-assistant/docs/phase1.md](../research-assistant/docs/phase1.md)：PDF 阅读、划词翻译与结果可读性
 - [research-assistant/docs/phase2.md](../research-assistant/docs/phase2.md)：数据驱动 catalog 与前端回归测试
 - [reports/README.md](../reports/README.md)：验收报告目录说明（报告默认本地生成，不提交）
+- 2026-10-28 大规模测试的本地证据：`reports/eval-2026-10-28/REPORT.md`（含 `summary.json`、日志、缺陷清单与清理记录；按约定不提交）
 
 ## 文档约定
 

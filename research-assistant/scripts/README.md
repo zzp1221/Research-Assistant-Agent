@@ -9,6 +9,15 @@
 
 脚本只负责本地开发编排；容器化部署优先使用 `docker compose up --build -d`。
 
+## 仓库根脚本
+
+| 脚本 | 说明 |
+|---|---|
+| `container-go.sh` | 在固定 `golang:1.26.1-bookworm` 容器内执行 `go build/vet/test`（挂载仓库与 Go 缓存卷） |
+| `ra.mjs` | 零依赖 API CLI：create/status/events/execute/pause/resume/cancel/approve/wait/export/upload/search/import/openapi |
+| `check-utf8.mjs` | 检查仓库文本文件 UTF-8 合法性 |
+| `mock-audit.mjs` | 扫描后端禁止的 mock/硬编码标记，防止假实现回归 |
+
 ## Unix
 
 | 脚本 | 说明 |

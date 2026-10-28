@@ -37,9 +37,17 @@ backend/
 │   ├── api/                 HTTP 路由、认证、上传、计划运行时
 │   ├── planner/             意图到 DAG 的规划器
 │   ├── scheduler/           DAG 执行、租约、仓库发现与准备
-│   ├── agent/               Chat/Librarian/Benchmark/Coder/Research Coding/Data
+│   ├── agent/               Chat/Librarian/Benchmark/Coder/Research Coding/Data/Visual Verifier
+│   ├── documents/           PDF 解析、OCR、版面/表格/图注、quote locate、质量报告
+│   ├── modelprofile/        per-user/全局模型 profile、加密存储、routing、视觉探测
+│   ├── modelresolver/       按 owner/role 解析模型 profile 与 revision 缓存
+│   ├── literature/          arXiv/OpenAlex/Crossref 等 provider、文献库、BibTeX、引用图
+│   ├── uploadstore/         上传配额、去重、生命周期
+│   ├── webread/             网页正文抽取与 SSRF/robots 防护
+│   ├── metrics/             Prometheus 指标
+│   ├── audit/               审计事件导出
 │   ├── models/              计划、任务、Artifact、AutoResearch 契约
-│   ├── prompts/             各 Agent 的系统提示词
+│   ├── prompts/             各 Agent 的系统提示词与 token 预算
 │   ├── store/               计划与事件存储（文件/内存）
 │   ├── sandbox/             沙箱 gateway HTTP 客户端
 │   ├── appconfig/           LLM 配置加载
@@ -73,6 +81,8 @@ backend/
 | AutoResearch | `autoresearch.go` | ResearchSpec 冻结、候选执行、Keep/Reject、回滚、Holdout |
 | Experiment Research | `experiment_research.go` | `experiment.spec/v1` 配置搜索与 Domain Adapter |
 | Ablation ToT | `ablation_tot.go` | 受限 Tree-of-Thoughts 消融设计 |
+| Literature Search | `literature_search.go` | 多 provider 文献检索、去重、排序与导入 |
+| Visual Verifier | `visual_verifier.go` | 图像结构门禁 + 多模态视觉判定（pass/fail/inconclusive） |
 
 ### models
 
@@ -108,6 +118,25 @@ backend/
 | `GET` | `/api/uploads/:id/content` | 读取附件 |
 | `POST` | `/api/chat` | 对话 |
 | `GET` | `/api/pdf-proxy` | PDF 代理 |
+| `GET` | `/api/uploads/:id/document` | PDF 文本层摘要与页列表 |
+| `GET` | `/api/uploads/:id/document/pages/:page` | 指定页全文 |
+| `GET` | `/api/uploads/:id/document/search?q=...` | BM25 + 中文 bigram 文档检索 |
+| `GET` | `/api/uploads/:id/document/quality` | per-page 质量与 OCR 统计 |
+| `GET` | `/api/uploads/:id/document/pages/:page/layout` | 版面 blocks / reading order |
+| `GET` | `/api/uploads/:id/document/tables/:tableId` | 表格 JSON/CSV |
+| `GET` | `/api/uploads/:id/document/figures/:figureId` | 图注与图片导出 |
+| `POST` | `/api/uploads/:id/assist` | 划词翻译/解释（带页上下文） |
+| `GET` | `/api/literature/search` | 多 provider 文献检索 |
+| `POST` | `/api/literature/import` | DOI/arXiv/PDF URL 导入 |
+| `GET` | `/api/literature/records` | 文献库（owner 隔离） |
+| `GET` | `/api/literature/records/:id/bibtex` | BibTeX 导出 |
+| `GET` | `/api/literature/citations/:doi` | 引用/被引图 |
+| `GET` | `/api/model-profiles` / `POST` | 模型 profile 列表/创建 |
+| `PUT` | `/api/model-profiles/:id` / `DELETE` | 更新/删除模型 profile |
+| `POST` | `/api/model-profiles/:id/test` / `probe-vision` | 连通性与视觉能力探测 |
+| `GET` | `/api/model-routing` / `PUT` | 主模型/视觉/fallback 路由 |
+| `GET` | `/api/metrics` | Prometheus 指标（Bearer 鉴权） |
+| `GET` | `/api/audit/export` | 审计事件导出（调用者隔离） |
 
 ## 环境变量
 
@@ -144,6 +173,7 @@ go build -o bin/api ./cmd/api
 go build -o bin/research-assistant ./cmd/app
 
 go test ./...
+go test -race -count=1 ./internal/agent/conversation ./internal/prompts ./internal/planner ./internal/api ./internal/literature ./internal/documents ./internal/scheduler ./internal/modelprofile ./internal/modelresolver
 go test -v ./evals
 ```
 

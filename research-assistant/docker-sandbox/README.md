@@ -29,6 +29,8 @@ Native Docker 优先；只有 `ENABLE_OPENSANDBOX_FALLBACK=true`、Native Docker
 |---|---|---|
 | `GET` | `/api/v1/health` | Docker 与 fallback 健康状态 |
 | `POST` | `/api/v1/sandboxes` | 创建沙箱，返回 `sandbox_id` |
+| `GET` | `/api/v1/sandboxes?plan_id=...` | 按 plan_id 列出沙箱（读取 plan 标签） |
+| `POST` | `/api/v1/sandboxes/cleanup` | 按 plan_id 清理该计划的沙箱 |
 | `DELETE` | `/api/v1/sandboxes/:id` | 删除沙箱 |
 | `POST` | `/api/v1/sandboxes/:id/network` | 打开/关闭沙箱出口（`{"mode":"bridge"|"none"}`） |
 | `GET` | `/api/v1/sandboxes/:id/usage` | 查看网络字节/磁盘用量与限制 |
@@ -59,7 +61,7 @@ Native Docker 优先；只有 `ENABLE_OPENSANDBOX_FALLBACK=true`、Native Docker
 
 默认 `network_mode=none`：容器加入内部网络 `research-assistant-offline`（`--internal`、无网关、禁用 ICC），无法解析或访问公网。依赖安装/联网执行时，后端先调用 `POST /sandboxes/:id/network {"mode":"bridge"}` 打开默认 bridge，命令结束后立即切回 `none`。镜像超过 `max_image_bytes`、网络接收超过 `max_download_bytes`、磁盘超过 `max_disk_gb` 或运行超过 `max_runtime_sec` 时返回 507 并附用量。
 
-`task_id` 必填，且必须匹配 `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`。创建后会写入 `research-assistant.sandbox=true`、`research-assistant.tenant-id`、`research-assistant.task-id` 和 `research-assistant.plan-id` 标签；执行/删除前会 `docker inspect` 校验标签，未绑定租户/任务的容器会被拒绝。Native Docker ID 必须匹配 `^[a-f0-9]{12,64}$`，OpenSandbox ID 也会做格式校验。
+`task_id` 必填，且必须匹配 `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`。创建后会写入 `research-assistant.sandbox=true`、`research-assistant.tenant-id`、`research-assistant.task-id` 和 `research-assistant.plan-id` 标签；执行/删除前会 `docker inspect` 校验标签，未绑定租户/任务的容器会被拒绝。Native Docker ID 必须匹配 `^[a-f0-9]{12,64}$`，OpenSandbox ID 也会做格式校验。`GET /sandboxes?plan_id=` 与 `POST /sandboxes/cleanup` 使用同一组 plan 标签，便于按计划回收运行时容器。
 
 执行 Python：
 
@@ -100,6 +102,14 @@ Native Docker 优先；只有 `ENABLE_OPENSANDBOX_FALLBACK=true`、Native Docker
 | `SANDBOX_READ_ONLY_ROOT` | `false` | 根文件系统只读 |
 | `OPEN_SANDBOX_URL` | 空 | OpenSandbox 服务地址 |
 | `ENABLE_OPENSANDBOX_FALLBACK` | `false` | 是否启用 fallback |
+
+## 测试
+
+```bash
+go test ./...
+```
+
+容器内 E2E：`test/e2e/sandbox-network.mjs` 验证离线网络 → 打开 → 联网 → 关闭；`test/e2e/round7-sandbox-deep.mjs` 覆盖命令、流式命令、按计划列表与删除。
 
 ## 构建与运行
 

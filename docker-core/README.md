@@ -101,6 +101,8 @@ go test ./checkpoint/...   # 快照与回滚
 
 真实 Docker 集成测试位于 `tests/`，需要可访问的 Docker daemon。测试前请确认 Docker 正常运行，并检查容器、网络端口和临时镜像是否被正确清理。
 
+2026-10-28 验证：`go build ./... && go test -count=1 ./...` 在 `golang:1.26.1-bookworm` 容器内通过（6 个含测试包，0 FAIL）。
+
 ## 子模块说明
 
 - [config](config/README.md)

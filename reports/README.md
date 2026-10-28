@@ -22,4 +22,8 @@ docker run --rm --network research-assistant_research-assistant-network \
 
 ## 当前本地报告
 
-本次评估产物在本地 `reports/eval-2026-10-23/`，包括评分卡、Apriori/AutoResearch/PDF/Benchmark 证据与安全探针结果；该目录被 `.gitignore` 忽略，不随仓库提交。
+- `reports/eval-2026-10-23/`：评分卡、Apriori/AutoResearch/PDF/Benchmark 证据与安全探针结果。
+- `reports/eval-2026-10-25/`：Louvain 论文四场景回归与缺陷根因分析。
+- `reports/eval-2026-10-28/`：2026-10-28 大规模测试（`REPORT.md`、`summary.json`、round7 脚本日志、绘图/论文/Apriori/rank_bm25/Playwright 证据与清理记录）。
+
+以上目录均被 `.gitignore` 忽略，不随仓库提交。

@@ -55,6 +55,8 @@ python3 -m research_optimizer.service
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
+2026-10-28 验证：容器内 8 个测试全部通过；`/health`、`/v1/stats` 鉴权与 `/v1/profile` 契约探针通过。
+
 ## 文件
 
 | 文件 | 职责 |

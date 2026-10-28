@@ -193,6 +193,19 @@ Research Assistant Agent/
 - Framework_Evaluation 仍保留 deterministic offline baseline；它不是真实 LangChain/LlamaIndex 性能 benchmark，真实框架评测需独立专项。
 - 候选搜索是真实 Validation Reward 驱动的分层 UCB、Top-K Beam 与 UCT-style 搜索，不是完整 MCTS 或通用强化学习策略。
 
+### 1.7 2026-10-28 验证状态
+
+最近一次容器内全量验证覆盖了构建、单测、服务探针、既有 E2E 与本轮新增深度测试：
+
+| 层级 | 覆盖 | 结果 |
+|---|---|---|
+| 构建/单测 | backend build/vet/test + 关键包 race、docker-sandbox、docker-core、frontend 112 tests、intent 8 tests、optimizer 8 tests、examples 2 tests、tool build | 全部通过 |
+| 既有 E2E | http-smoke、routing-and-prompts、literature、literature-plan、document-intelligence、model-profiles、verification、sandbox-network、round6 五套 | 全部通过 |
+| 新增深度测试 | round7 deep API、真实 LLM 场景、任务执行/取消、文档 assist、sandbox 命令、AutoResearch、论文复现 | 58/59 deep API、18/18 真实场景、AutoResearch 通过；论文复现暴露 claim rubric 解析缺陷 |
+| 前端 UI | Playwright 11 个测试（更新过期选择器后） | 10 passed / 1 failed（AI 翻译浮层遮挡 PDF 缩放按钮） |
+
+本轮测试脚本位于 `research-assistant/test/e2e/round7-*.mjs`；本地完整证据与缺陷清单见 `reports/eval-2026-10-28/REPORT.md`（按约定不提交）。
+
 ## 2. 快速开始
 
 ### 2.1 前置条件
@@ -387,6 +400,12 @@ Sandbox：
 cd research-assistant/docker-sandbox
 go test ./...
 ```
+
+容器内 E2E（需要运行中的 compose 栈；既有套件位于 `research-assistant/test/e2e/`）：
+
+- 既有：`http-smoke.mjs`、`routing-and-prompts.mjs`、`literature.mjs`、`literature-plan.mjs`、`document-intelligence.mjs`、`model-profiles.mjs`、`verification.mjs`、`sandbox-network.mjs`、`round6-*.mjs`
+- 本轮新增：`round7-api-coverage.mjs`、`round7-real-scenarios.mjs`、`round7-paper-reproduction.mjs`、`round7-autoresearch.mjs`、`round7-task-execute.mjs`、`round7-doc-assist.mjs`、`round7-sandbox-deep.mjs`
+- 2026-10-28 的全量验证结论与缺陷见 `reports/eval-2026-10-28/REPORT.md`（本地生成，不提交）
 
 ### 3.5 模块说明
 

@@ -7,11 +7,21 @@
 `main.py` 调用 OpenAI-compatible chat completions（默认 DeepSeek），要求模型返回严格 JSON：
 
 ```json
-{"intent_type":"Paper_Reproduction","confidence":0.9,"entities":{"paper_title":"Apriori"}}
+{
+  "intent_type": "Paper_Reproduction",
+  "confidence": 0.9,
+  "entities": {"paper_title": "Apriori"},
+  "complexity": "L2",
+  "capabilities": ["paper_parse", "repo_discovery"],
+  "route_hint": "standard_template",
+  "complexity_confidence": 0.82,
+  "complexity_reason": "explicit paper reproduction request"
+}
 ```
 
-- `POST /predict`：`{"text":"...","context":"可选"}` -> `intent_type/confidence/entities/reasoning/model/latency_ms/attempts`
-- `GET /health`：返回 `ok`、`configured`、`model`、`base_url`
+- `POST /predict`：`{"text":"...","context":"可选"}` -> `intent_type/confidence/entities/reasoning/model/latency_ms/attempts`，并返回 `complexity/capabilities/route_hint/complexity_confidence/complexity_reason`。
+- `GET /health`：返回 `ok`、`configured`、`model`、`base_url`。
+- 缺失 complexity 字段时 Go 侧按规则计算；未知枚举降级 L2/standard_template，LLM 不得把规则等级降级。
 
 允许的 `intent_type`：`General`、`Code_Execution`、`Paper_Reproduction`、`Framework_Evaluation`、`AutoResearch`、`Custom_Benchmark`、`Literature_Review`、`Data_Analysis`。
 
@@ -50,6 +60,8 @@ docker run --rm -p 18000:8000 --env-file ../backend.env research-assistant-inten
 ```bash
 python -m unittest test_service.py -v
 ```
+
+2026-10-28 验证：单元测试 8/8 通过；运行中的 `/predict` 在真实 provider 上出现过 502（LLM 返回非法 JSON）与超时，Go 后端会回退规则，详见本地 `reports/eval-2026-10-28/REPORT.md`。
 
 ## 训练
 

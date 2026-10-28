@@ -18,6 +18,8 @@
 | [Benchmark Agent 分类](benchmark-agent/classification/) | Dataset audit -> leakage-safe split -> metric/reward contract -> hidden recomputation | Go test，无外部依赖 | Go test 覆盖 |
 | [检索 Adapter](scientific-autoresearch/retrieval/) | experiment.spec/v1 -> 候选搜索 -> Holdout | CPU，Python 依赖 | 可运行 |
 
+2026-10-28 验证：`paper-reproduction` 的离线测试通过；Apriori 轻量复现的 run_metrics 与独立运行仓库结果逐值一致（15 个频繁项集、5 条规则）；`real_repositories/rank_bm25` AutoResearch 通过 8/8 节点、hidden holdout 3/3。完整证据见本地 `reports/eval-2026-10-28/REPORT.md`。
+
 ## 通用前置条件
 
 - 已按 [research-assistant/README.md](../README.md) 启动后端与沙箱。

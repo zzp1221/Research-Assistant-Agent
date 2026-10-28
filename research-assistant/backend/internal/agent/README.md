@@ -22,6 +22,8 @@
 | Ablation ToT | `ablation_tot.go` | 受限 Tree-of-Thoughts 消融设计 |
 | Paper Debug | `paper_debug_harness.go` | 论文仓库调试状态机与受限补丁验证 |
 | Claim Evidence | `claim_evidence.go` | 主张、准则与真实 Artifact 绑定 |
+| Literature Search | `literature_search.go` | 多 provider 文献检索、去重、排序与导入 |
+| Visual Verifier | `visual_verifier.go` | 图像结构门禁与多模态视觉判定（pass/fail/inconclusive） |
 
 ## 设计约定
 
@@ -29,12 +31,15 @@
 2. 所有执行型 Agent 都通过沙箱客户端提交命令，不直接调用 `os/exec` 执行用户代码。
 3. 结构化结果写入 Artifact，长文本和日志通过事件流返回。
 4. 涉及论文主张、Benchmark 指标和 AutoResearch 决策时，必须使用 `models` 中的冻结契约，不允许模型自报最终指标。
-5. 提示词集中在 `internal/prompts`，便于审计和版本化。
+5. 提示词集中在 `internal/prompts`，便于审计和版本化；`BuildTaskPrompt` 统一按 plan_context → task_instruction → task_inputs → volatile 组装，并通过 `PromptBudget` 做 section 级预算与 rune-safe 截断。
+6. Repair 循环使用 `internal/agent/conversation.Session`：保留 system + first user，只追加 assistant 上一轮输出与反馈；Planner / PaperDebug / BenchmarkAdapter / AutoResearch / Coder self-correction 共用该约定。
+7. 运行时模型通过 `dynamic_model.go` / `modelresolver` 每次调用解析 profile，不在启动时固化。
 
 ## 测试
 
 ```bash
 go test ./internal/agent/...
+go test -race -count=1 ./internal/agent/conversation/...
 ```
 
 大多数单元测试使用 `httptest` 或 mock 沙箱，不需要真实 LLM。标注为真实集成的测试需要环境变量开启，并会访问网络或 Docker。

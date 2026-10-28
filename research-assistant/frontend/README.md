@@ -38,6 +38,10 @@ frontend/
 │   │   ├── experiment/                实验搜索账本与视图
 │   │   ├── claim-evidence/            主张证据图
 │   │   ├── ablation/                  消融树视图
+│   │   ├── literature/                文献检索、文献库、引用图
+│   │   ├── settings/                  模型 profile 与 routing 设置
+│   │   ├── verification/              视觉校验徽标与详情
+│   │   ├── help/                      使用手册抽屉
 │   │   └── pdf-viewer/                PDF 面板
 │   ├── services/api/                  HTTP 与 SSE 客户端
 │   ├── contracts/                     API 与事件类型
@@ -74,10 +78,12 @@ npm run preview   # 预览生产构建
 
 ## 主要界面
 
-- 对话工作区：输入研究目标、上传附件、查看会话。
-- 计划图：展示 DAG 节点、依赖和状态；AutoResearch 节点会展开为复合搜索视图。
-- 执行侧栏：节点日志、生成代码、报告、指标、图表和证据图。
-- PDF 面板：论文阅读、划词追问和翻译。
+- 对话工作区：输入研究目标、上传附件、查看会话与历史会话。
+- 计划图：展示 DAG 节点、依赖、复杂度/规划路径/模板变体；AutoResearch 节点会展开为复合搜索视图。
+- 执行侧栏：节点日志、生成代码、报告、指标、图表、证据图与视觉校验徽标。
+- PDF 面板：论文阅读、划词追问、全文翻译与 AI 解释；文档智能面板展示质量/表格/图注。
+- 文献面板：检索、导入、文献库、引用图、加入会话。
+- 设置面板：模型 profile、routing、成本与视觉探测。
 - Trial 视图：展示候选、父路径、Reward、UCB/UCT、Keep/Reject 和耗时。
 
 ## 构建与部署
@@ -94,11 +100,13 @@ npm run test:a11y       # axe + 键盘无障碍测试
 npm run test:visual     # 视觉回归（需先构建并启动 preview）
 ```
 
-- `test/*.test.mjs`：消融计划、实验账本、Trial 账本、PDF 附件和 Benchmark 报告解析。
-- `test/components/`：Vitest + Testing Library + jsdom，覆盖 PDF 本地 worker、全文翻译面板、Benchmark 报告、ExecutionSidebar、ChatComposer 和会话切换/登录。
-- `test/e2e/`：Playwright，覆盖首页、PDF 上传/打开/全文翻译流程、Benchmark 报告页和无障碍冒烟/键盘操作。
+- `test/*.test.mjs`：消融计划、实验账本、Trial 账本、PDF 附件、Benchmark 报告解析。
+- `test/components/`：Vitest + Testing Library + jsdom，覆盖 PDF 本地 worker、全文翻译面板、Benchmark 报告、ExecutionSidebar、ChatComposer、文献面板、模型设置和会话切换/登录。
+- `test/e2e/`：Playwright，覆盖首页/移动端布局、PDF 上传/打开/全文翻译、Benchmark 报告、无障碍冒烟与键盘操作。
 - `test/visual/`：6 个高价值场景的 Playwright 视觉回归；基线在 Linux + Noto CJK 字体环境生成。
 - `test/fixtures/` 中的 JSON 是前端回放和断言使用的稳定数据。
+
+2026-10-28 基线：`npm test` 为 25 个测试文件 / 112 个测试全部通过；`npm run build`、`npm run lint`、`npm run check:bundle` 均通过。Playwright 11 个测试在更新到当前 UI 文案后为 10 passed / 1 failed（AI 翻译浮层在 1024×500 下遮挡 PDF 缩放按钮，见本地 `reports/eval-2026-10-28/REPORT.md`）。
 
 ### 性能与质量门禁
 

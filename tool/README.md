@@ -8,6 +8,8 @@
 
 `tool/` 是独立的 Function Calling 教学示例，不参与 `research-assistant` 的运行时；主项目的工具/Agent 路由见 `research-assistant/backend/internal/agent` 与 `internal/tools`。
 
+2026-10-28 验证：`go build ./...` 通过（该模块无测试文件）。
+
 ## 文件
 
 | 文件 | 说明 |

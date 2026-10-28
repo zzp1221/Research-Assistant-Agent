@@ -218,6 +218,25 @@ make docker-down      # Docker Compose 停止
 - 文本报告 prompt 注入权威 verdict，要求不得把 inconclusive 说成 pass。
 - 前端：工作台“模型设置”面板（profile 列表/编辑/测试/探测/删除/routing/成本与隐私提示）；计划头与节点详情展示校验徽标、issues、置信度与判图模型。
 
+## 2026-10-28 第六/七轮：测试与验证
+
+本轮在容器内完成全量回归与新增深度测试，测试脚本统一位于 `test/e2e/`：
+
+- 既有回归：`http-smoke.mjs`、`routing-and-prompts.mjs`、`literature.mjs`、`literature-plan.mjs`、`document-intelligence.mjs`、`model-profiles.mjs`、`verification.mjs`、`sandbox-network.mjs`、`round6-*.mjs`。
+- 新增：`round7-api-coverage.mjs`、`round7-real-scenarios.mjs`、`round7-paper-reproduction.mjs`、`round7-autoresearch.mjs`、`round7-task-execute.mjs`、`round7-doc-assist.mjs`、`round7-sandbox-deep.mjs`。
+- 2026-10-28 结果：基线构建/单测全绿；既有 E2E 全部通过；deep API 58/59；真实 LLM 场景 18/18；AutoResearch 8/8 节点且 hidden holdout 3/3；论文复现 14/15 节点完成，暴露 claim rubric JSON 解析缺陷；Playwright 10/11（AI 翻译浮层遮挡缩放按钮）。
+- 测试环境：`test/docker-compose.e2e.yml` 提供 e2e profile；`model-profiles`/`verification` 需要 `ALLOW_PRIVATE_MODEL_ENDPOINTS=true`，`document-intelligence` 全量 OCR 需要 `PDF_OCR_MAX_PAGES=20`。
+- 完整报告（本地生成，不提交）：`reports/eval-2026-10-28/REPORT.md`。
+
+常用测试命令：
+
+```bash
+make test                 # backend + sandbox + frontend + offline examples
+make test-optimizer       # Python optimizer tests
+make eval                 # planner route/plan evaluation dataset
+bash scripts/container-go.sh "go test -count=1 ./..."  # 固定 Go 镜像内全量测试
+```
+
 **新增配置**
 | 变量 | 说明 |
 |---|---|

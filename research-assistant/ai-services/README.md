@@ -13,6 +13,7 @@
 - `intent-recognition` 是 Compose 服务，端口 `127.0.0.1:18000`。
 - 主后端默认 `INTENT_ROUTER_MODE=hybrid`：规则快路径 + 本服务语义分类 + 后校验；服务不可用或置信度不足时回退规则。
 - 服务不再使用关键词 mock：未配置 `OPENAI_API_KEY` 时 `/predict` 明确返回 503，`/health` 返回 `degraded`。
+- 新 schema：`POST /predict` 同时返回 `complexity`（L0–L4）、`capabilities`、`route_hint`、`complexity_confidence`、`complexity_reason`；Go 侧 `ComplexityRouter` 在附件/论文上下文之后做最终路由。
 
 ## 快速开始（Docker Compose）
 
