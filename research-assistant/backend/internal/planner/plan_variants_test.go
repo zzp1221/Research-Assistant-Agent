@@ -29,8 +29,8 @@ func TestTemplateVariantsBuildValidPlans(t *testing.T) {
 		Entities:   map[string]any{},
 	}
 	cases := []struct {
-		name   string
-		intent models.IntentContext
+		name    string
+		intent  models.IntentContext
 		variant string
 	}{
 		{"code-simple", codeIntent, "simple"},

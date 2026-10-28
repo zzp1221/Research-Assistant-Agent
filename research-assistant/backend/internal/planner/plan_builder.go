@@ -46,9 +46,9 @@ type TemplateKey struct {
 }
 
 var planBuilderRegistry = map[TemplateKey]PlanBuilder{
-	{IntentType: "Code_Execution", Variant: "simple"}:   planBuilderAdapter{intentType: "Code_Execution", build: buildCodeExecutionSimpleNodes},
-	{IntentType: "Code_Execution", Variant: "standard"}: planBuilderAdapter{intentType: "Code_Execution", build: buildCodeExecutionNodesV2},
-	{IntentType: "Code_Execution", Variant: "full"}:     planBuilderAdapter{intentType: "Code_Execution", build: buildCodeExecutionFullNodes},
+	{IntentType: "Code_Execution", Variant: "simple"}:         planBuilderAdapter{intentType: "Code_Execution", build: buildCodeExecutionSimpleNodes},
+	{IntentType: "Code_Execution", Variant: "standard"}:       planBuilderAdapter{intentType: "Code_Execution", build: buildCodeExecutionNodesV2},
+	{IntentType: "Code_Execution", Variant: "full"}:           planBuilderAdapter{intentType: "Code_Execution", build: buildCodeExecutionFullNodes},
 	{IntentType: "Framework_Evaluation", Variant: "simple"}:   planBuilderAdapter{intentType: "Framework_Evaluation", build: buildFrameworkEvaluationSimpleNodes},
 	{IntentType: "Framework_Evaluation", Variant: "standard"}: planBuilderAdapter{intentType: "Framework_Evaluation", build: buildFrameworkEvaluationNodesV2},
 	{IntentType: "Framework_Evaluation", Variant: "full"}:     planBuilderAdapter{intentType: "Framework_Evaluation", build: buildFrameworkEvaluationFullNodes},

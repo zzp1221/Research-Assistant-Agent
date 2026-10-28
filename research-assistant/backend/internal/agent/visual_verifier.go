@@ -23,9 +23,9 @@ import (
 	"research-assistant-backend/internal/metrics"
 	"research-assistant-backend/internal/modelprofile"
 	"research-assistant-backend/internal/modelresolver"
-	"research-assistant-backend/internal/prompts"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/oaichat"
+	"research-assistant-backend/internal/prompts"
 )
 
 // RubricVersion identifies the visual verification rubric. Bump it whenever the

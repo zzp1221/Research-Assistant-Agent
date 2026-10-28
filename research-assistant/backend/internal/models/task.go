@@ -45,10 +45,10 @@ type Task struct {
 	ImageBase64       string // Base64 encoded image if the task generated a plot
 	Error             string // Error message if failed
 	// Verification is the advisory verdict of a verify_result task.
-	Verification      *Verification
-	Metadata          map[string]any
-	StartedAt         *time.Time
-	FinishedAt        *time.Time
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	Verification *Verification
+	Metadata     map[string]any
+	StartedAt    *time.Time
+	FinishedAt   *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }

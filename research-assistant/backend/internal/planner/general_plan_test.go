@@ -9,11 +9,11 @@ import (
 func TestClassifyGeneralPlanShape(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "")
 	cases := []struct {
-		name       string
-		intent     models.IntentContext
-		wantShape  generalPlanShape
-		wantNodes  int
-		wantTypes  []string
+		name      string
+		intent    models.IntentContext
+		wantShape generalPlanShape
+		wantNodes int
+		wantTypes []string
 	}{
 		{
 			name:      "greeting is direct",
@@ -117,9 +117,9 @@ func TestGeneralResearchPlanBindsAttachments(t *testing.T) {
 
 func TestGeneralNeedsResearchKeywordScope(t *testing.T) {
 	cases := map[string]bool{
-		"解释一下 RAG 是什么":   false,
-		"query rewrite 怎么实现": false,
-		"总结 RAG 技术进展":    true,
+		"解释一下 RAG 是什么":          false,
+		"query rewrite 怎么实现":    false,
+		"总结 RAG 技术进展":           true,
 		"compare vector stores": true,
 	}
 	for raw, want := range cases {

@@ -44,31 +44,31 @@ var (
 // serialized: APIKeyCiphertext is AES-GCM output and the plaintext key lives in
 // the unexported apiKey field only while the process holds it.
 type Profile struct {
-	ID                  string     `json:"id"`
-	OwnerID             string     `json:"owner_id"`
-	Name                string     `json:"name"`
-	Provider            string     `json:"provider"`
-	BaseURL             string     `json:"base_url"`
-	Model               string     `json:"model"`
-	APIKeyCiphertext    string     `json:"api_key_ciphertext,omitempty"`
-	APIKeyLast4         string     `json:"api_key_last4,omitempty"`
-	Roles               []string   `json:"roles,omitempty"`
-	SupportsVision      string     `json:"supports_vision"`
-	VisionProbeReason   string     `json:"vision_probe_reason,omitempty"`
-	VisionProbedAt      *time.Time `json:"vision_probed_at,omitempty"`
-	VisionOverriddenBy  string     `json:"vision_overridden_by,omitempty"`
-	VisionOverriddenAt  *time.Time `json:"vision_overridden_at,omitempty"`
-	TimeoutSeconds      int        `json:"timeout_seconds"`
-	MaxOutputTokens     int        `json:"max_output_tokens,omitempty"`
+	ID                 string     `json:"id"`
+	OwnerID            string     `json:"owner_id"`
+	Name               string     `json:"name"`
+	Provider           string     `json:"provider"`
+	BaseURL            string     `json:"base_url"`
+	Model              string     `json:"model"`
+	APIKeyCiphertext   string     `json:"api_key_ciphertext,omitempty"`
+	APIKeyLast4        string     `json:"api_key_last4,omitempty"`
+	Roles              []string   `json:"roles,omitempty"`
+	SupportsVision     string     `json:"supports_vision"`
+	VisionProbeReason  string     `json:"vision_probe_reason,omitempty"`
+	VisionProbedAt     *time.Time `json:"vision_probed_at,omitempty"`
+	VisionOverriddenBy string     `json:"vision_overridden_by,omitempty"`
+	VisionOverriddenAt *time.Time `json:"vision_overridden_at,omitempty"`
+	TimeoutSeconds     int        `json:"timeout_seconds"`
+	MaxOutputTokens    int        `json:"max_output_tokens,omitempty"`
 	// ContextWindowTokens is the model context window used for prompt budgeting.
 	// Zero means the 128000 default.
-	ContextWindowTokens int        `json:"context_window_tokens,omitempty"`
-	PromptPricePer1K    float64    `json:"prompt_price_per_1k,omitempty"`
+	ContextWindowTokens  int       `json:"context_window_tokens,omitempty"`
+	PromptPricePer1K     float64   `json:"prompt_price_per_1k,omitempty"`
 	CompletionPricePer1K float64   `json:"completion_price_per_1k,omitempty"`
-	Revision            int        `json:"revision"`
-	Bootstrap           bool       `json:"bootstrap,omitempty"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
+	Revision             int       `json:"revision"`
+	Bootstrap            bool      `json:"bootstrap,omitempty"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 
 	apiKey string `json:"-"`
 }
@@ -108,11 +108,11 @@ type Input struct {
 // Routing binds the main text profile, ordered vision fallbacks and optional
 // text fallbacks for one owner ("" means the global routing).
 type Routing struct {
-	OwnerID           string   `json:"owner_id"`
-	MainProfileID     string   `json:"main_profile_id"`
-	VisionProfileIDs  []string `json:"vision_profile_ids,omitempty"`
-	FallbackProfileIDs []string `json:"fallback_profile_ids,omitempty"`
-	UpdatedAt         time.Time `json:"updated_at,omitempty"`
+	OwnerID            string    `json:"owner_id"`
+	MainProfileID      string    `json:"main_profile_id"`
+	VisionProfileIDs   []string  `json:"vision_profile_ids,omitempty"`
+	FallbackProfileIDs []string  `json:"fallback_profile_ids,omitempty"`
+	UpdatedAt          time.Time `json:"updated_at,omitempty"`
 }
 
 // Resolved is a usable profile plus the decrypted secret. APIKey is only kept

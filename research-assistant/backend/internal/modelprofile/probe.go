@@ -17,12 +17,12 @@ import (
 
 // ProbeResult is the outcome of a text or vision probe.
 type ProbeResult struct {
-	OK            bool
-	Status        string // yes / no / unknown for vision; ok / error for text
-	Model         string
-	LatencyMS     int64
-	Detail        string
-	PromptTokens  int
+	OK               bool
+	Status           string // yes / no / unknown for vision; ok / error for text
+	Model            string
+	LatencyMS        int64
+	Detail           string
+	PromptTokens     int
 	CompletionTokens int
 }
 

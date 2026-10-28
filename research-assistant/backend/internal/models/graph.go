@@ -52,11 +52,11 @@ type TaskNode struct {
 	Usage             *TaskUsage     `json:"usage,omitempty"`
 	// Verification is the advisory verdict of a verify_result node. It never
 	// changes the execution status (design D3).
-	Verification      *Verification  `json:"verification,omitempty"`
-	StartedAt         *time.Time     `json:"started_at,omitempty"`
-	FinishedAt        *time.Time     `json:"finished_at,omitempty"`
-	CreatedAt         time.Time      `json:"created_at"`
-	UpdatedAt         time.Time      `json:"updated_at"`
+	Verification *Verification `json:"verification,omitempty"`
+	StartedAt    *time.Time    `json:"started_at,omitempty"`
+	FinishedAt   *time.Time    `json:"finished_at,omitempty"`
+	CreatedAt    time.Time     `json:"created_at"`
+	UpdatedAt    time.Time     `json:"updated_at"`
 }
 
 // TaskEdge describes a control-flow or data-flow relation between two task nodes.
@@ -79,10 +79,10 @@ type GraphMeta struct {
 	PlannerFallbackReason string `json:"planner_fallback_reason,omitempty"` // why the template was used
 	// Routing/observability fields added by the complexity router. They are
 	// deliberately separate from PlannerSource so old clients keep working.
-	PlanningRoute   string `json:"planning_route,omitempty"`   // fast_path | standard_template | agent_augmented | template_fallback
-	Complexity      string `json:"complexity,omitempty"`      // L0 | L1 | L2 | L3 | L4
-	ComplexitySource string `json:"complexity_source,omitempty"` // rule | llm | merged | fallback
-	TemplateVariant string `json:"template_variant,omitempty"` // simple | standard | full | light
+	PlanningRoute    string `json:"planning_route,omitempty"`     // fast_path | standard_template | agent_augmented | template_fallback
+	Complexity       string `json:"complexity,omitempty"`         // L0 | L1 | L2 | L3 | L4
+	ComplexitySource string `json:"complexity_source,omitempty"`  // rule | llm | merged | fallback
+	TemplateVariant  string `json:"template_variant,omitempty"`   // simple | standard | full | light
 	GeneralPlanShape string `json:"general_plan_shape,omitempty"` // direct | research | paper | literature | legacy
 }
 
@@ -116,12 +116,12 @@ type PlanGraph struct {
 	RunTrigger string     `json:"run_trigger,omitempty"`
 	// Verification is the final advisory verdict of the plan. Legacy plans have
 	// no field and are treated as skipped by the UI.
-	Verification *Verification  `json:"verification,omitempty"`
+	Verification *Verification `json:"verification,omitempty"`
 	// ModelSnapshot records the profile ids/revisions resolved at creation so a
 	// run stays reproducible after a runtime profile edit.
 	ModelSnapshot *ModelSnapshot `json:"model_snapshot,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
 }
 
 // TaskExecutionResult is the normalized scheduler-facing result of one task execution.
@@ -142,5 +142,5 @@ type TaskExecutionResult struct {
 	// budget report) from the agent back to the scheduler.
 	Metadata map[string]any `json:"metadata,omitempty"`
 	// Verification is the advisory verdict produced by a verify_result task.
-	Verification        *Verification         `json:"verification,omitempty"`
+	Verification *Verification `json:"verification,omitempty"`
 }

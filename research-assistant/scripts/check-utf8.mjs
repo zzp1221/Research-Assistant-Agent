@@ -11,6 +11,8 @@ const EXTRA_FILES = ['research-assistant/docker-compose.yml', 'research-assistan
 
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const problems = [];
+// Build the marker from code points so this checker never flags its own source.
+const MOJIBAKE_MARKER = '\u951f\u65a4\u62f7';
 
 function walk(target) {
   let stat;
@@ -44,8 +46,8 @@ function walk(target) {
     const index = text.indexOf('\uFFFD');
     problems.push(target + ': replacement character at offset ' + index);
   }
-  if (text.includes('锟斤拷')) {
-    problems.push(target + ': mojibake marker 锟斤拷');
+  if (text.includes(MOJIBAKE_MARKER)) {
+    problems.push(target + ': mojibake marker');
   }
 }
 
