@@ -28,6 +28,8 @@
 
 ## N-01 计划库 / 研究工作区（Plan Library）
 
+> 改进版设计见 [N-01/N-02/N-03：计划库、可复现导出与成本预算控制台](../design/n01-n03-plan-library-reproducibility-cost.md)：服务端列表/摘要已存在，重点补计划库 UI、项目/搜索/归档与索引。
+
 **用户价值**
 
 - 研究任务是长期的：用户需要看到“我跑过哪些计划、结果如何、哪次最好”，而不是只能靠 localStorage 或截图。
@@ -62,6 +64,8 @@
 
 ## N-02 可复现性导出包（Reproducibility Bundle）
 
+> 改进版设计见 [N-01/N-02/N-03：计划库、可复现导出与成本预算控制台](../design/n01-n03-plan-library-reproducibility-cost.md)：md/json/zip 导出已存在，重点补 manifest/checksums/recipe/replay 与脱敏。
+
 **用户价值**
 
 - 科研用户需要把“这次运行”交给合作者/审稿人/半年后的自己；当前只有散落的 artifact 和截图。
@@ -93,6 +97,8 @@
 ---
 
 ## N-03 成本与预算控制台（Cost & Budget Console）
+
+> 改进版设计见 [N-01/N-02/N-03：计划库、可复现导出与成本预算控制台](../design/n01-n03-plan-library-reproducibility-cost.md)：usage/成本已存在，重点补预算闸门、profile 计价与成本控制台。
 
 **用户价值**
 
@@ -160,6 +166,8 @@
 ---
 
 ## N-05 计划审阅与人在回路（Plan Review & HITL）
+
+> 改进版设计见 [N-05 计划审阅与人在回路](../design/n05-plan-review-hitl.md)：pause/resume/run-from-node/运行时审批已落地，重点补 revision、执行前审阅、结构化提问与审批收件箱。
 
 **用户价值**
 
