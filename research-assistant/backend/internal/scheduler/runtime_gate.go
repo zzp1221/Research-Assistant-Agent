@@ -11,6 +11,19 @@ import (
 	"github.com/google/uuid"
 )
 
+// ToolGateFunc returns the approval requirement for a tool_call node. The API
+// layer injects it because the tool registry lives outside the scheduler.
+type ToolGateFunc func(plan *models.PlanGraph, task *models.TaskNode) (models.RuntimeActionKind, string, map[string]any, string, bool)
+
+// SetToolGate wires the tool approval policy. A nil gate keeps legacy plans
+// running exactly as before.
+func (s *Scheduler) SetToolGate(gate ToolGateFunc) {
+	if s == nil {
+		return
+	}
+	s.toolGate = gate
+}
+
 // runtimeActionForTask returns the important operation that should be gated
 // before the task runs. Only real runtime-affecting tasks are gated.
 func runtimeActionForTask(plan *models.PlanGraph, task *models.TaskNode) (models.RuntimeActionKind, string, map[string]any, string, bool) {
@@ -145,6 +158,9 @@ func (s *Scheduler) prepareRuntimeGate(planID, taskID string) (*models.RuntimeAc
 			return fmt.Errorf("task not found: %s", taskID)
 		}
 		kind, title, details, risk, needed := runtimeActionForTask(plan, task)
+		if !needed && s.toolGate != nil {
+			kind, title, details, risk, needed = s.toolGate(plan, task)
+		}
 		if !needed {
 			return nil
 		}

@@ -40,7 +40,7 @@ const formatTime = (value: string) => {
   });
 };
 
-/** Running head of the manuscript: which issue (session) is open. */
+/** Calm session header: current thread, its age, and a quiet new-thread action. */
 export function ChatSessionManager(props: ChatSessionManagerProps) {
   const { state, actions } = props;
   const [open, setOpen] = useState(false);
@@ -77,7 +77,7 @@ export function ChatSessionManager(props: ChatSessionManagerProps) {
   const activeSession = state.sessions.find((session) => session.id === state.activeSessionId) ?? state.sessions[0] ?? null;
 
   return (
-    <div ref={rootRef} className="relative shrink-0 border-b border-line bg-surface px-4 py-2.5">
+    <div ref={rootRef} className="research-assistant-chat-head relative shrink-0 px-5 pb-3 pt-4">
       <div className="flex items-start gap-2">
         <button
           ref={triggerRef}
@@ -89,42 +89,40 @@ export function ChatSessionManager(props: ChatSessionManagerProps) {
           className="group flex min-w-0 flex-1 items-start gap-2 text-left"
         >
           <span className="min-w-0 flex-1">
-            <span className="journal-caps block text-[10px]">当前会话</span>
-            <span className="mt-0.5 block truncate font-serif text-[14px] font-semibold leading-5 text-ink">
+            <span className="block truncate text-[16px] font-semibold leading-6 tracking-[-0.02em] text-ink">
               {activeSession?.title || '未命名会话'}
             </span>
-            {activeSession && (
-              <span className="mt-0.5 block journal-num text-[11px] leading-4 text-muted">
-                {activeSession.messageCount} 条记录 · 更新于 {formatTime(activeSession.updatedAt)}
-              </span>
-            )}
+            <span className="mt-1 flex items-center gap-1.5 text-[10.5px] text-muted">
+              <span className="h-1.5 w-1.5 rounded-full bg-ok" aria-hidden="true" />
+              {activeSession ? `${activeSession.messageCount} 条记录 · ${formatTime(activeSession.updatedAt)}` : '等待第一条指令'}
+            </span>
           </span>
-          <ChevronDown className={`mt-1 h-3.5 w-3.5 shrink-0 text-muted transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`mt-1.5 h-3.5 w-3.5 shrink-0 text-muted transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
         </button>
 
         <button
           type="button"
           onClick={actions.onCreateSession}
           disabled={state.loading}
-          className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center border border-line bg-surface text-muted transition-colors hover:border-ink hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-line bg-surface text-muted transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
           title={state.isLoggedIn ? '新建会话' : '新建临时会话'}
           aria-label={state.isLoggedIn ? '新建会话' : '新建临时 Session'}
         >
-          <MessageSquarePlus className="h-3.5 w-3.5" />
+          <MessageSquarePlus className="h-4 w-4" />
         </button>
       </div>
 
-      {open && (
-        <div className="proof-fade absolute left-3 right-3 top-[calc(100%+2px)] z-40 border border-ink bg-surface shadow-float">
-          <div className="flex items-baseline justify-between border-b border-line px-3 py-2">
-            <span className="journal-caps text-[10px]">历史会话</span>
-            <span className="journal-num text-[10.5px] text-muted">{state.sessions.length} 篇</span>
+      {open ? (
+        <div className="proof-fade absolute left-3 right-3 top-[calc(100%+2px)] z-40 overflow-hidden rounded-2xl border border-line bg-surface shadow-float">
+          <div className="flex items-baseline justify-between border-b border-line px-3 py-2.5">
+            <span className="text-[10px] font-semibold text-muted">历史会话</span>
+            <span className="font-mono text-[10px] text-muted">{state.sessions.length} 篇</span>
           </div>
 
-          <div id="chat-session-menu" className="max-h-56 overflow-y-auto" role="listbox" aria-label="会话列表">
-            {state.sessions.length === 0 && (
-              <p className="px-3 py-4 text-center font-serif text-[12px] text-muted">还没有会话记录</p>
-            )}
+          <div id="chat-session-menu" className="max-h-60 overflow-y-auto p-1.5" role="listbox" aria-label="会话列表">
+            {state.sessions.length === 0 ? (
+              <p className="px-3 py-4 text-center text-[11.5px] text-muted">还没有会话记录</p>
+            ) : null}
             {state.sessions.map((session) => {
               const isActive = session.id === state.activeSessionId;
               return (
@@ -137,14 +135,14 @@ export function ChatSessionManager(props: ChatSessionManagerProps) {
                     actions.onSwitchSession(session.id);
                     setOpen(false);
                   }}
-                  className={`flex w-full items-start gap-2 border-b border-line/60 px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-surface-muted ${isActive ? 'bg-surface-muted' : ''}`}
+                  className={`flex w-full items-start gap-2 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-surface-muted ${isActive ? 'bg-surface-muted' : ''}`}
                 >
-                  <span className={`mt-1 flex h-3 w-3 shrink-0 items-center justify-center border ${isActive ? 'border-ink bg-ink text-paper' : 'border-line-strong text-transparent'}`}>
+                  <span className={`mt-1 flex h-3 w-3 shrink-0 items-center justify-center rounded-full ${isActive ? 'bg-accent text-white' : 'border border-line-strong text-transparent'}`}>
                     <Check className="h-2 w-2" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className={`block truncate text-[12.5px] leading-4 ${isActive ? 'font-semibold text-ink' : 'text-ink-soft'}`}>{session.title}</span>
-                    <span className="journal-num mt-0.5 block truncate text-[10.5px] leading-3 text-ink-soft">
+                    <span className={`block truncate text-[11.5px] leading-4 ${isActive ? 'font-semibold text-ink' : 'text-ink-soft'}`}>{session.title}</span>
+                    <span className="mt-0.5 block truncate font-mono text-[9.5px] leading-3 text-muted">
                       {session.messageCount} 条 · {formatTime(session.updatedAt)}
                     </span>
                   </span>
@@ -154,18 +152,18 @@ export function ChatSessionManager(props: ChatSessionManagerProps) {
           </div>
 
           <div className="border-t border-line bg-surface-muted px-3 py-2.5">
-            <div className="flex items-center gap-2 text-[11.5px] text-ink-soft">
+            <div className="flex items-center gap-2 text-[10.5px] text-ink-soft">
               <UserRound className="h-3.5 w-3.5" />
               <span className="truncate">
                 会话身份：<span className="font-medium text-ink">{state.userId || '正在建立安全会话…'}</span>
               </span>
             </div>
-            <p className="mt-1 text-[10.5px] leading-4 text-muted">
-              会话由服务端安全保存，刷新页面后可继续；计划与产物会保留在服务器。
+            <p className="mt-1 text-[10px] leading-4 text-muted">
+              刷新页面后可继续；计划与产物会保留在服务器。
             </p>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

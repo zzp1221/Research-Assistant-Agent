@@ -5,6 +5,7 @@
 /spec.md
 /tasks.md
 /.dsh-tmp/
+/.archify/
 /reports/*
 !/reports/README.md
 /reports/fixtures/

@@ -10,16 +10,16 @@ Research Optimizer 是 Go Harness 的候选排序顾问：Go 侧冻结 ResearchS
 
 ## 职责
 
-- 从冻结数据中提取有界特征（`/v1/profile`）。
-- 根据当前路线统计与历史经验选择下一个候选（`/v1/select`）。
-- 记录候选结果与验证状态（`/v1/experience/outcome`、`/v1/experience/validation`）。
+- 从冻结数据中提取有界特征（`POST /v1/profile`，schema `experiment.features/v1`）。
+- 根据当前路线统计与历史经验选择下一个候选（`POST /v1/select`）。
+- 记录候选结果与验证状态（`POST /v1/experience/outcome`、`POST /v1/experience/validation`）。
 - 使用 SQLite 持久化经验，只把已验证 campaign 作为跨任务先验。
 
 ## 搜索策略
 
 当前策略版本：`hierarchical-contextual-ucb-uct/v2`
 
-1. Go 先对每个合法 Model 组合用默认配置运行一次。
+1. Go 先对每个合法 Model 组合用默认配置运行一次（`bounded-exhaustive/v1`）。
 2. Route UCB 在 Model 参数树之间分配预算。
 3. Top-K Beam 加探索通道构成活跃前沿。
 4. UCT-style 分数选择树内父路径。
@@ -39,7 +39,7 @@ Research Optimizer 是 Go Harness 的候选排序顾问：Go 侧冻结 ResearchS
 | `GET` | `/v1/stats` | 查询经验库统计 |
 | `GET` | `/health` | 健康检查 |
 
-除 `/health` 外，设置 `RESEARCH_OPTIMIZER_API_TOKEN` 后都需要 Bearer Token。
+`/health` 无需鉴权；设置 `RESEARCH_OPTIMIZER_API_TOKEN` 后，其余端点都需要 Bearer Token。未设置 Token 时按无鉴权本地开发处理。
 
 ## 运行
 
@@ -49,13 +49,15 @@ RESEARCH_OPTIMIZER_DB_PATH=/tmp/research-assistant-experiences.sqlite3 \
 python3 -m research_optimizer.service
 ```
 
+或 `make run-optimizer`（默认把 SQLite 写到 `/tmp/research-assistant-experiences.sqlite3`）。监听端口由 `RESEARCH_OPTIMIZER_PORT`（默认 8090）控制。
+
 ## 测试
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-2026-10-28 验证：容器内 8 个测试全部通过；`/health`、`/v1/stats` 鉴权与 `/v1/profile` 契约探针通过。
+容器内 8 个测试全部通过；`/health`、`/v1/stats` 鉴权与 `/v1/profile` 契约探针均通过。最近结果见 [docs/verification.md](../../docs/verification.md)。
 
 ## 文件
 

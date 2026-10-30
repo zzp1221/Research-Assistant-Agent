@@ -12,12 +12,13 @@ import (
 )
 
 const (
-	defaultSearchLimit    = 10
-	defaultTimeout        = 30 * time.Second
-	defaultCacheTTL       = 15 * time.Minute
-	defaultMaxPDFBytes    = int64(64 << 20)
-	maxConfiguredPDFEnvMB = int64(1 << 20)
-	defaultUserAgent      = "research-assistant-literature/1.0"
+	defaultSearchLimit     = 10
+	defaultTimeout         = 30 * time.Second
+	defaultCacheTTL        = 15 * time.Minute
+	defaultMaxPDFBytes     = int64(64 << 20)
+	maxConfiguredPDFEnvMB  = int64(1 << 20)
+	defaultUserAgent       = "research-assistant-literature/1.0"
+	defaultProviderTimeout = 15 * time.Second
 )
 
 // Config controls the literature client. HTTPClient is optional and is also
@@ -37,23 +38,28 @@ type Config struct {
 	MaxRetries int
 	// RetryBaseDelay is the base exponential backoff. Zero uses 200ms.
 	RetryBaseDelay time.Duration
+	// ProviderTimeout bounds one provider call inside a multi-provider search.
+	// Zero uses 8s so one throttled provider cannot consume the whole request
+	// budget and discard the other providers' results.
+	ProviderTimeout time.Duration
 }
 
 // Client is a concurrency-safe literature search and import client.
 type Client struct {
 	mu sync.RWMutex
 
-	httpClient     *http.Client
-	cache          cacheStore
-	limiter        *hostLimiter
-	timeout        time.Duration
-	userAgent      string
-	githubToken    string
-	openAlexMailto string
-	maxPDFBytes    int64
-	endpoints      map[string]string
-	maxRetries     int
-	retryBaseDelay time.Duration
+	httpClient      *http.Client
+	cache           cacheStore
+	limiter         *hostLimiter
+	timeout         time.Duration
+	userAgent       string
+	githubToken     string
+	openAlexMailto  string
+	maxPDFBytes     int64
+	endpoints       map[string]string
+	maxRetries      int
+	retryBaseDelay  time.Duration
+	providerTimeout time.Duration
 }
 
 // NewClient builds a client with conservative defaults. Invalid or absent
@@ -87,18 +93,23 @@ func NewClient(cfg Config) *Client {
 	if retryBaseDelay <= 0 {
 		retryBaseDelay = 200 * time.Millisecond
 	}
+	providerTimeout := cfg.ProviderTimeout
+	if providerTimeout <= 0 {
+		providerTimeout = defaultProviderTimeout
+	}
 	return &Client{
-		httpClient:     httpClient,
-		cache:          newCache(cfg.CacheDir, cacheTTL),
-		limiter:        newHostLimiter(),
-		timeout:        timeout,
-		userAgent:      userAgent,
-		githubToken:    strings.TrimSpace(cfg.GitHubToken),
-		openAlexMailto: strings.TrimSpace(cfg.OpenAlexMailto),
-		maxPDFBytes:    maxPDFBytesFromEnv(),
-		endpoints:      defaultEndpoints(),
-		maxRetries:     maxRetries,
-		retryBaseDelay: retryBaseDelay,
+		httpClient:      httpClient,
+		cache:           newCache(cfg.CacheDir, cacheTTL),
+		limiter:         newHostLimiter(),
+		timeout:         timeout,
+		userAgent:       userAgent,
+		githubToken:     strings.TrimSpace(cfg.GitHubToken),
+		openAlexMailto:  strings.TrimSpace(cfg.OpenAlexMailto),
+		maxPDFBytes:     maxPDFBytesFromEnv(),
+		endpoints:       defaultEndpoints(),
+		maxRetries:      maxRetries,
+		retryBaseDelay:  retryBaseDelay,
+		providerTimeout: providerTimeout,
 	}
 }
 
@@ -191,41 +202,78 @@ func (c *Client) search(ctx context.Context, query string, opts SearchOptions) (
 	if len(sources) == 0 {
 		return nil, warnings, wrapError(CodeInvalidQuery, "", "", ErrInvalidQuery, "no supported literature sources requested")
 	}
-	collected := make([]Result, 0, limit)
+	// Candidate pooling: a provider's own top-5 can omit the strongest
+	// cross-provider match. Fetch a wider window, rank everything, then trim
+	// to the caller's limit. (50 is the providers' common maximum page size.)
+	candidateLimit := limit * 3
+	if candidateLimit < limit+10 {
+		candidateLimit = limit + 10
+	}
+	if candidateLimit > 50 {
+		candidateLimit = 50
+	}
+
+	type providerOutcome struct {
+		source  string
+		results []Result
+		err     error
+	}
+	outcomes := make([]providerOutcome, len(sources))
+	c.mu.RLock()
+	providerTimeout := c.providerTimeout
+	c.mu.RUnlock()
+	var wg sync.WaitGroup
+	for index, source := range sources {
+		wg.Add(1)
+		go func(index int, source string) {
+			defer wg.Done()
+			providerCtx, cancel := context.WithTimeout(ctx, providerTimeout)
+			defer cancel()
+			var results []Result
+			var sourceErr error
+			switch source {
+			case SourceArxiv:
+				results, sourceErr = c.searchArxiv(providerCtx, query, candidateLimit, opts.YearFrom)
+			case SourceOpenAlex:
+				results, sourceErr = c.searchOpenAlex(providerCtx, query, candidateLimit, opts.YearFrom)
+			case SourceCrossref:
+				results, sourceErr = c.searchCrossref(providerCtx, query, candidateLimit, opts.YearFrom)
+			case SourceGitHub:
+				results, sourceErr = c.searchGitHub(providerCtx, query, candidateLimit, opts.YearFrom)
+			case SourceSemanticScholar:
+				results, sourceErr = c.searchSemanticScholar(providerCtx, query, candidateLimit, opts.YearFrom)
+			case SourcePubMed:
+				results, sourceErr = c.searchPubMed(providerCtx, query, candidateLimit, opts.YearFrom)
+			case SourceDBLP:
+				results, sourceErr = c.searchDBLP(providerCtx, query, candidateLimit, opts.YearFrom)
+			default:
+				sourceErr = newError(CodeInvalidQuery, source, "", "unsupported literature source")
+			}
+			outcomes[index] = providerOutcome{source: source, results: results, err: sourceErr}
+		}(index, source)
+	}
+	wg.Wait()
+
+	collected := make([]Result, 0, candidateLimit*len(sources))
 	failed := make([]Warning, 0, len(sources))
-	for _, source := range sources {
-		if ctx.Err() != nil {
-			break
-		}
-		var results []Result
-		var sourceErr error
-		switch source {
-		case SourceArxiv:
-			results, sourceErr = c.searchArxiv(ctx, query, limit, opts.YearFrom)
-		case SourceOpenAlex:
-			results, sourceErr = c.searchOpenAlex(ctx, query, limit, opts.YearFrom)
-		case SourceCrossref:
-			results, sourceErr = c.searchCrossref(ctx, query, limit, opts.YearFrom)
-		case SourceGitHub:
-			results, sourceErr = c.searchGitHub(ctx, query, limit, opts.YearFrom)
-		case SourceSemanticScholar:
-			results, sourceErr = c.searchSemanticScholar(ctx, query, limit, opts.YearFrom)
-		case SourcePubMed:
-			results, sourceErr = c.searchPubMed(ctx, query, limit, opts.YearFrom)
-		case SourceDBLP:
-			results, sourceErr = c.searchDBLP(ctx, query, limit, opts.YearFrom)
-		default:
-			sourceErr = newError(CodeInvalidQuery, source, "", "unsupported literature source")
-		}
-		if sourceErr != nil {
-			failed = append(failed, Warning{Source: source, Message: sourceErr.Error(), Err: sourceErr})
+	for _, outcome := range outcomes {
+		if outcome.err != nil {
+			failed = append(failed, Warning{Source: outcome.source, Message: outcome.err.Error(), Err: outcome.err})
 			continue
 		}
-		collected = append(collected, filterByYear(results, opts.YearFrom)...)
+		// Freeze the provider-native order so the cross-provider ranker can
+		// use it as a small prior instead of losing it during sorting.
+		for index := range outcome.results {
+			outcome.results[index].ProviderRank = index + 1
+			if outcome.results[index].ProviderScore <= 0 && len(outcome.results) > 1 {
+				outcome.results[index].ProviderScore = 1 - float64(index)/float64(len(outcome.results))
+			}
+		}
+		collected = append(collected, filterByYear(outcome.results, opts.YearFrom)...)
 	}
 	warnings = append(warnings, failed...)
 	deduped := dedupeResults(collected)
-	applyRanking(deduped, sources, opts.Sort)
+	applyRanking(deduped, query, sources, opts.Sort)
 	deduped = limitResults(deduped, limit)
 	if ctx.Err() != nil {
 		return deduped, warnings, wrapError(CodeCanceled, "", "", ctx.Err(), "search canceled")

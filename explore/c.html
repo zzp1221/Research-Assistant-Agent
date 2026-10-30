@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C · 蓝图 · 上下分幕研究工作台</title>
+<style>
+  :root{
+    --bg:#f3f6fd;
+    --panel:#ffffff;
+    --panel-soft:#fbfcff;
+    --ink:#0b1b3a;
+    --ink-2:#263c68;
+    --muted:#53678f;
+    --muted-2:#5c6f96;
+    --line:#dbe4f5;
+    --line-2:#c9d6ef;
+    --accent:#1f4dff;
+    --accent-2:#3b65ff;
+    --accent-soft:#edf2ff;
+    --navy:#0b1b3a;
+    --mint:#1a8a5a;
+    --amber:#c98a16;
+    --danger:#c84b4b;
+    --mono:"Cascadia Mono","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg);color:var(--ink);
+    font-family:"Segoe UI Variable Text","Noto Sans SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
+    font-size:13.5px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  }
+  button,textarea{font:inherit}
+  button{border:0;background:none;color:inherit;cursor:pointer}
+  svg{display:block}
+  .app{height:100vh;display:flex;flex-direction:column;overflow:hidden;background:linear-gradient(180deg,#f7f9ff 0,#f3f6fd 100%)}
+  .topbar{
+    height:60px;flex-shrink:0;display:flex;align-items:center;gap:16px;padding:0 22px;
+    background:rgba(255,255,255,.94);border-bottom:1px solid var(--line);position:relative;z-index:10;
+  }
+  .brand{display:flex;align-items:center;gap:10px;flex-shrink:0}
+  .brand-mark{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:var(--accent);color:#fff;font-family:Georgia,"Noto Serif SC",serif;font-size:18px;font-weight:700;box-shadow:0 10px 22px -14px rgba(31,77,255,.85)}
+  .brand-name{font-family:"Bahnschrift","Segoe UI Variable Display","Noto Sans SC",sans-serif;font-size:13px;letter-spacing:.04em;font-weight:600;white-space:nowrap}
+  .brand-name small{display:block;font-family:"Segoe UI",sans-serif;font-size:9.5px;letter-spacing:.15em;color:var(--muted-2);font-weight:500;margin-top:1px}
+  .crumbs{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);white-space:nowrap}
+  .crumbs .sep{color:#5a6c94}
+  .crumbs b{color:var(--ink);font-weight:600}
+  .top-actions{margin-left:auto;display:flex;align-items:center;gap:5px;flex-shrink:0}
+  .status-chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 9px;border-radius:6px;background:var(--accent-soft);color:var(--accent);font-size:10.5px;font-weight:600;border:1px solid #d5e0fb}
+  .status-chip i{width:5px;height:5px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(31,77,255,.1)}
+  .budget{height:28px;display:flex;align-items:center;gap:5px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:#f8faff;font-family:var(--mono);font-size:10px;color:#4f638c}
+  .budget b{color:var(--ink);font-weight:600}
+  .icon-btn{width:30px;height:30px;border-radius:7px;display:grid;place-items:center;color:#7184a9;position:relative}
+  .icon-btn:hover{background:var(--accent-soft);color:var(--accent)}
+  .icon-btn .dot{position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px #fff}
+  .divider{width:1px;height:20px;background:var(--line);margin:0 5px}
+  .avatar{width:29px;height:29px;border-radius:50%;display:grid;place-items:center;background:#e9effd;color:var(--accent);font-size:10px;font-weight:700;border:1px solid #d5e0fb}
+  .btn-primary{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:6px;background:var(--accent);color:#fff;font-size:11px;font-weight:600;box-shadow:0 10px 20px -14px rgba(31,77,255,.85)}
+  .btn-primary:hover{background:#153bd6}
+  .main{flex:1;min-height:0;display:grid;grid-template-rows:minmax(0,1.38fr) minmax(0,1fr);gap:14px;padding:16px 20px 20px}
+  .schematic{min-height:0;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--line);border-radius:16px;background:var(--panel);box-shadow:0 24px 50px -44px rgba(18,43,99,.45)}
+  .schematic-head{height:50px;flex-shrink:0;display:flex;align-items:center;gap:10px;padding:0 18px;border-bottom:1px solid #e8eef9}
+  .schematic-head h2{font-family:Georgia,"Noto Serif SC","Songti SC",serif;font-size:17px;font-weight:600;letter-spacing:-.01em;margin:0}
+  .count{display:inline-flex;align-items:center;height:21px;padding:0 7px;border-radius:5px;background:#f3f6ff;color:#556b98;font-family:var(--mono);font-size:9px}
+  .schematic-tools{margin-left:auto;display:flex;align-items:center;gap:6px}
+  .seg{display:flex;align-items:center;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .seg button{height:26px;padding:0 9px;font-size:10px;color:#52678f}
+  .seg button.active{background:var(--accent);color:#fff}
+  .tool-link{height:26px;display:flex;align-items:center;gap:5px;padding:0 8px;border-radius:6px;color:#52678f;font-size:10px}
+  .tool-link:hover{background:var(--accent-soft);color:var(--accent)}
+  .schematic-body{position:relative;flex:1;min-height:0;overflow:hidden;background:#fbfcff}
+  .schematic-body::before{
+    content:"";position:absolute;inset:0;
+    background-image:linear-gradient(rgba(83,119,187,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(83,119,187,.09) 1px,transparent 1px);
+    background-size:26px 26px;
+    mask-image:radial-gradient(ellipse at 50% 48%,#000 28%,transparent 86%);
+  }
+  .schematic-body::after{
+    content:"";position:absolute;left:44%;top:48%;width:460px;height:460px;border-radius:50%;
+    background:radial-gradient(circle,rgba(31,77,255,.08),transparent 68%);
+    transform:translate(-50%,-50%);pointer-events:none;
+  }
+  .stage{position:absolute;left:50%;top:50%;width:980px;height:400px;transform:translate(-50%,-50%)}
+  .edges{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+  .edge{fill:none;stroke:#b9c8e2;stroke-width:1.5;stroke-linejoin:round}
+  .edge.done{stroke:#94afd3}
+  .edge.active{stroke:var(--accent);stroke-width:2;stroke-dasharray:5 6;animation:draw 2s linear infinite}
+  @keyframes draw{to{stroke-dashoffset:-22}}
+  .joint{fill:#fff;stroke:#b9c8e2;stroke-width:1.2}
+  .node{position:absolute;width:180px;padding:11px 13px 10px;border:1px solid var(--line-2);border-radius:9px;background:#fff;box-shadow:0 14px 26px -24px rgba(18,43,99,.42)}
+  .node .num{font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;color:var(--accent);font-weight:600}
+  .node h3{font-family:Georgia,"Noto Serif SC","Songti SC",serif;font-size:14px;line-height:1.3;font-weight:600;margin:4px 0 4px;color:var(--ink);letter-spacing:-.01em}
+  .node .meta{display:flex;align-items:center;gap:5px;font-size:9.5px;color:#52678f}
+  .node .dot{width:4px;height:4px;border-radius:50%;background:#aab9d4;flex-shrink:0}
+  .node.done{background:#f9fbff;border-color:#c3d3ec}
+  .node.done .dot{background:var(--mint)}
+  .node.active{background:var(--accent);border-color:var(--accent);box-shadow:0 24px 44px -26px rgba(31,77,255,.75)}
+  .node.active .num,.node.active .meta{color:#e6ecff}
+  .node.active h3{color:#fff}
+  .node.active .dot{background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.18)}
+  .node.waiting{border-style:dashed;background:#fbfcff}
+  .progress{height:3px;border-radius:2px;background:rgba(255,255,255,.24);overflow:hidden;margin-top:8px}
+  .progress i{display:block;height:100%;width:64%;border-radius:2px;background:#fff}
+  .float-approval{
+    position:absolute;left:18px;bottom:16px;display:flex;align-items:center;gap:9px;max-width:320px;
+    padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.94);
+    box-shadow:0 16px 30px -28px rgba(18,43,99,.5);backdrop-filter:blur(8px);
+  }
+  .float-approval .mark{width:25px;height:25px;border-radius:6px;display:grid;place-items:center;background:#fbf3e4;color:var(--amber);flex-shrink:0}
+  .float-approval .copy{min-width:0}
+  .float-approval b{display:block;font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .float-approval span{display:block;font-size:9.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .float-approval .act{display:flex;gap:4px;margin-left:4px;flex-shrink:0}
+  .float-approval .act button{height:23px;padding:0 7px;border-radius:5px;border:1px solid var(--line-2);background:#fff;font-size:9.5px;color:#536a95}
+  .float-approval .act .primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .schematic-foot{height:35px;flex-shrink:0;display:flex;align-items:center;gap:16px;padding:0 16px;border-top:1px solid #e8eef9;font-family:var(--mono);font-size:9.5px;color:#5b6f99}
+  .schematic-foot span{display:flex;align-items:center;gap:5px}
+  .schematic-foot i{width:4px;height:4px;border-radius:50%;background:#aab9d4}
+  .schematic-foot .ok i{background:var(--mint)}.schematic-foot .live i{background:var(--accent)}
+  .schematic-foot .right{margin-left:auto;color:#5e7097}
+  .notebook{min-height:0;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(340px,.85fr);gap:14px}
+  .notes{min-height:0;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--line);border-radius:16px;background:var(--panel);box-shadow:0 20px 40px -42px rgba(18,43,99,.4)}
+  .notes-head{height:46px;flex-shrink:0;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid #e8eef9}
+  .notes-head h2{font-family:Georgia,"Noto Serif SC","Songti SC",serif;font-size:16px;font-weight:600;margin:0}
+  .session-chip{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:5px;background:#f3f6ff;color:#506590;font-size:9px}
+  .session-chip i{width:4px;height:4px;border-radius:50%;background:var(--mint)}
+  .notes-head .more{margin-left:auto;width:24px;height:24px;border-radius:5px;display:grid;place-items:center;color:#8b9cbd}
+  .notes-head .more:hover{background:var(--accent-soft);color:var(--accent)}
+  .notes-body{flex:1;min-height:0;display:flex;flex-direction:column;gap:11px;padding:13px 16px;overflow:hidden}
+  .note{display:grid;grid-template-columns:25px minmax(0,1fr);gap:9px;font-size:12px;line-height:1.55}
+  .note .n{font-family:var(--mono);font-size:8.5px;color:#5a6c94;padding-top:2px}
+  .note b{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.08em;color:#506590;font-weight:600;margin-bottom:2px}
+  .note p{margin:0;color:var(--ink-2)}
+  .note.user p{color:var(--ink)}
+  .note .inline-tag{display:inline-flex;align-items:center;gap:3px;height:17px;padding:0 5px;border-radius:4px;background:#eef4ff;color:#4260a0;font-size:9px;margin-left:5px;vertical-align:1px}
+  .composer-card{min-height:0;display:flex;flex-direction:column;gap:9px;padding:14px 15px;border:1px solid #d2ddf8;border-radius:16px;background:#eef3ff;box-shadow:0 18px 36px -38px rgba(18,43,99,.4)}
+  .composer-card h2{font-family:Georgia,"Noto Serif SC","Songti SC",serif;font-size:16px;font-weight:600;margin:0}
+  .composer-card .hint{margin:0;font-size:10.5px;line-height:1.5;color:#4d6392}
+  .composer-card textarea{
+    flex:1;min-height:62px;width:100%;resize:none;border:1px solid #c8d6f2;border-radius:8px;background:#fff;
+    padding:9px 10px;color:var(--ink);font-size:12px;line-height:1.55;outline:none;
+  }
+  .composer-card textarea::placeholder{color:#9aa9c4}
+  .composer-card textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(31,77,255,.08)}
+  .suggest{display:flex;flex-wrap:wrap;gap:5px}
+  .suggest button{height:22px;padding:0 7px;border-radius:5px;border:1px solid #ccd9f3;background:#fff;color:#566c99;font-size:9.5px}
+  .suggest button:hover{border-color:var(--accent);color:var(--accent)}
+  .composer-row{display:flex;align-items:center;gap:4px}
+  .composer-tool{width:25px;height:25px;border-radius:5px;display:grid;place-items:center;color:#7184a9}
+  .composer-tool:hover{background:#e1e9ff;color:var(--accent)}
+  .composer-hint{font-family:var(--mono);font-size:8.5px;color:#566b95;margin-left:2px}
+  .composer-send{margin-left:auto;display:inline-flex;align-items:center;gap:4px;height:27px;padding:0 9px;border-radius:5px;background:var(--accent);color:#fff;font-size:10px;font-weight:600}
+  .composer-send:hover{background:#153bd6}
+  @media (max-width:1240px){
+    .stage{transform:translate(-50%,-50%) scale(.9)}
+    .notebook{grid-template-columns:minmax(0,1.3fr) minmax(320px,.9fr)}
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H7l-3 2v-4.6A7.5 7.5 0 1 1 20 11.5Z"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4.5 5.5A2.5 2.5 0 0 1 7 3h12.5v16H7a2.5 2.5 0 0 0-2.5 2.5V5.5Z"/><path d="M4.5 5.5V19M7 7h9M7 11h7"/></symbol>
+    <symbol id="i-graph" viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="5" rx="1"/><rect x="16" y="4" width="5" height="5" rx="1"/><rect x="9.5" y="15" width="5" height="5" rx="1"/><path d="M8 6.5h3.5M18.5 9v3.5M16 17.5h-1.5M8 17.5h1.5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H19v14H6.5A2.5 2.5 0 0 1 4 16.5v-9Z"/><path d="M4 8h13M16 12h3M16 15h3"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M4 5h16l1 8v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5l1-8Z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.8 9a2.3 2.3 0 1 1 3.2 2.1c-.8.4-1 1-1 1.9"/><path d="M12 16.5v.1"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2M12 18.5v2M20.5 12h-2M5.5 12h-2M18 6l-1.4 1.4M7.4 16.6 6 18M18 18l-1.4-1.4M7.4 7.4 6 6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="m8 12.5 5.8-5.8a3.2 3.2 0 1 1 4.5 4.5l-7.7 7.7a5.2 5.2 0 0 1-7.4-7.4l8-8"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3 10.5 13.5M21 3l-6.8 18-3.7-7.5L3 9.8 21 3Z"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 10a6 6 0 0 1 12 0c0 4 1.5 5 2 6H4c.5-1 2-2 2-6Z"/><path d="M10 19a2 2 0 0 0 4 0"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 20h14"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 6.5"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">R</div>
+      <div class="brand-name">Research Assistant<small>研究工作台</small></div>
+    </div>
+    <div class="crumbs"><span>工作台</span><span class="sep">/</span><span>计划</span><span class="sep">/</span><b>04</b></div>
+    <div class="top-actions">
+      <span class="status-chip"><i></i>运行中</span>
+      <span class="budget">预算 <b>$1.24</b> / $5.00</span>
+      <button class="icon-btn" title="计划库"><svg width="15" height="15"><use href="#i-grid"/></svg></button>
+      <button class="icon-btn" title="成本与预算"><svg width="15" height="15"><use href="#i-wallet"/></svg></button>
+      <button class="icon-btn" title="待办中心"><svg width="15" height="15"><use href="#i-bell"/></svg><span class="dot"></span></button>
+      <button class="icon-btn" title="使用手册"><svg width="15" height="15"><use href="#i-help"/></svg></button>
+      <span class="divider"></span>
+      <span class="avatar">研</span>
+      <button class="btn-primary"><svg width="10" height="10"><use href="#i-pause"/></svg>暂停</button>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="schematic" aria-label="执行图">
+      <header class="schematic-head">
+        <h2>执行图</h2>
+        <span class="count">5 个节点</span>
+        <div class="schematic-tools">
+          <div class="seg" role="group" aria-label="视图">
+            <button class="active">画布</button>
+            <button>列表</button>
+          </div>
+          <button class="tool-link">适配画布</button>
+          <button class="tool-link">版本记录</button>
+        </div>
+      </header>
+      <div class="schematic-body">
+        <div class="stage">
+          <svg class="edges" viewBox="0 0 980 400" aria-hidden="true">
+            <path class="edge done" d="M210 201 H250 V81 H280"/>
+            <path class="edge active" d="M210 201 H250 V317 H280"/>
+            <path class="edge done" d="M460 81 H510 V186 H540"/>
+            <path class="edge" d="M460 317 H510 V186 H540"/>
+            <path class="edge" d="M720 186 H770 V81 H800"/>
+            <rect class="joint" x="246" y="77" width="8" height="8" rx="1"/>
+            <rect class="joint" x="246" y="313" width="8" height="8" rx="1"/>
+            <rect class="joint" x="506" y="182" width="8" height="8" rx="1"/>
+            <rect class="joint" x="766" y="77" width="8" height="8" rx="1"/>
+          </svg>
+
+          <article class="node done" style="left:30px;top:160px">
+            <div class="num">01 / 解析</div>
+            <h3>解析论文与数据</h3>
+            <div class="meta"><i class="dot"></i><span>文献 Agent · 12s</span></div>
+          </article>
+          <article class="node done" style="left:280px;top:40px">
+            <div class="num">02 / 复现</div>
+            <h3>复现注意力机制</h3>
+            <div class="meta"><i class="dot"></i><span>代码 Agent · 2m 08s</span></div>
+          </article>
+          <article class="node active" style="left:280px;top:270px">
+            <div class="num">03 / 运行中</div>
+            <h3>构造训练脚本</h3>
+            <div class="meta"><i class="dot"></i><span>代码 Agent · 64%</span></div>
+            <div class="progress"><i></i></div>
+          </article>
+          <article class="node waiting" style="left:540px;top:145px">
+            <div class="num">04 / 等待</div>
+            <h3>运行基线实验</h3>
+            <div class="meta"><i class="dot"></i><span>等待前序节点</span></div>
+          </article>
+          <article class="node waiting" style="left:800px;top:40px">
+            <div class="num">05 / 等待</div>
+            <h3>汇总结果与报告</h3>
+            <div class="meta"><i class="dot"></i><span>等待前序节点</span></div>
+          </article>
+        </div>
+
+        <div class="float-approval">
+          <span class="mark"><svg width="13" height="13"><use href="#i-download"/></svg></span>
+          <div class="copy"><b>需要下载数据集</b><span>wikitext-103 · 预计 1.2 GB</span></div>
+          <div class="act"><button>稍后</button><button class="primary">允许</button></div>
+        </div>
+      </div>
+      <footer class="schematic-foot">
+        <span class="ok"><i></i>完成 3</span>
+        <span class="live"><i></i>运行中 1</span>
+        <span><i></i>等待 1</span>
+        <span class="right">预计剩余 18 分钟 · 上次更新 12 秒前</span>
+      </footer>
+    </section>
+
+    <section class="notebook" aria-label="研究笔记与对话">
+      <div class="notes">
+        <header class="notes-head">
+          <h2>研究笔记</h2>
+          <span class="session-chip"><i></i>Transformer 论文复现</span>
+          <button class="more" title="会话操作"><svg width="14" height="14"><use href="#i-more"/></svg></button>
+        </header>
+        <div class="notes-body">
+          <div class="note user">
+            <span class="n">01</span>
+            <div><b>你</b><p>复现这篇论文的核心实验，先跑通最小版本，再和基线做对比。</p></div>
+          </div>
+          <div class="note">
+            <span class="n">02</span>
+            <div><b>助手</b><p>已拆成 5 个节点，先确认运行环境，再从注意力机制开始。预计 18 分钟。<span class="inline-tag">待批准 1</span></p></div>
+          </div>
+          <div class="note">
+            <span class="n">03</span>
+            <div><b>系统</b><p>节点 03 正在运行，已生成 train.py；完成后将自动进入基线实验。</p></div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="composer-card">
+        <h2>继续研究</h2>
+        <p class="hint">追问、补充材料，或让助手解释当前节点。</p>
+        <textarea placeholder="例如：先只跑一个 mini-batch，确认显存占用…" aria-label="输入消息"></textarea>
+        <div class="suggest">
+          <button>解释当前节点</button>
+          <button>换成更小的基线</button>
+          <button>查看产物</button>
+        </div>
+        <div class="composer-row">
+          <button class="composer-tool" title="添加论文或数据"><svg width="14" height="14"><use href="#i-paperclip"/></svg></button>
+          <button class="composer-tool" title="从文献库添加"><svg width="14" height="14"><use href="#i-book"/></svg></button>
+          <span class="composer-hint">Enter 发送</span>
+          <button class="composer-send"><svg width="11" height="11"><use href="#i-send"/></svg>发送</button>
+        </div>
+      </aside>
+    </section>
+  </main>
+</div>
+</body>
+</html>

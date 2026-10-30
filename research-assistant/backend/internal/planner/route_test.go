@@ -2,6 +2,7 @@ package planner
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"research-assistant-backend/internal/models"
@@ -91,6 +92,26 @@ func TestComplexityRouterDisabledFallsBackToStandard(t *testing.T) {
 	decision := NewComplexityRouterFromEnv().Decide(context.Background(), models.IntentContext{RawIntent: "你好", IntentType: "General"}, nil, nil)
 	if decision.Complexity != ComplexityL2 || decision.Variant != "standard" || decision.Source != "disabled" {
 		t.Fatalf("unexpected disabled decision: %+v", decision)
+	}
+}
+
+func TestComplexityRouterBudgetFirstDowngradesVariant(t *testing.T) {
+	router := &ComplexityRouter{Enabled: true, ConfidenceThreshold: 0.7}
+	intent := models.IntentContext{
+		RawIntent:   "复现论文并对比多个框架、下载数据集、运行自定义评估流水线，输出多个指标",
+		IntentType:  "Paper_Reproduction",
+		Constraints: map[string]any{"cost_policy": "budget_first"},
+		Entities:    map[string]any{"paper_metadata": map[string]any{"title": "x"}},
+	}
+	decision := router.Decide(context.Background(), intent, nil, nil)
+	if levelRank(decision.Complexity) > levelRank(ComplexityL2) {
+		t.Fatalf("budget_first should cap at L2, got %s", decision.Complexity)
+	}
+	if decision.Variant == "full" {
+		t.Fatalf("budget_first should not keep full variant")
+	}
+	if !strings.Contains(decision.Reason, "cost_policy_budget_first") {
+		t.Fatalf("reason should record cost policy: %q", decision.Reason)
 	}
 }
 

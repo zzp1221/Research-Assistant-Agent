@@ -6,9 +6,9 @@
 
 - [系统架构图](../docs/diagrams/architecture.drawio)（[SVG 预览](../docs/diagrams/architecture.svg)）
 
-`tool/` 是独立的 Function Calling 教学示例，不参与 `research-assistant` 的运行时；主项目的工具/Agent 路由见 `research-assistant/backend/internal/agent` 与 `internal/tools`。
+`tool/` 是独立的 Function Calling 教学示例，不参与 `research-assistant` 的运行时；主项目的工具/Agent 路由见 `research-assistant/backend/internal/agent`。
 
-2026-10-28 验证：`go build ./...` 通过（该模块无测试文件）。
+`go build ./...` 通过（该模块无测试文件）。
 
 ## 文件
 
@@ -26,9 +26,9 @@
         ├─ 决定调用工具
         │    └─► Executor.Execute(name, input)
         │              └─► Registry.Get(name)
-        │                      ├─ search_web    -> Tavily + DuckDuckGo 聚合
-        │                      ├─ deep_research -> 多轮 Tavily 融合
-        │                      └─ ai_answer     -> Perplexity 直接答案
+        │                      ├─ search_web    -> Tavily + DuckDuckGo 聚合（当前为 mock）
+        │                      ├─ deep_research -> 多轮 Tavily 融合（当前为 mock）
+        │                      └─ ai_answer     -> Perplexity 直接答案（当前为 mock）
         │
         └─ 直接输出最终答案
 ```

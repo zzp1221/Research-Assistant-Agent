@@ -6,26 +6,26 @@
 
 ### 语义断路器
 
-对“命令 + 标准化错误输出”计算语义哈希，记录在滑动窗口中。当同一哈希在 `max_retry_window` 内重复出现时触发熔断，拒绝继续执行并返回 `CircuitBroken` 错误，强制上层重新规划。
+对“命令 + 标准化错误输出”计算语义哈希，记录在滑动窗口中。当同一哈希在 `MaxRetryWindow` 内重复出现时触发熔断，拒绝继续执行并返回 `CIRCUIT_BROKEN` 错误，强制上层重新规划。
 
 ### 超时与防挂起
 
-- 所有命令受 `context.WithTimeout` 约束。
-- 超时后向 TTY 发送 `Ctrl+C`，释放被交互式提示锁死的终端。
+- 所有命令受 `context.WithTimeout` 约束；`sandbox.Session` 在超时或上层取消时向 TTY 发送 `Ctrl+C`（`\x03`），释放被交互式提示锁死的终端。
 - 返回结构化提示，例如“命令可能在等待输入，请添加 `-y` 或非交互参数”。
 
 ### 异常分析
 
-将底层退出码、超时、信号和 stderr 转换为带 Guidance 的错误对象，方便 Agent 在下一轮修正命令。
+将底层退出码、超时、信号和 stderr 转换为带 Hint 的 `WatchdogError`，方便 Agent 在下一轮修正命令。
 
 ## 主要组件
 
 | 组件 | 职责 |
 |---|---|
 | `CircuitBreaker` | 语义哈希、滑动窗口与熔断判定 |
-| `TimeoutController` | 命令超时、TTY 中断与状态包装 |
-| `ExceptionAnalyzer` | 错误分类、结构化提示与恢复建议 |
-| `Watchdog` | 包装沙箱执行器，提供 `ExecuteSafe` |
+| `Checker` | 崩溃信号检测；可选调用 Agent 生成诊断建议 |
+| `WatchdogError` / `IsCircuitBroken` 等 | 错误分类与判定辅助 |
+| `Watchdog` | 包装沙箱执行器，提供 `Execute` 与 `RollbackToSafeState` |
+| `Simulator` | 无 Docker 的测试替身 |
 
 ## 示例
 
@@ -46,10 +46,10 @@ func main() {
         MaxRetryWindow: 5,
         CommandTimeout: 30 * time.Second,
     }
-    wd := watchdog.New(cfg, box)
+    wd := watchdog.NewWatchdog(cfg, box, manager, agent)
 
     for i := 0; i < 6; i++ {
-        _, err := wd.ExecuteSafe(ctx, "pip install unexisting-package")
+        _, err := wd.Execute(ctx, "pip install unexisting-package")
         if err != nil && watchdog.IsCircuitBroken(err) {
             fmt.Println("circuit broken: replan required")
             break
@@ -58,13 +58,15 @@ func main() {
 }
 ```
 
+`NewWatchdog(cfg, box, checkpointManager, agent)` 中 `agent` 可为 `nil`（此时只做确定性审计，不调用 LLM）。
+
 ## 测试
 
 ```bash
 go test ./watchdog/...
 ```
 
-测试覆盖重复错误熔断、超时中断和错误分类。真实 Docker 用例需要可用 daemon。
+测试覆盖重复错误熔断、超时中断和错误分类。真实 Docker/LLM 用例默认跳过，可设置 `REAL_INTEGRATION_TEST=1` 或 `REAL_LLM_TEST=1`。
 
 ## 边界
 

@@ -13,6 +13,7 @@ export default defineConfig({
     trace: 'retain-on-failure',
     // The runner image exports HTTP_PROXY for package downloads; Chromium must
     // talk directly to the compose-network frontend service.
-    launchOptions: { args: ['--no-proxy-server', '--proxy-server=direct://', '--proxy-bypass-list=*'] },
+    // Local Windows runs use the installed Chrome; CI images install Playwright's bundled browser.
+    launchOptions: { ...(process.env.PLAYWRIGHT_CHROME_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROME_PATH } : {}), args: ['--no-proxy-server', '--proxy-server=direct://', '--proxy-bypass-list=*'] },
   },
 });

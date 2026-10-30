@@ -259,6 +259,36 @@ func (r *Resolver) CompleteVision(ctx context.Context, resolved modelprofile.Res
 	return client.Complete(ctx, resolved.Profile.BaseURL, resolved.APIKey, resolved.Profile.Model, messages, opts)
 }
 
+// ResolveProfile resolves one explicit model profile for an owner. It is used
+// by AgentProfile execution so a profile can pin a model instead of inheriting
+// the owner's main routing.
+func (r *Resolver) ResolveProfile(ownerID, profileID string) (modelprofile.Resolved, error) {
+	if r == nil {
+		return modelprofile.Resolved{}, modelprofile.ErrNotFound
+	}
+	// "env-bootstrap" is the deployment's OPENAI_* default. It is a legitimate
+	// profile target for custom agents so an installation without stored model
+	// profiles can still run profile-bound tasks.
+	if strings.EqualFold(strings.TrimSpace(profileID), "env-bootstrap") {
+		return envBootstrap()
+	}
+	resolved, ok := r.resolveProfile(strings.TrimSpace(profileID), ownerID, "explicit")
+	if !ok {
+		return modelprofile.Resolved{}, modelprofile.ErrNotFound
+	}
+	return resolved, nil
+}
+
+// CompleteWithResolved performs one chat completion with an already resolved
+// profile (AgentProfile model binding).
+func (r *Resolver) CompleteWithResolved(ctx context.Context, resolved modelprofile.Resolved, messages []oaichat.Message, opts oaichat.Options) (*oaichat.Response, error) {
+	if opts.Timeout <= 0 {
+		opts.Timeout = defaultTimeout(resolved.Profile.TimeoutSeconds)
+	}
+	client := r.clientFor(resolved.Profile)
+	return client.Complete(ctx, resolved.Profile.BaseURL, resolved.APIKey, resolved.Profile.Model, messages, opts)
+}
+
 func defaultTimeout(seconds int) time.Duration {
 	if seconds <= 0 {
 		seconds = 120

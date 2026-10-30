@@ -64,7 +64,7 @@ export function ChatPanel(props: ChatPanelProps) {
   const { state, chatActions, pdfActions, taskActions, onOpenLiterature } = props;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col bg-surface">
       <ChatSessionManager
         state={{
           isLoggedIn: state.isLoggedIn,

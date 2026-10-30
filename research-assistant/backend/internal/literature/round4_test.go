@@ -129,16 +129,16 @@ func TestApplyRankingModes(t *testing.T) {
 		{Source: SourceOpenAlex, Title: "B", Year: 2022, Citations: 100},
 		{Source: SourceCrossref, Title: "C", Year: 2021, Citations: 50},
 	}
-	applyRanking(results, []string{SourceArxiv, SourceOpenAlex, SourceCrossref}, "citations")
+	applyRanking(results, "graph neural network", []string{SourceArxiv, SourceOpenAlex, SourceCrossref}, "citations")
 	if results[0].Title != "B" || results[0].Rank != 1 || results[0].RankReason != "citations desc" {
 		t.Fatalf("citations ranking=%#v", results)
 	}
-	applyRanking(results, []string{SourceArxiv, SourceOpenAlex, SourceCrossref}, "year")
+	applyRanking(results, "graph neural network", []string{SourceArxiv, SourceOpenAlex, SourceCrossref}, "year")
 	if results[0].Title != "B" || results[0].RankReason != "year desc" {
 		t.Fatalf("year ranking=%#v", results)
 	}
-	applyRanking(results, []string{SourceArxiv, SourceOpenAlex, SourceCrossref}, "")
-	if results[0].Title != "A" || results[0].RankReason != "provider relevance order" {
+	applyRanking(results, "graph neural network", []string{SourceArxiv, SourceOpenAlex, SourceCrossref}, "")
+	if results[0].RankReason != "lexical relevance + citations + provider rank" {
 		t.Fatalf("relevance ranking=%#v", results)
 	}
 }

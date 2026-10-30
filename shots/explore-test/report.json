@@ -1,0 +1,40 @@
+[
+  {
+    "file": "page.png",
+    "state": null,
+    "size": "1440x900",
+    "zoom": 1,
+    "animationWaitMs": 0,
+    "issues": [],
+    "lint": [
+      {
+        "rule": "eyebrow",
+        "label": "标题上方的眉标",
+        "count": 1,
+        "examples": [
+          "div.eyebrow「会话 03 · 进行中」"
+        ]
+      },
+      {
+        "rule": "nestedCards",
+        "label": "卡片里套卡片",
+        "count": 5,
+        "examples": [
+          "article.node.done「01 解析论文与数据 文献 Agent · 12」（外层 div.graph）",
+          "article.node.done「02 复现注意力机制 代码 Agent · 2m」（外层 div.graph）",
+          "article.node.active「03 构造训练脚本 代码 Agent · 运行中」（外层 div.graph）"
+        ]
+      },
+      {
+        "rule": "contrastLow",
+        "label": "文字对比度不达标（正文低于 4.5:1，大字低于 3:1）",
+        "count": 25,
+        "examples": [
+          "div.eyebrow「会话 03 · 进行中」（2.62:1）",
+          "span「已连接 · 5 条记录」（4.08:1）",
+          "span「wikitext-103 · 预计 1.2 GB」（3.99:1）"
+        ]
+      }
+    ]
+  }
+]

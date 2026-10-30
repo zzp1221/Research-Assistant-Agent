@@ -1,6 +1,6 @@
 # 真实仓库 AutoResearch 任务包
 
-该目录包含四个真实开源仓库的有界 AutoResearch 任务包。每个任务包记录上游 commit、公开搜索评测器和模型不可见的 Holdout，用于验证“真实仓库 + 真实执行 + 隐藏验收”的完整链路。
+该目录包含六个真实开源仓库的有界 AutoResearch 任务包。每个任务包记录上游 commit、公开搜索评测器与（多数包）模型不可见的 Holdout，用于验证“真实仓库 + 真实执行 + 隐藏验收”的完整链路。
 
 ## 任务包
 
@@ -10,6 +10,7 @@
 | Tenacity | https://github.com/jd/tenacity | `tenacity/` |
 | LightRAG | https://github.com/HKUDS/LightRAG | `lightrag/` |
 | Microsoft GraphRAG | https://github.com/microsoft/graphrag | `graphrag/`、`graphrag_v2/` |
+| Mem0 | https://github.com/mem0ai/mem0 | `mem0/` |
 
 每个任务包包含：
 
@@ -17,8 +18,10 @@
 <target>/
 ├── autoresearch.json       # 可编辑/保护范围、命令、指标和预算
 ├── evaluator.py            # 公开搜索契约
-└── holdout_evaluator.py    # 模型隐藏的最终契约
+└── holdout_evaluator.py    # 模型隐藏的最终契约（mem0 目前只有 evaluator）
 ```
+
+`mem0` 的 `autoresearch.json` 目前没有 `holdout_command`，因此不能用于 hidden holdout 验收；需要隐藏验收时改用含 `holdout_evaluator.py` 的包。
 
 ## 冻结字段
 
@@ -43,7 +46,7 @@ python3 examples/autoresearch/run_campaign.py \
   --validation-runs 3
 ```
 
-运行器上传三个文件、创建八节点 AutoResearch 计划、等待终态，并保存完整 `plan_graph`。控制台摘要包含请求 revision、实际 revision、获取方式、目标停止、搜索统计和隐藏验证统计。
+运行器要求任务包内同时存在 `autoresearch.json`、`evaluator.py` 与 `holdout_evaluator.py`；它会上传三个文件、创建八节点 AutoResearch 计划、等待终态，并保存完整 `plan_graph`。控制台摘要包含请求 revision、实际 revision、获取方式、目标停止、搜索统计和隐藏验证统计。
 
 ## 验收口径
 

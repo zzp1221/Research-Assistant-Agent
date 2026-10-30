@@ -7,7 +7,7 @@
 | 目录 | 说明 | 运行环境 |
 |---|---|---|
 | [intent_router](intent_router/) | 六分类意图路由的代码补丁搜索，验证 Harness 本身 | CPU，Python 标准库 |
-| [real_repositories](real_repositories/) | rank-bm25、Tenacity、LightRAG、GraphRAG 的真实仓库任务包 | Remote Docker CPU |
+| [real_repositories](real_repositories/) | rank-bm25、Tenacity、LightRAG、GraphRAG、Mem0 的真实仓库任务包 | Remote Docker CPU |
 
 ## 通用协议
 
@@ -15,7 +15,7 @@
 
 - `autoresearch.json`：可编辑文件、保护文件、命令、指标、预算和验证次数。
 - `evaluator.py`：公开搜索评测器，运行前冻结 SHA-256。
-- `holdout_evaluator.py`：模型不可见的最终评测器（可选）。
+- `holdout_evaluator.py`：模型不可见的最终评测器（可选；当前 `run_campaign.py` 要求该文件存在）。
 
 搜索流程：
 
@@ -40,10 +40,11 @@ python3 examples/autoresearch/run_campaign.py \
   --base-url http://localhost:8080 \
   --max-trials 8 \
   --wall-minutes 5 \
-  --validation-runs 3
+  --validation-runs 3 \
+  --output /tmp/lightrag_run.json
 ```
 
-脚本会等待终态并输出计划摘要，包括 revision、搜索统计和验证统计。
+脚本会等待终态并输出计划摘要，包括 revision、搜索统计和验证统计。`--output` 为必填参数。
 
 ## 边界
 

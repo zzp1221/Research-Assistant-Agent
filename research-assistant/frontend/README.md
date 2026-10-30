@@ -1,6 +1,6 @@
 # frontend
 
-React + TypeScript + Vite 工作台，负责对话、DAG 可视化、节点执行面板、PDF 阅读和 AutoResearch 结果展示。
+React + TypeScript + Vite 工作台，负责对话、DAG 可视化、节点执行面板、PDF 阅读、文献库与 AutoResearch 结果展示。
 
 ## 界面与流程
 
@@ -12,12 +12,13 @@ React + TypeScript + Vite 工作台，负责对话、DAG 可视化、节点执�
 
 ## 技术栈
 
-- React 19 + TypeScript
+- React 19 + TypeScript 5.9
 - Vite 8
 - Tailwind CSS 4
 - React Flow（`@xyflow/react`）用于 DAG 与参数树
 - `@react-pdf-viewer` + `pdfjs-dist` 用于 PDF 阅读
 - `react-markdown` + KaTeX 用于报告渲染
+- Vitest + Testing Library（组件）、Playwright（E2E / 视觉回归 / 无障碍）
 
 ## 目录结构
 
@@ -36,6 +37,7 @@ frontend/
 │   │   ├── execution/                 节点执行侧栏
 │   │   ├── autoresearch/              Trial 账本与候选搜索视图
 │   │   ├── experiment/                实验搜索账本与视图
+│   │   ├── benchmark/                 Benchmark 报告视图
 │   │   ├── claim-evidence/            主张证据图
 │   │   ├── ablation/                  消融树视图
 │   │   ├── literature/                文献检索、文献库、引用图
@@ -46,7 +48,7 @@ frontend/
 │   ├── services/api/                  HTTP 与 SSE 客户端
 │   ├── contracts/                     API 与事件类型
 │   └── config/env.ts                  API Base URL 解析
-├── test/                              Node 原生测试与回放 fixture
+├── test/                              Node 原生测试、组件测试、Playwright 与视觉基线
 ├── public/                            静态资源
 └── package.json
 ```
@@ -73,8 +75,10 @@ npm run preview   # 预览生产构建
 开发态 API 地址由 `src/config/env.ts` 解析：
 
 1. 优先使用 `VITE_API_BASE_URL`。
-2. 开发态默认指向当前主机的 `:8080`。
-3. 生产态使用同源地址，由后端或 Nginx 反向代理。
+2. 开发态默认指向 `http://<当前主机>:8080`。
+3. 生产态使用同源地址，由 Nginx 反向代理到 `backend:8080`。
+
+`VITE_API_AUTH_TOKEN` 只在开发态使用（浏览器直连后端时携带）；生产构建不会把 Token 编进 bundle，Nginx 在请求时注入 `Authorization`。
 
 ## 主要界面
 
@@ -88,7 +92,7 @@ npm run preview   # 预览生产构建
 
 ## 构建与部署
 
-Docker 构建使用 `Dockerfile`：Node 构建后由 Nginx 提供静态资源，并把 `/api/` 反向代理到 `backend:8080`。本地单文件模式则由 Go 后端嵌入 `dist` 目录。
+Docker 构建使用 `Dockerfile`：Node 22 构建后由 Nginx 提供静态资源，并把 `/api/` 反向代理到 `backend:8080`。Nginx 模板 `nginx.conf.template` 在容器启动时用 envsubst 注入 `API_AUTH_TOKEN`，浏览器不持有该 Token；`client_max_body_size 33m` 与后端默认 32 MiB 上传上限对齐。本地单文件模式则由 Go 后端嵌入 `dist` 目录。
 
 ## 测试
 
@@ -100,13 +104,13 @@ npm run test:a11y       # axe + 键盘无障碍测试
 npm run test:visual     # 视觉回归（需先构建并启动 preview）
 ```
 
-- `test/*.test.mjs`：消融计划、实验账本、Trial 账本、PDF 附件、Benchmark 报告解析。
-- `test/components/`：Vitest + Testing Library + jsdom，覆盖 PDF 本地 worker、全文翻译面板、Benchmark 报告、ExecutionSidebar、ChatComposer、文献面板、模型设置和会话切换/登录。
-- `test/e2e/`：Playwright，覆盖首页/移动端布局、PDF 上传/打开/全文翻译、Benchmark 报告、无障碍冒烟与键盘操作。
+- `test/*.test.mjs`：消融计划、实验账本、Trial 账本、PDF 附件、Benchmark 报告解析（21 个用例）。
+- `test/components/`：Vitest + Testing Library + jsdom，覆盖 PDF 本地 worker、全文翻译面板、Benchmark 报告、ExecutionSidebar、ChatComposer、文献面板、模型设置、会话切换/登录、图布局性能与 SSE 重连等。
+- `test/e2e/`：Playwright，覆盖首页/移动端布局、PDF 上传/打开/全文翻译、Benchmark 报告、无障碍冒烟与键盘操作（11 个测试）。
 - `test/visual/`：6 个高价值场景的 Playwright 视觉回归；基线在 Linux + Noto CJK 字体环境生成。
 - `test/fixtures/` 中的 JSON 是前端回放和断言使用的稳定数据。
 
-2026-10-28 基线：`npm test` 为 25 个测试文件 / 112 个测试全部通过；`npm run build`、`npm run lint`、`npm run check:bundle` 均通过。Playwright 11 个测试在更新到当前 UI 文案后为 10 passed / 1 failed（AI 翻译浮层在 1024×500 下遮挡 PDF 缩放按钮，见本地 `reports/eval-2026-10-28/REPORT.md`）。
+最近一次基线（25 个测试文件 / 112 个测试通过，build/lint/bundle 全通过；Playwright 10 passed / 1 failed）与已知 UI 缺陷见 [docs/verification.md](../../docs/verification.md)。
 
 ### 性能与质量门禁
 
@@ -114,5 +118,4 @@ npm run test:visual     # 视觉回归（需先构建并启动 preview）
 - PDF 阅读器、React Flow 画布、报告 Markdown/KaTeX 和执行侧栏结果视图均按需加载。
 - a11y 使用 `@axe-core/playwright` + `eslint-plugin-jsx-a11y`；严重/致命问题为 0 才通过。
 
-E2E 默认访问 `http://127.0.0.1:15173`，可用 `E2E_BASE_URL` 覆盖；容器内运行时请使用
-compose 网络中的 `http://research-assistant-frontend-1`。
+E2E 默认访问 `http://127.0.0.1:15173`，可用 `E2E_BASE_URL` 覆盖；容器内运行时请使用 compose 网络中的 `http://research-assistant-frontend-1`。

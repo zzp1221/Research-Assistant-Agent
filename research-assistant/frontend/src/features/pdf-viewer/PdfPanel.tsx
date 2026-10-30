@@ -112,13 +112,13 @@ export function PdfPanel(props: PdfPanelProps) {
   }, [documentInfo?.document.error, documentStatus]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-paper-deep/40">
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-line bg-surface px-2.5 text-[12px] text-muted">
+    <div className="flex min-h-0 flex-1 flex-col bg-surface-muted">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-line bg-surface px-3 text-[11px] text-muted">
         <span className="flex min-w-0 items-center gap-2">
-          <span className="instrument-kicker">论文阅读器</span>
-          {pageCount > 0 && <span className="instrument-num border border-line bg-surface-muted px-1.5 py-0.5 text-[11px] text-ink-soft">共 {pageCount} 页</span>}
-          {pageCount > 0 && <span className="instrument-num hidden text-[11px] text-faint sm:inline">第 {currentPage} 页</span>}
-          {pageCount > 0 && <span className="instrument-num border border-line px-1.5 py-0.5 text-[10.5px] text-muted">{documentBadge}</span>}
+          <span className="text-[10px] font-semibold text-muted">论文阅读器</span>
+          {pageCount > 0 && <span className="rounded-full bg-surface-muted px-2 py-0.5 font-mono text-[10px] text-ink-soft">共 {pageCount} 页</span>}
+          {pageCount > 0 && <span className="hidden font-mono text-[10px] text-faint sm:inline">第 {currentPage} 页</span>}
+          {pageCount > 0 && <span className="rounded-full border border-line px-2 py-0.5 font-mono text-[9.5px] text-muted">{documentBadge}</span>}
           {ocrStats && ocrStats.ocr_pages > 0 ? (
             <span className="instrument-num hidden text-[10.5px] text-muted sm:inline">
               OCR {ocrStats.ocr_pages} 页 · 置信度 {Math.round((ocrStats.average_confidence ?? 0) * 100)}%
@@ -127,7 +127,7 @@ export function PdfPanel(props: PdfPanelProps) {
         </span>
         <div className="flex shrink-0 items-center gap-1.5">
           <span
-            className="hidden h-6 items-center gap-1 border border-line bg-surface px-1.5 text-[10.5px] text-muted sm:inline-flex"
+            className="hidden h-7 items-center gap-1 rounded-full border border-line bg-surface px-2 text-[9.5px] text-muted sm:inline-flex"
             title="在 PDF 中选中任意文字，浮层会出现「翻译」和「解释」"
           >
             <Highlighter className="h-3 w-3" />
@@ -137,7 +137,7 @@ export function PdfPanel(props: PdfPanelProps) {
             <button
               type="button"
               onClick={onOpenHelp}
-              className="flex h-6 w-6 items-center justify-center border border-transparent text-muted transition-colors hover:border-line-strong hover:text-ink"
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-transparent text-muted transition-colors hover:bg-surface-muted hover:text-ink"
               title="打开阅读指南"
               aria-label="打开阅读指南"
             >
@@ -204,7 +204,7 @@ export function PdfPanel(props: PdfPanelProps) {
         <div className="max-h-40 shrink-0 overflow-y-auto border-b border-line bg-surface px-3 py-2">
           {tables.length > 0 ? (
             <div className="mb-2">
-              <h4 className="journal-caps mb-1 text-[10px]">表格</h4>
+              <h4 className="mb-1 text-[9.5px] font-semibold text-muted">表格</h4>
               {tables.map((table) => (
                 <div key={table.id} className="flex items-center gap-2 border-b border-line/60 py-1 text-[11px] text-ink-soft">
                   <span className="min-w-0 truncate">{table.caption || `Table ${table.id}`}</span>
@@ -222,7 +222,7 @@ export function PdfPanel(props: PdfPanelProps) {
           ) : null}
           {figures.length > 0 ? (
             <div>
-              <h4 className="journal-caps mb-1 text-[10px]">图注</h4>
+              <h4 className="mb-1 text-[9.5px] font-semibold text-muted">图注</h4>
               {figures.map((figure) => (
                 <div key={figure.id} className="flex items-center gap-2 border-b border-line/60 py-1 text-[11px] text-ink-soft">
                   <span className="min-w-0 truncate">{figure.caption || figure.id}</span>
@@ -247,7 +247,7 @@ export function PdfPanel(props: PdfPanelProps) {
       ) : null}
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
-        <div className={`overflow-y-auto bg-paper-deep/50 ${showTranslation ? 'h-[55%]' : 'h-full'}`}>
+        <div className={`overflow-y-auto bg-surface-muted ${showTranslation ? 'h-[55%]' : 'h-full'}`}>
           <Worker workerUrl={PDF_WORKER_URL}>
             <div style={{ height: '100%', width: '100%' }}>
               <Viewer

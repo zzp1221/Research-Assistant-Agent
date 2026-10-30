@@ -30,6 +30,17 @@ type RequestPayload struct {
 	Attachments                   []string `json:"attachments,omitempty"`
 	RuntimePermissionMode         string   `json:"runtime_permission_mode,omitempty"`
 	RuntimePermissionAcknowledged bool     `json:"runtime_permission_acknowledged,omitempty"`
+	// Optional per-plan budget. Zero values fall back to the deployment env
+	// defaults; a positive value always wins so a caller can cap a risky run.
+	MaxCostUSD        float64 `json:"max_cost_usd,omitempty"`
+	MaxTokens         int     `json:"max_tokens,omitempty"`
+	MaxSandboxSeconds float64 `json:"max_sandbox_seconds,omitempty"`
+	MaxDownloadBytes  int64   `json:"max_download_bytes,omitempty"`
+	BudgetPolicy      string  `json:"budget_policy,omitempty"`
+	CostPolicy        string  `json:"cost_policy,omitempty"`
+	// RequireReview forces the plan into the pre-execution review gate even if
+	// it is cheap and low-risk.
+	RequireReview bool `json:"require_review,omitempty"`
 }
 
 type ChatPayload struct {
@@ -82,6 +93,11 @@ func corsOriginAllowed(origin string) bool {
 }
 
 func SetupRoutes(r *gin.Engine) {
+	// Tool ids are namespaced with slashes (mcp:server/tool). Routing on the
+	// escaped path keeps %2F inside one :id segment while still unescaping the
+	// value for handlers.
+	r.UseRawPath = true
+	r.UnescapePathValues = true
 	// Apply CORS and request metrics
 	r.Use(CORSMiddleware())
 	r.Use(metricsMiddleware())

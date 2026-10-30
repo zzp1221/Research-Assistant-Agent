@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const LEFT_WIDTH_KEY = 'ra.leftPanelWidth';
 const SIDEBAR_WIDTH_KEY = 'ra.sidebarWidth';
-const DEFAULT_LEFT_WIDTH = 33;
+const DEFAULT_LEFT_WIDTH = 24;
 const DEFAULT_SIDEBAR_WIDTH = 440;
 
 const readNumber = (key: string, fallback: number) => {
@@ -15,7 +15,7 @@ const readNumber = (key: string, fallback: number) => {
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 export function useResearchAssistantLayoutState() {
-  const [leftPanelWidth, setLeftPanelWidth] = useState(() => clamp(readNumber(LEFT_WIDTH_KEY, DEFAULT_LEFT_WIDTH), 22, 62));
+  const [leftPanelWidth, setLeftPanelWidth] = useState(() => clamp(readNumber(LEFT_WIDTH_KEY, DEFAULT_LEFT_WIDTH), 20, 52));
   const [isResizing, setIsResizing] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(() => clamp(readNumber(SIDEBAR_WIDTH_KEY, DEFAULT_SIDEBAR_WIDTH), 320, 760));
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
@@ -41,7 +41,7 @@ export function useResearchAssistantLayoutState() {
     const applyPointerPosition = (event: PointerEvent) => {
       if (isResizing) {
         const newWidth = (event.clientX / window.innerWidth) * 100;
-        setLeftPanelWidth(clamp(newWidth, 22, 62));
+        setLeftPanelWidth(clamp(newWidth, 20, 52));
       } else if (isResizingSidebar) {
         const newSidebarWidth = window.innerWidth - event.clientX;
         setSidebarWidth(clamp(newSidebarWidth, 320, Math.min(760, window.innerWidth * 0.62)));

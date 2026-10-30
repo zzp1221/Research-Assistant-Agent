@@ -155,7 +155,7 @@ function ResultCard(props: {
               <button
                 type="button"
                 onClick={() => onOpenPdf(imported.upload as UploadedFile)}
-                className="inline-flex h-6 items-center gap-1 border border-line-strong bg-surface px-2 text-[10.5px] text-ink-soft hover:border-ink hover:text-ink"
+                className="inline-flex h-7 items-center gap-1 rounded-lg border border-line bg-surface px-2 text-[10px] text-ink-soft transition-colors hover:border-accent hover:text-accent"
               >
                 <FileText className="h-3 w-3" /> 打开 PDF
               </button>
@@ -167,7 +167,7 @@ function ResultCard(props: {
               type="button"
               disabled={importing || !resultReference(result)}
               onClick={() => onImport(result, false)}
-              className="inline-flex h-6 items-center gap-1 border border-ink bg-ink px-2 text-[10.5px] font-semibold text-paper transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex h-7 items-center gap-1 rounded-lg bg-accent px-2.5 text-[10px] font-semibold text-white transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-40"
               title={!resultReference(result) ? '该结果没有可导入的 DOI / arXiv / PDF 链接' : '下载 PDF、存入文献库并加入当前会话'}
             >
               {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
@@ -287,7 +287,7 @@ function LibraryCard(props: {
             disabled={busy || !hasPdf}
             onClick={() => onAttach(record)}
             title={hasPdf ? '把 PDF 加入当前会话的附件栏' : '该条目只有元数据，请先导入 PDF'}
-            className="inline-flex h-6 items-center gap-1 border border-ink bg-ink px-2 text-[10.5px] font-semibold text-paper transition-colors hover:bg-black disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-muted disabled:text-muted"
+            className="inline-flex h-7 items-center gap-1 rounded-lg bg-accent px-2.5 text-[10px] font-semibold text-white transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-surface-strong disabled:text-muted"
           >
             {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
             加入会话
@@ -297,7 +297,7 @@ function LibraryCard(props: {
           <button
             type="button"
             onClick={() => onOpenPdf(record)}
-            className="inline-flex h-6 items-center gap-1 border border-line-strong bg-surface px-2 text-[10.5px] text-ink-soft hover:border-ink hover:text-ink"
+            className="inline-flex h-7 items-center gap-1 rounded-lg border border-line bg-surface px-2 text-[10px] text-ink-soft transition-colors hover:border-accent hover:text-accent"
           >
             <FileText className="h-3 w-3" /> 打开 PDF
           </button>
@@ -306,7 +306,7 @@ function LibraryCard(props: {
             type="button"
             disabled={busy}
             onClick={() => onImportPdf(record)}
-            className="inline-flex h-6 items-center gap-1 border border-line-strong bg-surface px-2 text-[10.5px] text-ink-soft hover:border-ink hover:text-ink disabled:opacity-40"
+            className="inline-flex h-7 items-center gap-1 rounded-lg border border-line bg-surface px-2 text-[10px] text-ink-soft transition-colors hover:border-accent hover:text-accent disabled:opacity-40"
           >
             <DownloadIcon /> 导入 PDF
           </button>
@@ -634,22 +634,22 @@ export function LiteraturePanel(props: LiteraturePanelProps = {}) {
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-paper">
-      <div className="shrink-0 border-b border-line bg-surface px-3 pb-0 pt-2.5">
+    <div className="flex h-full min-h-0 flex-col bg-surface">
+      <div className="shrink-0 border-b border-line bg-surface px-4 pb-0 pt-4">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h2 className="font-serif text-[15px] font-semibold leading-5 text-ink">文献库</h2>
+            <h2 className="text-[16px] font-semibold leading-6 tracking-[-0.02em] text-ink">文献库</h2>
             <p className="mt-0.5 text-[10.5px] leading-4 text-muted">检索真实文献 · 管理收藏 · 加入当前会话</p>
           </div>
           <button
             type="button"
             onClick={onOpenHelp}
-            className="inline-flex h-6 shrink-0 items-center gap-1 border border-line bg-surface px-1.5 text-[10px] text-muted transition-colors hover:border-ink hover:text-ink"
+            className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-line bg-surface px-2 text-[10px] text-muted transition-colors hover:border-accent hover:text-accent"
           >
             <HelpCircle className="h-3 w-3" /> 使用手册
           </button>
         </div>
-        <div role="tablist" aria-label="文献库分区" className="mt-2 flex gap-0.5">
+        <div role="tablist" aria-label="文献库分区" className="mt-3 flex gap-0.5">
           {(Object.keys(tabLabels) as LiteratureTab[]).map((value) => (
             <button
               key={value}
@@ -657,7 +657,7 @@ export function LiteraturePanel(props: LiteraturePanelProps = {}) {
               role="tab"
               aria-selected={tab === value}
               onClick={() => selectTab(value)}
-              className={`h-7 border-b-2 px-2 text-[11.5px] transition-colors ${
+              className={`h-8 border-b-2 px-2 text-[10.5px] transition-colors ${
                 tab === value
                   ? 'border-ink font-semibold text-ink'
                   : 'border-transparent text-muted hover:text-ink-soft'
@@ -686,7 +686,7 @@ export function LiteraturePanel(props: LiteraturePanelProps = {}) {
                   }}
                   placeholder="关键词，如 graph neural network"
                   aria-label="文献检索关键词"
-                  className="h-9 w-full border border-line bg-surface pl-7 pr-2 text-[12px] text-ink outline-none focus:border-ink"
+                  className="h-9 w-full rounded-xl border border-line bg-surface pl-7 pr-2 text-[11.5px] text-ink outline-none transition-colors focus:border-accent"
                 />
               </div>
               <button
@@ -694,7 +694,7 @@ export function LiteraturePanel(props: LiteraturePanelProps = {}) {
                 onClick={() => void runSearch()}
                 disabled={loading}
                 aria-label="执行检索"
-                className="h-9 shrink-0 border border-ink bg-ink px-3 text-[11.5px] font-semibold text-paper transition-colors hover:bg-black disabled:opacity-50"
+                className="h-9 shrink-0 rounded-xl bg-accent px-3 text-[10.5px] font-semibold text-white transition-colors hover:bg-accent-strong disabled:opacity-50"
               >
                 {loading ? '检索中…' : '检索'}
               </button>
@@ -706,9 +706,9 @@ export function LiteraturePanel(props: LiteraturePanelProps = {}) {
                   type="button"
                   onClick={() => toggleSource(option.value)}
                   aria-pressed={sources.includes(option.value)}
-                  className={`border px-1.5 py-0.5 transition-colors ${
+                  className={`rounded-full border px-2 py-0.5 transition-colors ${
                     sources.includes(option.value)
-                      ? 'border-ink bg-surface-muted text-ink'
+                      ? 'border-accent/30 bg-accent-soft text-accent'
                       : 'border-line text-muted hover:border-line-strong'
                   }`}
                 >
@@ -720,13 +720,13 @@ export function LiteraturePanel(props: LiteraturePanelProps = {}) {
                 onChange={(event) => setYearFrom(event.target.value.replace(/[^0-9]/g, ''))}
                 placeholder="起始年"
                 aria-label="起始年份"
-                className="h-6 w-14 border border-line bg-surface px-1.5 text-[10.5px] text-ink outline-none focus:border-ink"
+                className="h-7 w-14 rounded-lg border border-line bg-surface px-1.5 text-[10px] text-ink outline-none transition-colors focus:border-accent"
               />
               <select
                 value={sort}
                 onChange={(event) => setSort(event.target.value as 'relevance' | 'citations' | 'year')}
                 aria-label="排序方式"
-                className="h-6 border border-line bg-surface px-1 text-[10.5px] text-ink outline-none focus:border-ink"
+                className="h-7 rounded-lg border border-line bg-surface px-1.5 text-[10px] text-ink outline-none transition-colors focus:border-accent"
               >
                 <option value="relevance">相关度</option>
                 <option value="citations">引用数</option>
@@ -769,7 +769,7 @@ export function LiteraturePanel(props: LiteraturePanelProps = {}) {
                         key={example}
                         type="button"
                         onClick={() => setQuery(example)}
-                        className="border border-line bg-surface px-1.5 py-0.5 text-[10px] text-ink-soft hover:border-ink"
+                        className="rounded-full border border-line bg-surface px-2 py-0.5 text-[9.5px] text-ink-soft transition-colors hover:border-accent hover:text-accent"
                       >
                         {example}
                       </button>
@@ -833,19 +833,19 @@ export function LiteraturePanel(props: LiteraturePanelProps = {}) {
                 }}
                 placeholder="搜索我的文献库"
                 aria-label="搜索文献库"
-                className="h-8 min-w-0 flex-1 border border-line bg-surface px-2 text-[11.5px] outline-none focus:border-ink"
+                className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 text-[11px] outline-none transition-colors focus:border-accent"
               />
               <input
                 value={tagFilter}
                 onChange={(event) => setTagFilter(event.target.value)}
                 placeholder="标签"
                 aria-label="按标签筛选"
-                className="h-8 w-16 border border-line bg-surface px-2 text-[11.5px] outline-none focus:border-ink"
+                className="h-8 w-16 rounded-lg border border-line bg-surface px-2 text-[11px] outline-none transition-colors focus:border-accent"
               />
               <button
                 type="button"
                 onClick={() => void loadLibrary()}
-                className="h-8 border border-line-strong px-2 text-[10.5px] text-ink-soft hover:border-ink"
+                className="h-8 rounded-lg border border-line px-2 text-[10px] text-ink-soft transition-colors hover:border-accent hover:text-accent"
               >
                 刷新
               </button>
@@ -872,15 +872,15 @@ export function LiteraturePanel(props: LiteraturePanelProps = {}) {
             {!libraryLoading && records.length === 0 ? (
               <div className="border border-line bg-surface-muted px-4 py-6 text-center">
                 <Library className="mx-auto h-6 w-6 text-faint" />
-                <h3 className="mt-2 font-serif text-[14px] font-semibold text-ink">文献库还是空的</h3>
+                <h3 className="mt-2 text-[14px] font-semibold text-ink">文献库还是空的</h3>
                 <p className="mx-auto mt-1 max-w-[18rem] text-[12.5px] leading-5 text-muted">
                   从检索开始：找到论文 → 导入 PDF → 加入当前会话。也可以直接把本地 PDF 拖进工作台。
                 </p>
                 <div className="mt-3 flex items-center justify-center gap-2">
-                  <button type="button" onClick={() => selectTab('search')} className="h-7 border border-ink bg-ink px-3 text-[11px] font-semibold text-paper hover:bg-black">
+                  <button type="button" onClick={() => selectTab('search')} className="h-8 rounded-lg bg-accent px-3 text-[10.5px] font-semibold text-white transition-colors hover:bg-accent-strong">
                     去检索文献
                   </button>
-                  <button type="button" onClick={onOpenHelp} className="h-7 border border-line bg-surface px-3 text-[11px] text-ink-soft hover:border-ink">
+                  <button type="button" onClick={onOpenHelp} className="h-8 rounded-lg border border-line bg-surface px-3 text-[10.5px] text-ink-soft transition-colors hover:border-accent hover:text-accent">
                     看使用手册
                   </button>
                 </div>
@@ -903,13 +903,13 @@ export function LiteraturePanel(props: LiteraturePanelProps = {}) {
                 }}
                 placeholder="DOI，如 10.1234/example"
                 aria-label="引用查询 DOI"
-                className="h-8 min-w-0 flex-1 border border-line bg-surface px-2 text-[11.5px] outline-none focus:border-ink"
+                className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 text-[11px] outline-none transition-colors focus:border-accent"
               />
               <button
                 type="button"
                 onClick={() => void loadCitations()}
                 disabled={citationLoading}
-                className="h-8 shrink-0 border border-line-strong px-3 text-[11px] text-ink-soft hover:border-ink disabled:opacity-50"
+                className="h-8 shrink-0 rounded-lg border border-line px-3 text-[10px] text-ink-soft transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
               >
                 {citationLoading ? '查询中…' : '查询引用'}
               </button>
@@ -960,13 +960,13 @@ export function LiteraturePanel(props: LiteraturePanelProps = {}) {
                 }}
                 placeholder="https://example.com/article"
                 aria-label="网页 URL"
-                className="h-8 min-w-0 flex-1 border border-line bg-surface px-2 text-[11.5px] outline-none focus:border-ink"
+                className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 text-[11px] outline-none transition-colors focus:border-accent"
               />
               <button
                 type="button"
                 onClick={() => void loadWebPage()}
                 disabled={webLoading}
-                className="h-8 shrink-0 border border-line-strong px-3 text-[11px] text-ink-soft hover:border-ink disabled:opacity-50"
+                className="h-8 shrink-0 rounded-lg border border-line px-3 text-[10px] text-ink-soft transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
               >
                 {webLoading ? '读取中…' : '读取正文'}
               </button>

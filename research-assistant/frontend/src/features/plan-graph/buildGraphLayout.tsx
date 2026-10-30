@@ -70,6 +70,7 @@ export const graphTaskToTask = (task: GraphTask): Task => ({
   StructuredData: task.structured_data,
   ImageBase64: task.image_base64 || task.image_base_64,
   Error: task.error,
+  Usage: task.usage,
   Verification: task.verification,
 });
 
@@ -200,23 +201,22 @@ export const buildGraphLayout = (inputPlanGraph: PlanGraph): { nodes: Node[]; ed
       data: {
         task: legacyTask,
         status: task.status,
-          step: taskIndex + 1,
-          label: createTaskNodeLabel({
+        step: taskIndex + 1,
+        label: createTaskNodeLabel({
           assignedTo: task.assigned_to,
           taskName: task.name,
-            status: task.status,
-            step: taskIndex + 1,
-            task: legacyTask,
-          }),
+          status: task.status,
+          step: taskIndex + 1,
+          task: legacyTask,
+        }),
       },
       style: {
-        borderRadius: '0px',
-        backgroundColor: '#fbfaf7',
-        border: '1px solid',
-        borderColor: '#bdb2a0',
-        borderTopWidth: '2px',
+        borderRadius: '16px',
+        backgroundColor: '#ffffff',
+        border: '1px solid #e1e9df',
+        borderTopWidth: '1px',
         borderTopColor: styleState.borderTopColor,
-        boxShadow: 'none',
+        boxShadow: '0 18px 34px -30px rgba(24, 55, 36, 0.5)',
         cursor: 'pointer',
         overflow: 'hidden',
         padding: 0,
@@ -236,15 +236,15 @@ export const buildGraphLayout = (inputPlanGraph: PlanGraph): { nodes: Node[]; ed
       type: 'smoothstep',
       animated: targetStatus === 'in_progress',
       style: {
-        stroke: isDataEdge ? '#6b6156' : '#3b342c',
-        strokeWidth: isDataEdge ? 1 : 1.1,
-        strokeDasharray: isDataEdge ? '3 3' : undefined,
+        stroke: isDataEdge ? '#9aab9d' : '#a9bfa9',
+        strokeWidth: isDataEdge ? 1.2 : 1.5,
+        strokeDasharray: isDataEdge ? '3 4' : undefined,
       },
       markerEnd: {
         type: ARROW_CLOSED,
-        color: isDataEdge ? '#6b6156' : '#3b342c',
-        width: 15,
-        height: 15,
+        color: isDataEdge ? '#9aab9d' : '#a9bfa9',
+        width: 14,
+        height: 14,
       },
     });
   });

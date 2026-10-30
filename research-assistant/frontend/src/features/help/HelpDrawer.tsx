@@ -6,21 +6,25 @@ import {
   FileText,
   GitBranch,
   Highlighter,
+  Inbox,
   Languages,
   Library,
   ListChecks,
   Play,
   Search,
+  ShieldCheck,
+  Wallet,
   X,
 } from 'lucide-react';
 
-export type HelpSection = 'start' | 'library' | 'pdf' | 'graph';
+export type HelpSection = 'start' | 'library' | 'pdf' | 'graph' | 'ops';
 
 const sections: Array<{ id: HelpSection; label: string; icon: typeof BookOpen }> = [
   { id: 'start', label: '快速开始', icon: BookOpen },
   { id: 'library', label: '文献库', icon: Library },
   { id: 'pdf', label: 'PDF 阅读', icon: FileText },
   { id: 'graph', label: '执行图', icon: GitBranch },
+  { id: 'ops', label: '预算与待办', icon: Wallet },
 ];
 
 interface HelpDrawerProps {
@@ -31,10 +35,10 @@ interface HelpDrawerProps {
 function Step(props: { n: string; title: string; children: React.ReactNode }) {
   return (
     <li className="grid grid-cols-[24px_minmax(0,1fr)] gap-3 border-b border-line/70 py-3 last:border-b-0">
-      <span className="flex h-6 w-6 items-center justify-center border border-ink font-mono text-[10px] font-semibold">{props.n}</span>
+      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-accent-soft font-mono text-[9.5px] font-semibold text-accent">{props.n}</span>
       <span className="min-w-0">
-        <b className="block font-serif text-[13px] font-semibold leading-5 text-ink">{props.title}</b>
-        <span className="mt-0.5 block text-[11.5px] leading-5 text-ink-soft">{props.children}</span>
+        <b className="block text-[12px] font-semibold leading-5 text-ink">{props.title}</b>
+        <span className="mt-0.5 block text-[13px] leading-5 text-ink-soft">{props.children}</span>
       </span>
     </li>
   );
@@ -42,11 +46,11 @@ function Step(props: { n: string; title: string; children: React.ReactNode }) {
 
 function Feature(props: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
-    <div className="flex gap-2.5 border border-line bg-surface px-3 py-2.5">
-      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center border border-line-strong text-ink-soft">{props.icon}</span>
+    <div className="flex gap-2.5 rounded-xl border border-line bg-surface px-3 py-2.5">
+      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-ink-soft">{props.icon}</span>
       <span className="min-w-0">
         <b className="block text-[12px] font-semibold leading-4 text-ink">{props.title}</b>
-        <span className="mt-0.5 block text-[11px] leading-5 text-muted">{props.children}</span>
+        <span className="mt-0.5 block text-[13px] leading-5 text-muted">{props.children}</span>
       </span>
     </div>
   );
@@ -81,19 +85,18 @@ export function HelpDrawer({ onClose, initialSection = 'start' }: HelpDrawerProp
         role="dialog"
         aria-modal="true"
         aria-labelledby="help-drawer-title"
-        className="proof-slide relative flex h-full w-full max-w-[460px] flex-col border-l border-ink bg-paper shadow-float"
+        className="proof-slide relative flex h-full w-full max-w-[460px] flex-col border-l border-line bg-paper shadow-float"
       >
-        <header className="flex shrink-0 items-start justify-between gap-4 border-b-2 border-ink bg-surface px-5 py-4">
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-line bg-surface px-5 py-4">
           <div>
-            <div className="journal-caps text-[10px]">Research Assistant · 使用手册</div>
-            <h2 id="help-drawer-title" className="mt-1 font-serif text-[21px] font-semibold leading-7 text-ink">2 分钟上手</h2>
-            <p className="mt-1 text-[11.5px] leading-5 text-muted">文献、阅读、计划与执行，都在同一个工作台里。</p>
+            <h2 id="help-drawer-title" className="text-[20px] font-semibold leading-7 tracking-[-0.02em] text-ink">使用手册</h2>
+            <p className="mt-1 text-[13px] leading-5 text-muted">文献、阅读、计划与执行，都在同一个工作台里。</p>
           </div>
           <button
             ref={closeRef}
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center border border-transparent text-muted transition-colors hover:border-line-strong hover:bg-surface-muted hover:text-ink"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-transparent text-muted transition-colors hover:bg-surface-muted hover:text-ink"
             aria-label="关闭使用手册"
           >
             <X className="h-4 w-4" />
@@ -109,7 +112,7 @@ export function HelpDrawer({ onClose, initialSection = 'start' }: HelpDrawerProp
                 type="button"
                 onClick={() => setSection(item.id)}
                 aria-pressed={section === item.id}
-                className={`flex h-10 flex-1 items-center justify-center gap-1.5 border-b-2 px-1 text-[11.5px] transition-colors ${
+                className={`flex h-10 flex-1 items-center justify-center gap-1.5 border-b-2 px-1 text-[11px] transition-colors ${
                   section === item.id
                     ? 'border-ink font-semibold text-ink'
                     : 'border-transparent text-muted hover:text-ink-soft'
@@ -126,12 +129,12 @@ export function HelpDrawer({ onClose, initialSection = 'start' }: HelpDrawerProp
           {section === 'start' ? (
             <div>
               <p className="font-serif text-[13px] leading-6 text-ink-soft">
-                你可以把这里当成一张研究工作台：左边对话与文献，中间是论文原文，右边是执行图与节点详情。下面是最短的上手路径。
+                你可以把这里当成一张研究工作台：左侧是对话与文献，右侧是执行图；点击节点会打开节点详情。下面是最短的上手路径。
               </p>
               <ol className="mt-3 border-t border-line">
                 <Step n="01" title="把材料放进来">上传 PDF、数据或代码；也可以在「文献库」检索真实论文，导入 PDF。</Step>
                 <Step n="02" title="提出研究目标">在对话里描述要做什么，例如「分析这篇论文的创新点和局限」或「复现核心实验」。</Step>
-                <Step n="03" title="核对并运行执行图">系统会先生成节点图。确认节点和依赖后，在右侧启动计划，日志和产物都会保留。</Step>
+                <Step n="03" title="核对并运行执行图">系统会先生成节点图。确认节点和依赖后，在画布右上角启动计划；点击节点查看日志和产物。</Step>
               </ol>
               <div className="mt-4 grid gap-2">
                 <Feature icon={<Search className="h-3.5 w-3.5" />} title="文献库">检索 arXiv、OpenAlex、Crossref 等来源，收藏、打标签、导出 BibTeX。</Feature>
@@ -186,6 +189,24 @@ export function HelpDrawer({ onClose, initialSection = 'start' }: HelpDrawerProp
             </div>
           ) : null}
 
+          {section === 'ops' ? (
+            <div>
+              <p className="font-serif text-[13px] leading-6 text-ink-soft">
+                工作台把「预算」和「需要你决定的事」放在底部状态栏里，需要时再展开；工具都在左侧竖轨中。
+              </p>
+              <ol className="mt-3 border-t border-line">
+                <Step n="01" title="看预算">底部状态栏的「预算」显示已用、预留和限额。80% 会预警；100% 按 soft 暂停或 hard 取消处理。点开可以设置每日或每月限额。</Step>
+                <Step n="02" title="处理待办">「待办」聚合运行时审批与计划提问。低风险审批可直接在待办中心批准或拒绝；高风险必须逐条确认。</Step>
+                <Step n="03" title="审阅计划">计划需要审阅时，左侧「计划审阅」会出现提示点，画布状态胶囊也会显示「待审阅」。进入面板可以改节点、改预算、比较 revision，确认后再批准执行。</Step>
+              </ol>
+              <div className="mt-4 grid gap-2">
+                <Feature icon={<Wallet className="h-3.5 w-3.5" />} title="预算链路">任务派发前预留 → 执行中计量 → 完成后结算 → 80% 预警 → 100% 按策略暂停或取消。</Feature>
+                <Feature icon={<Inbox className="h-3.5 w-3.5" />} title="待办中心">运行时审批、计划提问与审阅入口在一个地方；高风险操作不会被批量放过。</Feature>
+                <Feature icon={<ShieldCheck className="h-3.5 w-3.5" />} title="人在回路">计划审阅、运行时审批和提问都会让执行暂停，直到你给出明确决定。</Feature>
+              </div>
+            </div>
+          ) : null}
+
           {section === 'graph' ? (
             <div>
               <p className="font-serif text-[13px] leading-6 text-ink-soft">
@@ -195,7 +216,7 @@ export function HelpDrawer({ onClose, initialSection = 'start' }: HelpDrawerProp
                 <Step n="01" title="生成计划">在对话里发送研究目标后，系统会生成节点图。第一次会先确认意图和约束。</Step>
                 <Step n="02" title="核对节点">点击节点查看负责者、任务类型和依赖；如果缺少材料，顶部会列出「缺失材料」和修复建议。</Step>
                 <Step n="03" title="运行与审批">点「运行计划」启动。需要拉镜像、装依赖、下载数据或使用 GPU 时，会暂停并请求你批准。</Step>
-                <Step n="04" title="查看结果">右侧节点详情里有日志、代码、图表和报告；完成后会显示验收状态。</Step>
+                <Step n="04" title="查看结果">点击节点打开右侧详情，里面有日志、代码、图表和报告；完成后会显示验收状态。</Step>
               </ol>
               <div className="mt-4 grid gap-2">
                 <Feature icon={<ListChecks className="h-3.5 w-3.5" />} title="状态怎么看">已完成、运行中、等待、失败、已取消。失败节点可以单独重试，不必重跑整张图。</Feature>

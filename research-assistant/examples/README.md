@@ -18,22 +18,20 @@
 | [Benchmark Agent 分类](benchmark-agent/classification/) | Dataset audit -> leakage-safe split -> metric/reward contract -> hidden recomputation | Go test，无外部依赖 | Go test 覆盖 |
 | [检索 Adapter](scientific-autoresearch/retrieval/) | experiment.spec/v1 -> 候选搜索 -> Holdout | CPU，Python 依赖 | 可运行 |
 
-2026-10-28 验证：`paper-reproduction` 的离线测试通过；Apriori 轻量复现的 run_metrics 与独立运行仓库结果逐值一致（15 个频繁项集、5 条规则）；`real_repositories/rank_bm25` AutoResearch 通过 8/8 节点、hidden holdout 3/3。完整证据见本地 `reports/eval-2026-10-28/REPORT.md`。
+离线测试与真实仓库 AutoResearch 的最近结果见 [docs/verification.md](../../docs/verification.md)；`paper-reproduction`、`autoresearch/intent_router` 的离线测试默认不访问外部服务。
 
 ## 通用前置条件
 
 - 已按 [research-assistant/README.md](../README.md) 启动后端与沙箱。
 - `backend.env` 中配置了可用的 LLM。
-- 需要 Docker 的示例必须保证 Docker daemon 可访问。
+- 需要 Docker 的示例必须保证 Docker daemon 可访问；需要 API 的脚本使用 `RA_API_URL` / `RA_API_TOKEN`（或 `RESEARCH_ASSISTANT_API_TOKEN`）。
 
 ## 运行方式
 
-大多数示例通过项目根目录的 Makefile 或 Python 脚本运行：
-
 ```bash
 cd research-assistant
-make example-paper-reproduction
-make example-autoresearch
+make example-paper-reproduction   # 需要运行中的服务栈
+make example-autoresearch         # 离线运行 intent_router 基线
 ```
 
 具体参数与验收条件见各示例目录的 README。

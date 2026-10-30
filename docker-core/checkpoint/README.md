@@ -10,9 +10,9 @@
 
 | 组件 | 职责 |
 |---|---|
-| `Manager` | 协调 Commit、Rollback 与容器生命周期 |
+| `Manager` | 协调 Commit、Rollback 与容器生命周期，并代理反馈生成 |
 | `SnapshotRegistry` | 记录 DAG 节点 ID 与 imageID 的映射，支持链式回溯 |
-| `FeedbackInjector` | 生成结构化负反馈，插入模型上下文 |
+| `FeedbackInjector` | 记录失败并生成结构化负反馈，插入模型上下文 |
 
 ## 示例
 
@@ -29,22 +29,26 @@ import (
 func main() {
     ctx := context.Background()
 
-    manager := checkpoint.NewManager(dockerClient, currentContainerID)
+    manager := checkpoint.NewManager(box)
 
-    snapshot, err := manager.Commit(ctx, "env-node-A")
+    imageID, err := manager.Commit(ctx, "env-node-A")
     if err != nil {
         panic(err)
     }
-    fmt.Printf("checkpoint: %s\n", snapshot.ImageID)
+    fmt.Printf("checkpoint: %s\n", imageID)
 
-    if _, err := manager.Rollback(ctx, snapshot.ImageID); err != nil {
+    if err := manager.Rollback(ctx, imageID); err != nil {
         panic(err)
     }
 
-    feedback := manager.GenerateNegativeFeedback("pip install cuda-python")
+    feedback := manager.RecordFailureAndGetFeedback(
+        "env-node-A", "pip install cuda-python", "no matching distribution",
+    )
     fmt.Println(feedback)
 }
 ```
+
+除单条反馈外，`GetFullFeedbackContext` 会汇总本轮所有失败记录，可插入 LLM system prompt 最前端。
 
 ## 测试
 
@@ -52,7 +56,7 @@ func main() {
 go test ./checkpoint/...
 ```
 
-`test/` 下的测试覆盖快照注册、回滚和反馈注入。涉及真实 Docker 的用例需要 daemon 可用。
+`test/` 下的测试覆盖快照注册、回滚和反馈注入；`checkpoint.NewManager(nil)` 可用于不需要真实容器的反馈与注册表测试。
 
 ## 设计约束
 

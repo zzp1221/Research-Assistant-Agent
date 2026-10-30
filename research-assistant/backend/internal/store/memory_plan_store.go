@@ -56,6 +56,17 @@ func (s *MemoryPlanStore) ListPlans() ([]*models.PlanGraph, error) {
 	return plans, nil
 }
 
+// ListPlanSummaries returns lightweight projections without cloning graphs.
+func (s *MemoryPlanStore) ListPlanSummaries() ([]PlanSummaryRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]PlanSummaryRecord, 0, len(s.plans))
+	for _, plan := range s.plans {
+		out = append(out, SummarizePlanRecord(plan))
+	}
+	return out, nil
+}
+
 func (s *MemoryPlanStore) UpdatePlan(planID string, update func(*models.PlanGraph) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

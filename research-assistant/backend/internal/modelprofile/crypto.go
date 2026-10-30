@@ -96,3 +96,15 @@ func decryptSecret(ciphertext, profileID, ownerID string, revision int) (string,
 	}
 	return string(plain), nil
 }
+
+// SealSecret exposes AES-GCM sealing for other secret-bearing subsystems
+// (tool env/header values) without duplicating crypto code. The scopeID binds
+// the ciphertext to its owner record so it cannot be moved between tools.
+func SealSecret(plaintext, scopeID, ownerID string, revision int) (string, error) {
+	return encryptSecret(plaintext, scopeID, ownerID, revision)
+}
+
+// OpenSecret opens a ciphertext produced by SealSecret.
+func OpenSecret(ciphertext, scopeID, ownerID string, revision int) (string, error) {
+	return decryptSecret(ciphertext, scopeID, ownerID, revision)
+}

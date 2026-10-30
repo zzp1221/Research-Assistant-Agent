@@ -1,0 +1,85 @@
+[
+  {
+    "file": "b.png",
+    "target": "explore/b.html",
+    "name": "b",
+    "state": null,
+    "size": "1440x900",
+    "zoom": 1,
+    "animationWaitMs": 0,
+    "issues": [],
+    "lint": [
+      {
+        "rule": "eyebrow",
+        "label": "标题上方的眉标",
+        "count": 1,
+        "examples": [
+          "div.kicker「执行拓扑」"
+        ]
+      },
+      {
+        "rule": "contrastLow",
+        "label": "文字对比度不达标（正文低于 4.5:1，大字低于 3:1）",
+        "count": 14,
+        "examples": [
+          "span「会话」（3.76:1）",
+          "small「5 条 · 刚刚」（3.34:1）",
+          "small「12 条 · 2 小时前」（3.76:1）"
+        ]
+      }
+    ]
+  },
+  {
+    "file": "c.png",
+    "target": "explore/c.html",
+    "name": "c",
+    "state": null,
+    "size": "1440x900",
+    "zoom": 1,
+    "animationWaitMs": 0,
+    "issues": [],
+    "lint": [
+      {
+        "rule": "contrastLow",
+        "label": "文字对比度不达标（正文低于 4.5:1，大字低于 3:1）",
+        "count": 31,
+        "examples": [
+          "span.budget「预算 $1.24 / $5.00」（3.61:1）",
+          "span.count「5 个节点」（2.97:1）",
+          "button「列表」（3.57:1）"
+        ]
+      }
+    ]
+  },
+  {
+    "file": "sheet.png",
+    "width": 1344,
+    "height": 480,
+    "columns": 2,
+    "items": [
+      {
+        "naturalWidth": 1440,
+        "naturalHeight": 900,
+        "width": 640,
+        "height": 400,
+        "labelHeight": 32,
+        "x": 24,
+        "y": 24,
+        "label": "b",
+        "labelY": 432
+      },
+      {
+        "naturalWidth": 1440,
+        "naturalHeight": 900,
+        "width": 640,
+        "height": 400,
+        "labelHeight": 32,
+        "x": 680,
+        "y": 24,
+        "label": "c",
+        "labelY": 432
+      }
+    ],
+    "issues": []
+  }
+]

@@ -1,0 +1,80 @@
+[
+  {
+    "file": "01.png",
+    "target": "D:\\项目\\Research Assistant agent\\explore\\a.html",
+    "name": "光阑 · 轻量空间工作台",
+    "state": null,
+    "size": "1440x900",
+    "zoom": 1,
+    "thumb": true,
+    "animationWaitMs": 0,
+    "issues": [],
+    "lint": []
+  },
+  {
+    "file": "02.png",
+    "target": "D:\\项目\\Research Assistant agent\\explore\\b.html",
+    "name": "信号台 · 深色任务控制台",
+    "state": null,
+    "size": "1440x900",
+    "zoom": 1,
+    "thumb": true,
+    "animationWaitMs": 0,
+    "issues": [],
+    "lint": []
+  },
+  {
+    "file": "03.png",
+    "target": "D:\\项目\\Research Assistant agent\\explore\\c.html",
+    "name": "蓝图 · 上下分幕研究工作台",
+    "state": null,
+    "size": "1440x900",
+    "zoom": 1,
+    "thumb": true,
+    "animationWaitMs": 0,
+    "issues": [],
+    "lint": []
+  },
+  {
+    "file": "sheet.png",
+    "width": 2000,
+    "height": 480,
+    "columns": 3,
+    "items": [
+      {
+        "naturalWidth": 720,
+        "naturalHeight": 450,
+        "width": 640,
+        "height": 400,
+        "labelHeight": 32,
+        "x": 24,
+        "y": 24,
+        "label": "光阑 · 轻量空间工作台",
+        "labelY": 432
+      },
+      {
+        "naturalWidth": 720,
+        "naturalHeight": 450,
+        "width": 640,
+        "height": 400,
+        "labelHeight": 32,
+        "x": 680,
+        "y": 24,
+        "label": "信号台 · 深色任务控制台",
+        "labelY": 432
+      },
+      {
+        "naturalWidth": 720,
+        "naturalHeight": 450,
+        "width": 640,
+        "height": 400,
+        "labelHeight": 32,
+        "x": 1336,
+        "y": 24,
+        "label": "蓝图 · 上下分幕研究工作台",
+        "labelY": 432
+      }
+    ],
+    "issues": []
+  }
+]

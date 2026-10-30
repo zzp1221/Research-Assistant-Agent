@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { GraphPanel } from '../../src/features/plan-graph/GraphPanel';
 import type { MissingRequirement } from '../../src/contracts/api';
 
@@ -42,6 +42,7 @@ describe('GraphPanel missing requirements', () => {
     const { container } = render(
       <GraphPanel {...baseProps} missingRequirements={missingRequirements} />,
     );
+    fireEvent.click(screen.getByRole('button', { name: /待办 2/ }));
 
     expect(screen.getByText('缺失材料 · 2 项')).toBeInTheDocument();
     expect(screen.getByText('paper_metadata')).toBeInTheDocument();

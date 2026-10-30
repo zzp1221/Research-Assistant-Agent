@@ -47,6 +47,10 @@ func (r *planRuntime) launchPlan(planID, trigger, actor string) error {
 		}
 	}(ctx, cancel)
 
+	currentRevision := 0
+	if current, err := r.store.GetPlan(planID); err == nil && current != nil {
+		currentRevision = current.CurrentRevision
+	}
 	payload := map[string]any{"actor": actor}
 	if trigger != "" {
 		payload["trigger"] = trigger
@@ -54,6 +58,7 @@ func (r *planRuntime) launchPlan(planID, trigger, actor string) error {
 	_ = r.store.AppendEvent(planID, models.PlanEvent{
 		PlanID:    planID,
 		EventType: "plan_execution_requested",
+		Revision:  currentRevision,
 		Payload:   payload,
 		Timestamp: time.Now(),
 	})
@@ -106,6 +111,12 @@ func (r *planRuntime) runFromNode(c *gin.Context) {
 	}
 	if err := r.scheduler.ResetFromNode(plan.ID, taskID); err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "rewind_failed"})
+		return
+	}
+	// Rewinding mutates the live graph; bind it to the latest immutable
+	// revision before starting so the run keeps a verifiable snapshot.
+	if _, err := r.bindLatestRevision(plan.ID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot bind plan revision", "code": "revision_bind_failed"})
 		return
 	}
 	actor := resolveUserID(c)

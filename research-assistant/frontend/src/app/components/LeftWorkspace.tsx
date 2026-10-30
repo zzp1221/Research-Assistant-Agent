@@ -30,18 +30,20 @@ function LeftWorkspaceShell(props: LeftWorkspaceShellProps) {
   return (
     <div
       style={{ width: `${widthPercent}%` }}
-      className="research-assistant-left-workspace relative z-10 flex flex-shrink-0 flex-col overflow-hidden border-r border-line bg-surface"
+      className="research-assistant-left-workspace relative z-10 flex flex-shrink-0 flex-col overflow-hidden"
     >
       {showClosePdf && (
-        <header className="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-4">
-          <div className="flex min-w-0 items-baseline gap-2">
-            <span className="journal-caps text-[10px]">论文原文</span>
-            <span className="truncate font-serif text-[12.5px] text-ink-soft">{documentName || '未命名稿件'}</span>
+        <header className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="grid h-6 w-6 place-items-center rounded-lg bg-accent-soft text-accent">
+              <BookOpen className="h-3.5 w-3.5" />
+            </span>
+            <span className="truncate text-[12px] font-semibold text-ink-soft">{documentName || '未命名稿件'}</span>
           </div>
           <button
             type="button"
             onClick={onClosePdf}
-            className="flex h-6 w-6 shrink-0 items-center justify-center border border-transparent text-muted transition-colors hover:border-line-strong hover:text-ink"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-muted hover:text-ink"
             title="关闭论文阅读器"
             aria-label="关闭论文阅读器"
           >
@@ -56,6 +58,8 @@ function LeftWorkspaceShell(props: LeftWorkspaceShellProps) {
 
 interface LeftWorkspaceChatProps {
   widthPercent: number;
+  activeView?: 'chat' | 'literature';
+  onActiveViewChange?: (view: 'chat' | 'literature') => void;
   state: {
     chatHistory: ChatMessage[];
     loading: boolean;
@@ -110,8 +114,10 @@ interface LeftWorkspaceChatProps {
 }
 
 export function LeftWorkspaceChat(props: LeftWorkspaceChatProps) {
-  const { widthPercent, state, chatActions, pdfActions, taskActions, literatureActions } = props;
-  const [activeTab, setActiveTab] = useState<'chat' | 'literature'>('chat');
+  const { widthPercent, activeView: activeViewProp, onActiveViewChange, state, chatActions, pdfActions, taskActions, literatureActions } = props;
+  const [internalView, setInternalView] = useState<'chat' | 'literature'>('chat');
+  const activeView = activeViewProp ?? internalView;
+  const setActiveView = onActiveViewChange ?? setInternalView;
   return (
     <LeftWorkspaceShell
       widthPercent={widthPercent}
@@ -119,43 +125,14 @@ export function LeftWorkspaceChat(props: LeftWorkspaceChatProps) {
       onClosePdf={pdfActions.onClosePdf}
       accountLabel={state.userId ? `会话 ${state.userId.slice(0, 8)}` : '正在建立安全会话…'}
     >
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-line bg-surface px-2" role="tablist" aria-label="工作区">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'chat'}
-          onClick={() => setActiveTab('chat')}
-          className={`h-6 border px-2 text-[11.5px] transition-colors ${
-            activeTab === 'chat'
-              ? 'border-accent/35 bg-accent-soft text-accent-ink'
-              : 'border-transparent text-muted hover:border-line-strong hover:text-ink-soft'
-          }`}
-        >
-          对话
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'literature'}
-          onClick={() => setActiveTab('literature')}
-          className={`inline-flex h-6 items-center gap-1 border px-2 text-[11.5px] transition-colors ${
-            activeTab === 'literature'
-              ? 'border-accent/35 bg-accent-soft text-accent-ink'
-              : 'border-transparent text-muted hover:border-line-strong hover:text-ink-soft'
-          }`}
-        >
-          <BookOpen className="h-3 w-3" />
-          文献库
-        </button>
-      </div>
       <div className="min-h-0 flex-1">
-        {activeTab === 'chat' ? (
+        {activeView === 'chat' ? (
           <ChatPanel
             state={state}
             chatActions={chatActions}
             pdfActions={pdfActions}
             taskActions={taskActions}
-            onOpenLiterature={() => setActiveTab('literature')}
+            onOpenLiterature={() => setActiveView('literature')}
           />
         ) : (
           <Suspense fallback={<div className="p-4 text-[11px] text-faint">正在加载文献面板…</div>}>
@@ -165,7 +142,7 @@ export function LeftWorkspaceChat(props: LeftWorkspaceChatProps) {
               onDetachFromSession={literatureActions.onDetachFromSession}
               onOpenPdf={literatureActions.onOpenPdf}
               onOpenHelp={literatureActions.onOpenHelp}
-              onGoToChat={() => setActiveTab('chat')}
+              onGoToChat={() => setActiveView('chat')}
             />
           </Suspense>
         )}

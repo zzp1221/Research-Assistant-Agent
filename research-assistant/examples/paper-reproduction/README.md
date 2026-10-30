@@ -31,7 +31,7 @@ python3 examples/paper-reproduction/run.py \
   --output /tmp/attention-paper-reproduction.json
 ```
 
-脚本只使用 Python 标准库。它会检查服务健康状态、创建并执行计划、轮询终态、验证关键产物与事件，最后输出不包含 API Key 的运行摘要。远端部署可指定地址：
+脚本只使用 Python 标准库。它会检查服务健康状态、创建并执行计划、轮询终态、验证关键产物与事件，最后输出不包含 API Key 的运行摘要。需要鉴权时通过 `RESEARCH_ASSISTANT_API_TOKEN` 或 `API_AUTH_TOKEN` 传入；身份由 `RESEARCH_ASSISTANT_USER_ID` / `RESEARCH_ASSISTANT_SESSION_ID` 覆盖。远端部署可指定地址：
 
 ```bash
 python3 examples/paper-reproduction/run.py \
@@ -42,7 +42,7 @@ python3 examples/paper-reproduction/run.py \
 通过 Makefile：
 
 ```bash
-RESEARCH_ASSISTANT_API_URL=http://localhost:8080 make example-paper-reproduction
+make example-paper-reproduction
 ```
 
 ## 集成测试

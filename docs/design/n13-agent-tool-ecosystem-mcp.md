@@ -1,6 +1,6 @@
 # N-13 Agent/工具生态（MCP）：现状、问题与实施方案
 
-- **状态**：设计稿（待评审）
+- **状态**：已实现并通过容器内验收（2026-10-30）；实现记录见 `docs/improvement-2026-10-26/FIX-REPORT-ROUND11.md`
 - **日期**：2026-10-30
 - **范围**：工具注册与调用、MCP 接入、自定义 Agent、Prompt 版本与评测、工具调用审计/回放
 - **关联**：`docs/improvement-2026-10-26/03-new-feature-proposals.md`、`research-assistant/backend/internal/scheduler/executor.go`、`planner/planner.go`、`planner/agent_planner.go`、`models/runtime.go`、`models/task.go`、`models/revision.go`、`api/plan_questions.go`、`api/runtime_actions.go`、`modelprofile/profile.go`、`frontend/src/features/settings`

@@ -13,17 +13,19 @@
 
 | 脚本 | 说明 |
 |---|---|
-| `container-go.sh` | 在固定 `golang:1.26.1-bookworm` 容器内执行 `go build/vet/test`（挂载仓库与 Go 缓存卷） |
-| `ra.mjs` | 零依赖 API CLI：create/status/events/execute/pause/resume/cancel/approve/wait/export/upload/search/import/openapi |
-| `check-utf8.mjs` | 检查仓库文本文件 UTF-8 合法性 |
+| `container-go.sh` | 在固定 `golang:1.26.1-bookworm` 容器内执行 `go build/vet/test`（挂载仓库与 Go 缓存卷，工作目录固定为 `backend/`） |
+| `ra.mjs` | 零依赖 API CLI：create/list/status/events/execute/pause/resume/cancel/approve/wait/export/upload/search/import/openapi/health |
+| `check-utf8.mjs` | 检查仓库文本文件 UTF-8 合法性与 mojibake |
 | `mock-audit.mjs` | 扫描后端禁止的 mock/硬编码标记，防止假实现回归 |
+
+`ra.mjs` 默认访问 `http://localhost:18080`，可用 `RA_API_URL` / `RA_API_TOKEN` / `RA_COOKIE_FILE` 覆盖。
 
 ## Unix
 
 | 脚本 | 说明 |
 |---|---|
 | `unix/start-backend.sh` | 启动 Go API（`:8080`） |
-| `unix/start-sandbox.sh` | 启动 Go 沙箱服务（`:8082`） |
+| `unix/start-sandbox.sh` | 启动 Go 沙箱服务（`:8082`，engine 模式） |
 | `unix/start-frontend.sh` | 启动 Vite 开发服务器（`:5173`） |
 | `unix/docker-up.sh` | `docker compose up --build -d` |
 | `unix/docker-down.sh` | `docker compose down` |
@@ -40,7 +42,7 @@
 
 PowerShell 脚本会清理代理环境变量、创建 `.gocache` 并读取 `backend.env`。如果 `OPENAI_API_KEY` 未配置，启动脚本会给出明确错误。
 
-> Windows 原生后端不受支持：后端依赖 Linux 进程组、`syscall.Kill` 与 `Statfs`。Windows 上请使用 `docker compose up --build -d`；`start-backend.ps1` 现在会直接提示该方式。
+> Windows 原生后端不受支持：后端依赖 Linux 进程组、`syscall.Kill` 与 `Statfs`。Windows 上请使用 `docker compose up --build -d`；`start-backend.ps1` 会直接抛出该提示。
 
 ## 使用
 
@@ -54,8 +56,8 @@ Windows：
 
 ```powershell
 .\scripts\windows\start-sandbox.ps1
-.\scripts\windows\start-backend.ps1
 .\scripts\windows\start-frontend.ps1
+# 后端请使用：docker compose up --build -d
 ```
 
 ## 注意

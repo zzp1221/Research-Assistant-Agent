@@ -11,12 +11,21 @@
 
 | 文件 | 职责 |
 |---|---|
-| `planner.go` | 主规划器、任务模板、意图到 DAG 的映射；`BuildPlanWithRoute` 入口 |
+| `planner.go` | 核心 `Planner`、`BuildPlanWithRoute` 入口、节点/边组装、默认超时与工具白名单 |
+| `planner_dataset.go` | 数据集实验与自定义 Benchmark 模板 |
+| `planner_autoresearch.go` | AutoResearch 模板与输入构建 |
+| `planner_graph.go` | DAG 边/状态/元数据、Artifact 契约与图校验 |
+| `planner_templates.go` | Framework / Paper / Code / General 模板 |
+| `planner_literature.go` | 文献/论文分析意图、检索参数与仓库发现辅助 |
+| `planner_names_validation.go` | 任务名翻译、Agent 规划与关键节点契约校验 |
 | `route.go` | `ComplexityRouter`：L0–L4 规则评分、route/variant 决策、confirmer hook |
 | `plan_builder.go` | `TemplateKey{IntentType,Variant}` registry 与 simple/standard/full 模板 |
 | `plan_variants.go` | General/Code/Framework/Paper 的模板变体实现 |
 | `general_plan.go` | General 计划形状：direct/research/paper/literature 确定性分类 |
 | `agent_planner.go` | 基于 Agent 的规划入口、skeleton 合并与 repair 会话 |
+| `context_binder.go` | InputBindings 的上下文/Artifact 绑定解析 |
+| `semantic_validation.go` | 计划语义校验（节点契约、论文分析等） |
+| `runtime_model.go` | 计划级模型快照与解析 |
 | `taskregistry.go` | 任务类型到 Agent 的注册表 |
 | `planner_test.go` | 计划结构、依赖、路由、变体与校验测试 |
 
@@ -31,7 +40,7 @@
 ### 复杂度路由与模板变体
 
 - `ComplexityRouter.Decide` 在附件/论文上下文解析后做最终路由：规则评分优先，L0/L1 走 fast path（不调用 planner LLM），L2 走标准模板，L3/L4 走 skeleton + agent 增强。
-- General 计划按 `general_plan.go` 的规则选择 direct（1 节点）/ research（2 节点）/ paper（4 节点）/ literature（3 节点）；`GENERAL_PLAN_FAST_PATH=false` 可回退旧 3 节点。
+- General 计划按 `general_plan.go` 的规则选择 direct（1 节点）/ research（2 节点）/ paper（4 节点）/ literature（3 节点）；L4 的 research 请求会追加验证阶段；`GENERAL_PLAN_FAST_PATH=false` 可回退旧 3 节点。
 - 模板变体：General / Code_Execution / Framework_Evaluation 提供 simple/standard/full，Paper_Reproduction 提供 light/standard/full；其他 intent 默认 standard。
 - 路由与变体写入 `GraphMeta`（`planning_route` / `complexity` / `complexity_source` / `template_variant` / `general_plan_shape`），并暴露到 SSE、计划详情与 `/api/metrics`。
 
@@ -41,7 +50,7 @@
 - 所有节点必须有明确的 `assigned_to` 和任务类型。
 - 涉及论文复现时，计划必须包含仓库准备、运行时准备、实验执行和结果对比节点。
 - 涉及 AutoResearch 时，计划必须包含契约冻结、候选搜索、Holdout 验证和报告节点。
-- 模型输出不可直接信任；解析失败时回退到确定性模板或返回明确错误。
+- 模型输出不可直接信任；解析或校验失败时先做一次结构化 repair，仍失败则回退确定性模板或返回明确错误。
 
 ## 测试
 
@@ -49,4 +58,4 @@
 go test ./internal/planner/...
 ```
 
-测试覆盖 DAG 结构、依赖关系、意图映射和错误输入。
+测试覆盖 DAG 结构、依赖关系、意图映射、路由/变体、回滚开关与错误输入。

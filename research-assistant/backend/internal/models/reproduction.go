@@ -48,6 +48,9 @@ const (
 	RuntimeActionModelDownload     RuntimeActionKind = "model_download"
 	RuntimeActionGPUUse            RuntimeActionKind = "gpu_use"
 	RuntimeActionNetworkAccess     RuntimeActionKind = "network_access"
+	// RuntimeActionToolCall gates a single tool invocation whose definition
+	// declares a side effect or an explicit approval policy.
+	RuntimeActionToolCall RuntimeActionKind = "tool_call"
 )
 
 // RuntimeActionStatus is the lifecycle of a runtime approval request.

@@ -437,3 +437,26 @@ func RecordPromptTruncatedSection(section string) {
 func RecordPromptOverBudget(model string) {
 	Default().Inc("llm_prompt_over_budget_total", Labels{"model": model})
 }
+
+// RecordPlanExport records a completed export and its reproducibility status.
+func RecordPlanExport(format, reproducibility string) {
+	Default().Inc("plan_export_total", Labels{"format": format, "reproducibility": reproducibility})
+}
+
+// RecordExportOmittedBytes records bytes omitted from an export bundle.
+func RecordExportOmittedBytes(bytes int64) {
+	if bytes <= 0 {
+		return
+	}
+	Default().Add("export_omitted_bytes_total", float64(bytes), nil)
+}
+
+// RecordBudgetWarning records a budget crossing the 80% threshold.
+func RecordBudgetWarning(policy string) {
+	Default().Inc("budget_warning_total", Labels{"policy": policy})
+}
+
+// RecordBudgetExceeded records a budget that reached 100%.
+func RecordBudgetExceeded(policy string) {
+	Default().Inc("budget_exceeded_total", Labels{"policy": policy})
+}

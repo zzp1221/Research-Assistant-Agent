@@ -87,6 +87,11 @@ type Result struct {
 	Rank       int     `json:"rank,omitempty"`
 	Score      float64 `json:"score,omitempty"`
 	RankReason string  `json:"rank_reason,omitempty"`
+	// ProviderRank is the provider-native ordering (1-based) and
+	// ProviderScore is an optional provider relevance score (for example
+	// OpenAlex relevance_score). Both feed the cross-provider ranker.
+	ProviderRank  int     `json:"provider_rank,omitempty"`
+	ProviderScore float64 `json:"provider_score,omitempty"`
 }
 
 // SearchOptions controls one literature search. Sources is a subset of
@@ -339,8 +344,187 @@ func mergeResult(destination *Result, source Result) {
 	if destination.License == "" {
 		destination.License = source.License
 	}
+	if destination.ProviderRank == 0 || (source.ProviderRank > 0 && source.ProviderRank < destination.ProviderRank) {
+		destination.ProviderRank = source.ProviderRank
+	}
+	if source.ProviderScore > destination.ProviderScore {
+		destination.ProviderScore = source.ProviderScore
+	}
 }
 
+// sourcePrior is a small cross-provider prior. It keeps broad aggregators
+// ahead of metadata-only or repository sources when lexical evidence ties.
+func sourcePrior(source string) float64 {
+	switch source {
+	case SourceArxiv, SourceOpenAlex:
+		return 1.0
+	case SourceSemanticScholar:
+		return 0.95
+	case SourcePubMed, SourceDBLP:
+		return 0.75
+	case SourceCrossref:
+		return 0.7
+	case SourceGitHub:
+		return 0.3
+	default:
+		return 0.5
+	}
+}
+
+var relevanceStopwords = map[string]bool{
+	"a": true, "an": true, "and": true, "are": true, "as": true, "at": true,
+	"be": true, "by": true, "for": true, "from": true, "in": true, "into": true,
+	"is": true, "of": true, "on": true, "or": true, "the": true, "to": true,
+	"with": true, "using": true, "based": true, "via": true,
+}
+
+// relevanceTerms tokenizes a query for lexical relevance scoring. It keeps
+// English words of two or more characters and CJK bigrams.
+func relevanceTerms(query string) []string {
+	lower := strings.ToLower(query)
+	fields := strings.FieldsFunc(lower, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+	terms := make([]string, 0, len(fields)+8)
+	seen := make(map[string]bool, len(fields)+8)
+	add := func(term string) {
+		term = strings.TrimSpace(term)
+		if len([]rune(term)) < 2 || relevanceStopwords[term] || seen[term] {
+			return
+		}
+		seen[term] = true
+		terms = append(terms, term)
+	}
+	for _, field := range fields {
+		add(field)
+	}
+	runes := []rune(lower)
+	for index := 0; index+1 < len(runes); index++ {
+		if unicode.Is(unicode.Han, runes[index]) && unicode.Is(unicode.Han, runes[index+1]) {
+			add(string(runes[index : index+2]))
+		}
+	}
+	return terms
+}
+
+func containsAnyWord(text string, words ...string) bool {
+	for _, word := range words {
+		if strings.Contains(text, strings.ToLower(word)) {
+			return true
+		}
+	}
+	return false
+}
+
+// rankByRelevance scores each result against the query with a small lexical
+// model (coverage of query terms in title/abstract, phrase match, survey
+// intent and citations) instead of grouping by provider. Provider-native
+// order is only a tie-breaking prior, so one strong provider result cannot be
+// buried behind every result from an earlier provider.
+func rankByRelevance(results []Result, query string, order []string) {
+	terms := relevanceTerms(query)
+	if len(terms) == 0 {
+		sortResults(results, order)
+		return
+	}
+	documents := make([]string, len(results))
+	titles := make([]string, len(results))
+	documentFrequency := make(map[string]int, len(terms))
+	for index := range results {
+		titles[index] = strings.ToLower(results[index].Title + " " + results[index].Venue)
+		documents[index] = titles[index] + " " + strings.ToLower(results[index].Abstract)
+		for _, term := range terms {
+			if strings.Contains(documents[index], term) {
+				documentFrequency[term]++
+			}
+		}
+	}
+	surveyQuery := containsAnyWord(strings.ToLower(query), "survey", "review", "overview", "tutorial", "综述", "文献综述")
+	normalizedQuery := normalizeTitle(query)
+	corpusSize := float64(len(results))
+	type scored struct {
+		index int
+		score float64
+	}
+	candidates := make([]scored, 0, len(results))
+	for index := range results {
+		titleMatches, allMatches := 0, 0
+		titleLower := titles[index]
+		documentLower := documents[index]
+		for _, term := range terms {
+			if strings.Contains(titleLower, term) {
+				titleMatches++
+			}
+			if strings.Contains(documentLower, term) {
+				allMatches++
+			}
+		}
+		coverage := float64(allMatches) / float64(len(terms))
+		titleCoverage := float64(titleMatches) / float64(len(terms))
+		phrase := 0.0
+		if normalizedQuery != "" && strings.Contains(normalizeTitle(results[index].Title), normalizedQuery) {
+			phrase = 1
+		}
+		// Down-weight terms that occur in almost every candidate (for example
+		// the generic words in a broad query) while keeping coverage primary.
+		idfBonus := 0.0
+		for _, term := range terms {
+			if !strings.Contains(documentLower, term) {
+				continue
+			}
+			df := float64(documentFrequency[term])
+			idfBonus += math.Log(1 + (corpusSize-df+0.5)/(df+0.5))
+		}
+		if len(terms) > 0 {
+			idfBonus = idfBonus / float64(len(terms)) / 3
+		}
+		citation := 0.0
+		if results[index].Citations > 0 {
+			citation = math.Log1p(float64(results[index].Citations)) / math.Log1p(20000)
+			if citation > 1 {
+				citation = 1
+			}
+		}
+		survey := 0.0
+		if surveyQuery && containsAnyWord(titleLower, "survey", "review", "overview", "tutorial", "综述") {
+			survey = 1
+		}
+		providerPriorValue := 0.0
+		if results[index].ProviderRank > 0 {
+			providerPriorValue = 1 / float64(results[index].ProviderRank+1)
+		}
+		// Coverage stays primary, but exact phrase order is a weak signal
+		// (survey titles often reorder "Survey on Graph Neural Networks").
+		// Citations carry real weight because they are the strongest
+		// available proxy for a canonical survey when lexical coverage ties.
+		score := 0.40*coverage + 0.18*titleCoverage + 0.05*phrase + 0.12*survey + 0.18*citation + 0.05*idfBonus +
+			0.05*sourcePrior(results[index].Source) + 0.02*providerPriorValue
+		candidates = append(candidates, scored{index: index, score: score})
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].score != candidates[j].score {
+			return candidates[i].score > candidates[j].score
+		}
+		left := results[candidates[i].index]
+		right := results[candidates[j].index]
+		if left.Citations != right.Citations {
+			return left.Citations > right.Citations
+		}
+		if left.Year != right.Year {
+			return left.Year > right.Year
+		}
+		return strings.ToLower(left.Title) < strings.ToLower(right.Title)
+	})
+	reranked := make([]Result, len(candidates))
+	for position, candidate := range candidates {
+		reranked[position] = results[candidate.index]
+		reranked[position].Score = math.Round(candidate.score*100) / 100
+		if reranked[position].Score > 1 {
+			reranked[position].Score = 1
+		}
+	}
+	copy(results, reranked)
+}
 func sortResults(results []Result, order []string) {
 	rank := make(map[string]int, len(order))
 	for position, source := range order {
@@ -365,7 +549,7 @@ func sortResults(results []Result, order []string) {
 
 // applyRanking orders results according to sortMode and stamps rank/score/
 // rank_reason so the API can explain why a result is where it is.
-func applyRanking(results []Result, order []string, sortMode string) {
+func applyRanking(results []Result, query string, order []string, sortMode string) {
 	switch strings.ToLower(strings.TrimSpace(sortMode)) {
 	case "citations", "citation":
 		sort.SliceStable(results, func(i, j int) bool {
@@ -395,11 +579,10 @@ func applyRanking(results []Result, order []string, sortMode string) {
 			results[index].Score = normalizedRankScore(index, len(results))
 		}
 	default:
-		sortResults(results, order)
+		rankByRelevance(results, query, order)
 		for index := range results {
 			results[index].Rank = index + 1
-			results[index].RankReason = "provider relevance order"
-			results[index].Score = normalizedRankScore(index, len(results))
+			results[index].RankReason = "lexical relevance + citations + provider rank"
 		}
 	}
 }

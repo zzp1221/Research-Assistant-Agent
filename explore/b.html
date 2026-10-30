@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B · 信号台 · 深色任务控制台</title>
+<style>
+  :root{
+    --bg:#070c10;
+    --bg-2:#0a1218;
+    --panel:#0b141a;
+    --panel-2:#0e1a21;
+    --panel-3:#111f27;
+    --line:#1a2a34;
+    --line-2:#243844;
+    --text:#e9f0f4;
+    --text-2:#a7b4bc;
+    --muted:#8f9faa;
+    --muted-2:#8a9aa5;
+    --accent:#ff6b3d;
+    --accent-2:#ff9a76;
+    --accent-soft:#24160f;
+    --mint:#72dfb1;
+    --amber:#ffc46b;
+    --danger:#ff7a83;
+    --mono:"Cascadia Mono","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg);color:var(--text);
+    font-family:"Segoe UI Variable Text","Noto Sans SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
+    font-size:13.5px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  }
+  button,textarea{font:inherit}
+  button{border:0;background:none;color:inherit;cursor:pointer}
+  svg{display:block}
+  .app{height:100vh;display:flex;flex-direction:column;overflow:hidden;background:radial-gradient(circle at 62% 0%,#101f28 0,#070c10 48%,#070c10 100%)}
+  .topbar{
+    height:58px;flex-shrink:0;display:flex;align-items:center;gap:16px;padding:0 18px;
+    border-bottom:1px solid var(--line);background:rgba(8,14,19,.9);backdrop-filter:blur(14px);position:relative;z-index:10;
+  }
+  .brand{display:flex;align-items:center;gap:10px;min-width:180px}
+  .brand-mark{width:30px;height:30px;border-radius:9px;background:var(--accent);display:grid;place-items:center;color:#0a1015;font-family:"Bahnschrift","Segoe UI",sans-serif;font-size:16px;font-weight:800;box-shadow:0 10px 22px -14px rgba(255,107,61,.8)}
+  .brand-name{font-family:"Bahnschrift","Segoe UI Variable Display","Noto Sans SC",sans-serif;font-size:14px;letter-spacing:.02em;font-weight:600;white-space:nowrap}
+  .brand-name small{display:block;font-family:"Segoe UI",sans-serif;font-size:9.5px;letter-spacing:.16em;color:var(--muted-2);font-weight:500;margin-top:1px}
+  .nav{display:flex;align-items:center;gap:2px;margin-left:2px}
+  .nav button{height:31px;padding:0 11px;border-radius:7px;font-size:12px;color:var(--muted);transition:background .16s ease,color .16s ease}
+  .nav button:hover{color:var(--text-2);background:#0e1a21}
+  .nav button.active{color:var(--text);background:#11202a;box-shadow:inset 0 0 0 1px #223540}
+  .plan-id{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px;padding-left:10px;border-left:1px solid var(--line)}
+  .plan-id small{font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--muted-2)}
+  .plan-id b{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .top-right{display:flex;align-items:center;gap:7px;flex-shrink:0}
+  .status-pill{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 9px;border-radius:6px;background:#13241d;color:#91e5bf;font-size:11px;font-weight:600;border:1px solid #214536}
+  .status-pill i{width:5px;height:5px;border-radius:50%;background:var(--mint);box-shadow:0 0 0 3px rgba(114,223,177,.1)}
+  .metric{height:28px;display:flex;align-items:center;gap:5px;padding:0 8px;border:1px solid var(--line-2);border-radius:6px;background:#0a141a;font-family:var(--mono);font-size:10.5px;color:#aab7bf}
+  .metric b{font-weight:600;color:#e8eef1}
+  .icon-btn{width:30px;height:30px;border-radius:7px;display:grid;place-items:center;color:#8796a0;position:relative}
+  .icon-btn:hover{background:#101d25;color:#fff}
+  .icon-btn .dot{position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px #080e13}
+  .avatar{width:29px;height:29px;border-radius:50%;display:grid;place-items:center;background:#1a2b35;color:#c9d6dd;font-size:10px;font-weight:600;border:1px solid #2a3d49}
+  .btn-danger{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:6px;background:var(--accent);color:#160b07;font-size:11.5px;font-weight:700;box-shadow:0 10px 20px -14px rgba(255,107,61,.8)}
+  .btn-danger:hover{background:var(--accent-2)}
+  .workspace{flex:1;min-height:0;display:grid;grid-template-columns:242px minmax(0,1fr) 304px;grid-template-rows:minmax(0,1fr) 224px}
+  .sessions{grid-column:1;grid-row:1/3;min-height:0;display:flex;flex-direction:column;gap:9px;padding:16px 12px 12px;background:#090f14;border-right:1px solid var(--line)}
+  .sessions-head{display:flex;align-items:center;justify-content:space-between;padding:0 4px 4px}
+  .sessions-head span{font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--muted-2)}
+  .new-session{width:24px;height:24px;border-radius:6px;border:1px solid var(--line-2);display:grid;place-items:center;color:#93a2ac}
+  .new-session:hover{border-color:var(--accent);color:var(--accent)}
+  .session{display:flex;align-items:flex-start;gap:9px;padding:10px 9px;border-radius:8px;border:1px solid transparent;color:#8b9aa4;text-align:left;transition:background .16s ease,border-color .16s ease,color .16s ease}
+  .session:hover{background:#0d171d;color:var(--text-2)}
+  .session.active{background:#101d25;border-color:#263945;color:var(--text)}
+  .session-dot{width:6px;height:6px;border-radius:50%;background:#334751;flex-shrink:0;margin-top:5px}
+  .session.active .session-dot{background:var(--accent);box-shadow:0 0 0 3px rgba(255,107,61,.1)}
+  .session-copy{min-width:0}
+  .session b{display:block;font-size:12px;line-height:1.35;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .session small{display:block;margin-top:2px;font-family:var(--mono);font-size:9.5px;color:var(--muted-2)}
+  .sessions-foot{margin-top:auto;padding-top:9px;border-top:1px solid #15232b;display:grid;gap:2px}
+  .side-link{display:flex;align-items:center;gap:8px;height:31px;padding:0 8px;border-radius:7px;color:#7f909b;font-size:11.5px;text-align:left}
+  .side-link:hover{background:#0e1920;color:var(--text-2)}
+  .side-link .badge{margin-left:auto;min-width:16px;height:16px;padding:0 4px;border-radius:4px;display:grid;place-items:center;background:#2a1710;color:var(--accent);font-family:var(--mono);font-size:8.5px}
+  .graph{grid-column:2;grid-row:1;position:relative;min-width:0;min-height:0;overflow:hidden;background:radial-gradient(circle at 50% 42%,#0d1b23 0,#081016 64%);border-bottom:1px solid var(--line)}
+  .graph::before{
+    content:"";position:absolute;inset:0;
+    background-image:linear-gradient(rgba(82,122,140,.10) 1px,transparent 1px),linear-gradient(90deg,rgba(82,122,140,.10) 1px,transparent 1px);
+    background-size:34px 34px;
+    mask-image:radial-gradient(ellipse at 50% 50%,#000 26%,transparent 78%);
+  }
+  .graph::after{
+    content:"";position:absolute;left:43%;top:48%;width:420px;height:420px;border-radius:50%;
+    border:1px solid rgba(255,107,61,.10);box-shadow:0 0 80px rgba(255,107,61,.05) inset;
+    transform:translate(-50%,-50%);pointer-events:none;
+  }
+  .graph-head{position:absolute;left:20px;top:16px;z-index:2;min-width:0}
+  .graph-head .kicker{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:9px;letter-spacing:.13em;color:var(--muted-2)}
+  .graph-head .kicker i{width:14px;height:1px;background:var(--accent)}
+  .graph-head h1{font-family:"Bahnschrift","Segoe UI Variable Display","Noto Sans SC",sans-serif;font-size:22px;line-height:1.2;font-weight:600;letter-spacing:-.015em;margin:5px 0 3px;max-width:460px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .graph-head p{margin:0;font-size:11.5px;color:var(--muted)}
+  .graph-meta{position:absolute;right:18px;top:16px;display:flex;align-items:center;gap:6px;z-index:2}
+  .ghost-chip{height:27px;display:flex;align-items:center;gap:5px;padding:0 8px;border:1px solid var(--line-2);border-radius:6px;background:rgba(9,16,21,.7);font-family:var(--mono);font-size:9.5px;color:#8d9ca6}
+  .ghost-chip b{color:#dce6eb;font-weight:600}
+  .stage{position:absolute;left:50%;top:53%;width:760px;height:400px;transform:translate(-50%,-50%)}
+  .edges{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+  .edge{fill:none;stroke:#29414e;stroke-width:1.4}
+  .edge.done{stroke:#345d4c}
+  .edge.active{stroke:var(--accent);stroke-width:1.8;stroke-dasharray:5 7;animation:signal 1.8s linear infinite;filter:drop-shadow(0 0 4px rgba(255,107,61,.55))}
+  @keyframes signal{to{stroke-dashoffset:-24}}
+  .node{position:absolute;width:150px;padding:10px 12px 11px;border:1px solid #263945;border-radius:11px;background:#0d181f;box-shadow:0 20px 42px -32px #000}
+  .node .num{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;color:#93a3ad;font-weight:600}
+  .node h3{font-size:12px;line-height:1.35;margin:4px 0 4px;font-weight:600;color:#dce6eb;letter-spacing:-.01em}
+  .node .meta{display:flex;align-items:center;gap:5px;font-size:9.5px;color:#96a6b0}
+  .node .dot{width:4px;height:4px;border-radius:50%;background:#3e5662;flex-shrink:0}
+  .node.done{border-color:#224134;background:#0b1715}
+  .node.done .dot{background:var(--mint)}
+  .node.done .num{color:#5f9d80}
+  .node.active{border-color:var(--accent);background:#151a1a;box-shadow:0 0 0 1px rgba(255,107,61,.3),0 0 38px -12px rgba(255,107,61,.48),0 24px 44px -30px #000}
+  .node.active .num{color:#ff9a76}
+  .node.active .dot{background:var(--accent);box-shadow:0 0 0 3px rgba(255,107,61,.1)}
+  .node.waiting{border-style:dashed;background:#0b151b}
+  .progress{height:3px;border-radius:2px;background:#2a1c16;overflow:hidden;margin-top:8px}
+  .progress i{display:block;height:100%;width:64%;border-radius:2px;background:var(--accent)}
+  .graph-foot{position:absolute;left:20px;bottom:16px;display:flex;align-items:center;gap:13px;font-family:var(--mono);font-size:9.5px;color:#8fa0aa}
+  .graph-foot span{display:flex;align-items:center;gap:5px}
+  .graph-foot i{width:4px;height:4px;border-radius:50%;background:#3e5662}
+  .graph-foot .ok i{background:var(--mint)}.graph-foot .live i{background:var(--accent)}
+  .graph-tools{position:absolute;right:18px;bottom:16px;display:flex;gap:3px;padding:3px;border:1px solid var(--line-2);border-radius:7px;background:rgba(9,16,21,.8)}
+  .graph-tools button{width:25px;height:25px;border-radius:4px;display:grid;place-items:center;color:#7d8e99;font-size:12px}
+  .graph-tools button:hover{background:#12212a;color:#fff}
+  .inspector{grid-column:3;grid-row:1;min-width:0;min-height:0;display:flex;flex-direction:column;gap:12px;padding:16px;background:#0a1218;border-left:1px solid var(--line);overflow:hidden}
+  .inspector-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .inspector-head span{font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--muted-2)}
+  .inspector-head button{width:22px;height:22px;border-radius:5px;display:grid;place-items:center;color:#6f818d}
+  .inspector-head button:hover{background:#111f27;color:#fff}
+  .inspector h2{font-family:"Bahnschrift","Segoe UI Variable Display","Noto Sans SC",sans-serif;font-size:18px;line-height:1.25;font-weight:600;margin:-4px 0 0}
+  .inspector-status{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--accent)}
+  .inspector-status i{width:5px;height:5px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(255,107,61,.1)}
+  .progress-card{padding:10px 11px;border:1px solid var(--line);border-radius:8px;background:#0d181f}
+  .progress-card-head{display:flex;align-items:center;justify-content:space-between;font-family:var(--mono);font-size:9.5px;color:#81929d}
+  .progress-card-head b{color:var(--accent);font-weight:600}
+  .progress-card .bar{height:4px;border-radius:2px;background:#241b16;margin-top:7px;overflow:hidden}
+  .progress-card .bar i{display:block;width:64%;height:100%;background:var(--accent);border-radius:2px}
+  .rows{display:grid;gap:0}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid #15232b;font-size:10.5px;color:#7e8f9a}
+  .row b{font-family:var(--mono);font-size:10px;font-weight:500;color:#d0dae0;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .log-label{display:flex;align-items:center;justify-content:space-between;font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:#6d7f8a;margin-top:2px}
+  .log{flex:1;min-height:0;overflow:hidden;padding:9px 10px;border:1px solid #1b2d38;border-radius:8px;background:#070e13;font-family:var(--mono);font-size:9.5px;line-height:1.75;color:#81939e}
+  .log p{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .log .ok{color:var(--mint)}.log .warn{color:var(--amber)}
+  .inspector-actions{margin-top:auto;display:flex;gap:6px}
+  .inspector-actions button{height:29px;border-radius:6px;border:1px solid var(--line-2);background:#0d181f;color:#9ba9b2;font-size:10.5px;padding:0 9px}
+  .inspector-actions button:hover{border-color:var(--accent);color:var(--accent)}
+  .inspector-actions .primary{background:var(--accent);border-color:var(--accent);color:#160b07;font-weight:600}
+  .inspector-actions .primary:hover{background:var(--accent-2);color:#160b07}
+  .dock{grid-column:2/4;grid-row:2;min-width:0;min-height:0;display:grid;grid-template-columns:88px minmax(0,1fr) 348px;background:#0a1218;border-top:1px solid var(--line)}
+  .dock-tabs{display:flex;flex-direction:column;gap:3px;padding:10px 8px;border-right:1px solid var(--line)}
+  .dock-tab{display:flex;align-items:center;justify-content:space-between;gap:4px;height:29px;padding:0 8px;border-radius:5px;font-size:10.5px;color:#7f909b;text-align:left}
+  .dock-tab:hover{background:#101d25;color:#c7d3da}
+  .dock-tab.active{background:#11212a;color:#eef4f6}
+  .dock-tab b{font-family:var(--mono);font-size:8.5px;font-weight:500;color:var(--accent)}
+  .dock-transcript{min-width:0;padding:11px 15px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:8px;overflow:hidden}
+  .dock-line{display:flex;gap:9px;font-size:11.5px;line-height:1.45;color:#9eacb5}
+  .dock-line .who{width:28px;flex-shrink:0;font-family:var(--mono);font-size:8.5px;letter-spacing:.06em;color:#8fa0aa;padding-top:2px}
+  .dock-line.user{color:#dce6eb}
+  .dock-line.user .who{color:var(--accent)}
+  .dock-line p{margin:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .dock-composer{min-width:0;display:flex;flex-direction:column;gap:7px;padding:11px 13px;background:#0b151b}
+  .dock-composer textarea{
+    flex:1;min-height:0;width:100%;resize:none;border:1px solid #22343f;border-radius:7px;background:#070e13;
+    padding:9px 10px;color:var(--text);font-size:11.5px;line-height:1.55;outline:none;
+  }
+  .dock-composer textarea::placeholder{color:#60727d}
+  .dock-composer textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,107,61,.08)}
+  .dock-composer-row{display:flex;align-items:center;gap:4px}
+  .dock-tool{width:26px;height:26px;border-radius:5px;display:grid;place-items:center;color:#7c8d98}
+  .dock-tool:hover{background:#12212a;color:#fff}
+  .dock-hint{font-family:var(--mono);font-size:8.5px;color:#8fa0aa;margin-left:3px}
+  .dock-send{margin-left:auto;width:29px;height:29px;border-radius:6px;display:grid;place-items:center;background:var(--accent);color:#160b07}
+  .dock-send:hover{background:var(--accent-2)}
+  @media (max-width:1240px){
+    .workspace{grid-template-columns:220px minmax(0,1fr) 280px}
+    .stage{transform:translate(-50%,-50%) scale(.9)}
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H7l-3 2v-4.6A7.5 7.5 0 1 1 20 11.5Z"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4.5 5.5A2.5 2.5 0 0 1 7 3h12.5v16H7a2.5 2.5 0 0 0-2.5 2.5V5.5Z"/><path d="M4.5 5.5V19M7 7h9M7 11h7"/></symbol>
+    <symbol id="i-graph" viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="5" rx="1"/><rect x="16" y="4" width="5" height="5" rx="1"/><rect x="9.5" y="15" width="5" height="5" rx="1"/><path d="M8 6.5h3.5M18.5 9v3.5M16 17.5h-1.5M8 17.5h1.5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H19v14H6.5A2.5 2.5 0 0 1 4 16.5v-9Z"/><path d="M4 8h13M16 12h3M16 15h3"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M4 5h16l1 8v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5l1-8Z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.8 9a2.3 2.3 0 1 1 3.2 2.1c-.8.4-1 1-1 1.9"/><path d="M12 16.5v.1"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2M12 18.5v2M20.5 12h-2M5.5 12h-2M18 6l-1.4 1.4M7.4 16.6 6 18M18 18l-1.4-1.4M7.4 7.4 6 6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="m8 12.5 5.8-5.8a3.2 3.2 0 1 1 4.5 4.5l-7.7 7.7a5.2 5.2 0 0 1-7.4-7.4l8-8"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3 10.5 13.5M21 3l-6.8 18-3.7-7.5L3 9.8 21 3Z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 10a6 6 0 0 1 12 0c0 4 1.5 5 2 6H4c.5-1 2-2 2-6Z"/><path d="M10 19a2 2 0 0 0 4 0"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 6.5"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">R</div>
+      <div class="brand-name">Research Assistant<small>研究工作台</small></div>
+    </div>
+    <nav class="nav" aria-label="主导航">
+      <button class="active">工作区</button>
+      <button>计划库</button>
+      <button>成本</button>
+    </nav>
+    <div class="plan-id">
+      <small>计划 04 · 当前执行</small>
+      <b>复现 Transformer 核心实验</b>
+    </div>
+    <div class="top-right">
+      <span class="status-pill"><i></i>运行中</span>
+      <span class="metric">预算 <b>$1.24</b> / $5.00</span>
+      <button class="icon-btn" title="待办中心"><svg width="16" height="16"><use href="#i-bell"/></svg><span class="dot"></span></button>
+      <button class="icon-btn" title="更多"><svg width="16" height="16"><use href="#i-more"/></svg></button>
+      <span class="avatar">研</span>
+      <button class="btn-danger"><svg width="11" height="11"><use href="#i-pause"/></svg>暂停</button>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <aside class="sessions" aria-label="会话列表">
+      <div class="sessions-head"><span>会话</span><button class="new-session" title="新建会话"><svg width="12" height="12"><use href="#i-plus"/></svg></button></div>
+      <button class="session active">
+        <i class="session-dot"></i>
+        <span class="session-copy"><b>Transformer 论文复现</b><small>5 条 · 刚刚</small></span>
+      </button>
+      <button class="session">
+        <i class="session-dot"></i>
+        <span class="session-copy"><b>RAG 框架评测</b><small>12 条 · 2 小时前</small></span>
+      </button>
+      <button class="session">
+        <i class="session-dot"></i>
+        <span class="session-copy"><b>注意力可视化</b><small>8 条 · 昨天</small></span>
+      </button>
+      <button class="session">
+        <i class="session-dot"></i>
+        <span class="session-copy"><b>论文检索与归档</b><small>21 条 · 10 月 26 日</small></span>
+      </button>
+      <div class="sessions-foot">
+        <button class="side-link"><svg width="15" height="15"><use href="#i-book"/></svg>文献库</button>
+        <button class="side-link"><svg width="15" height="15"><use href="#i-graph"/></svg>计划库</button>
+        <button class="side-link"><svg width="15" height="15"><use href="#i-inbox"/></svg>待办中心<span class="badge">1</span></button>
+        <button class="side-link"><svg width="15" height="15"><use href="#i-wallet"/></svg>成本与预算</button>
+        <button class="side-link"><svg width="15" height="15"><use href="#i-help"/></svg>使用手册</button>
+      </div>
+    </aside>
+
+    <section class="graph" aria-label="执行图">
+      <div class="graph-head">
+        <h1>复现 Transformer 核心实验</h1>
+        <p>5 个节点 · 3 个已完成 · 1 个运行中</p>
+      </div>
+      <div class="graph-meta">
+        <span class="ghost-chip">预计 <b>18m</b></span>
+        <span class="ghost-chip">视图 <b>自动</b></span>
+      </div>
+
+      <div class="stage">
+        <svg class="edges" viewBox="0 0 760 400" aria-hidden="true">
+          <defs>
+            <marker id="arrow-b" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 8 4 0 8Z" fill="#29414e"/></marker>
+            <marker id="arrow-b-live" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 8 4 0 8Z" fill="#ff6b3d"/></marker>
+          </defs>
+          <path class="edge done" d="M160 198 C180 198 180 93 200 93" marker-end="url(#arrow-b)"/>
+          <path class="edge active" d="M160 198 C180 198 180 303 200 303" marker-end="url(#arrow-b-live)"/>
+          <path class="edge done" d="M350 93 C380 93 380 188 410 188" marker-end="url(#arrow-b)"/>
+          <path class="edge" d="M350 303 C380 303 380 188 410 188" marker-end="url(#arrow-b)"/>
+          <path class="edge" d="M560 188 C580 188 580 93 600 93" marker-end="url(#arrow-b)"/>
+        </svg>
+
+        <article class="node done" style="left:10px;top:160px">
+          <div class="num">01</div>
+          <h3>解析论文与数据</h3>
+          <div class="meta"><i class="dot"></i><span>文献 Agent · 12s</span></div>
+        </article>
+        <article class="node done" style="left:200px;top:55px">
+          <div class="num">02</div>
+          <h3>复现注意力机制</h3>
+          <div class="meta"><i class="dot"></i><span>代码 Agent · 2m 08s</span></div>
+        </article>
+        <article class="node active" style="left:200px;top:265px">
+          <div class="num">03</div>
+          <h3>构造训练脚本</h3>
+          <div class="meta"><i class="dot"></i><span>运行中 · 64%</span></div>
+          <div class="progress"><i></i></div>
+        </article>
+        <article class="node waiting" style="left:410px;top:150px">
+          <div class="num">04</div>
+          <h3>运行基线实验</h3>
+          <div class="meta"><i class="dot"></i><span>等待前序节点</span></div>
+        </article>
+        <article class="node waiting" style="left:600px;top:55px">
+          <div class="num">05</div>
+          <h3>汇总结果与报告</h3>
+          <div class="meta"><i class="dot"></i><span>等待前序节点</span></div>
+        </article>
+      </div>
+
+      <div class="graph-foot">
+        <span class="ok"><i></i>完成 3</span>
+        <span class="live"><i></i>运行中 1</span>
+        <span><i></i>等待 1</span>
+      </div>
+      <div class="graph-tools">
+        <button title="缩小">−</button>
+        <button title="放大">+</button>
+        <button title="适配画布">⤢</button>
+      </div>
+    </section>
+
+    <aside class="inspector" aria-label="节点详情">
+      <div class="inspector-head"><span>节点详情</span><button title="关闭详情"><svg width="12" height="12"><use href="#i-x"/></svg></button></div>
+      <h2>构造训练脚本</h2>
+      <div class="inspector-status"><i></i>运行中 · 03 / 05</div>
+      <div class="progress-card">
+        <div class="progress-card-head"><span>执行进度</span><b>64%</b></div>
+        <div class="bar"><i></i></div>
+      </div>
+      <div class="rows">
+        <div class="row"><span>负责者</span><b>代码 Agent</b></div>
+        <div class="row"><span>已用时</span><b>06:12</b></div>
+        <div class="row"><span>产物</span><b>train.py</b></div>
+        <div class="row"><span>依赖</span><b>节点 01 · 02</b></div>
+      </div>
+      <div class="log-label"><span>实时日志</span><span>查看全部</span></div>
+      <div class="log">
+        <p><span class="ok">✓</span> 读取配置 config/train.yaml</p>
+        <p><span class="ok">✓</span> 加载 wikitext-103 分词器</p>
+        <p><span class="warn">·</span> 编译 CUDA kernel 0/3</p>
+        <p><span class="warn">·</span> 正在预热训练循环…</p>
+        <p>waiting for checkpoint</p>
+      </div>
+      <div class="inspector-actions">
+        <button>打开日志</button>
+        <button>重试</button>
+        <button class="primary">查看产物</button>
+      </div>
+    </aside>
+
+    <section class="dock" aria-label="对话与日志">
+      <div class="dock-tabs">
+        <button class="dock-tab active">对话 <b>2</b></button>
+        <button class="dock-tab">运行日志</button>
+        <button class="dock-tab">产物</button>
+      </div>
+      <div class="dock-transcript">
+        <div class="dock-line user"><span class="who">你</span><p>复现这篇论文的核心实验，先跑通最小版本，再和基线做对比。</p></div>
+        <div class="dock-line"><span class="who">助手</span><p>已拆成 5 个节点。先确认运行环境，再从注意力机制开始；过程中有 1 项需要你批准。</p></div>
+        <div class="dock-line"><span class="who">系统</span><p>节点 03 正在运行，预计还需 2 分钟。</p></div>
+      </div>
+      <div class="dock-composer">
+        <textarea placeholder="继续追问，或拖入论文…" aria-label="输入消息"></textarea>
+        <div class="dock-composer-row">
+          <button class="dock-tool" title="添加论文或数据"><svg width="15" height="15"><use href="#i-paperclip"/></svg></button>
+          <button class="dock-tool" title="从文献库添加"><svg width="15" height="15"><use href="#i-book"/></svg></button>
+          <span class="dock-hint">Enter 发送</span>
+          <button class="dock-send" title="发送"><svg width="14" height="14"><use href="#i-send"/></svg></button>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+</body>
+</html>

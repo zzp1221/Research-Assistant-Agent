@@ -39,12 +39,13 @@ func defaultLiteratureClient() *literature.Client {
 	literatureClientOnce.Do(func() {
 		timeoutSec := envIntDefault("LITERATURE_TIMEOUT_SECONDS", 30)
 		literatureClient = literature.NewClient(literature.Config{
-			CacheDir:       strings.TrimSpace(os.Getenv("LITERATURE_CACHE_DIR")),
-			CacheTTL:       time.Duration(envIntDefault("LITERATURE_CACHE_TTL_SECONDS", 900)) * time.Second,
-			Timeout:        time.Duration(timeoutSec) * time.Second,
-			GitHubToken:    strings.TrimSpace(os.Getenv("GITHUB_TOKEN")),
-			OpenAlexMailto: strings.TrimSpace(os.Getenv("OPENALEX_MAILTO")),
-			MaxRetries:     envIntDefault("LITERATURE_MAX_RETRIES", 2),
+			CacheDir:        strings.TrimSpace(os.Getenv("LITERATURE_CACHE_DIR")),
+			CacheTTL:        time.Duration(envIntDefault("LITERATURE_CACHE_TTL_SECONDS", 900)) * time.Second,
+			Timeout:         time.Duration(timeoutSec) * time.Second,
+			GitHubToken:     strings.TrimSpace(os.Getenv("GITHUB_TOKEN")),
+			OpenAlexMailto:  strings.TrimSpace(os.Getenv("OPENALEX_MAILTO")),
+			MaxRetries:      envIntDefault("LITERATURE_MAX_RETRIES", 2),
+			ProviderTimeout: time.Duration(envIntDefault("LITERATURE_PROVIDER_TIMEOUT_SECONDS", 15)) * time.Second,
 		})
 	})
 	return literatureClient

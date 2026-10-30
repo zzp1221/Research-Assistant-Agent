@@ -23,11 +23,11 @@ export default function GraphCanvas(props: GraphCanvasProps) {
       nodesDraggable={false}
       onlyRenderVisibleElements={nodes.length > 120}
       fitView
-      fitViewOptions={{ padding: 0.17, minZoom: 0.66, maxZoom: 0.98 }}
+      fitViewOptions={{ padding: 0.2, minZoom: 0.64, maxZoom: 0.96 }}
       minZoom={0.18}
-      className="bg-[#fffefb]"
+      className="research-assistant-flow"
     >
-      <Background color="rgba(23,19,15,0.10)" gap={16} size={1} />
+      <Background color="rgba(31,107,79,0.09)" gap={22} size={1} />
       <Controls showInteractive={false} />
     </ReactFlow>
   );

@@ -15,6 +15,7 @@ import (
 )
 
 type modelNameKey struct{}
+type modelPriceKey struct{}
 
 // WithModelName pins the model identifier recorded for one call. Runtime
 // profiles resolve different models per plan, so the env-only name is not
@@ -28,6 +29,27 @@ func WithModelName(ctx context.Context, name string) context.Context {
 		return ctx
 	}
 	return context.WithValue(ctx, modelNameKey{}, name)
+}
+
+// WithModelPrice pins the runtime profile's 1K-token price for one call so the
+// usage ledger can bill multi-model plans accurately.
+func WithModelPrice(ctx context.Context, promptPer1K, completionPer1K float64) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if promptPer1K <= 0 && completionPer1K <= 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, modelPriceKey{}, usage.Price{PromptPer1K: promptPer1K, CompletionPer1K: completionPer1K})
+}
+
+// ModelPriceFromContext returns the pinned price for one call, if any.
+func ModelPriceFromContext(ctx context.Context) usage.Price {
+	if ctx == nil {
+		return usage.Price{}
+	}
+	price, _ := ctx.Value(modelPriceKey{}).(usage.Price)
+	return price
 }
 
 // ModelName returns the configured model identifier used for metrics and the
@@ -72,7 +94,7 @@ func RecordUsage(ctx context.Context, input []*schema.Message, message *schema.M
 	}
 	modelName := ModelName(ctx)
 	if recorder := usage.FromContext(ctx); recorder != nil {
-		recorder.RecordLLM(modelName, promptTokens, completionTokens, estimated)
+		recorder.RecordLLMWithPrice(modelName, promptTokens, completionTokens, estimated, ModelPriceFromContext(ctx))
 	}
 	metrics.RecordLLMCall(modelName, promptTokens, completionTokens, latency, estimated)
 }
@@ -85,6 +107,14 @@ func GenerateWithUsage(ctx context.Context, chat model.BaseChatModel, input []*s
 	}
 	started := time.Now()
 	message, err := chat.Generate(ctx, input, opts...)
-	RecordUsage(ctx, input, message, time.Since(started))
+	recordCtx := ctx
+	if provider, ok := chat.(interface {
+		ResolvedModelPrice(context.Context) (float64, float64)
+	}); ok {
+		if promptPrice, completionPrice := provider.ResolvedModelPrice(ctx); promptPrice > 0 || completionPrice > 0 {
+			recordCtx = WithModelPrice(recordCtx, promptPrice, completionPrice)
+		}
+	}
+	RecordUsage(recordCtx, input, message, time.Since(started))
 	return message, err
 }

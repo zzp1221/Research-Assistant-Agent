@@ -9,7 +9,8 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go build -o bin/api cmd/api/main.go
+    go build -o bin/api cmd/api/main.go \
+    && go build -o bin/mockmcp cmd/mockmcp/main.go
 
 # 使用轻量级镜像运行
 FROM debian:bookworm-slim
@@ -32,7 +33,8 @@ RUN if [ -f /etc/apt/sources.list ]; then \
     apt-get -o Acquire::Retries=5 update \
     && apt-get -o Acquire::Retries=5 install -y --no-install-recommends ca-certificates git poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim \
     && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/bin/api .
+COPY --from=builder /app/bin/api ./api
+COPY --from=builder /app/bin/mockmcp ./mockmcp
 
 # 暴露端口
 EXPOSE 8080

@@ -8,22 +8,16 @@ const agentLabels: Record<string, string> = {
   benchmark_agent: '评测智能体',
   research_coding_agent: '科研 Coding 智能体',
   general_agent: '通用智能体',
+  answer_agent: '回答智能体',
+  tool_executor: '工具执行器',
 };
 
-/** Proof marks, not traffic-light colours: the glyph is the primary signal. */
-const proofMarks = {
-  pending: '○',
-  ready: '◔',
-  in_progress: '◐',
-  completed: '✓',
-  failed: '✗',
-  blocked: '▲',
-  canceled: '—',
-  skipped: '—',
-  awaiting_approval: '⚠',
-} as const;
-
-export const getAgentLabel = (agentName: string) => agentLabels[agentName] ?? agentName;
+export const getAgentLabel = (agentName: string) => {
+  if (agentName.startsWith('profile:')) {
+    return `自定义 Agent · ${agentName.slice(8, 16)}`;
+  }
+  return agentLabels[agentName] ?? agentName;
+};
 
 export const getAgentIcon = (agentName: string, className = 'h-3.5 w-3.5 text-muted') => {
   switch (agentName) {
@@ -39,32 +33,35 @@ export const getAgentIcon = (agentName: string, className = 'h-3.5 w-3.5 text-mu
       return <Gauge className={className} />;
     case 'research_coding_agent':
       return <FlaskConical className={className} />;
+    case 'tool_executor':
+      return <TerminalSquare className={className} />;
     default:
       return <Bot className={className} />;
   }
 };
 
-export const getProofMark = (status?: string) => proofMarks[(status ?? 'pending') as keyof typeof proofMarks] ?? '○';
-
-export const statusTone: Record<string, { color: string; soft: string; border: string; label: string; glyph: string }> = {
-  pending: { color: '#6b6156', soft: '#f4f1ea', border: '#d8d0c2', label: '等待', glyph: '○' },
-  ready: { color: '#3b342c', soft: '#f4f1ea', border: '#bdb2a0', label: '就绪', glyph: '◔' },
-  in_progress: { color: '#7a4a12', soft: '#f6efe2', border: '#d4b98d', label: '进行中', glyph: '◐' },
-  completed: { color: '#14603f', soft: '#e9f0ea', border: '#b3c8b9', label: '已完成', glyph: '✓' },
-  failed: { color: '#8c2c2c', soft: '#f3e7e4', border: '#d5b3ae', label: '失败', glyph: '✗' },
-  blocked: { color: '#6b6156', soft: '#f4f1ea', border: '#c6bdb0', label: '已阻塞', glyph: '▲' },
-  canceled: { color: '#6b6156', soft: '#f4f1ea', border: '#d8d0c2', label: '已取消', glyph: '—' },
-  skipped: { color: '#6b6156', soft: '#f4f1ea', border: '#d8d0c2', label: '已跳过', glyph: '—' },
-  awaiting_approval: { color: '#8c2c2c', soft: '#f3e7e4', border: '#d5b3ae', label: '待批', glyph: '⚠' },
+/** Status is shown as a small dot + word, never as a traffic-light fill. */
+export const statusTone: Record<string, { color: string; soft: string; border: string; label: string }> = {
+  pending: { color: '#657368', soft: '#f4f7f1', border: '#d6e0d4', label: '等待' },
+  ready: { color: '#35443a', soft: '#f4f7f1', border: '#d6e0d4', label: '就绪' },
+  in_progress: { color: '#1f6b4f', soft: '#e8f2e9', border: '#c7dfcf', label: '运行中' },
+  completed: { color: '#2f7b58', soft: '#eef7ef', border: '#c7dfcf', label: '已完成' },
+  failed: { color: '#b14a3a', soft: '#f8ebe7', border: '#e3c6bf', label: '失败' },
+  blocked: { color: '#8a5a16', soft: '#f8efe1', border: '#e7d4b6', label: '已阻塞' },
+  canceled: { color: '#657368', soft: '#f4f7f1', border: '#d6e0d4', label: '已取消' },
+  skipped: { color: '#657368', soft: '#f4f7f1', border: '#d6e0d4', label: '已跳过' },
+  awaiting_approval: { color: '#b14a3a', soft: '#f8ebe7', border: '#e3c6bf', label: '待批准' },
+  awaiting_review: { color: '#8a5a16', soft: '#f8efe1', border: '#e7d4b6', label: '待审阅' },
+  awaiting_input: { color: '#4b5f8a', soft: '#eef1f8', border: '#cdd5e6', label: '待回答' },
 };
 
 export const getTaskStyleByStatus = (status?: string) => {
   const tone = statusTone[status ?? 'pending'] ?? statusTone.pending;
   return {
-    borderColor: '#bdb2a0',
-    backgroundColor: '#fbfaf7',
-    borderLeftColor: tone.border,
-    borderTopColor: tone.color,
+    borderColor: '#e2e9df',
+    backgroundColor: '#ffffff',
+    borderLeftColor: '#e2e9df',
+    borderTopColor: tone.border,
   };
 };
 

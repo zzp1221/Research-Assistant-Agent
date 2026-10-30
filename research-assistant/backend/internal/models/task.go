@@ -15,6 +15,11 @@ const (
 	StatusSkipped          TaskStatus = "skipped"
 	StatusCanceled         TaskStatus = "canceled"
 	StatusAwaitingApproval TaskStatus = "awaiting_approval"
+	// StatusAwaitingReview means the plan is fully planned but a human must
+	// review the revision before it may execute.
+	StatusAwaitingReview TaskStatus = "awaiting_review"
+	// StatusAwaitingInput means a task is paused on a structured question.
+	StatusAwaitingInput TaskStatus = "awaiting_input"
 )
 
 // Task represents a single node in the execution DAG

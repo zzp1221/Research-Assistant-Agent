@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"research-assistant-backend/internal/agentprofile"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/planner"
 	"research-assistant-backend/internal/prompts"
+	"research-assistant-backend/internal/tools"
 	"research-assistant-backend/internal/workspace"
 	"strings"
 	"time"
@@ -66,6 +68,20 @@ type RoutedTaskExecutor struct {
 	ResearchCoding AgentRunner
 	Benchmark      AgentRunner
 	Answer         AgentRunner
+	// Profiles resolves custom AgentProfile records for profile:<id> nodes.
+	Profiles *agentprofile.Registry
+	// ProfileRunner executes profile-bound LLM tasks.
+	ProfileRunner AgentRunner
+	// ToolInvoker executes tool_call nodes.
+	ToolInvoker *tools.Invoker
+}
+
+// SetAgentRuntime wires the tool and agent-profile runtime. It is separate from
+// the constructor so existing callers (tests, embedded runners) keep working.
+func (e *RoutedTaskExecutor) SetAgentRuntime(profiles *agentprofile.Registry, profileRunner AgentRunner, invoker *tools.Invoker) {
+	e.Profiles = profiles
+	e.ProfileRunner = profileRunner
+	e.ToolInvoker = invoker
 }
 
 func NewRoutedTaskExecutor(librarian, data, coder AgentRunner, specialized ...AgentRunner) *RoutedTaskExecutor {
@@ -102,6 +118,32 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		}, nil
 	}
 
+	// Resolve a custom AgentProfile before building the runtime task so its
+	// prompt/model/tool allowlist is the authoritative contract. Unknown
+	// profiles are a hard error: silently falling back to general_agent would
+	// bypass the profile's permissions (N-13 3.5).
+	var resolvedProfile *models.AgentProfile
+	if strings.HasPrefix(task.AssignedTo, "profile:") {
+		if e.Profiles == nil {
+			return &models.TaskExecutionResult{
+				Status: models.StatusFailed,
+				Error:  "unknown_agent_profile: agent profile registry is not configured",
+			}, nil
+		}
+		profileID := task.AssignedTo
+		profile, profileErr := e.Profiles.GetProfileForOwner(plan.OwnerID, profileID)
+		if profileErr != nil {
+			return &models.TaskExecutionResult{
+				Status: models.StatusFailed,
+				Error:  "unknown_agent_profile: " + profileID,
+			}, nil
+		}
+		resolvedProfile = &profile
+	}
+	contract := task.Contract
+	if resolvedProfile != nil {
+		contract.AllowedTools = intersectAllowedTools(task.Contract.AllowedTools, resolvedProfile.ToolAllowlist)
+	}
 	runtimeTask := &models.Task{
 		ID:                task.ID,
 		Name:              task.Name,
@@ -116,6 +158,7 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		Priority:          task.Priority,
 		RetryLimit:        task.RetryLimit,
 		RunCount:          task.RunCount,
+		Contract:          contract,
 		Inputs:            inputs,
 		Metadata: map[string]any{
 			"plan_id":        plan.ID,
@@ -126,6 +169,11 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		CreatedAt: task.CreatedAt,
 		UpdatedAt: task.UpdatedAt,
 	}
+	if resolvedProfile != nil {
+		runtimeTask.Metadata["agent_profile_id"] = resolvedProfile.ID
+		runtimeTask.Metadata["prompt_version_id"] = resolvedProfile.PromptVersionID
+		runtimeTask.Metadata["model_profile_id"] = resolvedProfile.ModelProfileID
+	}
 
 	// Every agent receives host paths. Enforce the allowed roots centrally so a
 	// stray artifact/plan input cannot turn into an arbitrary host read or bind
@@ -134,6 +182,33 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		return &models.TaskExecutionResult{
 			Status: models.StatusFailed,
 			Error:  err.Error(),
+		}, nil
+	}
+
+	// tool_call is a first-class node: it invokes a registered tool through the
+	// ToolInvoker, which enforces the profile/node allowlist, schema, grant and
+	// approval contract before any side effect happens.
+	if task.Type == "tool_call" {
+		return e.executeToolCall(ctx, plan, task, runtimeTask), nil
+	}
+
+	// ask_user_question is a control node, not an LLM call. It either returns
+	// the answer already written back by the answer endpoint, or pauses the
+	// task with a structured question for the frontend to render.
+	if task.Type == "ask_user_question" {
+		if answer, ok := runtimeTask.Inputs["question_answer"]; ok && strings.TrimSpace(fmt.Sprint(answer)) != "" {
+			return &models.TaskExecutionResult{
+				Status: models.StatusCompleted,
+				Result: fmt.Sprint(answer),
+				Metadata: map[string]any{
+					"question_answered": true,
+				},
+			}, nil
+		}
+		question := questionFromTaskInputs(runtimeTask)
+		return &models.TaskExecutionResult{
+			Status:   models.StatusAwaitingInput,
+			Question: question,
 		}, nil
 	}
 
@@ -245,11 +320,14 @@ func promptMetadataFromTask(runtimeTask *models.Task) map[string]any {
 		return nil
 	}
 	out := map[string]any{}
-	if report, ok := runtimeTask.Metadata["prompt_budget"]; ok {
-		out["prompt_budget"] = report
-	}
-	if truncated, ok := runtimeTask.Metadata["prompt_truncated_sections"]; ok {
-		out["prompt_truncated_sections"] = truncated
+	for _, key := range []string{
+		"prompt_budget", "prompt_truncated_sections",
+		"agent_profile_id", "prompt_version_id", "prompt_version", "prompt_hash",
+		"model_profile_id", "model", "max_steps",
+	} {
+		if value, ok := runtimeTask.Metadata[key]; ok {
+			out[key] = value
+		}
 	}
 	if len(out) == 0 {
 		return nil
@@ -298,6 +376,12 @@ func missingRequirementsFromTask(runtimeTask *models.Task) []models.MissingRequi
 }
 
 func (e *RoutedTaskExecutor) resolveRunner(assignedTo string) (AgentRunner, error) {
+	if strings.HasPrefix(assignedTo, "profile:") {
+		if e.ProfileRunner != nil {
+			return e.ProfileRunner, nil
+		}
+		return nil, fmt.Errorf("no profile runner configured for %s", assignedTo)
+	}
 	switch assignedTo {
 	case "librarian_agent":
 		if e.Librarian != nil {
@@ -620,5 +704,217 @@ func truncateArtifactValue(value string) string {
 
 func nodeArtifactFallback(key string) string {
 	_ = key
+	return ""
+}
+
+// questionFromTaskInputs builds the question a task wants to ask. The plan
+// editor can predefine it through node inputs; otherwise a safe default is
+// derived from the task name so the user still gets an actionable prompt.
+func questionFromTaskInputs(task *models.Task) *models.PlanQuestion {
+	question := &models.PlanQuestion{
+		Header:        "需要你的决定",
+		Prompt:        "请确认继续执行 " + task.Name + " 的方式。",
+		AllowFreeText: true,
+	}
+	if task == nil {
+		return question
+	}
+	inputs := task.Inputs
+	if inputs == nil {
+		return question
+	}
+	if value, ok := inputs["question_header"].(string); ok && strings.TrimSpace(value) != "" {
+		question.Header = strings.TrimSpace(value)
+	}
+	if value, ok := inputs["question_prompt"].(string); ok && strings.TrimSpace(value) != "" {
+		question.Prompt = strings.TrimSpace(value)
+	}
+	if value, ok := inputs["question_default"].(string); ok {
+		question.DefaultOption = strings.TrimSpace(value)
+	}
+	if value, ok := inputs["question_allow_free_text"].(bool); ok {
+		question.AllowFreeText = value
+	}
+	if value, ok := inputs["question_multi_select"].(bool); ok {
+		question.MultiSelect = value
+	}
+	if raw, ok := inputs["question_options"]; ok {
+		question.Options = parseQuestionOptions(raw)
+	}
+	return question
+}
+
+func parseQuestionOptions(raw any) []models.QuestionOption {
+	options := []models.QuestionOption{}
+	switch typed := raw.(type) {
+	case []models.QuestionOption:
+		return typed
+	case []any:
+		for index, item := range typed {
+			entry, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			option := models.QuestionOption{}
+			if value, ok := entry["id"].(string); ok {
+				option.ID = value
+			}
+			if option.ID == "" {
+				option.ID = fmt.Sprintf("option-%d", index+1)
+			}
+			if value, ok := entry["label"].(string); ok {
+				option.Label = value
+			}
+			if value, ok := entry["description"].(string); ok {
+				option.Description = value
+			}
+			options = append(options, option)
+		}
+	case []map[string]any:
+		for index, entry := range typed {
+			option := models.QuestionOption{}
+			if value, ok := entry["id"].(string); ok {
+				option.ID = value
+			}
+			if option.ID == "" {
+				option.ID = fmt.Sprintf("option-%d", index+1)
+			}
+			if value, ok := entry["label"].(string); ok {
+				option.Label = value
+			}
+			if value, ok := entry["description"].(string); ok {
+				option.Description = value
+			}
+			options = append(options, option)
+		}
+	}
+	return options
+}
+
+// intersectAllowedTools returns the effective tool allowlist. nil means "no
+// restriction was declared"; an empty non-nil slice means "nothing allowed",
+// which is the correct default for a profile with an empty allowlist.
+func intersectAllowedTools(nodeAllowed, profileAllowed []string) []string {
+	if profileAllowed == nil {
+		return nodeAllowed
+	}
+	if nodeAllowed == nil {
+		return append([]string{}, profileAllowed...)
+	}
+	out := make([]string, 0, len(nodeAllowed))
+	for _, candidate := range nodeAllowed {
+		for _, allowed := range profileAllowed {
+			if strings.EqualFold(strings.TrimSpace(candidate), strings.TrimSpace(allowed)) {
+				out = append(out, candidate)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// executeToolCall runs one tool_call node and converts the invoker result into
+// the scheduler-facing result. The ToolCallRecord travels back to the scheduler
+// so it is merged into the plan inside the same state transition.
+func (e *RoutedTaskExecutor) executeToolCall(ctx context.Context, plan *models.PlanGraph, task *models.TaskNode, runtimeTask *models.Task) *models.TaskExecutionResult {
+	if e.ToolInvoker == nil {
+		return &models.TaskExecutionResult{Status: models.StatusFailed, Error: "tool_invoker_unavailable: tool runtime is not configured"}
+	}
+	toolID := strings.TrimSpace(taskInputString(runtimeTask.Inputs, "tool_id"))
+	if toolID == "" {
+		toolID = strings.TrimSpace(taskInputString(task.Inputs, "tool_id"))
+	}
+	if toolID == "" {
+		return &models.TaskExecutionResult{Status: models.StatusFailed, Error: "tool_invalid_arguments: tool_id is required"}
+	}
+	arguments := toolArguments(task, runtimeTask)
+	callID := strings.TrimSpace(taskInputString(runtimeTask.Inputs, "call_id"))
+	if callID == "" {
+		callID = strings.TrimSpace(taskInputString(task.Inputs, "call_id"))
+	}
+	profileID := ""
+	if runtimeTask.Metadata != nil {
+		if value, ok := runtimeTask.Metadata["agent_profile_id"].(string); ok {
+			profileID = value
+		}
+	}
+	approvalID := approvedToolActionID(plan, task.ID, toolID, callID)
+	invoke := e.ToolInvoker.Invoke(ctx, tools.InvokeRequest{
+		PlanID:         plan.ID,
+		TaskID:         task.ID,
+		ToolID:         toolID,
+		ToolVersion:    strings.TrimSpace(taskInputString(runtimeTask.Inputs, "tool_version")),
+		Arguments:      arguments,
+		AllowedTools:   runtimeTask.Contract.AllowedTools,
+		AgentProfileID: profileID,
+		OwnerID:        plan.OwnerID,
+		ApprovalID:     approvalID,
+		CallID:         callID,
+	})
+	result := &models.TaskExecutionResult{
+		Status:   models.StatusCompleted,
+		Result:   invoke.Text,
+		ToolCall: &invoke.Record,
+		Metadata: map[string]any{
+			"tool_id":      invoke.Record.ToolID,
+			"tool_version": invoke.Record.ToolVersion,
+			"tool_status":  invoke.Record.Status,
+		},
+	}
+	if invoke.JSON != nil {
+		if encoded, err := json.Marshal(invoke.JSON); err == nil {
+			result.StructuredData = string(encoded)
+		}
+	}
+	if invoke.Record.Status != models.ToolCallCompleted {
+		result.Status = models.StatusFailed
+		result.Error = chooseNonEmpty(invoke.Record.ErrorCode, "tool_execution_failed") + ": " + chooseNonEmpty(invoke.Record.Error, "tool call failed")
+		return result
+	}
+	runtimeTask.Result = invoke.Text
+	runtimeTask.Status = models.StatusCompleted
+	result.Artifacts = buildArtifacts(task, runtimeTask)
+	return result
+}
+
+func toolArguments(task *models.TaskNode, runtimeTask *models.Task) map[string]any {
+	var raw any
+	if task != nil && task.Inputs != nil {
+		raw = task.Inputs["arguments"]
+	}
+	if raw == nil && runtimeTask != nil && runtimeTask.Inputs != nil {
+		raw = runtimeTask.Inputs["arguments"]
+	}
+	switch typed := raw.(type) {
+	case map[string]any:
+		return typed
+	case string:
+		var decoded map[string]any
+		if json.Unmarshal([]byte(typed), &decoded) == nil {
+			return decoded
+		}
+	}
+	return map[string]any{}
+}
+
+func approvedToolActionID(plan *models.PlanGraph, taskID, toolID, callID string) string {
+	if plan == nil {
+		return ""
+	}
+	for i := range plan.RuntimeActions {
+		action := plan.RuntimeActions[i]
+		if action.TaskID != taskID || action.Kind != models.RuntimeActionToolCall || action.Status != models.RuntimeActionApproved {
+			continue
+		}
+		if callID != "" {
+			if value, _ := action.Details["call_id"].(string); value == callID {
+				return action.ID
+			}
+			continue
+		}
+		if value, _ := action.Details["tool_id"].(string); value == toolID {
+			return action.ID
+		}
+	}
 	return ""
 }

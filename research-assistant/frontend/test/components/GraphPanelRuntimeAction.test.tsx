@@ -44,6 +44,7 @@ describe('GraphPanel runtime action card', () => {
     }));
 
     render(<GraphPanel {...baseProps} onRuntimeActionDecision={onRuntimeActionDecision} />);
+    fireEvent.click(screen.getByRole('button', { name: /待办 1/ }));
 
     expect(screen.getByText('安装论文依赖')).toBeInTheDocument();
     expect(screen.getByText(/依赖 mock==2\.0\.0/)).toBeInTheDocument();

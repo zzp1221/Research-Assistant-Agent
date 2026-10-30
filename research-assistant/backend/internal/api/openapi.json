@@ -54,7 +54,9 @@
               "awaiting_approval",
               "completed",
               "failed",
-              "canceled"
+              "canceled",
+              "awaiting_review",
+              "awaiting_input"
             ]
           },
           "outcome": {
@@ -528,6 +530,357 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          }
+        }
+      },
+      "ToolDefinition": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "owner_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "transport": {
+            "type": "string",
+            "enum": [
+              "native",
+              "http",
+              "mcp_stdio",
+              "mcp_http"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "input_schema": {
+            "type": "string"
+          },
+          "output_schema": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "side_effect": {
+            "type": "boolean"
+          },
+          "timeout_sec": {
+            "type": "integer"
+          },
+          "max_output_bytes": {
+            "type": "integer"
+          },
+          "approval": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "builtin": {
+            "type": "boolean"
+          },
+          "server_id": {
+            "type": "string"
+          },
+          "remote_name": {
+            "type": "string"
+          }
+        }
+      },
+      "MCPServer": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "owner_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "transport": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "env_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "url": {
+            "type": "string"
+          },
+          "header_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "last_error": {
+            "type": "string"
+          }
+        }
+      },
+      "ToolGrant": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "owner_id": {
+            "type": "string"
+          },
+          "agent_profile_id": {
+            "type": "string"
+          },
+          "tool_id": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "approval": {
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ToolCallRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "plan_id": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "tool_id": {
+            "type": "string"
+          },
+          "tool_version": {
+            "type": "string"
+          },
+          "agent_profile_id": {
+            "type": "string"
+          },
+          "arguments": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "arguments_hash": {
+            "type": "string"
+          },
+          "result_hash": {
+            "type": "string"
+          },
+          "result_preview": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "error_code": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "approval_id": {
+            "type": "string"
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "output_bytes": {
+            "type": "integer"
+          },
+          "replay_of": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "duration_ms": {
+            "type": "integer"
+          }
+        }
+      },
+      "AgentProfile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "owner_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "prompt_version_id": {
+            "type": "string"
+          },
+          "model_profile_id": {
+            "type": "string"
+          },
+          "tool_allowlist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "max_steps": {
+            "type": "integer"
+          },
+          "output_schema": {
+            "type": "string"
+          },
+          "builtin": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PromptVersion": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "owner_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "template": {
+            "type": "string"
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "active",
+              "archived"
+            ]
+          },
+          "eval_score": {
+            "type": "number"
+          },
+          "eval_detail": {
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PromptEvalResult": {
+        "type": "object",
+        "properties": {
+          "prompt_version_id": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "passed": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "evaluated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cases": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "passed": {
+                  "type": "boolean"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "detail": {
+                  "type": "string"
+                }
+              }
             }
           }
         }
@@ -1343,7 +1696,11 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["relevance", "citations", "year"],
+              "enum": [
+                "relevance",
+                "citations",
+                "year"
+              ],
               "default": "relevance"
             }
           },
@@ -1447,13 +1804,49 @@
         "operationId": "listLiteratureRecords",
         "summary": "List the caller's literature library",
         "parameters": [
-          {"name": "q", "in": "query", "schema": {"type": "string"}},
-          {"name": "tag", "in": "query", "schema": {"type": "string"}},
-          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 200}},
-          {"name": "cursor", "in": "query", "schema": {"type": "integer", "minimum": 0}}
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
         ],
         "responses": {
-          "200": {"description": "Owner-scoped records", "content": {"application/json": {"schema": {"type": "object"}}}}
+          "200": {
+            "description": "Owner-scoped records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -1461,12 +1854,26 @@
       "get": {
         "operationId": "getLiteratureRecord",
         "summary": "Read one literature record",
-        "responses": {"200": {"description": "Record"}, "404": {"description": "Not found"}}
+        "responses": {
+          "200": {
+            "description": "Record"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
       },
       "delete": {
         "operationId": "deleteLiteratureRecord",
         "summary": "Delete one literature record (the upload is kept)",
-        "responses": {"200": {"description": "Deleted"}, "404": {"description": "Not found"}}
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
       }
     },
     "/api/literature/records/{id}/attach": {
@@ -1476,11 +1883,25 @@
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": {"type": "object", "properties": {"session_id": {"type": "string"}}}
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "session_id": {
+                    "type": "string"
+                  }
+                }
+              }
             }
           }
         },
-        "responses": {"200": {"description": "Record"}, "404": {"description": "Not found"}}
+        "responses": {
+          "200": {
+            "description": "Record"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
       },
       "delete": {
         "operationId": "detachLiteratureRecord",
@@ -1488,11 +1909,25 @@
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": {"type": "object", "properties": {"session_id": {"type": "string"}}}
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "session_id": {
+                    "type": "string"
+                  }
+                }
+              }
             }
           }
         },
-        "responses": {"200": {"description": "Record"}, "404": {"description": "Not found"}}
+        "responses": {
+          "200": {
+            "description": "Record"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
       }
     },
     "/api/literature/records/{id}/bibtex": {
@@ -1500,8 +1935,19 @@
         "operationId": "exportLiteratureBibTeX",
         "summary": "Export one record as BibTeX",
         "responses": {
-          "200": {"description": "BibTeX", "content": {"text/plain": {"schema": {"type": "string"}}}},
-          "404": {"description": "Not found"}
+          "200": {
+            "description": "BibTeX",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
         }
       }
     },
@@ -1510,12 +1956,38 @@
         "operationId": "getLiteratureCitations",
         "summary": "References and citing works for a DOI (OpenAlex)",
         "parameters": [
-          {"name": "doi", "in": "path", "required": true, "schema": {"type": "string"}},
-          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 100}}
+          {
+            "name": "doi",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
         ],
         "responses": {
-          "200": {"description": "Citation graph", "content": {"application/json": {"schema": {"type": "object"}}}},
-          "404": {"description": "DOI not found"}
+          "200": {
+            "description": "Citation graph",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "DOI not found"
+          }
         }
       }
     },
@@ -1529,17 +2001,42 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["url"],
-                "properties": {"url": {"type": "string", "format": "uri"}, "max_bytes": {"type": "integer"}}
+                "required": [
+                  "url"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "max_bytes": {
+                    "type": "integer"
+                  }
+                }
               }
             }
           }
         },
         "responses": {
-          "200": {"description": "Extracted page", "content": {"application/json": {"schema": {"type": "object"}}}},
-          "403": {"description": "SSRF or robots.txt denial"},
-          "415": {"description": "Unsupported content type"},
-          "504": {"description": "Fetch timeout"}
+          "200": {
+            "description": "Extracted page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "SSRF or robots.txt denial"
+          },
+          "415": {
+            "description": "Unsupported content type"
+          },
+          "504": {
+            "description": "Fetch timeout"
+          }
         }
       }
     },
@@ -1548,11 +2045,30 @@
         "operationId": "getUploadDocumentQuoteLocation",
         "summary": "Locate a quote with page, byte offset and layout block id",
         "parameters": [
-          {"name": "quote", "in": "query", "required": true, "schema": {"type": "string", "maxLength": 2000}}
+          {
+            "name": "quote",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 2000
+            }
+          }
         ],
         "responses": {
-          "200": {"description": "Quote location", "content": {"application/json": {"schema": {"type": "object"}}}},
-          "404": {"description": "Quote not found"}
+          "200": {
+            "description": "Quote location",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Quote not found"
+          }
         }
       }
     },
@@ -1560,28 +2076,64 @@
       "get": {
         "operationId": "getUploadDocumentQuality",
         "summary": "Per-page OCR/text quality report",
-        "responses": {"200": {"description": "Quality report", "content": {"application/json": {"schema": {"type": "object"}}}}}
+        "responses": {
+          "200": {
+            "description": "Quality report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/uploads/{id}/document/pages/{page}/layout": {
       "get": {
         "operationId": "getUploadDocumentPageLayout",
         "summary": "Layout blocks with bounding boxes for one page",
-        "responses": {"200": {"description": "Blocks", "content": {"application/json": {"schema": {"type": "object"}}}}}
+        "responses": {
+          "200": {
+            "description": "Blocks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/uploads/{id}/document/tables/{tableId}": {
       "get": {
         "operationId": "getUploadDocumentTable",
         "summary": "Structured table as JSON or CSV (format=csv)",
-        "responses": {"200": {"description": "Table"}, "404": {"description": "Table not found"}}
+        "responses": {
+          "200": {
+            "description": "Table"
+          },
+          "404": {
+            "description": "Table not found"
+          }
+        }
       }
     },
     "/api/uploads/{id}/document/figures/{figureId}": {
       "get": {
         "operationId": "getUploadDocumentFigure",
         "summary": "Figure image (PNG) or metadata (format=json)",
-        "responses": {"200": {"description": "Figure"}, "404": {"description": "Figure not found"}}
+        "responses": {
+          "200": {
+            "description": "Figure"
+          },
+          "404": {
+            "description": "Figure not found"
+          }
+        }
       }
     },
     "/api/metrics": {
@@ -1873,6 +2425,1170 @@
           },
           "400": {
             "description": "Referenced profile is not visible"
+          }
+        }
+      }
+    },
+    "/api/plans/{id}/revisions": {
+      "get": {
+        "operationId": "listPlanRevisions",
+        "summary": "List immutable plan revisions",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          },
+          {
+            "name": "include_graph",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createPlanRevision",
+        "summary": "Create a draft revision from an edited graph",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "base_revision",
+                  "graph"
+                ],
+                "properties": {
+                  "base_revision": {
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "graph": {
+                    "$ref": "#/components/schemas/PlanGraph"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Draft revision created"
+          },
+          "409": {
+            "description": "revision_conflict or plan_running"
+          }
+        }
+      }
+    },
+    "/api/plans/{id}/revisions/{revision}": {
+      "get": {
+        "operationId": "getPlanRevision",
+        "summary": "Get one revision including its graph snapshot",
+        "responses": {
+          "200": {
+            "description": "Revision"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/plans/{id}/revisions/{revision}/validate": {
+      "post": {
+        "operationId": "validatePlanRevision",
+        "summary": "Validate an edited plan revision",
+        "responses": {
+          "200": {
+            "description": "valid + errors[]"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/plans/{id}/revisions/{revision}/approve": {
+      "post": {
+        "operationId": "approvePlanRevision",
+        "summary": "Approve the review gate for a revision",
+        "responses": {
+          "200": {
+            "description": "Approved"
+          },
+          "409": {
+            "description": "Not latest or running"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/plans/{id}/revisions/{revision}/reject": {
+      "post": {
+        "operationId": "rejectPlanRevision",
+        "summary": "Reject the review gate for a revision",
+        "responses": {
+          "200": {
+            "description": "Rejected"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/plans/{id}/revisions/{revision}/execute": {
+      "post": {
+        "operationId": "executePlanRevision",
+        "summary": "Execute a specific approved revision",
+        "responses": {
+          "202": {
+            "description": "Execution started"
+          },
+          "409": {
+            "description": "plan_running or review_pending"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/plans/{id}/diff": {
+      "get": {
+        "operationId": "getPlanRevisionDiff",
+        "summary": "Field-level diff between two revisions",
+        "responses": {
+          "200": {
+            "description": "diff[]"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/plans/{id}/questions": {
+      "get": {
+        "operationId": "listPlanQuestions",
+        "summary": "List structured questions for a plan",
+        "responses": {
+          "200": {
+            "description": "questions[]"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createPlanQuestion",
+        "summary": "Ask the user a structured question (agent tool endpoint)",
+        "responses": {
+          "200": {
+            "description": "Question created"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          }
+        ]
+      }
+    },
+    "/api/plans/{id}/questions/{questionId}/answer": {
+      "post": {
+        "operationId": "answerPlanQuestion",
+        "summary": "Answer a pending question and resume the task",
+        "responses": {
+          "200": {
+            "description": "Answered"
+          },
+          "409": {
+            "description": "Not pending"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PlanID"
+          },
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/approvals": {
+      "get": {
+        "operationId": "listApprovals",
+        "summary": "Cross-plan pending approval and question inbox",
+        "responses": {
+          "200": {
+            "description": "items[] + next_cursor"
+          }
+        },
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "all"
+              ]
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "approval",
+                "question",
+                "all"
+              ]
+            }
+          },
+          {
+            "name": "plan_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/approvals/bulk": {
+      "post": {
+        "operationId": "bulkDecideApprovals",
+        "summary": "Bulk approve/reject low-risk runtime actions",
+        "responses": {
+          "200": {
+            "description": "Decided ids"
+          },
+          "400": {
+            "description": "high_risk_requires_individual"
+          }
+        }
+      }
+    },
+    "/api/tools": {
+      "get": {
+        "operationId": "listTools",
+        "summary": "List visible tools and MCP servers",
+        "responses": {
+          "200": {
+            "description": "Tools",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tools": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ToolDefinition"
+                      }
+                    },
+                    "servers": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MCPServer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "registerTool",
+        "summary": "Register a native/HTTP tool or an MCP server (performs initialize + tools/list)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Registered tool or server"
+          },
+          "400": {
+            "description": "Invalid tool"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      }
+    },
+    "/api/tools/{id}": {
+      "get": {
+        "operationId": "getTool",
+        "summary": "Get tool details",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolDefinition"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateTool",
+        "summary": "Update tool metadata (versions are immutable)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated tool",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolDefinition"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteTool",
+        "summary": "Disable a tool or delete an MCP server",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Disabled"
+          }
+        }
+      }
+    },
+    "/api/tools/{id}/schema": {
+      "get": {
+        "operationId": "getToolSchema",
+        "summary": "Get tool JSON schemas",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schemas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "input_schema": {
+                      "type": "string"
+                    },
+                    "output_schema": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tools/{id}/test": {
+      "post": {
+        "operationId": "testTool",
+        "summary": "Invoke a tool with test arguments (dry-run by default)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "arguments": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "dry_run": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "record": {
+                      "$ref": "#/components/schemas/ToolCallRecord"
+                    },
+                    "output": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tool-grants": {
+      "get": {
+        "operationId": "listToolGrants",
+        "summary": "List tool grants",
+        "responses": {
+          "200": {
+            "description": "Grants",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "grants": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ToolGrant"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createToolGrant",
+        "summary": "Grant an AgentProfile access to a tool",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "agent_profile_id": {
+                    "type": "string"
+                  },
+                  "tool_id": {
+                    "type": "string"
+                  },
+                  "scopes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "approval": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Grant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolGrant"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tool-grants/{id}": {
+      "delete": {
+        "operationId": "deleteToolGrant",
+        "summary": "Delete a tool grant",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/api/agent-profiles": {
+      "get": {
+        "operationId": "listAgentProfiles",
+        "summary": "List builtin and custom AgentProfiles",
+        "responses": {
+          "200": {
+            "description": "Profiles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "profiles": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AgentProfile"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAgentProfile",
+        "summary": "Create a custom AgentProfile",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid profile"
+          }
+        }
+      }
+    },
+    "/api/agent-profiles/{id}": {
+      "put": {
+        "operationId": "updateAgentProfile",
+        "summary": "Update an AgentProfile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProfile"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteAgentProfile",
+        "summary": "Disable an AgentProfile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Disabled"
+          }
+        }
+      }
+    },
+    "/api/agent-profiles/{id}/eval": {
+      "post": {
+        "operationId": "evaluateAgentProfile",
+        "summary": "Evaluate the profile prompt",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Evaluation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/PromptEvalResult"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prompt-versions": {
+      "get": {
+        "operationId": "listPromptVersions",
+        "summary": "List prompt versions",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prompts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "prompts": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PromptVersion"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPromptVersion",
+        "summary": "Create a new immutable prompt version",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "template": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Prompt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptVersion"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prompt-versions/{id}": {
+      "get": {
+        "operationId": "getPromptVersion",
+        "summary": "Get a prompt version",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prompt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptVersion"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prompt-versions/{id}/activate": {
+      "post": {
+        "operationId": "activatePromptVersion",
+        "summary": "Move the active pointer (rollback)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prompt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptVersion"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prompt-versions/{id}/eval": {
+      "post": {
+        "operationId": "evaluatePromptVersion",
+        "summary": "Run prompt evaluation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Evaluation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/PromptEvalResult"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plans/from-graph": {
+      "post": {
+        "operationId": "importPlanGraph",
+        "summary": "Create a plan from an explicit graph (supports tool_call nodes)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "graph": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "require_review": {
+                    "type": "boolean"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "plan_graph": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/plans/{id}/tool-calls": {
+      "get": {
+        "operationId": "listToolCalls",
+        "summary": "List tool calls for a plan",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool calls",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tool_calls": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ToolCallRecord"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plans/{id}/tool-calls/{callId}/replay": {
+      "post": {
+        "operationId": "replayToolCall",
+        "summary": "Replay a tool call (dry-run by default; real replay requires approval)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "callId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "allow_side_effects": {
+                    "type": "boolean"
+                  },
+                  "approval_id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replay result"
+          },
+          "202": {
+            "description": "Pending approval"
+          },
+          "409": {
+            "description": "Approval required"
           }
         }
       }

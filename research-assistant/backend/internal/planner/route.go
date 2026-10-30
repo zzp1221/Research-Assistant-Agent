@@ -100,6 +100,22 @@ func (r *ComplexityRouter) Decide(ctx context.Context, intent models.IntentConte
 		}
 	}
 
+	// Cost policy is applied last: budget_first caps the template at L2 and
+	// never changes the classification evidence. The reason stays explainable.
+	if strings.EqualFold(strings.TrimSpace(fmt.Sprint(intent.Constraints["cost_policy"])), "budget_first") {
+		if levelRank(decision.Complexity) > levelRank(ComplexityL2) {
+			decision.Complexity = ComplexityL2
+			decision.Variant = variantForLevel(decision.Complexity, intent.IntentType)
+			decision.RouteHint = routeHintForLevel(decision.Complexity)
+			decision.Reason = strings.TrimSpace(decision.Reason + ",cost_policy_budget_first")
+			decision.Source = "merged"
+		} else if decision.Variant == "full" {
+			decision.Variant = "standard"
+			decision.Reason = strings.TrimSpace(decision.Reason + ",cost_policy_budget_first")
+			decision.Source = "merged"
+		}
+	}
+
 	// Optional lightweight confirmation only in the ambiguous band and only
 	// when the intent-level confidence is low.
 	if r.Confirmer != nil && score >= 5 && score <= 7 && intent.ComplexityConfidence < r.ConfidenceThreshold {

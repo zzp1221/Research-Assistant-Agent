@@ -11,10 +11,17 @@
 
 | 文件 | 职责 |
 |---|---|
-| `scheduler.go` | 调度循环、并发控制、节点状态机 |
-| `executor.go` | 单节点执行、Agent 调用、Artifact 写入 |
+| `scheduler.go` | 调度器核心、并发槽、停滞检测、结果外置与计划级清理 |
+| `scheduler_control.go` | pause / resume / cancel / retry / reassign / 从节点重跑 |
+| `scheduler_execute.go` | 计划与单节点执行入口、就绪节点提升 |
+| `scheduler_dispatch.go` | 就绪节点选择、并发派发、任务用量与日志转发 |
+| `scheduler_state.go` | 任务开始/完成状态迁移、Artifact 校验标注 |
+| `scheduler_lease_approval.go` | 失败处理、租约过期、审批超时、预算与阻塞 |
+| `scheduler_events.go` | 事件发布与终态汇总辅助 |
+| `executor.go` | 单节点执行、Agent 调用、Prompt 组装、Artifact 写入 |
 | `graph.go` | DAG 入度、就绪队列与依赖管理 |
 | `policy.go` | 调度策略与预算判断 |
+| `runtime_gate.go` | 运行时审批门禁（镜像/依赖/数据/GPU/网络） |
 | `repo_discovery.go` | GitHub 仓库发现、元数据与 revision 解析 |
 | `repo_prepare.go` | 克隆、工作区准备、依赖分析与运行时准备 |
 | `reproduction_mode.go` | 论文复现模式与 smoke 约束 |
@@ -32,7 +39,7 @@
 - 计划级：`pause` 停止派发新节点，运行中的节点自然结束；`resume` 继续；`cancel` 向运行节点传播 `context.Cancel`。
 - 任务级：`retry` 重置失败/阻塞/取消节点及其阻塞后继；`reassign` 修改 `assigned_to` 并重置任务；`run`（从节点重跑）重置指定节点及下游后重新执行。
 - `RuntimeActionRequest`：镜像拉取、依赖安装、数据/模型下载、GPU、网络访问等操作在 `confirm_important` 模式下暂停计划，等待计划所有者 `approve/reject`；`full_access` 在安全边界内自动执行并记录审计。
-- 运行时动作有超时窗口；拒绝或超时会终止计划并标记 `outcome=blocked`，不会把等待审批当作终态。
+- 运行时动作有超时窗口（`APPROVAL_TIMEOUT_SECONDS`）；拒绝或超时会终止计划并标记 `outcome=blocked`，不会把等待审批当作终态。
 
 ## 结果校验
 

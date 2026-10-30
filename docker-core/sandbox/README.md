@@ -6,20 +6,20 @@
 
 - **TTY 长连接**：通过 Docker SDK 劫持容器 Stdin/Stdout，命令直接写入持续运行的 bash。
 - **状态保持**：环境变量、工作目录和文件系统变更跨命令保留。
-- **EnvMap 注入**：每次执行前自动注入上下文变量，避免 Shell 切换导致路径丢失。
-- **双路日志**：审计轨道保存原始输出，推理轨道输出截断后的摘要。
-- **生命周期管理**：`Close` 时销毁容器并释放网络、临时卷和进程资源。
+- **EnvMap 注入**：`Session.UpdateEnvMap` 可在执行前批量同步上下文变量；`export KEY=VALUE` 也会被解析并记录。
+- **双路日志**：审计轨道保存原始输出，推理轨道在内存中缓冲并由 `Session.Execute` 返回。
+- **生命周期管理**：`Close` 时销毁容器并释放网络、临时卷和进程资源；`ReattachSession` 可在回滚重建容器后重建 TTY。
 
 ## 主要组件
 
 | 文件 | 职责 |
 |---|---|
-| `sandbox.go` | Sandbox 对象、创建/关闭与命令执行入口 |
-| `engine.go` | Docker 容器创建、启动、停止与删除 |
-| `session.go` | TTY 会话、读写管道与环境变量映射 |
+| `sandbox.go` | Sandbox 对象、创建/关闭、命令执行入口与 `ReattachSession` |
+| `engine.go` | Docker 容器创建、启动、停止、删除与 `RestartFrom` |
+| `session.go` | TTY 会话、读写管道、环境变量映射与超时中断 |
 | `stream_splitter.go` | 审计流与推理流的多路分发 |
-| `truncator.go` | 首尾截断、错误尾部提取 |
-| `config.go` | 镜像、工作目录、日志目录等配置 |
+| `truncator.go` | 首尾截断、省略行提示 |
+| `config.go` | 镜像、工作目录、日志目录、超时与资源限制 |
 
 ## 示例
 
@@ -35,11 +35,10 @@ import (
 
 func main() {
     ctx := context.Background()
-    cfg := sandbox.Config{
-        Image:       "ubuntu:22.04",
-        WorkingDir:  "/workspace",
-        AuditLogDir: "/var/logs/audit",
-    }
+    cfg := sandbox.DefaultConfig()
+    cfg.Image = "ubuntu:22.04"
+    cfg.WorkingDir = "/workspace"
+    cfg.AuditLogDir = "/var/logs/audit"
 
     box, err := sandbox.New(ctx, cfg)
     if err != nil {
@@ -47,13 +46,18 @@ func main() {
     }
     defer box.Close()
 
-    first, _ := box.Execute("export MY_VAR=hello_agent")
-    fmt.Println(first.InferenceSummary)
-
-    second, _ := box.Execute("echo $MY_VAR")
-    fmt.Println(second.InferenceSummary) // hello_agent
+    if _, err := box.Execute(ctx, "export MY_VAR=hello_agent"); err != nil {
+        panic(err)
+    }
+    out, err := box.Execute(ctx, "echo $MY_VAR")
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println(out) // hello_agent
 }
 ```
+
+如需推理摘要，可在上层对 `session.Execute` 返回的 `ExecResult.RawOutput` 调用 `sandbox.NewTruncator(n, m).Truncate(...)`；`Sandbox.Execute` 目前只返回原始输出。
 
 ## 测试
 
@@ -61,7 +65,7 @@ func main() {
 go test ./sandbox/...
 ```
 
-集成测试需要 Docker daemon。测试结束后应确认没有残留容器、未释放端口或临时镜像。
+集成测试需设置 `SANDBOX_INTEGRATION_TEST=1` 并使用 Docker daemon。测试结束后应确认没有残留容器、未释放端口或临时镜像。
 
 ## 边界
 

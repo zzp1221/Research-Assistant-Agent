@@ -18,16 +18,21 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"research-assistant-backend/internal/agentprofile"
 	"research-assistant-backend/internal/blobstore"
+	"research-assistant-backend/internal/budget"
 	"research-assistant-backend/internal/events"
 	intentpkg "research-assistant-backend/internal/intent"
 	"research-assistant-backend/internal/metrics"
 	"research-assistant-backend/internal/modelresolver"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/planner"
+	"research-assistant-backend/internal/project"
+	"research-assistant-backend/internal/revision"
 	"research-assistant-backend/internal/sandbox"
 	"research-assistant-backend/internal/scheduler"
 	"research-assistant-backend/internal/store"
+	"research-assistant-backend/internal/tools"
 
 	"github.com/gin-gonic/gin"
 )
@@ -37,10 +42,16 @@ const planStreamEventName = "plan_event"
 type planRuntime struct {
 	planner          *planner.Planner
 	store            store.PlanStore
+	projects         project.Store
 	scheduler        *scheduler.Scheduler
 	events           *events.Bus
 	intentResolver   *intentpkg.Resolver
 	complexityRouter *planner.ComplexityRouter
+	budget           *budget.Manager
+	revisions        revision.Store
+	toolRegistry     *tools.Registry
+	toolInvoker      *tools.Invoker
+	profileRegistry  *agentprofile.Registry
 
 	mu          sync.Mutex
 	running     map[string]context.CancelFunc
@@ -49,13 +60,33 @@ type planRuntime struct {
 }
 
 func newPlanRuntime(p *planner.Planner, planStore store.PlanStore, runner *scheduler.Scheduler, eventBus *events.Bus) *planRuntime {
+	return newPlanRuntimeWithProjects(p, planStore, nil, runner, eventBus)
+}
+
+func newPlanRuntimeWithProjects(p *planner.Planner, planStore store.PlanStore, projects project.Store, runner *scheduler.Scheduler, eventBus *events.Bus) *planRuntime {
+	return newPlanRuntimeWithStores(p, planStore, projects, nil, runner, eventBus)
+}
+
+func newPlanRuntimeWithStores(p *planner.Planner, planStore store.PlanStore, projects project.Store, budgetManager *budget.Manager, runner *scheduler.Scheduler, eventBus *events.Bus) *planRuntime {
+	if projects == nil {
+		projects = project.NewMemoryStore()
+	}
+	if budgetManager == nil {
+		budgetManager = budget.NewManager(budget.NewMemoryStore())
+	}
+	if runner != nil {
+		runner.SetBudgetManager(budgetManager)
+	}
 	return &planRuntime{
 		planner:          p,
 		store:            planStore,
+		projects:         projects,
 		scheduler:        runner,
 		events:           eventBus,
 		intentResolver:   intentpkg.NewResolverFromEnv(),
 		complexityRouter: planner.NewComplexityRouterFromEnv(),
+		budget:           budgetManager,
+		revisions:        revision.NewMemoryStore(),
 		running:          map[string]context.CancelFunc{},
 		planLimiter:      planRateLimitFromEnv(),
 		idempotency:      newIdempotencyCache(24 * time.Hour),
@@ -72,8 +103,9 @@ func RegisterPlanRuntimeRoutes(
 	coder scheduler.AgentRunner,
 	specialized ...scheduler.AgentRunner,
 ) {
+	planStorePath := strings.TrimSpace(os.Getenv("PLAN_STORE_PATH"))
 	var planStore store.PlanStore = store.NewMemoryPlanStore()
-	if path := strings.TrimSpace(os.Getenv("PLAN_STORE_PATH")); path != "" {
+	if path := planStorePath; path != "" {
 		fileStore, err := store.NewFilePlanStore(path)
 		if err != nil {
 			log.Printf("plan store init failed, falling back to memory: %v", err)
@@ -84,10 +116,65 @@ func RegisterPlanRuntimeRoutes(
 			}
 		}
 	}
+	// Projects are a lightweight owner-scoped metadata store. They live next to
+	// the plan store by default so a restart keeps the plan library grouping.
+	var projectStore project.Store = project.NewMemoryStore()
+	projectPath := strings.TrimSpace(os.Getenv("PROJECT_STORE_PATH"))
+	if projectPath == "" {
+		if planPath := strings.TrimSpace(os.Getenv("PLAN_STORE_PATH")); planPath != "" {
+			projectPath = planPath + ".projects.json"
+		}
+	}
+	if projectPath != "" {
+		if fileStore, err := project.NewFileStore(projectPath); err != nil {
+			log.Printf("project store init failed, falling back to memory: %v", err)
+		} else {
+			projectStore = fileStore
+		}
+	}
+	// Cost ledger: one JSON file next to the plan store keeps reservations and
+	// settled entries across restarts. Without a plan store path the ledger is
+	// in-memory, which is fine for tests and single-process dev.
+	budgetPath := strings.TrimSpace(os.Getenv("BUDGET_STORE_PATH"))
+	if budgetPath == "" {
+		if planPath := strings.TrimSpace(os.Getenv("PLAN_STORE_PATH")); planPath != "" {
+			budgetPath = planPath + ".budget.json"
+		}
+	}
+	var budgetManager *budget.Manager
+	if budgetPath != "" {
+		if fileBudget, err := budget.NewFileStore(budgetPath); err != nil {
+			log.Printf("budget store init failed, falling back to memory: %v", err)
+			budgetManager = budget.NewManager(budget.NewMemoryStore())
+		} else {
+			budgetManager = budget.NewManager(fileBudget)
+		}
+	} else {
+		budgetManager = budget.NewManager(budget.NewMemoryStore())
+	}
+	// Revision snapshots live in their own append-only file. The plan snapshot
+	// stays small and keeps serving the live execution state.
+	revisionPath := strings.TrimSpace(os.Getenv("REVISION_STORE_PATH"))
+	if revisionPath == "" {
+		if planPath := strings.TrimSpace(os.Getenv("PLAN_STORE_PATH")); planPath != "" {
+			revisionPath = planPath + ".revisions.json"
+		}
+	}
+	var revisionStore revision.Store = revision.NewMemoryStore()
+	if revisionPath != "" {
+		if fileRevisions, err := revision.NewFileStore(revisionPath); err != nil {
+			log.Printf("revision store init failed, falling back to memory: %v", err)
+		} else {
+			revisionStore = fileRevisions
+		}
+	}
 	eventBus := events.NewBus()
+	toolRuntime := buildToolAgentRuntime(planStorePath)
 	executor := scheduler.NewRoutedTaskExecutor(librarian, data, coder, specialized...)
+	executor.SetAgentRuntime(toolRuntime.profiles, toolRuntime.profileRunner, toolRuntime.invoker)
 	runner := scheduler.NewScheduler(planStore, executor, eventBus, 2)
 	runner.SetFinalizer(&planner.PlanFinalizer{})
+	runner.SetToolGate(makeToolGate(toolRuntime.tools, toolRuntime.profiles))
 	// Plan-level sandbox cleanup: every terminal plan releases its persistent
 	// runtimes so failed/canceled plans cannot leak containers.
 	sandboxURL := strings.TrimSpace(os.Getenv("SANDBOX_URL"))
@@ -126,15 +213,28 @@ func RegisterPlanRuntimeRoutes(
 			log.Printf("[sandbox] cleanup plan %s removed %d container(s)", plan.ID, removed)
 		}
 	})
-	runtime := newPlanRuntime(p, planStore, runner, eventBus)
+	runtime := newPlanRuntimeWithStores(p, planStore, projectStore, budgetManager, runner, eventBus)
+	runtime.revisions = revisionStore
+	runtime.toolRegistry = toolRuntime.tools
+	runtime.toolInvoker = toolRuntime.invoker
+	runtime.profileRegistry = toolRuntime.profiles
 	runtime.register(apiGroup)
+	RegisterToolRoutes(apiGroup, toolRuntime.tools, toolRuntime.invoker, toolRuntime.profiles)
+	RegisterAgentProfileRoutes(apiGroup, toolRuntime.profiles, toolRuntime.tools)
 }
 
 func (r *planRuntime) register(apiGroup *gin.RouterGroup) {
 	apiGroup.POST("/plan", r.createPlan)
 	apiGroup.GET("/plans", r.listPlans)
 	apiGroup.DELETE("/plans/:id", r.deletePlan)
+	apiGroup.PATCH("/plans/:id", r.patchPlan)
+	apiGroup.POST("/plans/:id/duplicate", r.duplicatePlan)
 	apiGroup.GET("/plans/:id/export", r.exportPlan)
+	apiGroup.POST("/plans/:id/reproduce/verify", r.verifyReproduction)
+	apiGroup.GET("/projects", r.listProjects)
+	apiGroup.POST("/projects", r.createProject)
+	apiGroup.PATCH("/projects/:id", r.updateProject)
+	apiGroup.DELETE("/projects/:id", r.deleteProject)
 	apiGroup.GET("/sessions", r.listSessions)
 	apiGroup.DELETE("/sessions/:id", r.deleteSession)
 	apiGroup.GET("/plans/:id", r.getPlan)
@@ -152,6 +252,28 @@ func (r *planRuntime) register(apiGroup *gin.RouterGroup) {
 	apiGroup.POST("/plans/:id/tasks/:taskId/execute", r.executeTask)
 	apiGroup.GET("/plans/:id/stream-ticket", r.streamTicket)
 	apiGroup.GET("/plans/:id/stream", r.streamPlanEvents)
+	apiGroup.GET("/plans/:id/revisions", r.listRevisions)
+	apiGroup.POST("/plans/:id/revisions", r.createRevision)
+	apiGroup.GET("/plans/:id/revisions/:revision", r.getRevision)
+	apiGroup.POST("/plans/:id/revisions/:revision/validate", r.validateRevision)
+	apiGroup.POST("/plans/:id/revisions/:revision/approve", r.approveRevision)
+	apiGroup.POST("/plans/:id/revisions/:revision/reject", r.rejectRevision)
+	apiGroup.POST("/plans/:id/revisions/:revision/execute", r.executeRevision)
+	apiGroup.GET("/plans/:id/diff", r.getPlanDiff)
+	apiGroup.GET("/plans/:id/questions", r.listQuestions)
+	apiGroup.POST("/plans/:id/questions", r.createQuestion)
+	apiGroup.POST("/plans/:id/questions/:questionId/answer", r.answerQuestion)
+	apiGroup.GET("/approvals", r.listApprovals)
+	apiGroup.POST("/approvals/bulk", r.bulkApprovals)
+	apiGroup.GET("/plans/:id/usage", r.planUsage)
+	apiGroup.GET("/usage/summary", r.usageSummary)
+	apiGroup.GET("/usage/timeseries", r.usageTimeseries)
+	apiGroup.GET("/budgets", r.getBudget)
+	apiGroup.PUT("/budgets", r.putBudget)
+	apiGroup.GET("/budgets/alerts", r.budgetAlerts)
+	apiGroup.POST("/plans/from-graph", r.importPlan)
+	apiGroup.GET("/plans/:id/tool-calls", r.listToolCalls)
+	apiGroup.POST("/plans/:id/tool-calls/:callId/replay", r.replayToolCall)
 }
 
 func (r *planRuntime) createPlan(c *gin.Context) {
@@ -330,6 +452,32 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		}
 	}
 	plan.RuntimePolicy = runtimePolicy
+	// Per-request budget caps override env defaults. They are applied before
+	// governance so a caller can always tighten a plan, never loosen a limit.
+	if payload.MaxCostUSD > 0 {
+		plan.Budget.MaxCostUSD = payload.MaxCostUSD
+	}
+	if payload.MaxTokens > 0 {
+		plan.Budget.MaxTokens = payload.MaxTokens
+	}
+	if payload.MaxSandboxSeconds > 0 {
+		plan.Budget.MaxSandboxSeconds = payload.MaxSandboxSeconds
+	}
+	if payload.MaxDownloadBytes > 0 {
+		plan.Budget.MaxDownloadBytes = payload.MaxDownloadBytes
+	}
+	if policy := strings.ToLower(strings.TrimSpace(payload.BudgetPolicy)); policy == "hard" || policy == "soft" {
+		plan.Budget.Policy = policy
+	}
+	// Budget-aware routing: a caller may opt into a cheaper plan shape. This is
+	// deliberately part of the intent context so the route decision records the
+	// reason instead of silently changing templates.
+	if costPolicy := strings.ToLower(strings.TrimSpace(payload.CostPolicy)); costPolicy == "quality_first" || costPolicy == "balanced" || costPolicy == "budget_first" {
+		if intentContext.Constraints == nil {
+			intentContext.Constraints = map[string]any{}
+		}
+		intentContext.Constraints["cost_policy"] = costPolicy
+	}
 	// Freeze the resolved model profiles so this run stays reproducible even if
 	// the user edits profiles while the plan is executing.
 	if resolver := modelresolver.Default(); resolver != nil {
@@ -338,6 +486,24 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		plan.ModelSnapshot = &snapshot
 	}
 	configurePlanGovernance(plan, intentContext, userID, sessionID)
+	// Review gate: expensive/high-risk/explicitly-reviewed plans must not start
+	// automatically. The gate is evaluated after governance so approval status
+	// and budget defaults are final.
+	applyReviewGate(plan, payload.RequireReview)
+	plan.AgentSnapshot = buildAgentSnapshots(plan, userID, r.profileRegistry)
+	// Persist the initial immutable revision before the plan becomes visible;
+	// editing later appends revision 2..N without touching revision 1.
+	if initialRevision, revErr := r.revisionStore().Create(&models.PlanRevision{
+		PlanID:    plan.ID,
+		Graph:     plan,
+		Status:    models.RevisionDraft,
+		CreatedBy: userID,
+		Reason:    "initial plan revision",
+	}, 0); revErr != nil {
+		log.Printf("initial revision creation failed plan=%s: %v", plan.ID, revErr)
+	} else if initialRevision != nil {
+		plan.CurrentRevision = initialRevision.Revision
+	}
 	if err := r.store.SavePlan(plan); err != nil {
 		log.Printf("Error saving plan graph: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save plan"})
@@ -409,111 +575,16 @@ func (r *planRuntime) getPlan(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// Lazy timeout sweep: a paused plan must honour question deadlines even if
+	// no scheduler goroutine is currently iterating it.
+	if hasPendingQuestions(plan) {
+		_, _ = r.scheduler.ExpireQuestionsNow(plan.ID)
+		if refreshed, err := r.store.GetPlan(plan.ID); err == nil && refreshed != nil {
+			plan = refreshed
+		}
+	}
 	hydratePlanForResponse(plan)
 	c.JSON(http.StatusOK, gin.H{"plan_graph": plan})
-}
-
-// planSummary is the lightweight list representation. It intentionally excludes
-// nodes, artifacts and base64 images so the plan library stays small.
-type planSummary struct {
-	ID             string          `json:"id"`
-	Title          string          `json:"title"`
-	IntentType     string          `json:"intent_type"`
-	Status         string          `json:"status"`
-	Outcome        string          `json:"outcome,omitempty"`
-	SessionID      string          `json:"session_id,omitempty"`
-	TotalNodes     int             `json:"total_nodes"`
-	CompletedNodes int             `json:"completed_nodes"`
-	FailedNodes    int             `json:"failed_nodes"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
-	FinishedAt     *time.Time      `json:"finished_at,omitempty"`
-	Paused         bool            `json:"paused,omitempty"`
-	RunTrigger     string          `json:"run_trigger,omitempty"`
-	Usage          models.RunUsage `json:"usage,omitempty"`
-}
-
-func summarizePlan(plan *models.PlanGraph) planSummary {
-	title := strings.TrimSpace(plan.UserIntent)
-	if len([]rune(title)) > 60 {
-		title = string([]rune(title)[:60]) + "…"
-	}
-	return planSummary{
-		ID:             plan.ID,
-		Title:          title,
-		IntentType:     plan.IntentType,
-		Status:         string(plan.Status),
-		Outcome:        string(plan.Outcome),
-		SessionID:      plan.SessionID,
-		TotalNodes:     len(plan.Nodes),
-		CompletedNodes: plan.Meta.CompletedNodes,
-		FailedNodes:    plan.Meta.FailedNodes,
-		CreatedAt:      plan.CreatedAt,
-		UpdatedAt:      plan.UpdatedAt,
-		FinishedAt:     plan.Usage.FinishedAt,
-		Paused:         plan.Paused,
-		RunTrigger:     plan.RunTrigger,
-		Usage:          plan.Usage,
-	}
-}
-
-func (r *planRuntime) listPlans(c *gin.Context) {
-	userID := resolveUserID(c)
-	limit := 20
-	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
-		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 100 {
-			limit = parsed
-		}
-	}
-	offset := 0
-	if raw := strings.TrimSpace(c.Query("cursor")); raw != "" {
-		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 0 {
-			offset = parsed
-		}
-	}
-	sessionFilter := strings.TrimSpace(c.Query("session_id"))
-	all, err := r.store.ListPlans()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	owned := make([]*models.PlanGraph, 0, len(all))
-	for _, plan := range all {
-		if plan == nil || plan.OwnerID != userID {
-			continue
-		}
-		if sessionFilter != "" && plan.SessionID != sessionFilter {
-			continue
-		}
-		owned = append(owned, plan)
-	}
-	sort.Slice(owned, func(i, j int) bool {
-		if owned[i].UpdatedAt.Equal(owned[j].UpdatedAt) {
-			return owned[i].ID > owned[j].ID
-		}
-		return owned[i].UpdatedAt.After(owned[j].UpdatedAt)
-	})
-	start := offset
-	if start > len(owned) {
-		start = len(owned)
-	}
-	end := start + limit
-	if end > len(owned) {
-		end = len(owned)
-	}
-	items := make([]planSummary, 0, end-start)
-	for _, plan := range owned[start:end] {
-		items = append(items, summarizePlan(plan))
-	}
-	nextCursor := ""
-	if end < len(owned) {
-		nextCursor = strconv.Itoa(end)
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"plans":       items,
-		"total":       len(owned),
-		"next_cursor": nextCursor,
-	})
 }
 
 func (r *planRuntime) deletePlan(c *gin.Context) {
@@ -521,14 +592,15 @@ func (r *planRuntime) deletePlan(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if plan.Status == models.StatusInProgress {
-		c.JSON(http.StatusConflict, gin.H{"error": "plan is running; cancel it before deleting"})
+	if plan.Status == models.StatusInProgress || plan.Status == models.StatusAwaitingApproval {
+		c.JSON(http.StatusConflict, gin.H{"error": "plan is running or awaiting approval; cancel it before deleting", "code": "plan_active"})
 		return
 	}
 	if err := r.store.DeletePlan(plan.ID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
+	_ = r.revisionStore().DeletePlan(plan.ID)
 	r.scheduler.CleanupPlanSandboxes(context.Background(), plan.ID)
 	c.JSON(http.StatusOK, gin.H{"deleted": true, "plan_id": plan.ID})
 }
@@ -674,6 +746,24 @@ func (r *planRuntime) executePlan(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "plan is paused; resume it before running", "code": "plan_paused", "remediation": errorRemediation("plan_paused")})
 		return
 	}
+	if plan.Status == models.StatusAwaitingReview {
+		c.JSON(http.StatusConflict, gin.H{
+			"error":       "plan is awaiting review; approve it before running",
+			"code":        "review_pending",
+			"remediation": "在审阅页批准该计划，或通过 revision 审阅接口批准后执行。",
+		})
+		return
+	}
+	if plan.Review.Required && plan.Review.Status != models.ReviewApproved {
+		code := "review_pending"
+		message := "plan requires review before running"
+		if plan.Review.Status == models.ReviewRejected {
+			code = "review_rejected"
+			message = "plan review was rejected; edit the plan and approve a new revision"
+		}
+		c.JSON(http.StatusConflict, gin.H{"error": message, "code": code})
+		return
+	}
 	if plan.Status != models.StatusPending && plan.Status != models.StatusReady {
 		c.JSON(http.StatusConflict, gin.H{"error": fmt.Sprintf("plan cannot be started from status %s", plan.Status)})
 		return
@@ -688,6 +778,12 @@ func (r *planRuntime) executePlan(c *gin.Context) {
 	}
 	if trigger != "manual" && trigger != "auto" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "trigger must be manual or auto", "code": "invalid_trigger"})
+		return
+	}
+	// Bind the live graph to the latest immutable revision before dispatch so a
+	// run can never mix a newer draft with the previous revision stamp.
+	if _, err := r.bindLatestRevision(planID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot bind plan revision", "code": "revision_bind_failed"})
 		return
 	}
 	actor := resolveUserID(c)
@@ -730,21 +826,49 @@ func (r *planRuntime) approvePlan(c *gin.Context) {
 	now := time.Now()
 	userID := resolveUserID(c)
 	if err := r.store.UpdatePlan(plan.ID, func(current *models.PlanGraph) error {
-		if current.Status != models.StatusAwaitingApproval {
-			return fmt.Errorf("plan cannot be approved from status %s", current.Status)
+		// The legacy approve endpoint also covers the new review gate so an
+		// existing client keeps working. A dedicated revision approve route
+		// records which revision was reviewed. When both gates are active the
+		// runtime permission is decided first, then the review gate, matching
+		// applyReviewGate's precedence rule.
+		if current.Status == models.StatusAwaitingApproval {
+			if !current.Approval.Required {
+				return fmt.Errorf("plan does not require approval")
+			}
+			if current.Approval.Status == "approved" {
+				return fmt.Errorf("plan is already approved")
+			}
+			current.Approval.Status = "approved"
+			current.Approval.ApprovedBy = userID
+			current.Approval.ApprovedAt = &now
+			if current.Review.Required && current.Review.Status != models.ReviewApproved {
+				current.Status = models.StatusAwaitingReview
+			} else {
+				current.Status = models.StatusPending
+			}
+			current.UpdatedAt = now
+			return nil
 		}
-		if !current.Approval.Required {
-			return fmt.Errorf("plan does not require approval")
+		if current.Status == models.StatusAwaitingReview || current.Review.Required {
+			if current.Review.Status == models.ReviewApproved {
+				return fmt.Errorf("plan is already approved")
+			}
+			current.Review.Status = models.ReviewApproved
+			current.Review.ReviewedBy = userID
+			current.Review.ReviewedAt = &now
+			if current.Approval.Required && current.Approval.Status != "approved" {
+				current.Status = models.StatusAwaitingApproval
+			} else {
+				current.Status = models.StatusPending
+			}
+			current.UpdatedAt = now
+			if latest, err := r.revisionStore().Latest(current.ID); err == nil && latest != nil {
+				_ = r.revisionStore().UpdateStatus(current.ID, latest.Revision, models.RevisionApproved, userID, &now)
+				current.CurrentRevision = latest.Revision
+			}
+			return nil
 		}
-		if current.Approval.Status == "approved" {
-			return fmt.Errorf("plan is already approved")
-		}
-		current.Approval.Status = "approved"
-		current.Approval.ApprovedBy = userID
-		current.Approval.ApprovedAt = &now
-		current.Status = models.StatusPending
-		current.UpdatedAt = now
-		return nil
+		return fmt.Errorf("plan cannot be approved from status %s", current.Status)
 	}); err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
@@ -1032,6 +1156,10 @@ func configurePlanGovernance(plan *models.PlanGraph, intent models.IntentContext
 	plan.SessionID = sessionID
 	plan.Budget.MaxTaskAttempts = positiveEnvInt("PLAN_MAX_TASK_ATTEMPTS", plan.Budget.MaxTaskAttempts)
 	plan.Budget.MaxDurationSec = positiveEnvInt("PLAN_MAX_DURATION_SECONDS", plan.Budget.MaxDurationSec)
+	applyPlanBudgetDefaults(plan)
+	if plan.Budget.MaxCostUSD > 0 || plan.Budget.MaxTokens > 0 || plan.Budget.MaxSandboxSeconds > 0 || plan.Budget.MaxDownloadBytes > 0 {
+		plan.Usage.BudgetStatus = "ok"
+	}
 	requiresApproval := strings.EqualFold(strings.TrimSpace(os.Getenv("REQUIRE_PLAN_APPROVAL")), "true") ||
 		strings.EqualFold(strings.TrimSpace(fmt.Sprint(intent.Constraints["reproduction_mode"])), "full") ||
 		planRequestsFullReproduction(plan)
@@ -1043,6 +1171,44 @@ func configurePlanGovernance(plan *models.PlanGraph, intent models.IntentContext
 	} else {
 		plan.Approval.Status = "not_required"
 	}
+}
+
+// applyPlanBudgetDefaults fills the optional cost caps from env defaults. The
+// request payload is applied earlier in createPlan and always wins.
+func applyPlanBudgetDefaults(plan *models.PlanGraph) {
+	if plan == nil {
+		return
+	}
+	if plan.Budget.MaxCostUSD <= 0 {
+		plan.Budget.MaxCostUSD = positiveEnvFloat("PLAN_MAX_COST_USD", 0)
+	}
+	if plan.Budget.MaxTokens <= 0 {
+		plan.Budget.MaxTokens = positiveEnvInt("PLAN_MAX_TOKENS", 0)
+	}
+	if plan.Budget.MaxSandboxSeconds <= 0 {
+		plan.Budget.MaxSandboxSeconds = positiveEnvFloat("PLAN_MAX_SANDBOX_SECONDS", 0)
+	}
+	if plan.Budget.MaxDownloadBytes <= 0 {
+		plan.Budget.MaxDownloadBytes = int64(positiveEnvInt("PLAN_MAX_DOWNLOAD_BYTES", 0))
+	}
+	if strings.TrimSpace(plan.Budget.Policy) == "" {
+		plan.Budget.Policy = strings.ToLower(strings.TrimSpace(os.Getenv("PLAN_BUDGET_POLICY")))
+	}
+	if plan.Budget.Policy != "hard" {
+		plan.Budget.Policy = "soft"
+	}
+}
+
+func positiveEnvFloat(key string, fallback float64) float64 {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
 }
 
 func positiveEnvInt(key string, fallback int) int {

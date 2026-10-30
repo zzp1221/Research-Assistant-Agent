@@ -10,7 +10,7 @@ Research Assistant Agent 把自然语言研究目标转换为可验证的执行�
 - `docker-core/`：面向 Docker / gVisor 的底层沙箱内核实验模块，可独立构建和测试。
 - `tool/`：一个零依赖的 Go 工具调用示例，演示 LLM Function Calling 的注册、路由与执行循环。
 
-本文档分为三部分：**[1. 整体架构与 Agent 运行说明](#1-整体架构与-agent-运行说明)**、**[2. 快速开始](#2-快速开始)**、**[3. 本地开发](#3-本地开发)**。
+文档入口：**[1. 整体架构与 Agent 运行说明](#1-整体架构与-agent-运行说明)**、**[2. 快速开始](#2-快速开始)**、**[3. 本地开发](#3-本地开发)**。变更记录见 [docs/CHANGELOG.md](docs/CHANGELOG.md)，最近验证状态见 [docs/verification.md](docs/verification.md)。
 
 ## 1. 整体架构与 Agent 运行说明
 
@@ -27,7 +27,7 @@ Research Assistant Agent 把自然语言研究目标转换为可验证的执行�
 | 能力 | 说明 |
 |---|---|
 | 研究任务规划 | 将论文复现、代码执行、框架对比、数据评测等目标拆解为带依赖关系的 DAG |
-| 专业 Agent 路由 | 按任务类型路由到 Chat、Librarian、Benchmark、Coder、Research Coding、Data 和 Answer Agent |
+| 专业 Agent 路由 | 按任务类型路由到 Chat、Librarian、Benchmark、Coder、Research Coding、Data、AutoResearch、Answer 等 Agent |
 | 类型化研究上下文 | ResearchContext + InputBindings 统一附件、论文元数据、文档与约束；不再依赖各模板手工注入 |
 | 全文文档检索 | DocumentStore 支持 BM25 + 中文 bigram、按页/按节检索与页码引用；长 PDF 不再只读前几页 |
 | 论文复现运行时 | RuntimeSpec、镜像/依赖探测、真实安装与 EnvironmentManifest；支持自动执行或逐项审批 |
@@ -40,6 +40,7 @@ Research Assistant Agent 把自然语言研究目标转换为可验证的执行�
 | 语义结果状态 | PlanOutcome 区分 completed / partial / smoke / mock / blocked / failed / needs_review，并展示缺失项 |
 | 实时可观测 | SSE 推送计划、节点、日志、RuntimeAction 和 Artifact 事件，前端同步展示执行状态 |
 | 持久化与治理 | 计划与事件持久化、任务租约、取消/重试、预算限制、计划审批与运行时操作审批 |
+| 工具生态与 MCP | 工具注册表（native/HTTP/MCP stdio/MCP HTTP）、AgentProfile allowlist + ToolGrant、tool_call 节点与审批、ToolCallRecord 审计/回放、PromptVersion 评测与回滚 |
 
 ### 1.2 系统架构
 
@@ -64,7 +65,7 @@ Researcher / Paper / Repository / Dataset
                     |
                     v
  Routed Task Executor
-   Chat / Librarian / Answer / Benchmark / Coder / Research Coding / Data
+   Chat / General / Librarian / Answer / Benchmark / Coder / Research Coding / Data
                     |
                     v
  RuntimeGate (confirm_important / full_access)
@@ -85,6 +86,8 @@ Researcher / Paper / Repository / Dataset
 | 运行流程图 | [runtime-flow.drawio](docs/diagrams/runtime-flow.drawio) | [runtime-flow.svg](docs/diagrams/runtime-flow.svg) |
 | Agent 执行流程图 | [agent-execution-flow.drawio](docs/diagrams/agent-execution-flow.drawio) | [agent-execution-flow.svg](docs/diagrams/agent-execution-flow.svg) |
 
+Archify 交互式图（自包含 HTML，浏览器直接打开）：[系统架构图](docs/diagrams/system-architecture.html) · [多角色 Agent 执行工作流](docs/diagrams/multi-agent-workflow.html)。
+
 图形说明与编辑方式见 [docs/README.md](docs/README.md) 和 [docs/diagrams/README.md](docs/diagrams/README.md)。
 
 ### 1.3 Agent 运行说明
@@ -92,7 +95,7 @@ Researcher / Paper / Repository / Dataset
 一次请求的完整执行路径如下：
 
 1. **意图与上下文**
-   - 意图服务把自然语言分类为 `Code_Execution`、`Paper_Reproduction`、`Framework_Evaluation`、`Custom_Benchmark`、`AutoResearch` 或 `General`。
+   - 意图服务把自然语言分类为 `Code_Execution`、`Paper_Reproduction`、`Framework_Evaluation`、`Custom_Benchmark`、`AutoResearch` 或 `General`（服务返回的 `Literature_Review` / `Data_Analysis` 在 Go 侧归一为 `General`）。
    - 附件被解析为 `AttachmentRef` / `DocumentRef`；PDF 生成 `paper_metadata`，并写入 `ResearchContext`。
    - 计划级不变量检查附件/文档是否被节点引用，避免“上传了但没被消费”。
 
@@ -147,7 +150,7 @@ Researcher / Paper / Repository / Dataset
 
 - **重要操作需确认**（`confirm_important`，默认）：拉取镜像、安装依赖、下载公开数据/模型、使用 GPU 或访问网络前，计划暂停并生成 `RuntimeAction`；只有计划所有者可以允许或拒绝。
 - **完全权限**（`full_access`）：上述操作在镜像 allowlist、磁盘/时长预算与 sandbox 安全边界内自动执行；创建计划时必须显式传 `runtime_permission_acknowledged=true`。
-- 拒绝重要操作会立即终止计划：`status=failed`、`outcome=blocked`，并写入 `missing_requirements=[user_rejected]`。
+- 拒绝重要操作会立即终止计划：`status=failed`、`outcome=blocked`，并写入 `missing_requirements=[user_rejected]`；审批超时会写入 `approval_timeout`。
 - 运行时链为 `reproduction_spec -> runtime_probe -> image_prepare -> prepare_runtime -> install_dependencies -> runtime_validate -> paper_code_execute`。
 - `runtime_validate` 输出 `EnvironmentManifest`：镜像 digest、Python/pip freeze、GPU、数据 hash、运行命令与工作目录。
 - 完整复现资源不足时不会用 smoke 冒充成功；`outcome` 会明确标记 `smoke`、`partial` 或 `blocked`。
@@ -158,7 +161,7 @@ Researcher / Paper / Repository / Dataset
 Research Assistant Agent/
 ├── README.md
 ├── .github/workflows/ci.yml     # Linux/Windows CI：Go、前端、Python、Docker build
-├── docs/                        # 架构图、流程图与项目级文档
+├── docs/                        # 架构图、设计、轮次报告、CHANGELOG 与验证状态
 ├── docker-core/                 # 底层 Docker/gVisor 沙箱内核实验模块
 │   ├── checkpoint/              # 快照、回滚与负反馈注入
 │   ├── config/                  # TOML 配置加载
@@ -173,7 +176,7 @@ Research Assistant Agent/
 │   ├── research-optimizer/      # Python 候选策略与经验存储
 │   ├── ai-services/             # 可选 Python AI 服务
 │   ├── examples/                # 可运行示例与验收脚本
-│   ├── test/                    # Golden test 数据与运行器
+│   ├── test/                    # E2E、Golden test 与 fixtures
 │   ├── scripts/                 # Unix / Windows 启动脚本
 │   ├── backend.env.example
 │   ├── docker-compose.yml
@@ -184,7 +187,7 @@ Research Assistant Agent/
 ### 1.6 运行边界
 
 - 本项目是研究原型，接口和数据结构可能调整，不承诺向后兼容。
-- 单机持久化基于 append-only JSONL 事件日志；多副本部署需要共享事务数据库与 leader election。
+- 单机持久化基于“按计划原子快照 + 小型 append-only JSONL 索引/事件日志”；多副本部署需要共享事务数据库与 leader election。
 - 已支持静态 API token 和计划所有权检查，但不是 OIDC、RBAC 或生产级多租户认证。
 - `docker-sandbox` gateway 不挂载 Docker socket，也不挂载宿主工作区；只有内部 `docker-sandbox-executor` 持有 socket 和 `/tmp` 挂载。executor 不发布端口，仍是受控的高权限执行边界。
 - 默认运行时镜像是 CPU/通用 Python 镜像；GPU 透传需要额外配置。
@@ -193,27 +196,14 @@ Research Assistant Agent/
 - Framework_Evaluation 仍保留 deterministic offline baseline；它不是真实 LangChain/LlamaIndex 性能 benchmark，真实框架评测需独立专项。
 - 候选搜索是真实 Validation Reward 驱动的分层 UCB、Top-K Beam 与 UCT-style 搜索，不是完整 MCTS 或通用强化学习策略。
 
-### 1.7 2026-10-28 验证状态
-
-最近一次容器内全量验证覆盖了构建、单测、服务探针、既有 E2E 与本轮新增深度测试：
-
-| 层级 | 覆盖 | 结果 |
-|---|---|---|
-| 构建/单测 | backend build/vet/test + 关键包 race、docker-sandbox、docker-core、frontend 112 tests、intent 8 tests、optimizer 8 tests、examples 2 tests、tool build | 全部通过 |
-| 既有 E2E | http-smoke、routing-and-prompts、literature、literature-plan、document-intelligence、model-profiles、verification、sandbox-network、round6 五套 | 全部通过 |
-| 新增深度测试 | round7 deep API、真实 LLM 场景、任务执行/取消、文档 assist、sandbox 命令、AutoResearch、论文复现 | 58/59 deep API、18/18 真实场景、AutoResearch 通过；论文复现暴露 claim rubric 解析缺陷 |
-| 前端 UI | Playwright 11 个测试（更新过期选择器后） | 10 passed / 1 failed（AI 翻译浮层遮挡 PDF 缩放按钮） |
-
-本轮测试脚本位于 `research-assistant/test/e2e/round7-*.mjs`；本地完整证据与缺陷清单见 `reports/eval-2026-10-28/REPORT.md`（按约定不提交）。
-
 ## 2. 快速开始
 
 ### 2.1 前置条件
 
 - Docker Engine 20.10+ 与 Docker Compose v2
 - Git
-- 一个 OpenAI-compatible LLM API Key
-- 本地开发需要 Go 1.26.1（backend/docker-sandbox）与 Node.js 22+
+- 一个 OpenAI-compatible LLM API Key（示例配置值见 `research-assistant/backend.env.example`）
+- 本地开发需要 Go 1.26.1（backend、docker-sandbox、docker-core、tool）与 Node.js 22+
 - 后端依赖 Linux 进程组与 `Statfs`，Windows 原生后端不受支持；Windows 请使用 Docker Compose
 
 ### 2.2 使用 Docker Compose
@@ -222,10 +212,9 @@ Research Assistant Agent/
 cd research-assistant
 cp .env.example .env
 # 编辑 .env，设置随机 SANDBOX_API_TOKEN、RESEARCH_OPTIMIZER_API_TOKEN 与 API_AUTH_TOKEN
-# API_AUTH_TOKEN 会同时注入 backend、sandbox 认证和前端构建；Compose 不会使用默认 token。
+# Compose 会从 .env 注入这些 Token；API_AUTH_TOKEN 由 nginx 反向代理在请求时注入，不会编进前端 bundle。
 cp backend.env.example backend.env
 # 编辑 backend.env，至少填写 OPENAI_API_KEY
-
 docker compose up --build -d
 ```
 
@@ -235,7 +224,7 @@ docker compose up --build -d
 |---|---|
 | Web UI | http://localhost:5173 |
 | Backend API | http://localhost:8080 |
-| Health Check | http://localhost:8080/api/health（唯一无需 Bearer 的 API） |
+| Health Check | http://localhost:8080/api/health（与 `/ping` 无需 Bearer） |
 | Sandbox API | http://localhost:8082 |
 | Research Optimizer | http://localhost:8090 |
 
@@ -296,7 +285,7 @@ Benchmark Agent 会审计列映射、生成泄漏安全的 train/validation/test
 cd research-assistant
 make install
 export SANDBOX_API_TOKEN=<random-token>
-make run-sandbox     # 终端 1，gateway + executor 的本地等价物
+make run-sandbox     # 终端 1，本地 engine 模式沙箱
 make run-backend     # 终端 2，需要 SANDBOX_URL 与 API_AUTH_TOKEN
 make run-frontend    # 终端 3
 ```
@@ -310,8 +299,8 @@ Windows 用户请使用 Docker Compose；`scripts/windows/start-backend.ps1` 会
 | 变量 | 必填 | 说明 |
 |---|---:|---|
 | `OPENAI_API_KEY` | 是 | OpenAI-compatible API 密钥 |
-| `OPENAI_BASE_URL` | 否 | 默认示例为官方 DeepSeek `https://api.deepseek.com/v1` |
-| `OPENAI_MODEL_NAME` | 否 | 默认示例为 `deepseek-flash` |
+| `OPENAI_BASE_URL` | 否 | API Base URL；未设置时回退官方 DeepSeek `https://api.deepseek.com/v1`，示例值见 `backend.env.example` |
+| `OPENAI_MODEL_NAME` | 否 | 模型名称；未设置时回退 `deepseek-chat`，示例值见 `backend.env.example` |
 | `INTENT_SERVICE_URL` | 否 | 可选 LLM 意图服务；Compose 默认 `http://intent-recognition:8000` |
 | `INTENT_ROUTER_MODE` | 否 | `rule` / `llm` / `hybrid` / `shadow`；Compose 默认 `hybrid` |
 | `INTENT_LLM_CONFIDENCE_THRESHOLD` | 否 | 模型结果最低置信度，低于阈值回退规则 |
@@ -319,13 +308,13 @@ Windows 用户请使用 Docker Compose；`scripts/windows/start-backend.ps1` 会
 | `SANDBOX_URL` | 否 | 本地默认 `http://localhost:8082`；Compose 会覆盖为服务地址 |
 | `SANDBOX_DEFAULT_IMAGE` | 否 | 默认 Python 运行时镜像 |
 | `SANDBOX_IMAGE_ALLOWLIST` | 否 | 允许 sandbox 使用的镜像前缀/名称；运行时镜像必须命中 allowlist |
-| `PLAN_STORE_PATH` | 否 | 计划与事件 append-only JSONL 日志路径；旧 JSON 快照会自动迁移 |
+| `PLAN_STORE_PATH` | 否 | 计划快照目录与小型 JSONL 索引/事件日志的基准路径 |
 | `RESEARCH_OPTIMIZER_URL` | 否 | Python Research Optimizer 地址；不配置时使用确定性 Go fallback |
 | `RESEARCH_OPTIMIZER_API_TOKEN` | 否 | Backend 与 Optimizer 之间的 Bearer Token |
 | `PLAN_MAX_TASK_ATTEMPTS` / `PLAN_MAX_DURATION_SECONDS` | 否 | 计划尝试次数与时长预算 |
 | `REQUIRE_PLAN_APPROVAL` | 否 | 执行前强制人工审批 |
 | `API_AUTH_TOKEN` / `REQUIRE_API_AUTH` | Compose 必填 | API 静态 Bearer 保护；Compose 强制 `REQUIRE_API_AUTH=true`，token 为空时拒绝启动请求 |
-| `VITE_API_AUTH_TOKEN` | 自动 | Compose 用 `API_AUTH_TOKEN` 构建前端；不再需要单独设置 |
+| `VITE_API_AUTH_TOKEN` | 自动 | 仅本地 Vite 开发态使用；Compose 生产构建通过 nginx 在请求时注入 Authorization，不编进 bundle |
 | `SANDBOX_API_TOKEN` | 是 | Compose 必须通过 `.env` 设置；gateway 与 executor 均 fail-closed |
 | `CORS_ALLOWED_ORIGINS` | 否 | 允许访问后端的前端 Origin 列表 |
 
@@ -333,44 +322,60 @@ Windows 用户请使用 Docker Compose；`scripts/windows/start-backend.ps1` 会
 
 ### 3.3 API 摘要
 
+以下为 Backend API（默认 `:8080`）：
+
 | Method | Endpoint | 说明 |
 |---|---|---|
-| `GET` | `/api/health` | 检查后端、仓库、沙箱与 Optimizer 状态 |
+| `GET` | `/ping` | 轻量存活检查（无需 Bearer） |
+| `GET` | `/api/health` | 检查后端、仓库、沙箱与 Optimizer 状态（无需 Bearer） |
 | `POST` | `/api/plan` | 根据用户意图创建并保存 DAG |
-| `GET` | `/api/plans/:id` | 查询计划、节点状态和产物 |
-| `POST` | `/api/plans/:id/execute` | 启动整张计划图；可带 `{"trigger":"manual|auto"}` |
-| `POST` | `/api/plans/:id/pause` / `resume` | 暂停派发/恢复执行 |
+| `GET` | `/api/plans` / `/api/plans/:id` | 列出计划 / 查询计划、节点状态和产物 |
+| `POST` | `/api/plans/:id/execute` | 启动整张计划图；可带 `{"trigger":"manual"}` 或 `{"trigger":"auto"}` |
+| `POST` | `/api/plans/:id/pause` / `resume` / `cancel` | 暂停派发 / 恢复执行 / 取消计划 |
 | `POST` | `/api/plans/:id/tasks/:taskId/run` | 从指定节点重置下游并重新运行 |
-| `GET` | `/api/plans/:id/export?format=md`（或 json/zip） | 导出最小复现包 |
-| `DELETE` | `/api/plans/:id` / `/api/sessions/:id` | 删除计划/会话 |
-| `POST` | `/api/uploads` | 上传附件（SHA-256 去重、配额、可选 ClamAV 扫描） |
-| `DELETE` | `/api/uploads/:id` | 删除上传及其派生文档 |
-| `GET` | `/api/literature/search` | arXiv/OpenAlex/Crossref/GitHub 检索 |
-| `POST` | `/api/literature/import` | arXiv ID/URL、DOI、PDF URL 导入并解析 |
-| `GET` | `/api/metrics` | Prometheus 文本指标（Bearer 鉴权） |
-| `GET` | `/api/audit/export` | 审计事件导出（调用者隔离） |
-| `GET` | `/openapi.json` | OpenAPI 3.1 合同 |
 | `POST` | `/api/plans/:id/approve` | 批准需要人工确认的计划 |
 | `GET` | `/api/plans/:id/runtime-actions` | 查询运行时审批请求（镜像/依赖/GPU/网络等） |
 | `POST` | `/api/plans/:id/runtime-actions/:actionId/decision` | 允许或拒绝一次运行时操作；拒绝会终止计划 |
-| `POST` | `/api/plans/:id/cancel` | 取消计划与未完成节点 |
-| `POST` | `/api/plans/:id/tasks/:taskId/retry` | 重试失败、阻塞或取消节点 |
-| `POST` | `/api/plans/:id/tasks/:taskId/reassign` | 重分配节点并使旧执行租约失效 |
-| `POST` | `/api/plans/:id/tasks/:taskId/execute` | 仅执行计划内节点；输入来自 PlanGraph/Artifact，不接收客户端路径 |
+| `POST` | `/api/plans/:id/tasks/:taskId/retry` / `reassign` / `execute` | 重试 / 改派 / 仅执行计划内节点 |
+| `GET` | `/api/plans/:id/export?format=md` / `json` / `zip` | 导出最小复现包 |
+| `DELETE` | `/api/plans/:id` / `/api/sessions/:id` | 删除计划 / 会话 |
 | `GET` | `/api/plans/:id/events` | 获取计划事件历史 |
 | `GET` | `/api/plans/:id/stream-ticket` | 获取 60 秒 HMAC SSE ticket；启用 API_AUTH_TOKEN 时前端使用 |
 | `GET` | `/api/plans/:id/stream` | 订阅计划级 SSE 事件流；可携带 `?ticket=` |
 | `POST` | `/api/execute` | 已禁用（410）；旧直接执行入口不再接受任意 `Inputs` |
-| `POST` | `/api/uploads` | 上传论文、配置或小型 Benchmark 数据 |
-| `GET` | `/api/uploads/:id/content` | 按用户所有权读取上传内容 |
-| `GET` | `/api/uploads/:id/document` | 读取 PDF 文本层摘要与页列表 |
-| `GET` | `/api/uploads/:id/document/pages/:page` | 读取指定页全文 |
-| `GET` | `/api/uploads/:id/document/search?q=...` | 在文档中检索相关片段（BM25 + 中文 bigram） |
-| `GET` | `/api/uploads/:id/document/sections/:section` | 读取指定章节 |
+| `POST` | `/api/uploads` | 上传附件（SHA-256 去重、配额、可选 ClamAV 扫描） |
+| `GET` | `/api/uploads/:id/content` / `document` | 读取附件内容 / PDF 文本层摘要与页列表 |
+| `GET` | `/api/uploads/:id/document/pages/:page` / `sections/:section` | 读取指定页 / 章节 |
+| `GET` | `/api/uploads/:id/document/search?q=...` | BM25 + 中文 bigram 文档检索 |
+| `GET` | `/api/uploads/:id/document/quality` / `pages/:page/layout` | 质量报告 / 版面 blocks 与 reading order |
+| `GET` | `/api/uploads/:id/document/tables/:tableId` / `figures/:figureId` | 表格 JSON/CSV / 图注与图片导出 |
+| `POST` | `/api/uploads/:id/assist` | 划词翻译/解释（带页上下文） |
+| `POST` | `/api/uploads/:id/translation-jobs` | 全文翻译后台任务 |
+| `DELETE` | `/api/uploads/:id` | 删除上传及其派生文档 |
+| `GET` | `/api/literature/search` | arXiv/OpenAlex/Crossref/GitHub/Semantic Scholar/PubMed/DBLP 检索；relevance 跨 provider 排序，单 provider 超时降级 warning |
+| `POST` | `/api/literature/import` | arXiv ID/URL、DOI、PDF URL 导入并解析 |
+| `GET` / `POST` / `DELETE` | `/api/literature/records`（及 `/:id`、`/attach`、`/bibtex`） | 文献库、标签、BibTeX、加入会话 |
+| `GET` | `/api/literature/citations/:doi` | 引用/被引图 |
+| `POST` | `/api/web/fetch` | 抽取公开网页正文（SSRF/robots/content-type/大小/超时/缓存） |
 | `POST` | `/api/chat` | 通用对话接口 |
 | `GET` | `/api/pdf-proxy?url=...` | 代理读取远端 PDF |
-| `GET` | `/api/v1/capabilities` | Sandbox 宿主能力：Docker、GPU、CPU、内存、磁盘、镜像 allowlist |
+| `GET` / `POST` / `PUT` / `DELETE` | `/api/model-profiles`（及 `/:id/test`、`/probe-vision`）、`/api/model-routing` | 运行期模型 profile 与 routing |
+| `GET` | `/api/metrics`（及 `/metrics`） | Prometheus 文本指标（Bearer 鉴权） |
+| `GET` | `/api/audit/export` | 审计事件导出（调用者隔离） |
+| `GET` | `/openapi.json` | OpenAPI 3.1 合同（无需 Bearer；`/api/openapi.json` 同内容但走 API 鉴权） |
+
+Sandbox 服务（默认 `:8082`）另有：
+
+| Method | Endpoint | 说明 |
+|---|---|---|
+| `GET` | `/api/v1/health` | Docker 与 fallback 健康状态（无需 Bearer） |
+| `GET` | `/api/v1/capabilities` | 宿主能力：Docker、GPU、CPU、内存、磁盘、镜像 allowlist |
 | `POST` | `/api/v1/images/ensure` | 校验并确保运行时镜像存在，返回 digest/size |
+| `GET` | `/api/v1/sandboxes?plan_id=...` | 按 `plan_id` 列出沙箱（`plan_id` 必填） |
+| `POST` | `/api/v1/sandboxes/cleanup` | 按 `plan_id` 清理该计划的沙箱 |
+| `POST` | `/api/v1/sandboxes` / `DELETE /:id` | 创建 / 删除沙箱 |
+| `POST` | `/api/v1/sandboxes/:id/network` / `GET /:id/usage` | 开关出口 / 查询用量 |
+| `POST` | `/api/v1/sandboxes/:id/python` / `python/stream` / `commands` / `commands/stream` | 执行 Python / 命令（含流式） |
 
 完整路由和请求结构见 [backend/README.md](research-assistant/backend/README.md) 与 [openapi.json](research-assistant/backend/internal/api/openapi.json)；命令行工具见 [scripts/ra.mjs](research-assistant/scripts/ra.mjs)。
 
@@ -394,22 +399,22 @@ npm run build
 npm run check:bundle
 ```
 
-Sandbox：
+Sandbox 与 docker-core：
 
 ```bash
-cd research-assistant/docker-sandbox
-go test ./...
+cd research-assistant/docker-sandbox && go test ./...
+cd docker-core && go test ./...
 ```
 
-容器内 E2E（需要运行中的 compose 栈；既有套件位于 `research-assistant/test/e2e/`）：
+容器内 E2E（需要运行中的 compose 栈；套件位于 `research-assistant/test/e2e/`，使用 `RA_API_URL` / `RA_API_TOKEN`）：
 
 - 既有：`http-smoke.mjs`、`routing-and-prompts.mjs`、`literature.mjs`、`literature-plan.mjs`、`document-intelligence.mjs`、`model-profiles.mjs`、`verification.mjs`、`sandbox-network.mjs`、`round6-*.mjs`
-- 本轮新增：`round7-api-coverage.mjs`、`round7-real-scenarios.mjs`、`round7-paper-reproduction.mjs`、`round7-autoresearch.mjs`、`round7-task-execute.mjs`、`round7-doc-assist.mjs`、`round7-sandbox-deep.mjs`
-- 2026-10-28 的全量验证结论与缺陷见 `reports/eval-2026-10-28/REPORT.md`（本地生成，不提交）
+- 深度：`round7-api-coverage.mjs`、`round7-real-scenarios.mjs`、`round7-paper-reproduction.mjs`、`round7-autoresearch.mjs`、`round7-task-execute.mjs`、`round7-doc-assist.mjs`、`round7-sandbox-deep.mjs`
+- 最近一次结果与已知缺陷见 [docs/verification.md](docs/verification.md)；本地完整证据见 `reports/eval-2026-10-28/REPORT.md`（按约定不提交）
 
 ### 3.5 模块说明
 
-- [docs](docs/README.md)：架构图、流程图与项目级文档
+- [docs](docs/README.md)：架构图、流程图、设计与轮次报告
 - [research-assistant](research-assistant/README.md)：产品主实现与启动方式
 - [backend](research-assistant/backend/README.md)：Go API、规划、调度与 Agent
 - [frontend](research-assistant/frontend/README.md)：React 工作台

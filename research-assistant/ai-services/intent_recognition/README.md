@@ -20,10 +20,10 @@
 ```
 
 - `POST /predict`：`{"text":"...","context":"可选"}` -> `intent_type/confidence/entities/reasoning/model/latency_ms/attempts`，并返回 `complexity/capabilities/route_hint/complexity_confidence/complexity_reason`。
-- `GET /health`：返回 `ok`、`configured`、`model`、`base_url`。
+- `GET /health`：返回 `status`、`ok`、`configured`、`model`、`base_url`。
 - 缺失 complexity 字段时 Go 侧按规则计算；未知枚举降级 L2/standard_template，LLM 不得把规则等级降级。
 
-允许的 `intent_type`：`General`、`Code_Execution`、`Paper_Reproduction`、`Framework_Evaluation`、`AutoResearch`、`Custom_Benchmark`、`Literature_Review`、`Data_Analysis`。
+允许的 `intent_type`：`General`、`Code_Execution`、`Paper_Reproduction`、`Framework_Evaluation`、`AutoResearch`、`Custom_Benchmark`、`Literature_Review`、`Data_Analysis`。其中 `Literature_Review` 与 `Data_Analysis` 会在 Go 侧归一为 `General`，由 General 计划形状处理。
 
 服务内置指数退避重试（默认 3 次）与单次超时（默认 60s）；没有关键词 mock fallback。未配置 `OPENAI_API_KEY` 时 `/predict` 返回 503。
 
@@ -31,7 +31,7 @@
 
 `research-assistant` 后端通过 `INTENT_ROUTER_MODE` 使用本服务：
 
-- `rule`：仅规则（默认 fallback）
+- `rule`：仅规则（代码默认，也是 fallback）
 - `llm`：仅模型，失败回退规则
 - `hybrid`：规则快路径 + 模型语义分类 + 后校验（Compose 默认）
 - `shadow`：只记录模型与规则分歧，不改变执行
@@ -61,7 +61,7 @@ docker run --rm -p 18000:8000 --env-file ../backend.env research-assistant-inten
 python -m unittest test_service.py -v
 ```
 
-2026-10-28 验证：单元测试 8/8 通过；运行中的 `/predict` 在真实 provider 上出现过 502（LLM 返回非法 JSON）与超时，Go 后端会回退规则，详见本地 `reports/eval-2026-10-28/REPORT.md`。
+单元测试 8/8 通过；真实 provider 偶发返回非法 JSON 或超时时，Go 后端会回退规则。最近验证与已知问题见 [docs/verification.md](../../../docs/verification.md)。
 
 ## 训练
 
@@ -78,4 +78,4 @@ python train_qwen_lora.py
 ## 边界
 
 - 训练脚本需要额外依赖与 GPU/CPU 环境，默认不参与 `make test`。
-- 该服务是可选路径，主后端默认使用规则意图路由。
+- 该服务是可选路径；Go 后端在服务不可用时始终回退规则意图路由。

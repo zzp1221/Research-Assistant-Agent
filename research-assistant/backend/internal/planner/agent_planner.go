@@ -508,12 +508,21 @@ func buildPlannerNodeDescription(rawIntent string, bp plannerNodeBlueprint) stri
 }
 
 func normalizeAssignedTo(value string) string {
-	switch strings.TrimSpace(value) {
-	case "librarian_agent", "coder_agent", "sandbox_agent", "data_agent", "benchmark_agent", "research_coding_agent", "general_agent", "answer_agent":
-		return value
-	default:
+	trimmed := strings.TrimSpace(value)
+	// Only an empty assignment gets the general default. A non-empty unknown
+	// name is preserved so the task registry rejects it explicitly instead of
+	// silently downgrading a typo or a missing custom profile to general_agent.
+	if trimmed == "" {
 		return "general_agent"
 	}
+	switch trimmed {
+	case "librarian_agent", "coder_agent", "sandbox_agent", "data_agent", "benchmark_agent", "research_coding_agent", "general_agent", "answer_agent", "tool_executor":
+		return trimmed
+	}
+	if strings.HasPrefix(trimmed, "profile:") {
+		return trimmed
+	}
+	return trimmed
 }
 
 func cleanStringSlice(values []string) []string {

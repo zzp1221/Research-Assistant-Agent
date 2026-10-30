@@ -274,8 +274,12 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
           return { ...prev, activeSessionId: existing.id };
         }
         const now = new Date().toISOString();
+        // A plan opened from the library gets a stable, plan-keyed session id.
+        // It is a direct view of the server plan, not a throwaway local chat:
+        // reopening it never creates a second copy, and the session summary
+        // merges it with the server plan instead of showing a duplicate.
         const record: ChatSessionRecord = {
-          id: createId('session'),
+          id: 'plan:' + planId,
           title: planGraph.user_intent?.slice(0, 18) || '历史计划',
           createdAt: now,
           updatedAt: now,

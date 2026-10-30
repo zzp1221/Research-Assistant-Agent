@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A · 光阑 · 轻量空间工作台</title>
+<style>
+  :root{
+    --bg:#e7eee5;
+    --app:#f7f9f4;
+    --panel:#ffffff;
+    --panel-soft:#fbfdf9;
+    --ink:#17211b;
+    --ink-2:#35443a;
+    --muted:#657368;
+    --muted-2:#5f6d64;
+    --line:#e2e9df;
+    --line-2:#d6e0d4;
+    --accent:#1f6b4f;
+    --accent-2:#2f8b63;
+    --accent-soft:#e8f2e9;
+    --lime:#d8f26a;
+    --amber:#8a5a16;
+    --coral:#c7553a;
+    --shadow:0 26px 60px -38px rgba(20,52,34,.42);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Aptos","Segoe UI Variable Text","Noto Sans SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
+    font-size:14px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  button,textarea{font:inherit}
+  button{border:0;background:none;color:inherit;cursor:pointer}
+  svg{display:block}
+  .app{
+    height:calc(100vh - 24px);
+    margin:12px;
+    display:flex;
+    overflow:hidden;
+    border:1px solid rgba(255,255,255,.8);
+    border-radius:28px;
+    background:var(--app);
+    box-shadow:0 40px 100px -56px rgba(17,40,28,.5);
+  }
+  .rail{
+    width:68px;
+    flex-shrink:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:8px;
+    padding:16px 10px;
+    background:var(--panel-soft);
+    border-right:1px solid var(--line);
+  }
+  .brand{
+    width:36px;height:36px;border-radius:12px;
+    display:grid;place-items:center;
+    background:var(--ink);color:#fff;
+    font-family:Georgia,"Noto Serif SC",serif;font-size:19px;font-weight:700;
+    box-shadow:0 12px 22px -16px rgba(23,33,27,.8);
+    margin-bottom:8px;
+  }
+  .rail-btn{
+    width:38px;height:38px;border-radius:12px;
+    display:grid;place-items:center;color:#849187;
+    transition:background .18s ease,color .18s ease,transform .18s ease;
+  }
+  .rail-btn:hover{background:#eef4ec;color:var(--accent)}
+  .rail-btn.active{background:var(--accent-soft);color:var(--accent)}
+  .rail-btn:active{transform:scale(.96)}
+  .rail-bottom{margin-top:auto;display:flex;flex-direction:column;gap:6px;align-items:center}
+  .avatar{width:32px;height:32px;border-radius:50%;background:#dce8dc;display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--accent)}
+  .chat{
+    width:344px;flex-shrink:0;
+    display:flex;flex-direction:column;
+    background:var(--panel);
+    border-right:1px solid var(--line);
+  }
+  .chat-head{padding:20px 22px 14px;border-bottom:1px solid #eef2ec}
+  .eyebrow{font-size:10.5px;letter-spacing:.13em;color:var(--muted-2);font-weight:600}
+  .chat-head h1{font-size:21px;line-height:1.25;letter-spacing:-.025em;margin:7px 0 6px;font-weight:600}
+  .chat-sub{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}
+  .live-dot{width:6px;height:6px;border-radius:50%;background:var(--accent-2);box-shadow:0 0 0 4px #e9f4eb;flex-shrink:0}
+  .chat-head-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .more-btn{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;color:var(--muted-2)}
+  .more-btn:hover{background:#f0f5ee;color:var(--ink)}
+  .messages{
+    flex:1;min-height:0;overflow:hidden;
+    padding:18px 18px 10px;
+    display:flex;flex-direction:column;gap:14px;
+  }
+  .msg-user{
+    align-self:flex-end;max-width:88%;
+    padding:11px 13px;
+    border-radius:16px 16px 5px 16px;
+    background:#eef4ed;color:#263a2e;
+    font-size:13.5px;line-height:1.58;
+  }
+  .msg-ai{padding:1px 2px 0}
+  .ai-head{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--accent)}
+  .spark{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:var(--accent-soft);font-size:10px;color:var(--accent)}
+  .ai-body{margin:7px 0 0;font-size:13.5px;line-height:1.65;color:var(--ink-2)}
+  .mini-plan{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .pill{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid var(--line);border-radius:999px;background:var(--panel-soft);font-size:11px;color:#66756a}
+  .pill.done{border-color:#d6ead8;background:#f1f8f1;color:#2f7b58}
+  .pill .mini-dot{width:4px;height:4px;border-radius:50%;background:currentColor;opacity:.7}
+  .approval{
+    margin-top:auto;
+    display:flex;align-items:flex-start;gap:10px;
+    padding:12px 13px;
+    border:1px solid var(--line);border-radius:16px;
+    background:var(--panel-soft);
+    box-shadow:0 14px 30px -28px rgba(20,52,34,.5);
+  }
+  .approval-icon{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:#f3e9da;color:var(--amber);flex-shrink:0}
+  .approval-copy{min-width:0;flex:1}
+  .approval-copy b{display:block;font-size:12.5px;line-height:1.35;font-weight:600}
+  .approval-copy span{display:block;margin-top:2px;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .approval-actions{display:flex;gap:5px;margin-top:8px}
+  .tiny-btn{height:26px;padding:0 9px;border-radius:8px;border:1px solid var(--line-2);background:#fff;font-size:11px;color:#5b6c60}
+  .tiny-btn:hover{border-color:var(--accent);color:var(--accent)}
+  .tiny-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .tiny-btn.primary:hover{background:#18573f;border-color:#18573f;color:#fff}
+  .composer{padding:12px 16px 16px;border-top:1px solid #eef2ec;background:#fff}
+  .composer-box{border:1px solid var(--line-2);border-radius:16px;background:var(--panel-soft);padding:10px 12px 8px;transition:border-color .18s ease,box-shadow .18s ease}
+  .composer-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(31,107,79,.08)}
+  .composer textarea{
+    display:block;width:100%;min-height:52px;resize:none;border:0;outline:none;background:transparent;
+    padding:0;font-size:13.5px;line-height:1.5;color:var(--ink);
+  }
+  .composer textarea::placeholder{color:#68766c}
+  .composer-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px}
+  .composer-tools{display:flex;align-items:center;gap:3px}
+  .composer-tool{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:#7d8b80}
+  .composer-tool:hover{background:#edf3eb;color:var(--accent)}
+  .enter-hint{font-size:10px;color:#68766c;margin-left:5px}
+  .send{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--accent);color:#fff;box-shadow:0 8px 16px -10px rgba(31,107,79,.7)}
+  .send:hover{background:#18573f}
+  .canvas{flex:1;min-width:0;display:flex;flex-direction:column;background:#f4f7f1}
+  .canvas-head{
+    display:flex;align-items:flex-start;justify-content:space-between;gap:20px;
+    padding:22px 30px 15px;
+  }
+  .crumb{display:flex;align-items:center;gap:7px;font-size:10.5px;letter-spacing:.08em;color:var(--muted-2);font-weight:600}
+  .crumb .sep{color:#5f6d64}
+  .canvas-head h2{font-size:27px;line-height:1.2;letter-spacing:-.035em;margin:8px 0 0;font-weight:600}
+  .head-right{display:flex;align-items:center;gap:7px;padding-top:2px;flex-shrink:0}
+  .status-pill{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-radius:999px;background:var(--accent-soft);color:#256a4d;font-size:12px;font-weight:600}
+  .status-pill .dot{width:6px;height:6px;border-radius:50%;background:var(--accent-2);box-shadow:0 0 0 3px rgba(47,139,99,.12)}
+  .chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.7);color:#5f6e63;font-size:11.5px}
+  .chip b{font-family:"Cascadia Mono","SFMono-Regular",Consolas,monospace;font-size:11px;color:#28382e;font-weight:600}
+  .icon-btn{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;color:#7c8a7f;border:1px solid transparent}
+  .icon-btn:hover{background:#eaf1e7;color:var(--accent);border-color:var(--line)}
+  .btn-primary{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 14px;border-radius:10px;background:var(--accent);color:#fff;font-size:12.5px;font-weight:600;box-shadow:0 12px 22px -16px rgba(31,107,79,.8)}
+  .btn-primary:hover{background:#18573f}
+  .graph{
+    position:relative;flex:1;min-height:0;margin:0 20px 14px;
+    background:transparent;overflow:hidden;
+  }
+  .graph::before{
+    content:"";position:absolute;inset:0;
+    background-image:radial-gradient(#c9d7c7 1px,transparent 1px);
+    background-size:22px 22px;opacity:.48;
+    mask-image:radial-gradient(ellipse at 50% 50%,#000 45%,transparent 82%);
+  }
+  .graph::after{
+    content:"";position:absolute;left:42%;top:38%;width:540px;height:540px;border-radius:50%;
+    transform:translate(-50%,-50%);
+    background:radial-gradient(circle,rgba(31,107,79,.10),rgba(31,107,79,.03) 44%,transparent 70%);
+    pointer-events:none;
+  }
+  .stage{position:absolute;left:50%;top:50%;width:940px;height:560px;transform:translate(-50%,-50%)}
+  .edges{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+  .edge{fill:none;stroke:#c7d5c5;stroke-width:1.5}
+  .edge.done{stroke:#9fc1a6}
+  .edge.active{stroke:var(--accent);stroke-width:2;stroke-dasharray:6 7;animation:flow 1.9s linear infinite}
+  @keyframes flow{to{stroke-dashoffset:-26}}
+  .node{
+    position:absolute;width:180px;padding:13px 15px 12px;
+    border:1px solid #e1e9df;border-radius:18px;background:#fff;
+    box-shadow:0 18px 34px -30px rgba(24,55,36,.5);
+  }
+  .node .num{font-family:"Cascadia Mono","SFMono-Regular",Consolas,monospace;font-size:9.5px;letter-spacing:.08em;color:#68766c;font-weight:600}
+  .node h3{font-size:13.5px;line-height:1.35;letter-spacing:-.01em;margin:5px 0 5px;font-weight:600;color:#223129}
+  .node .meta{display:flex;align-items:center;gap:6px;font-size:10.5px;color:#667469}
+  .node .state-dot{width:5px;height:5px;border-radius:50%;background:#b9c5ba;flex-shrink:0}
+  .node.done .state-dot{background:#5ba77d}
+  .node.active{border-color:var(--accent);box-shadow:0 26px 52px -34px rgba(31,107,79,.7),0 0 0 7px rgba(31,107,79,.06)}
+  .node.active .state-dot{background:var(--accent-2);box-shadow:0 0 0 3px rgba(47,139,99,.12)}
+  .node.waiting{border-style:dashed;background:#fbfcff}
+  .node .progress{height:4px;border-radius:2px;background:#e9f0e7;overflow:hidden;margin-top:9px}
+  .node .progress i{display:block;height:100%;width:64%;border-radius:2px;background:linear-gradient(90deg,var(--accent),#59a47b)}
+  .node .run-label{font-size:10px;color:var(--accent);font-weight:600;margin-top:5px}
+  .task-float{
+    position:absolute;right:18px;bottom:18px;width:238px;
+    padding:12px 13px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.92);
+    box-shadow:0 20px 40px -34px rgba(24,55,36,.55);backdrop-filter:blur(10px);
+  }
+  .task-float-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .task-float .eyebrow{font-size:9.5px;color:#5f6d64}
+  .task-float .badge{display:grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:6px;background:#f3e9da;color:var(--amber);font-family:"Cascadia Mono",monospace;font-size:9.5px;font-weight:600}
+  .task-float h3{font-size:12.5px;margin:6px 0 2px;font-weight:600}
+  .task-float p{margin:0;font-size:11px;color:var(--muted)}
+  .task-float-actions{display:flex;gap:5px;margin-top:9px}
+  .task-float-actions button{height:25px;padding:0 8px;border-radius:7px;border:1px solid var(--line-2);background:#fff;font-size:10.5px;color:#657468}
+  .task-float-actions button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .zoom{
+    position:absolute;left:18px;bottom:18px;display:flex;align-items:center;gap:2px;
+    padding:4px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.9);
+    box-shadow:0 14px 24px -24px rgba(24,55,36,.5);
+  }
+  .zoom button{width:25px;height:25px;border-radius:6px;display:grid;place-items:center;color:#5f6d63;font-size:13px}
+  .zoom button:hover{background:#edf3eb;color:var(--accent)}
+  .legend{position:absolute;right:18px;top:16px;display:flex;gap:11px;padding:6px 9px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.72);font-size:9.5px;color:#627065}
+  .legend span{display:flex;align-items:center;gap:4px}
+  .legend i{width:5px;height:5px;border-radius:50%;background:#b9c5ba;display:block}
+  .legend .ok i{background:#5ba77d}.legend .live i{background:var(--accent-2)}.legend .wait i{background:#c9d1c6}
+  .canvas-foot{
+    height:62px;flex-shrink:0;display:flex;align-items:center;gap:25px;
+    padding:0 24px;border-top:1px solid var(--line);background:rgba(255,255,255,.5);
+  }
+  .foot-stat{display:flex;align-items:baseline;gap:7px}
+  .foot-stat b{font-size:16px;letter-spacing:-.03em;font-weight:600}
+  .foot-stat b em{font-style:normal;font-size:11px;color:#66746a;font-weight:500}
+  .foot-stat span{font-size:11px;color:#627065}
+  .foot-actions{margin-left:auto;display:flex;align-items:center;gap:2px}
+  .foot-action{display:flex;align-items:center;gap:6px;height:30px;padding:0 9px;border-radius:8px;font-size:11.5px;color:#66756a}
+  .foot-action:hover{background:#edf3eb;color:var(--accent)}
+  .foot-action .icon{width:14px;height:14px}
+  @media (max-width:1180px){
+    .chat{width:306px}
+    .canvas-head{padding-left:22px;padding-right:22px}
+    .stage{transform:translate(-50%,-50%) scale(.86)}
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H7l-3 2v-4.6A7.5 7.5 0 1 1 20 11.5Z"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4.5 5.5A2.5 2.5 0 0 1 7 3h12.5v16H7a2.5 2.5 0 0 0-2.5 2.5V5.5Z"/><path d="M4.5 5.5V19M7 7h9M7 11h7"/></symbol>
+    <symbol id="i-graph" viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="5" rx="1"/><rect x="16" y="4" width="5" height="5" rx="1"/><rect x="9.5" y="15" width="5" height="5" rx="1"/><path d="M8 6.5h3.5M18.5 9v3.5M16 17.5h-1.5M8 17.5h1.5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H19v14H6.5A2.5 2.5 0 0 1 4 16.5v-9Z"/><path d="M4 8h13M16 12h3M16 15h3"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M4 5h16l1 8v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5l1-8Z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.8 9a2.3 2.3 0 1 1 3.2 2.1c-.8.4-1 1-1 1.9"/><path d="M12 16.5v.1"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2M12 18.5v2M20.5 12h-2M5.5 12h-2M18 6l-1.4 1.4M7.4 16.6 6 18M18 18l-1.4-1.4M7.4 7.4 6 6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="m8 12.5 5.8-5.8a3.2 3.2 0 1 1 4.5 4.5l-7.7 7.7a5.2 5.2 0 0 1-7.4-7.4l8-8"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3 10.5 13.5M21 3l-6.8 18-3.7-7.5L3 9.8 21 3Z"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 20h14"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 6.5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <aside class="rail" aria-label="主导航">
+    <div class="brand" title="Research Assistant">R</div>
+    <button class="rail-btn active" title="对话"><svg class="icon" width="19" height="19"><use href="#i-chat"/></svg></button>
+    <button class="rail-btn" title="文献库"><svg class="icon" width="19" height="19"><use href="#i-book"/></svg></button>
+    <button class="rail-btn" title="计划库"><svg class="icon" width="19" height="19"><use href="#i-graph"/></svg></button>
+    <button class="rail-btn" title="历史会话"><svg class="icon" width="19" height="19"><use href="#i-clock"/></svg></button>
+    <div class="rail-bottom">
+      <button class="rail-btn" title="成本与预算"><svg class="icon" width="19" height="19"><use href="#i-wallet"/></svg></button>
+      <button class="rail-btn" title="待办中心"><svg class="icon" width="19" height="19"><use href="#i-inbox"/></svg></button>
+      <button class="rail-btn" title="使用手册"><svg class="icon" width="19" height="19"><use href="#i-help"/></svg></button>
+      <button class="rail-btn" title="设置"><svg class="icon" width="19" height="19"><use href="#i-settings"/></svg></button>
+      <span class="avatar" title="账户">研</span>
+    </div>
+  </aside>
+
+  <section class="chat" aria-label="研究对话">
+    <header class="chat-head">
+      <div class="chat-head-row">
+        <div>
+          <h1>Transformer 论文复现</h1>
+          <div class="chat-sub"><i class="live-dot"></i><span>已连接 · 5 条记录</span></div>
+        </div>
+        <button class="more-btn" title="会话操作"><svg width="16" height="16"><use href="#i-more"/></svg></button>
+      </div>
+    </header>
+
+    <div class="messages">
+      <div class="msg-user">复现这篇论文的核心实验，先跑通最小版本，再和基线做对比。</div>
+      <div class="msg-ai">
+        <div class="ai-head"><span class="spark">✦</span>已拆成 5 个节点</div>
+        <p class="ai-body">先确认运行环境，再从注意力机制开始。预计 18 分钟，过程中有 1 项需要你批准。</p>
+        <div class="mini-plan">
+          <span class="pill done"><i class="mini-dot"></i>解析论文</span>
+          <span class="pill done"><i class="mini-dot"></i>复现注意力</span>
+          <span class="pill"><i class="mini-dot"></i>构造训练脚本</span>
+          <span class="pill"><i class="mini-dot"></i>基线实验</span>
+        </div>
+      </div>
+      <div class="approval">
+        <span class="approval-icon"><svg width="15" height="15"><use href="#i-download"/></svg></span>
+        <div class="approval-copy">
+          <b>需要下载数据集</b>
+          <span>wikitext-103 · 预计 1.2 GB</span>
+          <div class="approval-actions">
+            <button class="tiny-btn">拒绝</button>
+            <button class="tiny-btn primary">允许一次</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="composer-box">
+        <textarea placeholder="继续追问，或拖入论文…" aria-label="输入消息"></textarea>
+        <div class="composer-row">
+          <div class="composer-tools">
+            <button class="composer-tool" title="添加论文或数据"><svg width="17" height="17"><use href="#i-paperclip"/></svg></button>
+            <button class="composer-tool" title="从文献库添加"><svg width="17" height="17"><use href="#i-book"/></svg></button>
+            <span class="enter-hint">Enter 发送</span>
+          </div>
+          <button class="send" title="发送"><svg width="15" height="15"><use href="#i-send"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <main class="canvas">
+    <header class="canvas-head">
+      <div>
+        <div class="crumb"><span>研究工作台</span><span class="sep">/</span><span>计划 04</span></div>
+        <h2>复现 Transformer 核心实验</h2>
+      </div>
+      <div class="head-right">
+        <span class="status-pill"><i class="dot"></i>运行中</span>
+        <span class="chip">预算 <b>$1.24 / $5.00</b></span>
+        <button class="icon-btn" title="计划库"><svg width="17" height="17"><use href="#i-grid"/></svg></button>
+        <button class="btn-primary"><svg width="13" height="13"><use href="#i-pause"/></svg>暂停</button>
+      </div>
+    </header>
+
+    <div class="graph">
+      <div class="legend">
+        <span class="ok"><i></i>完成</span>
+        <span class="live"><i></i>进行中</span>
+        <span class="wait"><i></i>等待</span>
+      </div>
+      <div class="stage">
+        <svg class="edges" viewBox="0 0 940 560" aria-hidden="true">
+          <defs>
+            <marker id="arrow-a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 8 4 0 8Z" fill="#a9bfa9"/></marker>
+            <marker id="arrow-a-live" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 8 4 0 8Z" fill="#1f6b4f"/></marker>
+          </defs>
+          <path class="edge done" d="M210 266 C240 266 240 121 270 121" marker-end="url(#arrow-a)"/>
+          <path class="edge active" d="M210 266 C240 266 240 405 270 405" marker-end="url(#arrow-a-live)"/>
+          <path class="edge done" d="M450 121 C492 121 492 261 535 261" marker-end="url(#arrow-a)"/>
+          <path class="edge" d="M450 405 C492 405 492 261 535 261" marker-end="url(#arrow-a)"/>
+          <path class="edge" d="M715 261 C737 261 737 116 760 116" marker-end="url(#arrow-a)"/>
+        </svg>
+
+        <article class="node done" style="left:30px;top:220px">
+          <div class="num">01</div>
+          <h3>解析论文与数据</h3>
+          <div class="meta"><i class="state-dot"></i><span>文献 Agent · 12s</span></div>
+        </article>
+
+        <article class="node done" style="left:270px;top:75px">
+          <div class="num">02</div>
+          <h3>复现注意力机制</h3>
+          <div class="meta"><i class="state-dot"></i><span>代码 Agent · 2m 08s</span></div>
+        </article>
+
+        <article class="node active" style="left:270px;top:355px">
+          <div class="num">03</div>
+          <h3>构造训练脚本</h3>
+          <div class="meta"><i class="state-dot"></i><span>代码 Agent · 运行中</span></div>
+          <div class="progress"><i></i></div>
+          <div class="run-label">64% · 约 2 分钟</div>
+        </article>
+
+        <article class="node waiting" style="left:535px;top:215px">
+          <div class="num">04</div>
+          <h3>运行基线实验</h3>
+          <div class="meta"><i class="state-dot"></i><span>等待前序节点</span></div>
+        </article>
+
+        <article class="node waiting" style="left:760px;top:70px">
+          <div class="num">05</div>
+          <h3>汇总结果与报告</h3>
+          <div class="meta"><i class="state-dot"></i><span>等待前序节点</span></div>
+        </article>
+      </div>
+
+      <div class="zoom">
+        <button title="缩小">−</button>
+        <button title="放大">+</button>
+        <button title="适配画布">⤢</button>
+      </div>
+
+      <div class="task-float">
+        <div class="task-float-top"><span class="eyebrow">待处理</span><span class="badge">1</span></div>
+        <h3>下载数据集</h3>
+        <p>wikitext-103 · 1.2 GB</p>
+        <div class="task-float-actions">
+          <button>稍后</button>
+          <button class="primary">允许一次</button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="canvas-foot">
+      <div class="foot-stat"><b>3<em>/5</em></b><span>节点完成</span></div>
+      <div class="foot-stat"><b>18m</b><span>预计剩余</span></div>
+      <div class="foot-stat"><b>$1.24</b><span>已用 / $5.00</span></div>
+      <div class="foot-actions">
+        <button class="foot-action"><svg class="icon" width="14" height="14"><use href="#i-grid"/></svg>计划库</button>
+        <button class="foot-action"><svg class="icon" width="14" height="14"><use href="#i-wallet"/></svg>成本</button>
+        <button class="foot-action"><svg class="icon" width="14" height="14"><use href="#i-inbox"/></svg>待办 1</button>
+      </div>
+    </footer>
+  </main>
+</div>
+</body>
+</html>

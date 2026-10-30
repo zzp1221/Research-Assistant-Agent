@@ -26,7 +26,9 @@ func getOutgoingNodes(plan *models.PlanGraph, taskID string) []*models.TaskNode 
 func allDependenciesCompleted(plan *models.PlanGraph, task *models.TaskNode) bool {
 	for _, depID := range task.Dependencies {
 		dep := getNodeByID(plan, depID)
-		if dep == nil || dep.Status != models.StatusCompleted {
+		// A deliberately skipped node satisfies the dependency: its dependents
+		// continue while the skipped node itself never executes.
+		if dep == nil || (dep.Status != models.StatusCompleted && dep.Status != models.StatusSkipped) {
 			return false
 		}
 	}

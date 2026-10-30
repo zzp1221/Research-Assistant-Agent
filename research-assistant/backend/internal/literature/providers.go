@@ -203,6 +203,7 @@ type openAlexWork struct {
 	DOI             string   `json:"doi"`
 	PublicationYear int      `json:"publication_year"`
 	Citations       int      `json:"cited_by_count"`
+	RelevanceScore  float64  `json:"relevance_score"`
 	ReferencedWorks []string `json:"referenced_works"`
 	OpenAccess      struct {
 		IsOA bool `json:"is_oa"`
@@ -250,16 +251,17 @@ func openAlexResult(work openAlexWork) Result {
 		title = cleanText(work.DisplayName)
 	}
 	result := Result{
-		Source:     SourceOpenAlex,
-		ID:         strings.TrimPrefix(work.ID, "https://openalex.org/"),
-		Title:      title,
-		Year:       work.PublicationYear,
-		DOI:        normalizeDOI(work.DOI),
-		URL:        work.PrimaryLocation.LandingPageURL,
-		PDFURL:     firstNonEmpty(work.PrimaryLocation.PDFURL, work.PrimaryLocation.LandingPageURL),
-		Citations:  work.Citations,
-		OpenAccess: work.OpenAccess.IsOA,
-		License:    strings.TrimSpace(work.PrimaryLocation.License),
+		Source:        SourceOpenAlex,
+		ID:            strings.TrimPrefix(work.ID, "https://openalex.org/"),
+		Title:         title,
+		Year:          work.PublicationYear,
+		DOI:           normalizeDOI(work.DOI),
+		URL:           work.PrimaryLocation.LandingPageURL,
+		PDFURL:        firstNonEmpty(work.PrimaryLocation.PDFURL, work.PrimaryLocation.LandingPageURL),
+		Citations:     work.Citations,
+		OpenAccess:    work.OpenAccess.IsOA,
+		License:       strings.TrimSpace(work.PrimaryLocation.License),
+		ProviderScore: work.RelevanceScore,
 	}
 	if result.DOI != "" {
 		result.URL = "https://doi.org/" + result.DOI
@@ -287,7 +289,8 @@ type crossrefWork struct {
 	Issued struct {
 		DateParts [][]int `json:"date-parts"`
 	} `json:"issued"`
-	Link []struct {
+	IsReferencedByCount int `json:"is-referenced-by-count"`
+	Link                []struct {
 		URL         string `json:"URL"`
 		ContentType string `json:"content-type"`
 	} `json:"link"`
@@ -295,7 +298,12 @@ type crossrefWork struct {
 
 func (c *Client) searchCrossref(ctx context.Context, query string, limit, yearFrom int) ([]Result, error) {
 	endpoint := c.endpoint(SourceCrossref)
-	target := endpoint + "?query=" + url.QueryEscape(query) + "&rows=" + strconv.Itoa(clampLimit(limit, 1, 50))
+	// query.bibliographic searches titles/authors/container metadata more
+	// precisely than the generic query field, which often returns peer-review
+	// fragments and figure captions for survey queries.
+	target := endpoint + "?query.bibliographic=" + url.QueryEscape(query) +
+		"&rows=" + strconv.Itoa(clampLimit(limit, 1, 50)) +
+		"&select=DOI,title,author,issued,container-title,is-referenced-by-count,link"
 	body, err := c.fetch(ctx, SourceCrossref, target, nil)
 	if err != nil {
 		return nil, err
@@ -317,9 +325,10 @@ func (c *Client) searchCrossref(ctx context.Context, query string, limit, yearFr
 
 func crossrefResult(item crossrefWork) Result {
 	result := Result{
-		Source: SourceCrossref,
-		DOI:    normalizeDOI(item.DOI),
-		URL:    item.URL,
+		Source:    SourceCrossref,
+		DOI:       normalizeDOI(item.DOI),
+		URL:       item.URL,
+		Citations: item.IsReferencedByCount,
 	}
 	if len(item.Title) > 0 {
 		result.Title = cleanText(item.Title[0])

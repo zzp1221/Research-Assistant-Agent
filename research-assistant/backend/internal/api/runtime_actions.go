@@ -43,15 +43,27 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "decision must be approve or reject"})
 		return
 	}
-	// A terminal plan must never be resurrected by approving a stale action.
-	if isTerminalPlanStatus(plan.Status) {
+	actionID := c.Param("actionId")
+	// Replay approvals are recorded against a finished plan's audit trail; they
+	// never resurrect the plan. Any other action on a terminal plan is stale.
+	replayDecision := false
+	for i := range plan.RuntimeActions {
+		action := plan.RuntimeActions[i]
+		if action.ID != actionID {
+			continue
+		}
+		if _, ok := action.Details["replay_of"].(string); ok && action.Kind == models.RuntimeActionToolCall {
+			replayDecision = true
+		}
+		break
+	}
+	if isTerminalPlanStatus(plan.Status) && !replayDecision {
 		c.JSON(http.StatusConflict, gin.H{
 			"error": "plan has already ended (" + string(plan.Status) + "); create a new plan or rerun it",
 			"code":  "plan_already_terminal",
 		})
 		return
 	}
-	actionID := c.Param("actionId")
 	userID := resolveUserID(c)
 	now := time.Now()
 	r.mu.Lock()
@@ -59,7 +71,7 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 	r.mu.Unlock()
 	var decided *models.RuntimeActionRequest
 	if err := r.store.UpdatePlan(plan.ID, func(current *models.PlanGraph) error {
-		if isTerminalPlanStatus(current.Status) {
+		if isTerminalPlanStatus(current.Status) && !replayDecision {
 			return fmt.Errorf("plan has already ended (%s); create a new plan or rerun it", current.Status)
 		}
 		index := -1
@@ -100,7 +112,7 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 			return errApprovalExpired
 		}
 		task := findPlanTask(current, action.TaskID)
-		if task == nil {
+		if task == nil && !replayDecision {
 			return errors.New("runtime action task not found")
 		}
 		action.DecidedAt = &now
@@ -108,6 +120,14 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 		action.DecisionNote = payload.Note
 		if payload.Decision == "approve" {
 			action.Status = models.RuntimeActionApproved
+			if action.Kind == models.RuntimeActionToolCall {
+				markToolCallApproved(current, action, now)
+			}
+			if replayDecision {
+				current.UpdatedAt = now
+				decided = action
+				return nil
+			}
 			task.Status = models.StatusPending
 			task.Error = ""
 			task.FinishedAt = nil
@@ -122,6 +142,14 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 			current.UpdatedAt = now
 		} else {
 			action.Status = models.RuntimeActionRejected
+			if action.Kind == models.RuntimeActionToolCall {
+				markToolCallRejected(current, action, now)
+			}
+			if replayDecision {
+				current.UpdatedAt = now
+				decided = action
+				return nil
+			}
 			task.Status = models.StatusBlocked
 			task.Error = "user rejected runtime action: " + string(action.Kind)
 			task.FinishedAt = &now
@@ -178,7 +206,9 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 	_ = r.store.AppendEvent(plan.ID, event)
 	r.events.Publish(plan.ID, event)
 
-	if payload.Decision == "approve" {
+	if replayDecision {
+		// Replay decisions only update the audit record; the plan is finished.
+	} else if payload.Decision == "approve" {
 		if !alreadyRunning && !r.startPlanExecution(plan.ID, plan) {
 			c.JSON(http.StatusConflict, gin.H{"error": "plan is already running"})
 			return
@@ -249,4 +279,54 @@ func (r *planRuntime) startPlanExecution(planID string, plan *models.PlanGraph) 
 		}
 	}(ctx, cancel)
 	return true
+}
+
+// markToolCallApproved records the human decision on the pending tool call.
+func markToolCallApproved(plan *models.PlanGraph, action *models.RuntimeActionRequest, now time.Time) {
+	if _, replay := action.Details["replay_of"].(string); replay {
+		return
+	}
+	callID, _ := action.Details["call_id"].(string)
+	for i := range plan.ToolCalls {
+		if plan.ToolCalls[i].ID == callID {
+			plan.ToolCalls[i].Status = models.ToolCallApproved
+			plan.ToolCalls[i].ApprovalID = action.ID
+			return
+		}
+	}
+}
+
+// markToolCallRejected closes the pending record so the audit trail never
+// leaves a rejected call looking like it is still waiting.
+func markToolCallRejected(plan *models.PlanGraph, action *models.RuntimeActionRequest, now time.Time) {
+	if _, replay := action.Details["replay_of"].(string); replay {
+		return
+	}
+	callID, _ := action.Details["call_id"].(string)
+	if callID == "" {
+		return
+	}
+	for i := range plan.ToolCalls {
+		if plan.ToolCalls[i].ID == callID {
+			plan.ToolCalls[i].Status = models.ToolCallRejected
+			plan.ToolCalls[i].ErrorCode = "tool_call_rejected"
+			plan.ToolCalls[i].Error = "user rejected tool call"
+			plan.ToolCalls[i].ApprovalID = action.ID
+			plan.ToolCalls[i].FinishedAt = &now
+			return
+		}
+	}
+	toolID, _ := action.Details["tool_id"].(string)
+	plan.ToolCalls = append(plan.ToolCalls, models.ToolCallRecord{
+		ID:         callID,
+		PlanID:     plan.ID,
+		TaskID:     action.TaskID,
+		ToolID:     toolID,
+		Status:     models.ToolCallRejected,
+		ErrorCode:  "tool_call_rejected",
+		Error:      "user rejected tool call",
+		ApprovalID: action.ID,
+		FinishedAt: &now,
+		StartedAt:  now,
+	})
 }

@@ -109,6 +109,13 @@ var taskTypeRegistry = map[string]TaskTypeSpec{
 		ExecutionKind: ExecutionReal,
 		Description:   "recompute hidden benchmark evidence",
 	},
+	"ask_user_question": {
+		AllowedAgents: []string{"general_agent", "answer_agent"},
+		ExecutionKind: ExecutionLLM,
+		OutputKind:    OutputFinalAnswer,
+		EvidenceClass: EvidenceLLM,
+		Description:   "pause and ask the user a structured question when a decision is genuinely ambiguous",
+	},
 	"claim_evidence_build": {
 		AllowedAgents: []string{"data_agent"},
 		ExecutionKind: ExecutionReal,
@@ -294,6 +301,13 @@ var taskTypeRegistry = map[string]TaskTypeSpec{
 		RequiredOutputArtifacts: []string{"result_plot"},
 		Description:             "coder generates a result chart and runs it in sandbox; returns result_plot",
 	},
+	"tool_call": {
+		AllowedAgents:           []string{"tool_executor", "profile:*"},
+		ExecutionKind:           ExecutionReal,
+		OutputKind:              OutputArtifactRef,
+		RequiredOutputArtifacts: []string{"tool_result"},
+		Description:             "invoke one registered tool through the ToolInvoker (schema, permission, approval, audit)",
+	},
 	"verify_result": {
 		AllowedAgents: []string{"data_agent"},
 		ExecutionKind: ExecutionLLM,
@@ -332,6 +346,10 @@ func (s TaskTypeSpec) allowsAgent(agent string) bool {
 		if agent == allowed {
 			return true
 		}
+		// "profile:*" admits any custom AgentProfile for node types that opt in.
+		if strings.HasSuffix(allowed, "*") && strings.HasPrefix(agent, strings.TrimSuffix(allowed, "*")) {
+			return true
+		}
 	}
 	return false
 }
@@ -349,6 +367,12 @@ func validateTaskNode(node *models.TaskNode) error {
 		return fmt.Errorf("task type %q is dead and must not be planned: %s", node.Type, spec.Description)
 	}
 	if !spec.allowsAgent(node.AssignedTo) {
+		// Custom AgentProfiles are valid for LLM task types: the profile supplies
+		// the prompt/model/tools while the task type still defines the output
+		// contract. Unknown plain agent names are never accepted.
+		if strings.HasPrefix(node.AssignedTo, "profile:") && spec.ExecutionKind == ExecutionLLM {
+			return nil
+		}
 		return fmt.Errorf("task type %q must be assigned to %s, got %q", node.Type, strings.Join(spec.AllowedAgents, " or "), node.AssignedTo)
 	}
 	for _, artifact := range spec.RequiredOutputArtifacts {
@@ -358,6 +382,13 @@ func validateTaskNode(node *models.TaskNode) error {
 	}
 	return nil
 }
+
+// ValidatePlanTaskNodes exposes the task-registry check so plan revision
+// editing can validate an edited graph without duplicating the registry.
+func ValidatePlanTaskNodes(nodes []*models.TaskNode) error { return validateTaskRegistry(nodes) }
+
+// ValidatePlanTaskNode validates one node against the task registry.
+func ValidatePlanTaskNode(node *models.TaskNode) error { return validateTaskNode(node) }
 
 // validateTaskRegistry checks every node in a plan before it is accepted.
 func validateTaskRegistry(nodes []*models.TaskNode) error {

@@ -6,11 +6,11 @@
 
 | 目录 | 说明 |
 |---|---|
-| `intent_recognition/` | FastAPI 意图识别服务（真实 DeepSeek/OpenAI-compatible 调用）、BERT/Qwen 训练脚本与双路由数据集 |
+| `intent_recognition/` | FastAPI 意图识别服务（真实 OpenAI-compatible 调用）、BERT/Qwen 训练脚本与双路由数据集 |
 
 ## 定位
 
-- `intent-recognition` 是 Compose 服务，端口 `127.0.0.1:18000`。
+- `intent-recognition` 是可选 Compose 服务，宿主端口 `127.0.0.1:18000` 映射到容器 `8000`。
 - 主后端默认 `INTENT_ROUTER_MODE=hybrid`：规则快路径 + 本服务语义分类 + 后校验；服务不可用或置信度不足时回退规则。
 - 服务不再使用关键词 mock：未配置 `OPENAI_API_KEY` 时 `/predict` 明确返回 503，`/health` 返回 `degraded`。
 - 新 schema：`POST /predict` 同时返回 `complexity`（L0–L4）、`capabilities`、`route_hint`、`complexity_confidence`、`complexity_reason`；Go 侧 `ComplexityRouter` 在附件/论文上下文之后做最终路由。
@@ -30,8 +30,8 @@ curl -s -X POST http://127.0.0.1:18000/predict \
 环境变量来自 `backend.env`：
 
 - `OPENAI_API_KEY`（必填）
-- `OPENAI_BASE_URL`（默认 `https://api.deepseek.com/v1`）
-- `OPENAI_MODEL_NAME`（默认 `deepseek-chat`）
+- `OPENAI_BASE_URL`（未设置时回退 `https://api.deepseek.com/v1`）
+- `OPENAI_MODEL_NAME`（未设置时回退 `deepseek-chat`）
 - `INTENT_SERVICE_TIMEOUT_SECONDS` / `INTENT_SERVICE_MAX_ATTEMPTS` / `INTENT_SERVICE_BACKOFF_MS`
 
 ## 训练
@@ -57,3 +57,4 @@ docker run --rm -v "$PWD/ai-services/intent_recognition:/app" -w /app python:3.1
 
 - 训练脚本需要额外依赖和 GPU/CPU 环境，默认不参与 `make test`。
 - 意图识别只是规划入口的辅助能力，最终 DAG 仍由 Planner 校验。
+- 真实 provider 偶发返回非法 JSON 或超时时，服务返回 502/503，Go 后端回退规则；这类失败已记录在 [docs/verification.md](../../docs/verification.md)。

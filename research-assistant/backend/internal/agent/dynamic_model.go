@@ -88,6 +88,23 @@ func (m *dynamicChatModel) ResolvedModelName(ctx context.Context) string {
 	return name
 }
 
+// ResolvedModelPrice returns the runtime profile's 1K-token prices so the outer
+// usage wrapper can bill the same model the inner call actually uses.
+func (m *dynamicChatModel) ResolvedModelPrice(ctx context.Context) (float64, float64) {
+	if m == nil {
+		return 0, 0
+	}
+	resolver := modelresolver.Default()
+	if resolver == nil {
+		return 0, 0
+	}
+	resolved, err := resolver.ResolveText(modelresolver.OwnerFromContext(ctx))
+	if err != nil {
+		return 0, 0
+	}
+	return resolved.Profile.PromptPricePer1K, resolved.Profile.CompletionPricePer1K
+}
+
 func (m *dynamicChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
 	chatModel, modelName, err := m.resolvedModel(ctx)
 	if err != nil {
@@ -98,6 +115,9 @@ func (m *dynamicChatModel) Generate(ctx context.Context, input []*schema.Message
 	}
 	if modelName != "" {
 		ctx = llmclient.WithModelName(ctx, modelName)
+	}
+	if promptPrice, completionPrice := m.ResolvedModelPrice(ctx); promptPrice > 0 || completionPrice > 0 {
+		ctx = llmclient.WithModelPrice(ctx, promptPrice, completionPrice)
 	}
 	return chatModel.Generate(ctx, input, opts...)
 }
@@ -112,6 +132,9 @@ func (m *dynamicChatModel) Stream(ctx context.Context, input []*schema.Message, 
 	}
 	if modelName != "" {
 		ctx = llmclient.WithModelName(ctx, modelName)
+	}
+	if promptPrice, completionPrice := m.ResolvedModelPrice(ctx); promptPrice > 0 || completionPrice > 0 {
+		ctx = llmclient.WithModelPrice(ctx, promptPrice, completionPrice)
 	}
 	return chatModel.Stream(ctx, input, opts...)
 }

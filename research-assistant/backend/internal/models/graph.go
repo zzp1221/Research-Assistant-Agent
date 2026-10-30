@@ -37,19 +37,24 @@ type TaskNode struct {
 	RunCount          int            `json:"run_count"`
 	ExecutionID       string         `json:"execution_id,omitempty"`
 	ExecutionEpoch    int            `json:"execution_epoch"`
-	LeaseOwner        string         `json:"lease_owner,omitempty"`
-	LeaseExpiresAt    *time.Time     `json:"lease_expires_at,omitempty"`
-	TimeoutSeconds    int            `json:"timeout_seconds,omitempty"`
-	Contract          TaskContract   `json:"contract"`
-	Inputs            map[string]any `json:"inputs,omitempty"`
-	Result            string         `json:"result,omitempty"`
-	Code              string         `json:"code,omitempty"`
-	StructuredData    string         `json:"structured_data,omitempty"`
-	ImageBase64       string         `json:"image_base64,omitempty"`
-	ImageURL          string         `json:"image_url,omitempty"`
-	Error             string         `json:"error,omitempty"`
-	Metadata          map[string]any `json:"metadata,omitempty"`
-	Usage             *TaskUsage     `json:"usage,omitempty"`
+	// Revision is the plan revision this task belongs to. Legacy tasks are 0.
+	Revision int `json:"revision,omitempty"`
+	// Enabled controls whether the node participates in execution. Nil means
+	// enabled so legacy plans keep running unchanged.
+	Enabled        *bool          `json:"enabled,omitempty"`
+	LeaseOwner     string         `json:"lease_owner,omitempty"`
+	LeaseExpiresAt *time.Time     `json:"lease_expires_at,omitempty"`
+	TimeoutSeconds int            `json:"timeout_seconds,omitempty"`
+	Contract       TaskContract   `json:"contract"`
+	Inputs         map[string]any `json:"inputs,omitempty"`
+	Result         string         `json:"result,omitempty"`
+	Code           string         `json:"code,omitempty"`
+	StructuredData string         `json:"structured_data,omitempty"`
+	ImageBase64    string         `json:"image_base64,omitempty"`
+	ImageURL       string         `json:"image_url,omitempty"`
+	Error          string         `json:"error,omitempty"`
+	Metadata       map[string]any `json:"metadata,omitempty"`
+	Usage          *TaskUsage     `json:"usage,omitempty"`
 	// Verification is the advisory verdict of a verify_result node. It never
 	// changes the execution status (design D3).
 	Verification *Verification `json:"verification,omitempty"`
@@ -88,7 +93,14 @@ type GraphMeta struct {
 
 // PlanGraph is the executable DAG representation used by the refactored plan flow.
 type PlanGraph struct {
-	ID                  string                 `json:"id"`
+	ID string `json:"id"`
+	// Title is the user-editable display name. Empty means the summary derives
+	// a title from UserIntent, preserving legacy behaviour.
+	Title string `json:"title,omitempty"`
+	// ProjectID groups the plan under a research project; empty means Inbox.
+	ProjectID           string                 `json:"project_id,omitempty"`
+	Archived            bool                   `json:"archived,omitempty"`
+	ArchivedAt          *time.Time             `json:"archived_at,omitempty"`
 	UserIntent          string                 `json:"user_intent"`
 	IntentType          string                 `json:"intent_type"`
 	Status              TaskStatus             `json:"status"`
@@ -120,8 +132,20 @@ type PlanGraph struct {
 	// ModelSnapshot records the profile ids/revisions resolved at creation so a
 	// run stays reproducible after a runtime profile edit.
 	ModelSnapshot *ModelSnapshot `json:"model_snapshot,omitempty"`
-	CreatedAt     time.Time      `json:"created_at"`
-	UpdatedAt     time.Time      `json:"updated_at"`
+	// CurrentRevision is the revision bound to the latest execution. Draft
+	// revisions live in the revision store; 0 means legacy/never executed.
+	CurrentRevision int `json:"current_revision,omitempty"`
+	// Review is the execution-before-review gate state.
+	Review ReviewState `json:"review,omitempty"`
+	// Questions are structured agent questions for this plan.
+	Questions []PlanQuestion `json:"questions,omitempty"`
+	// ToolCalls is the durable audit trail of every tool invocation in this
+	// plan. It travels with export/replay so a run can be reconstructed.
+	ToolCalls []ToolCallRecord `json:"tool_calls,omitempty"`
+	// AgentSnapshot freezes profile/prompt/model versions at plan creation.
+	AgentSnapshot []AgentProfileSnapshot `json:"agent_snapshot,omitempty"`
+	CreatedAt     time.Time              `json:"created_at"`
+	UpdatedAt     time.Time              `json:"updated_at"`
 }
 
 // TaskExecutionResult is the normalized scheduler-facing result of one task execution.
@@ -143,4 +167,27 @@ type TaskExecutionResult struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 	// Verification is the advisory verdict produced by a verify_result task.
 	Verification *Verification `json:"verification,omitempty"`
+	// Question is set when a task pauses on a structured question. The
+	// scheduler persists it and moves the task to awaiting_input instead of
+	// treating the pause as a failure.
+	Question *PlanQuestion `json:"question,omitempty"`
+	// ToolCall is the audit record of a tool_call node. The scheduler merges it
+	// into PlanGraph.ToolCalls inside the same state transition that completes
+	// or fails the task, avoiding a second concurrent plan write.
+	ToolCall *ToolCallRecord `json:"tool_call,omitempty"`
+}
+
+// IsEnabled reports whether the node should be executed. A nil flag means
+// enabled, preserving the behaviour of plans created before the field existed.
+func (n *TaskNode) IsEnabled() bool {
+	return n == nil || n.Enabled == nil || *n.Enabled
+}
+
+// SetEnabled stores an explicit enabled flag.
+func (n *TaskNode) SetEnabled(enabled bool) {
+	if n == nil {
+		return
+	}
+	value := enabled
+	n.Enabled = &value
 }

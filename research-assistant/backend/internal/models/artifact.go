@@ -20,7 +20,10 @@ type Artifact struct {
 	Metadata       map[string]any  `json:"metadata,omitempty"`
 	ProducerTaskID string          `json:"producer_task_id,omitempty"`
 	EvidenceClass  string          `json:"evidence_class,omitempty"`
-	CreatedAt      time.Time       `json:"created_at"`
+	// Revision is the plan revision that produced this artifact. Legacy
+	// artifacts are 0.
+	Revision  int       `json:"revision,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // EffectiveValue returns the typed payload when present, otherwise the legacy string value.

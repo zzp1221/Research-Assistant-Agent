@@ -8,14 +8,30 @@ import (
 	"research-assistant-backend/internal/agentctx"
 	"strings"
 
-	"github.com/cloudwego/eino-ext/components/model/openai"
-	"github.com/cloudwego/eino/compose"
-	"github.com/cloudwego/eino/schema"
 	"research-assistant-backend/internal/appconfig"
 	"research-assistant-backend/internal/llmclient"
 	"research-assistant-backend/internal/prompts"
 	"research-assistant-backend/internal/sandbox"
+
+	"github.com/cloudwego/eino-ext/components/model/openai"
+	"github.com/cloudwego/eino/compose"
+	"github.com/cloudwego/eino/schema"
 )
+
+// extractCodeFromMessage cleans a model reply and publishes the code on the
+// per-task code channel. Shared by the code-only and full Eino graphs.
+func extractCodeFromMessage(ctx context.Context, name string, msg *schema.Message) (string, error) {
+	logToContext(ctx, "[%s] Eino 节点 [Code_Extractor]: 开始提取大模型生成的代码", name)
+	code := msg.Content
+	code = strings.TrimPrefix(code, "\x60\x60\x60python\n")
+	code = strings.TrimPrefix(code, "\x60\x60\x60python")
+	code = strings.TrimSuffix(code, "\x60\x60\x60")
+	logToContext(ctx, "[%s] 成功提取到可执行代码", name)
+	if codeChan, ok := agentctx.CodeChannel(ctx); ok {
+		codeChan <- code
+	}
+	return code, nil
+}
 
 // initRealEinoChain 使用字节跳动 Eino 框架和真实的 LLM 模型编排逻辑流
 func (a *CoderAgent) initRealEinoChain() {
@@ -54,16 +70,7 @@ func (a *CoderAgent) initRealEinoChain() {
 		codeOnlyGraph.AddChatModelNode("LLM_Generate_Code", wrapUsageModel(codeModel))
 	}
 	codeOnlyGraph.AddLambdaNode("Code_Extractor", compose.InvokableLambda(func(ctx context.Context, msg *schema.Message) (string, error) {
-		logToContext(ctx, "[%s] Eino 节点 [Code_Extractor]: 开始提取大模型生成的代码", a.Name)
-		code := msg.Content
-		code = strings.TrimPrefix(code, "```python\n")
-		code = strings.TrimPrefix(code, "```python")
-		code = strings.TrimSuffix(code, "```")
-		logToContext(ctx, "[%s] 成功提取到可执行代码", a.Name)
-		if codeChan, ok := agentctx.CodeChannel(ctx); ok {
-			codeChan <- code
-		}
-		return code, nil
+		return extractCodeFromMessage(ctx, a.Name, msg)
 	}))
 	codeOnlyGraph.AddEdge(compose.START, "Prompt_Builder")
 	if codeModel != nil {
@@ -99,20 +106,7 @@ func (a *CoderAgent) initRealEinoChain() {
 
 	// 节点 3: 清洗并提取代码
 	graph.AddLambdaNode("Code_Extractor", compose.InvokableLambda(func(ctx context.Context, msg *schema.Message) (string, error) {
-		logToContext(ctx, "[%s] Eino 节点 [Code_Extractor]: 开始提取大模型生成的代码", a.Name)
-		code := msg.Content
-		// 简单清洗可能附带的 Markdown 标记
-		code = strings.TrimPrefix(code, "```python\n")
-		code = strings.TrimPrefix(code, "```python")
-		code = strings.TrimSuffix(code, "```")
-		logToContext(ctx, "[%s] 成功提取到可执行代码", a.Name)
-
-		// 保存代码到 Context，以便外部获取
-		if codeChan, ok := agentctx.CodeChannel(ctx); ok {
-			codeChan <- code
-		}
-
-		return code, nil
+		return extractCodeFromMessage(ctx, a.Name, msg)
 	}))
 
 	// 节点 4: 沙箱执行与自愈循环 (Self-Correction Loop)

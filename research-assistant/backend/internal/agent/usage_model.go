@@ -38,10 +38,24 @@ func modelNameFor(ctx context.Context, inner model.BaseChatModel) string {
 	return llmclient.ModelName(ctx)
 }
 
+// modelPriceFor mirrors modelNameFor for the runtime profile price.
+func modelPriceFor(ctx context.Context, inner model.BaseChatModel) (float64, float64) {
+	if provider, ok := inner.(interface {
+		ResolvedModelPrice(context.Context) (float64, float64)
+	}); ok {
+		return provider.ResolvedModelPrice(ctx)
+	}
+	return 0, 0
+}
+
 func (m *usageChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
 	started := time.Now()
 	message, err := m.inner.Generate(ctx, input, opts...)
-	llmclient.RecordUsage(llmclient.WithModelName(ctx, modelNameFor(ctx, m.inner)), input, message, time.Since(started))
+	recordCtx := llmclient.WithModelName(ctx, modelNameFor(ctx, m.inner))
+	if promptPrice, completionPrice := modelPriceFor(ctx, m.inner); promptPrice > 0 || completionPrice > 0 {
+		recordCtx = llmclient.WithModelPrice(recordCtx, promptPrice, completionPrice)
+	}
+	llmclient.RecordUsage(recordCtx, input, message, time.Since(started))
 	return message, err
 }
 
@@ -75,7 +89,11 @@ func (m *usageChatModel) Stream(ctx context.Context, input []*schema.Message, op
 		if tokenUsage != nil {
 			recorded.ResponseMeta = &schema.ResponseMeta{Usage: tokenUsage}
 		}
-		llmclient.RecordUsage(llmclient.WithModelName(ctx, modelNameFor(ctx, m.inner)), input, recorded, time.Since(started))
+		recordCtx := llmclient.WithModelName(ctx, modelNameFor(ctx, m.inner))
+		if promptPrice, completionPrice := modelPriceFor(ctx, m.inner); promptPrice > 0 || completionPrice > 0 {
+			recordCtx = llmclient.WithModelPrice(recordCtx, promptPrice, completionPrice)
+		}
+		llmclient.RecordUsage(recordCtx, input, recorded, time.Since(started))
 	}()
 	return copies[0], nil
 }

@@ -147,6 +147,86 @@ export interface TranslationJob {
   finished_at?: string;
 }
 
+export interface PlanBudget {
+  max_task_attempts: number;
+  max_duration_seconds: number;
+  max_tokens?: number;
+  max_cost_usd?: number;
+  max_sandbox_seconds?: number;
+  max_download_bytes?: number;
+  policy?: 'soft' | 'hard' | string;
+}
+
+export interface PlanSummary {
+  id: string;
+  title: string;
+  intent_type: string;
+  status: string;
+  outcome?: string;
+  session_id?: string;
+  project_id?: string;
+  total_nodes: number;
+  completed_nodes: number;
+  failed_nodes: number;
+  created_at: string;
+  updated_at: string;
+  finished_at?: string;
+  paused?: boolean;
+  archived?: boolean;
+  run_trigger?: string;
+  usage?: PlanUsageSummary;
+  review?: ReviewState;
+  current_revision?: number;
+}
+
+export interface PlanUsageSummary {
+  task_attempts?: number;
+  llm_prompt_tokens?: number;
+  llm_completion_tokens?: number;
+  llm_calls?: number;
+  llm_cost_usd?: number;
+  llm_estimated?: boolean;
+  cost_source?: string;
+  sandbox_seconds?: number;
+}
+
+export interface Project {
+  id: string;
+  owner_id?: string;
+  name: string;
+  description?: string;
+  archived?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserBudget {
+  owner_id: string;
+  period: 'day' | 'month';
+  limit_usd: number;
+  policy: 'soft' | 'hard';
+  updated_at: string;
+}
+
+export interface BudgetAlert {
+  id: string;
+  kind: string;
+  scope: string;
+  policy: string;
+  message: string;
+  spent_usd: number;
+  limit_usd: number;
+  at: string;
+}
+
+export interface UsageTimeseriesPoint {
+  key: string;
+  cost_usd: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  calls?: number;
+}
+
 export interface Task {
   ID: string;
   Name: string;
@@ -163,6 +243,7 @@ export interface Task {
   StructuredData?: string;
   ImageBase64?: string;
   Error?: string;
+  Usage?: TaskUsage;
   Verification?: Verification;
 }
 
@@ -181,6 +262,8 @@ export interface GraphTask {
   priority: number;
   retry_limit: number;
   run_count: number;
+  revision?: number;
+  enabled?: boolean;
   execution_id?: string;
   execution_epoch: number;
   lease_owner?: string;
@@ -199,7 +282,32 @@ export interface GraphTask {
   image_base64?: string;
   image_base_64?: string;
   error?: string;
+  usage?: TaskUsage;
   verification?: Verification;
+}
+
+export interface TaskUsageModel {
+  model: string;
+  calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cost_usd: number;
+  estimated?: boolean;
+  cost_source?: string;
+}
+
+export interface TaskUsage {
+  llm_prompt_tokens?: number;
+  llm_completion_tokens?: number;
+  llm_calls?: number;
+  llm_cost_usd?: number;
+  llm_estimated?: boolean;
+  cost_source?: string;
+  sandbox_seconds?: number;
+  duration_seconds?: number;
+  attempts?: number;
+  models?: Record<string, number>;
+  model_breakdown?: TaskUsageModel[];
 }
 
 export interface PlanArtifact {
@@ -251,13 +359,113 @@ export interface RuntimePolicy {
   acknowledged_at?: string;
 }
 
+export interface QuestionOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface PlanQuestion {
+  id: string;
+  plan_id: string;
+  revision?: number;
+  task_id?: string;
+  node_type?: string;
+  header?: string;
+  prompt: string;
+  options?: QuestionOption[];
+  multi_select?: boolean;
+  allow_free_text?: boolean;
+  default_option?: string;
+  status: 'pending' | 'answered' | 'expired' | 'canceled' | string;
+  requested_at?: string;
+  answer?: string;
+  answer_option?: string;
+  answered_by?: string;
+  answered_at?: string;
+  expires_at?: string;
+  auto_answered?: boolean;
+}
+
+export interface ReviewState {
+  required: boolean;
+  status: 'not_required' | 'pending' | 'approved' | 'rejected' | string;
+  reason?: string;
+  risk?: 'low' | 'medium' | 'high' | string;
+  estimated_usd?: number;
+  reviewed_by?: string;
+  reviewed_at?: string;
+}
+
+export interface PlanRevisionSummary {
+  id: string;
+  plan_id: string;
+  revision: number;
+  parent_revision: number;
+  status: 'draft' | 'approved' | 'executing' | 'completed' | 'superseded' | 'rejected' | string;
+  created_by?: string;
+  created_at: string;
+  reason?: string;
+  diff_summary?: string[];
+  hash?: string;
+  approved_by?: string;
+  approved_at?: string;
+}
+
+export interface PlanRevision extends PlanRevisionSummary {
+  graph?: PlanGraph;
+}
+
+export interface PlanDiffEntry {
+  kind: 'node_added' | 'node_removed' | 'node_modified' | 'edge_added' | 'edge_removed' | 'budget_changed' | string;
+  node_id?: string;
+  field?: string;
+  before?: unknown;
+  after?: unknown;
+}
+
+export interface ApprovalInboxItem {
+  id: string;
+  kind: 'approval' | 'question' | string;
+  plan_id: string;
+  plan_title: string;
+  task_id?: string;
+  node_type?: string;
+  revision?: number;
+  title: string;
+  prompt?: string;
+  risk?: string;
+  estimated_usd?: number;
+  estimated_bytes?: number;
+  waiting_seconds: number;
+  requested_at: string;
+  expires_at?: string;
+  action_kind?: string;
+  options?: QuestionOption[];
+  multi_select?: boolean;
+  allow_free_text?: boolean;
+  default_option?: string;
+  details?: Record<string, unknown>;
+}
+
+export interface ValidationIssue {
+  node_id?: string;
+  field?: string;
+  message: string;
+  remediation?: string;
+}
+
 export interface PlanGraph {
   id: string;
+  title?: string;
   user_intent: string;
   intent_type: string;
   status: string;
   outcome?: string;
   outcome_reason?: string;
+  current_revision?: number;
+  review?: ReviewState;
+  questions?: PlanQuestion[];
   paused?: boolean;
   paused_at?: string;
   run_trigger?: 'manual' | 'auto';
@@ -280,6 +488,11 @@ export interface PlanGraph {
   budget: {
     max_task_attempts: number;
     max_duration_seconds: number;
+    max_tokens?: number;
+    max_cost_usd?: number;
+    max_sandbox_seconds?: number;
+    max_download_bytes?: number;
+    policy?: string;
   };
   usage: {
     task_attempts: number;
@@ -290,7 +503,10 @@ export interface PlanGraph {
     llm_calls?: number;
     llm_cost_usd?: number;
     llm_estimated?: boolean;
+    cost_source?: string;
     sandbox_seconds?: number;
+    budget_status?: string;
+    budget_warnings?: string[];
   };
   nodes: GraphTask[];
   edges: GraphEdge[];
@@ -614,4 +830,130 @@ export interface ModelProfilePayload {
   prompt_price_per_1k?: number;
   completion_price_per_1k?: number;
   global?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// N-13 tool / agent ecosystem
+// ---------------------------------------------------------------------------
+
+export interface ToolDefinition {
+  id: string;
+  owner_id?: string;
+  name: string;
+  version: string;
+  transport: 'native' | 'http' | 'mcp_stdio' | 'mcp_http' | string;
+  description?: string;
+  input_schema?: string;
+  output_schema?: string;
+  scopes?: string[];
+  side_effect: boolean;
+  timeout_sec?: number;
+  max_output_bytes?: number;
+  approval?: string;
+  enabled: boolean;
+  builtin?: boolean;
+  native?: string;
+  server_id?: string;
+  remote_name?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface MCPServer {
+  id: string;
+  owner_id?: string;
+  name: string;
+  transport: string;
+  command?: string;
+  args?: string[];
+  env_keys?: string[];
+  working_dir?: string;
+  url?: string;
+  header_keys?: string[];
+  fingerprint?: string;
+  status?: string;
+  last_error?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ToolGrant {
+  id: string;
+  owner_id: string;
+  agent_profile_id: string;
+  tool_id: string;
+  scopes?: string[];
+  approval?: string;
+  created_by?: string;
+  created_at: string;
+}
+
+export interface AgentProfile {
+  id: string;
+  owner_id?: string;
+  name: string;
+  description?: string;
+  prompt_version_id?: string;
+  model_profile_id?: string;
+  tool_allowlist?: string[];
+  max_steps?: number;
+  output_schema?: string;
+  builtin?: boolean;
+  enabled: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PromptVersion {
+  id: string;
+  owner_id?: string;
+  name: string;
+  version: number;
+  template: string;
+  variables?: string[];
+  status: 'draft' | 'active' | 'archived' | string;
+  eval_score?: number;
+  eval_detail?: string;
+  created_by?: string;
+  created_at: string;
+}
+
+export interface ToolCallRecord {
+  id: string;
+  plan_id: string;
+  task_id: string;
+  tool_id: string;
+  tool_version: string;
+  agent_profile_id?: string;
+  arguments?: Record<string, unknown>;
+  arguments_hash: string;
+  result_hash?: string;
+  result_preview?: string;
+  status: string;
+  error_code?: string;
+  error?: string;
+  approval_id?: string;
+  dry_run?: boolean;
+  truncated?: boolean;
+  output_bytes?: number;
+  replay_of?: string;
+  started_at: string;
+  finished_at?: string;
+  duration_ms?: number;
+}
+
+export interface PromptEvalCase {
+  name?: string;
+  variables?: Record<string, string>;
+  expected_contains?: string;
+}
+
+export interface PromptEvalResult {
+  prompt_version_id: string;
+  score: number;
+  passed: number;
+  total: number;
+  cases: { name?: string; passed: boolean; score: number; detail?: string }[];
+  mode: string;
+  evaluated_at: string;
 }

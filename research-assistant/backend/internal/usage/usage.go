@@ -22,6 +22,7 @@ type ModelUsage struct {
 	CompletionTokens int     `json:"completion_tokens"`
 	CostUSD          float64 `json:"cost_usd"`
 	Estimated        bool    `json:"estimated,omitempty"`
+	CostSource       string  `json:"cost_source,omitempty"`
 }
 
 // Snapshot is an immutable view of the recorder.
@@ -31,6 +32,7 @@ type Snapshot struct {
 	CompletionTokens int                   `json:"completion_tokens"`
 	CostUSD          float64               `json:"cost_usd"`
 	Estimated        bool                  `json:"estimated,omitempty"`
+	CostSource       string                `json:"cost_source,omitempty"`
 	SandboxSeconds   float64               `json:"sandbox_seconds,omitempty"`
 	ByModel          map[string]ModelUsage `json:"by_model,omitempty"`
 }
@@ -48,6 +50,7 @@ type Recorder struct {
 	completion     int
 	costUSD        float64
 	estimated      bool
+	costSource     string
 	sandboxSeconds float64
 	byModel        map[string]ModelUsage
 }
@@ -73,9 +76,23 @@ func FromContext(ctx context.Context) *Recorder {
 	return recorder
 }
 
-// RecordLLM records one model invocation. When the provider returns no usage
-// the caller passes estimated=true and token counts derived from text length.
+// RecordLLM records one model invocation using the deployment-wide env price.
+// When the provider returns no usage the caller passes estimated=true and token
+// counts derived from text length.
 func (r *Recorder) RecordLLM(model string, promptTokens, completionTokens int, estimated bool) {
+	r.RecordLLMWithPrice(model, promptTokens, completionTokens, estimated, Price{})
+}
+
+// Price is the model-specific 1K-token price pair. Zero values fall back to
+// the deployment env price.
+type Price struct {
+	PromptPer1K     float64
+	CompletionPer1K float64
+}
+
+// RecordLLMWithPrice records one model invocation, preferring the runtime
+// profile price over the env fallback. CostSource reports which was used.
+func (r *Recorder) RecordLLMWithPrice(model string, promptTokens, completionTokens int, estimated bool, price Price) {
 	if r == nil {
 		return
 	}
@@ -89,7 +106,7 @@ func (r *Recorder) RecordLLM(model string, promptTokens, completionTokens int, e
 	if model == "" {
 		model = "unknown"
 	}
-	cost := EstimateCostUSD(promptTokens, completionTokens)
+	cost, source := EstimateCostWithPrice(promptTokens, completionTokens, price)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.llmCalls++
@@ -97,13 +114,44 @@ func (r *Recorder) RecordLLM(model string, promptTokens, completionTokens int, e
 	r.completion += completionTokens
 	r.costUSD += cost
 	r.estimated = r.estimated || estimated
+	r.costSource = weakerCostSource(r.costSource, source)
 	entry := r.byModel[model]
 	entry.Calls++
 	entry.PromptTokens += promptTokens
 	entry.CompletionTokens += completionTokens
 	entry.CostUSD += cost
 	entry.Estimated = entry.Estimated || estimated
+	entry.CostSource = weakerCostSource(entry.CostSource, source)
 	r.byModel[model] = entry
+}
+
+func weakerCostSource(left, right string) string {
+	rank := func(value string) int {
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "profile":
+			return 3
+		case "env":
+			return 2
+		case "estimated":
+			return 1
+		case "unknown":
+			return 0
+		default:
+			return -1
+		}
+	}
+	left = strings.TrimSpace(left)
+	right = strings.TrimSpace(right)
+	if left == "" {
+		return right
+	}
+	if right == "" {
+		return left
+	}
+	if rank(left) <= rank(right) {
+		return left
+	}
+	return right
 }
 
 // RecordSandbox adds sandbox execution seconds.
@@ -133,6 +181,7 @@ func (r *Recorder) Snapshot() Snapshot {
 		CompletionTokens: r.completion,
 		CostUSD:          r.costUSD,
 		Estimated:        r.estimated,
+		CostSource:       r.costSource,
 		SandboxSeconds:   r.sandboxSeconds,
 		ByModel:          byModel,
 	}
@@ -150,6 +199,7 @@ func (r *Recorder) Merge(snapshot Snapshot) {
 	r.completion += snapshot.CompletionTokens
 	r.costUSD += snapshot.CostUSD
 	r.estimated = r.estimated || snapshot.Estimated
+	r.costSource = weakerCostSource(r.costSource, snapshot.CostSource)
 	r.sandboxSeconds += snapshot.SandboxSeconds
 	for key, value := range snapshot.ByModel {
 		entry := r.byModel[key]
@@ -158,6 +208,7 @@ func (r *Recorder) Merge(snapshot Snapshot) {
 		entry.CompletionTokens += value.CompletionTokens
 		entry.CostUSD += value.CostUSD
 		entry.Estimated = entry.Estimated || value.Estimated
+		entry.CostSource = weakerCostSource(entry.CostSource, value.CostSource)
 		r.byModel[key] = entry
 	}
 }
@@ -193,13 +244,27 @@ func EstimateTokens(text string) int {
 // LLM_PRICE_COMPLETION_PER_1K_USD. Unset prices yield zero cost so local
 // deployments do not report fake spend.
 func EstimateCostUSD(promptTokens, completionTokens int) float64 {
-	promptPrice := envFloat("LLM_PRICE_PROMPT_PER_1K_USD", 0)
-	completionPrice := envFloat("LLM_PRICE_COMPLETION_PER_1K_USD", 0)
+	cost, _ := EstimateCostWithPrice(promptTokens, completionTokens, Price{})
+	return cost
+}
+
+// EstimateCostWithPrice converts tokens to USD using an explicit model price
+// first, then the env fallback. It returns the amount and a cost source:
+// profile, env, or unknown.
+func EstimateCostWithPrice(promptTokens, completionTokens int, price Price) (float64, string) {
+	promptPrice := price.PromptPer1K
+	completionPrice := price.CompletionPer1K
+	source := "profile"
 	if promptPrice == 0 && completionPrice == 0 {
-		return 0
+		promptPrice = envFloat("LLM_PRICE_PROMPT_PER_1K_USD", 0)
+		completionPrice = envFloat("LLM_PRICE_COMPLETION_PER_1K_USD", 0)
+		source = "env"
+	}
+	if promptPrice == 0 && completionPrice == 0 {
+		return 0, "unknown"
 	}
 	cost := float64(promptTokens)/1000.0*promptPrice + float64(completionTokens)/1000.0*completionPrice
-	return math.Round(cost*1e8) / 1e8
+	return math.Round(cost*1e8) / 1e8, source
 }
 
 func envFloat(key string, fallback float64) float64 {

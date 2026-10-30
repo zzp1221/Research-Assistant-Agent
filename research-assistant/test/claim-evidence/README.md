@@ -24,6 +24,8 @@ cd research-assistant
 bash test/claim-evidence/run.sh
 ```
 
+`run.sh` 会跑 Go golden test，再执行前端 lint 与生产构建。
+
 只运行 Go golden test：
 
 ```bash
@@ -45,6 +47,6 @@ UPDATE_CLAIM_EVIDENCE_GOLDEN=1 go test ./tests -run '^TestClaimEvidenceExample$'
 | `scenario.json` | 论文摘录、运行产物和两个受控模型响应 |
 | `expected_graph.json` | 真实 harness 生成并由测试比对的稳定图 JSON |
 | `render_preview.py` | 根据 golden graph 离线重绘预览 |
-| `run.sh` | 一键运行入口 |
+| `run.sh` | 一键运行入口（Go test + 前端 lint/build） |
 
 预览渲染是可选辅助，不参与主验收；可执行性以 Go golden test 和前端生产构建结果为准。

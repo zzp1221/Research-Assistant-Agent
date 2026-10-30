@@ -1,0 +1,105 @@
+[
+  {
+    "file": "a.png",
+    "target": "explore/a.html",
+    "name": "a",
+    "state": null,
+    "size": "1440x900",
+    "zoom": 1,
+    "animationWaitMs": 0,
+    "issues": [],
+    "lint": [
+      {
+        "rule": "eyebrow",
+        "label": "标题上方的眉标",
+        "count": 1,
+        "examples": [
+          "div.eyebrow「会话 03 · 进行中」"
+        ]
+      },
+      {
+        "rule": "nestedCards",
+        "label": "卡片里套卡片",
+        "count": 5,
+        "examples": [
+          "article.node.done「01 解析论文与数据 文献 Agent · 12」（外层 div.graph）",
+          "article.node.done「02 复现注意力机制 代码 Agent · 2m」（外层 div.graph）",
+          "article.node.active「03 构造训练脚本 代码 Agent · 运行中」（外层 div.graph）"
+        ]
+      }
+    ]
+  },
+  {
+    "file": "b.png",
+    "target": "explore/b.html",
+    "name": "b",
+    "state": null,
+    "size": "1440x900",
+    "zoom": 1,
+    "animationWaitMs": 0,
+    "issues": [],
+    "lint": [
+      {
+        "rule": "eyebrow",
+        "label": "标题上方的眉标",
+        "count": 1,
+        "examples": [
+          "div.kicker「执行拓扑」"
+        ]
+      }
+    ]
+  },
+  {
+    "file": "c.png",
+    "target": "explore/c.html",
+    "name": "c",
+    "state": null,
+    "size": "1440x900",
+    "zoom": 1,
+    "animationWaitMs": 0,
+    "issues": [],
+    "lint": []
+  },
+  {
+    "file": "sheet.png",
+    "width": 2000,
+    "height": 480,
+    "columns": 3,
+    "items": [
+      {
+        "naturalWidth": 1440,
+        "naturalHeight": 900,
+        "width": 640,
+        "height": 400,
+        "labelHeight": 32,
+        "x": 24,
+        "y": 24,
+        "label": "a",
+        "labelY": 432
+      },
+      {
+        "naturalWidth": 1440,
+        "naturalHeight": 900,
+        "width": 640,
+        "height": 400,
+        "labelHeight": 32,
+        "x": 680,
+        "y": 24,
+        "label": "b",
+        "labelY": 432
+      },
+      {
+        "naturalWidth": 1440,
+        "naturalHeight": 900,
+        "width": 640,
+        "height": 400,
+        "labelHeight": 32,
+        "x": 1336,
+        "y": 24,
+        "label": "c",
+        "labelY": 432
+      }
+    ],
+    "issues": []
+  }
+]

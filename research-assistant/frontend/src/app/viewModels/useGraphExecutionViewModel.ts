@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { RefObject } from 'react';
 import type { Edge, Node, OnEdgesChange, OnNodesChange } from '@xyflow/react';
-import type { IntentContext, MissingRequirement, PlanGraph, RuntimeAction, Verification } from '../../contracts/api';
+import type { IntentContext, MissingRequirement, PlanGraph, PlanQuestion, RuntimeAction, TaskUsage, Verification } from '../../contracts/api';
 import { useResearchAssistantRuntimeContext } from '../context/ResearchAssistantRuntimeContext';
 import { uiText } from '../constants/uiText';
 import type { useResearchAssistantLayoutState } from '../hooks/useResearchAssistantLayoutState';
@@ -26,6 +26,11 @@ interface UseGraphExecutionViewModelOptions {
   activePlanOutcome?: string | null;
   activePlanMissingRequirements?: MissingRequirement[];
   activePlanRuntimeActions?: RuntimeAction[];
+  activePlanQuestions?: PlanQuestion[];
+  activePlanReviewStatus?: string | null;
+  activePlanReviewRequired?: boolean;
+  onAnswerQuestion?: (questionId: string, answer: { answer?: string; answer_option?: string }) => Promise<void> | void;
+  onOpenReview?: () => void;
   activePlanRuntimePolicyMode?: string | null;
   activePlanPlannerSource?: string | null;
   activePlanPlannerFallbackReason?: string | null;
@@ -34,13 +39,14 @@ interface UseGraphExecutionViewModelOptions {
   activePlanTemplateVariant?: string | null;
   activePlanRunTrigger?: PlanRunTrigger | null;
   activePlanVerification?: Verification | null;
+  activePlanUsage?: TaskUsage | null;
   onOpenModelSettings?: () => void;
   layout: ReturnType<typeof useResearchAssistantLayoutState>;
   logsEndRef: RefObject<HTMLDivElement | null>;
 }
 
 export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOptions) {
-	const { nodes, edges, onNodesChange, onEdgesChange, intentContext, activePlanId, activePlanStatus, activePlanOutcome, activePlanMissingRequirements, activePlanRuntimeActions, activePlanRuntimePolicyMode, activePlanPlannerSource, activePlanPlannerFallbackReason, activePlanComplexity, activePlanPlanningRoute, activePlanTemplateVariant, activePlanRunTrigger, activePlanVerification, onOpenModelSettings, layout, logsEndRef } = options;
+	const { nodes, edges, onNodesChange, onEdgesChange, intentContext, activePlanId, activePlanStatus, activePlanOutcome, activePlanMissingRequirements, activePlanRuntimeActions, activePlanQuestions, activePlanReviewStatus, activePlanReviewRequired, onAnswerQuestion, onOpenReview, activePlanRuntimePolicyMode, activePlanPlannerSource, activePlanPlannerFallbackReason, activePlanComplexity, activePlanPlanningRoute, activePlanTemplateVariant, activePlanRunTrigger, activePlanVerification, activePlanUsage, onOpenModelSettings, layout, logsEndRef } = options;
   const runtime = useResearchAssistantRuntimeContext();
 
   return useMemo(() => {
@@ -51,6 +57,11 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
       activePlanStatus === 'awaiting_approval' &&
       !hasPendingRuntimeAction &&
       !runtime.state.executionState.approvalResolved;
+    // A review gate blocks execution until the user approves the latest
+    // revision; the primary action becomes "go to review" instead of "run".
+    const requiresPlanReview =
+      activePlanStatus === 'awaiting_review' &&
+      (Boolean(activePlanReviewRequired) || activePlanReviewStatus === 'pending');
     const graphPanelProps = {
       nodes,
       edges,
@@ -61,6 +72,10 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
       outcome: activePlanOutcome ?? null,
       missingRequirements: activePlanMissingRequirements ?? [],
       runtimeActions: activePlanRuntimeActions ?? [],
+      questions: activePlanQuestions ?? [],
+      onAnswerQuestion,
+      requiresReview: requiresPlanReview,
+      onOpenReview,
       runtimePermissionMode: activePlanRuntimePolicyMode ?? null,
       plannerSource: activePlanPlannerSource ?? null,
       plannerFallbackReason: activePlanPlannerFallbackReason ?? null,
@@ -82,6 +97,7 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
 	  onCancel: () => void runtime.actions.handleCancelPlan(activePlanId),
 	  onRetryFailed: () => void runtime.actions.handleRetryFailedPlan(activePlanId),
       planId: activePlanId,
+      planStatus: activePlanStatus,
       onOpenTask: (taskId: string) => {
         const node = nodes.find((candidate) => candidate.id === taskId);
         if (node) runtime.actions.onNodeClick(null, node);
@@ -95,6 +111,7 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
     const executionSidebarProps = runtime.state.executionState.selectedTask
       ? {
           selectedTask: runtime.state.executionState.selectedTask,
+          planUsage: activePlanUsage ?? null,
           width: isExpandedMode ? '100%' : `${layout.sidebarWidth}px`,
           isExecuting: runtime.state.executionState.isExecuting,
           requiresApproval: requiresPlanApproval,
@@ -120,6 +137,7 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
       graphPanelProps,
       showExecutionResizeHandle,
       executionSidebarProps,
+      planUsage: activePlanUsage ?? null,
     };
-	}, [activePlanId, activePlanStatus, activePlanOutcome, activePlanMissingRequirements, activePlanRuntimeActions, activePlanRuntimePolicyMode, activePlanPlannerSource, activePlanPlannerFallbackReason, activePlanComplexity, activePlanPlanningRoute, activePlanTemplateVariant, activePlanRunTrigger, activePlanVerification, onOpenModelSettings, edges, intentContext, layout.sidebarWidth, logsEndRef, nodes, onEdgesChange, onNodesChange, runtime]);
+	}, [activePlanId, activePlanStatus, activePlanOutcome, activePlanMissingRequirements, activePlanRuntimeActions, activePlanQuestions, activePlanReviewStatus, activePlanReviewRequired, onAnswerQuestion, onOpenReview, activePlanRuntimePolicyMode, activePlanPlannerSource, activePlanPlannerFallbackReason, activePlanComplexity, activePlanPlanningRoute, activePlanTemplateVariant, activePlanRunTrigger, activePlanVerification, activePlanUsage, onOpenModelSettings, edges, intentContext, layout.sidebarWidth, logsEndRef, nodes, onEdgesChange, onNodesChange, runtime]);
 }
