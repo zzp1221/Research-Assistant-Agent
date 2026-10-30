@@ -17,10 +17,10 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("agent profile not found")
+	ErrNotFound  = errors.New("agent profile not found")
 	ErrForbidden = errors.New("agent profile forbidden")
-	ErrConflict = errors.New("agent profile conflict")
-	ErrInvalid  = errors.New("agent profile invalid")
+	ErrConflict  = errors.New("agent profile conflict")
+	ErrInvalid   = errors.New("agent profile invalid")
 )
 
 // Snapshot is the persisted state of profiles and prompt versions.

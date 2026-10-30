@@ -73,8 +73,8 @@ func nativeWriteFile(_ context.Context, req NativeRequest) (*NativeResult, error
 	}
 	if req.DryRun {
 		return &NativeResult{
-			Text: fmt.Sprintf("dry-run: would write %d bytes to %s", len(content), cleaned),
-			JSON: map[string]any{"path": cleaned, "bytes": len(content), "dry_run": true},
+			Text:  fmt.Sprintf("dry-run: would write %d bytes to %s", len(content), cleaned),
+			JSON:  map[string]any{"path": cleaned, "bytes": len(content), "dry_run": true},
 			Bytes: int64(len(content)),
 		}, nil
 	}
@@ -85,8 +85,8 @@ func nativeWriteFile(_ context.Context, req NativeRequest) (*NativeResult, error
 		return nil, &NativeError{Code: "tool_execution_failed", Message: "write file: " + err.Error()}
 	}
 	return &NativeResult{
-		Text: fmt.Sprintf("wrote %d bytes to %s", len(content), cleaned),
-		JSON: map[string]any{"path": cleaned, "bytes": len(content)},
+		Text:  fmt.Sprintf("wrote %d bytes to %s", len(content), cleaned),
+		JSON:  map[string]any{"path": cleaned, "bytes": len(content)},
 		Bytes: int64(len(content)),
 	}, nil
 }

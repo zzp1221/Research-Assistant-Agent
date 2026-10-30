@@ -54,19 +54,19 @@ type PromptEvalCase struct {
 
 // PromptEvalResult is the stored outcome of one evaluation run.
 type PromptEvalResult struct {
-	PromptVersionID string           `json:"prompt_version_id"`
-	Score           float64          `json:"score"`
-	Passed          int              `json:"passed"`
-	Total           int              `json:"total"`
+	PromptVersionID string                 `json:"prompt_version_id"`
+	Score           float64                `json:"score"`
+	Passed          int                    `json:"passed"`
+	Total           int                    `json:"total"`
 	Cases           []PromptEvalCaseResult `json:"cases"`
-	Mode            string           `json:"mode"`
-	EvaluatedAt     time.Time        `json:"evaluated_at"`
+	Mode            string                 `json:"mode"`
+	EvaluatedAt     time.Time              `json:"evaluated_at"`
 }
 
 // PromptEvalCaseResult is the per-case verdict.
 type PromptEvalCaseResult struct {
-	Name    string  `json:"name,omitempty"`
-	Passed  bool    `json:"passed"`
-	Score   float64 `json:"score"`
-	Detail  string  `json:"detail,omitempty"`
+	Name   string  `json:"name,omitempty"`
+	Passed bool    `json:"passed"`
+	Score  float64 `json:"score"`
+	Detail string  `json:"detail,omitempty"`
 }

@@ -11,17 +11,17 @@ import (
 
 // Tool transports supported by the tool registry.
 const (
-	ToolTransportNative  = "native"
-	ToolTransportHTTP    = "http"
+	ToolTransportNative   = "native"
+	ToolTransportHTTP     = "http"
 	ToolTransportMCPStdio = "mcp_stdio"
-	ToolTransportMCPHTTP = "mcp_http"
+	ToolTransportMCPHTTP  = "mcp_http"
 )
 
 // Tool approval policies.
 const (
-	ToolApprovalNever  = "never"
-	ToolApprovalAlways = "always"
-	ToolApprovalWrite  = "write"
+	ToolApprovalNever   = "never"
+	ToolApprovalAlways  = "always"
+	ToolApprovalWrite   = "write"
 	ToolApprovalNetwork = "network"
 )
 
@@ -71,37 +71,37 @@ type ToolDefinition struct {
 // HTTPToolConfig describes an HTTP JSON tool endpoint. Header values are
 // sealed at rest and never serialized.
 type HTTPToolConfig struct {
-	URL          string            `json:"url"`
-	Method       string            `json:"method,omitempty"`
-	HeaderKeys   []string          `json:"header_keys,omitempty"`
-	HeaderSealed map[string]string `json:"header_sealed,omitempty"`
-	AllowPrivateHosts bool       `json:"allow_private_hosts,omitempty"`
+	URL               string            `json:"url"`
+	Method            string            `json:"method,omitempty"`
+	HeaderKeys        []string          `json:"header_keys,omitempty"`
+	HeaderSealed      map[string]string `json:"header_sealed,omitempty"`
+	AllowPrivateHosts bool              `json:"allow_private_hosts,omitempty"`
 }
 
 // MCPServer is a registered MCP server. Env/header values are AES-GCM sealed
 // and never serialized; only the key names are exposed.
 type MCPServer struct {
-	ID           string            `json:"id"`
-	OwnerID      string            `json:"owner_id,omitempty"`
-	Name         string            `json:"name"`
-	Transport    string            `json:"transport"`
-	Command      string            `json:"command,omitempty"`
-	Args         []string          `json:"args,omitempty"`
-	EnvKeys      []string          `json:"env_keys,omitempty"`
-	EnvSealed    map[string]string `json:"env_sealed,omitempty"`
-	WorkingDir   string            `json:"working_dir,omitempty"`
-	URL          string            `json:"url,omitempty"`
-	HeaderKeys   []string          `json:"header_keys,omitempty"`
-	HeaderSealed map[string]string `json:"header_sealed,omitempty"`
-	AllowPrivateHosts bool       `json:"allow_private_hosts,omitempty"`
-	TimeoutSec     int           `json:"timeout_sec,omitempty"`
-	MaxOutputBytes int64         `json:"max_output_bytes,omitempty"`
-	Fingerprint  string            `json:"fingerprint,omitempty"`
-	Status       string            `json:"status,omitempty"`
-	LastError    string            `json:"last_error,omitempty"`
-	CreatedBy    string            `json:"created_by,omitempty"`
-	CreatedAt    time.Time         `json:"created_at"`
-	UpdatedAt    time.Time         `json:"updated_at"`
+	ID                string            `json:"id"`
+	OwnerID           string            `json:"owner_id,omitempty"`
+	Name              string            `json:"name"`
+	Transport         string            `json:"transport"`
+	Command           string            `json:"command,omitempty"`
+	Args              []string          `json:"args,omitempty"`
+	EnvKeys           []string          `json:"env_keys,omitempty"`
+	EnvSealed         map[string]string `json:"env_sealed,omitempty"`
+	WorkingDir        string            `json:"working_dir,omitempty"`
+	URL               string            `json:"url,omitempty"`
+	HeaderKeys        []string          `json:"header_keys,omitempty"`
+	HeaderSealed      map[string]string `json:"header_sealed,omitempty"`
+	AllowPrivateHosts bool              `json:"allow_private_hosts,omitempty"`
+	TimeoutSec        int               `json:"timeout_sec,omitempty"`
+	MaxOutputBytes    int64             `json:"max_output_bytes,omitempty"`
+	Fingerprint       string            `json:"fingerprint,omitempty"`
+	Status            string            `json:"status,omitempty"`
+	LastError         string            `json:"last_error,omitempty"`
+	CreatedBy         string            `json:"created_by,omitempty"`
+	CreatedAt         time.Time         `json:"created_at"`
+	UpdatedAt         time.Time         `json:"updated_at"`
 }
 
 // ToolGrant authorizes one AgentProfile to call one tool. An empty Scopes list
@@ -119,27 +119,27 @@ type ToolGrant struct {
 
 // ToolCallRecord is the durable audit record of one tool invocation.
 type ToolCallRecord struct {
-	ID            string         `json:"id"`
-	PlanID        string         `json:"plan_id"`
-	TaskID        string         `json:"task_id"`
+	ID             string         `json:"id"`
+	PlanID         string         `json:"plan_id"`
+	TaskID         string         `json:"task_id"`
 	ToolID         string         `json:"tool_id"`
 	ToolVersion    string         `json:"tool_version"`
 	AgentProfileID string         `json:"agent_profile_id,omitempty"`
-	Arguments     map[string]any `json:"arguments,omitempty"`
-	ArgumentsHash string         `json:"arguments_hash"`
-	ResultHash    string         `json:"result_hash,omitempty"`
-	ResultPreview string         `json:"result_preview,omitempty"`
-	Status        string         `json:"status"`
-	ErrorCode     string         `json:"error_code,omitempty"`
-	Error         string         `json:"error,omitempty"`
-	ApprovalID    string         `json:"approval_id,omitempty"`
-	DryRun        bool           `json:"dry_run,omitempty"`
-	Truncated     bool           `json:"truncated,omitempty"`
-	OutputBytes   int64          `json:"output_bytes,omitempty"`
-	ReplayOf      string         `json:"replay_of,omitempty"`
-	StartedAt     time.Time      `json:"started_at"`
-	FinishedAt    *time.Time     `json:"finished_at,omitempty"`
-	DurationMS    int64          `json:"duration_ms"`
+	Arguments      map[string]any `json:"arguments,omitempty"`
+	ArgumentsHash  string         `json:"arguments_hash"`
+	ResultHash     string         `json:"result_hash,omitempty"`
+	ResultPreview  string         `json:"result_preview,omitempty"`
+	Status         string         `json:"status"`
+	ErrorCode      string         `json:"error_code,omitempty"`
+	Error          string         `json:"error,omitempty"`
+	ApprovalID     string         `json:"approval_id,omitempty"`
+	DryRun         bool           `json:"dry_run,omitempty"`
+	Truncated      bool           `json:"truncated,omitempty"`
+	OutputBytes    int64          `json:"output_bytes,omitempty"`
+	ReplayOf       string         `json:"replay_of,omitempty"`
+	StartedAt      time.Time      `json:"started_at"`
+	FinishedAt     *time.Time     `json:"finished_at,omitempty"`
+	DurationMS     int64          `json:"duration_ms"`
 }
 
 // AgentProfileSnapshot freezes the profile/prompt/model versions used by a

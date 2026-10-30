@@ -74,7 +74,7 @@ func TestMCPStdioDiscoverAndInvoke(t *testing.T) {
 		ID: "mcp:stdio", Transport: models.ToolTransportMCPStdio,
 		Command: os.Args[0], Args: []string{"-test.run=TestMockMCPHelper"},
 		EnvSealed: map[string]string{"GO_WANT_MOCKMCP_HELPER": sealed},
-		Status: "ready", TimeoutSec: 10,
+		Status:    "ready", TimeoutSec: 10,
 	}
 	if err := registry.SaveServer(server); err != nil {
 		t.Fatal(err)

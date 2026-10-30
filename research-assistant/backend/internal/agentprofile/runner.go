@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/modelprofile"
+	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/oaichat"
 	"research-assistant-backend/internal/tools"
 	"research-assistant-backend/internal/usage"

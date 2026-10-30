@@ -16,10 +16,10 @@ import (
 
 // Registry errors shared by the API layer.
 var (
-	ErrNotFound = errors.New("tool not found")
+	ErrNotFound  = errors.New("tool not found")
 	ErrForbidden = errors.New("tool forbidden")
-	ErrConflict = errors.New("tool conflict")
-	ErrInvalid  = errors.New("tool invalid")
+	ErrConflict  = errors.New("tool conflict")
+	ErrInvalid   = errors.New("tool invalid")
 )
 
 // Snapshot is the persisted state of the tool ecosystem.

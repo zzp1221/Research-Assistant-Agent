@@ -64,18 +64,18 @@ func NewInvoker(registry *Registry) *Invoker {
 func (i *Invoker) Invoke(ctx context.Context, request InvokeRequest) *InvokeResult {
 	start := i.Now()
 	record := models.ToolCallRecord{
-		ID:            firstNonEmpty(request.CallID, "tc-"+uuid.NewString()),
-		PlanID:        request.PlanID,
-		TaskID:        request.TaskID,
-		ToolID:        request.ToolID,
-		ToolVersion:   request.ToolVersion,
+		ID:             firstNonEmpty(request.CallID, "tc-"+uuid.NewString()),
+		PlanID:         request.PlanID,
+		TaskID:         request.TaskID,
+		ToolID:         request.ToolID,
+		ToolVersion:    request.ToolVersion,
 		Arguments:      cloneArguments(request.Arguments),
 		ArgumentsHash:  models.HashArguments(request.Arguments),
 		AgentProfileID: request.AgentProfileID,
-		Status:        models.ToolCallRunning,
-		DryRun:        request.DryRun,
-		ReplayOf:      request.ReplayOf,
-		StartedAt:     start,
+		Status:         models.ToolCallRunning,
+		DryRun:         request.DryRun,
+		ReplayOf:       request.ReplayOf,
+		StartedAt:      start,
 	}
 	finish := func(result *InvokeResult, code, message string) *InvokeResult {
 		now := i.Now()

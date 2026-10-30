@@ -39,8 +39,8 @@ func (h *HTTPInvoker) Invoke(ctx context.Context, tool models.ToolDefinition, ar
 	}
 	if dryRun {
 		return &NativeResult{
-			Text: fmt.Sprintf("dry-run: would %s %s with %d bytes", method, tool.HTTP.URL, len(body)),
-			JSON: map[string]any{"dry_run": true, "url": tool.HTTP.URL, "bytes": len(body)},
+			Text:  fmt.Sprintf("dry-run: would %s %s with %d bytes", method, tool.HTTP.URL, len(body)),
+			JSON:  map[string]any{"dry_run": true, "url": tool.HTTP.URL, "bytes": len(body)},
 			Bytes: int64(len(body)),
 		}, nil
 	}
