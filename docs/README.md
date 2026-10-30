@@ -35,6 +35,7 @@
 - [N-04 真实文献与网页检索 + N-07 文档智能：改进设计与实施方案](design/n04-n07-literature-and-document-intelligence.md)：基于现有 literature/documents 能力的增量设计，含现状、问题、方案、阶段与验收
 - [N-01/N-02/N-03：计划库、可复现导出与成本预算控制台](design/n01-n03-plan-library-reproducibility-cost.md)：基于现有计划列表/导出/usage 的增量设计，含索引、manifest/checksum、预算闸门与验收
 - [N-05 计划审阅与人在回路](design/n05-plan-review-hitl.md)：revision、执行前审阅、结构化提问、审批收件箱与 diff 的设计
+- [N-13 Agent/工具生态（MCP）](design/n13-agent-tool-ecosystem-mcp.md)：工具注册/权限/审计、MCP 接入、自定义 Agent 与 Prompt 版本的设计
 - [UI 升级设计说明](ui-research-console.md)：科研仪器风格的视觉与交互规范、三个方向的取舍与实现记录
 - [缺陷修复文档（2026-10-25）](defect-remediation-2026-10-25.md)：D1–D10 的「为什么修 / 哪里有问题 / 怎么修」，含落地顺序与验收清单
 - [根 README](../README.md)：项目定位、快速开始、API 摘要与运行边界

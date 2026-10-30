@@ -427,6 +427,8 @@
 
 ## N-13 Agent/工具生态（MCP）
 
+> 改进版设计见 [N-13 Agent/工具生态（MCP）](../design/n13-agent-tool-ecosystem-mcp.md)：当前 AllowedTools 只是展示字段、无 MCP/工具注册；重点先把白名单变成执行期权限，再做 native 工具、MCP、AgentProfile/PromptVersion。
+
 **用户价值**
 
 - 固定 7 个 Agent 无法覆盖所有研究工具；用户需要接入自己的脚本、数据库、实验平台。
