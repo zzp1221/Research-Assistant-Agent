@@ -120,15 +120,24 @@ func TestHandoffDiscardsLatePreReassignmentResult(t *testing.T) {
 	if finalTask.Result != "completed by pre-handoff executor sandbox_agent" {
 		t.Fatalf("unexpected completion result: %q", finalTask.Result)
 	}
-	events, err := planStore.ListEvents(plan.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// The stale result is handled by the in-flight task goroutine, which can
+	// finish slightly after ExecutePlan returns. Poll briefly for the audit
+	// event instead of racing the scheduler loop.
+	deadline := time.Now().Add(2 * time.Second)
 	foundDiscarded := false
-	for _, event := range events {
-		if event.EventType == "task_result_discarded" {
-			foundDiscarded = true
-			break
+	for !foundDiscarded && time.Now().Before(deadline) {
+		events, err := planStore.ListEvents(plan.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, event := range events {
+			if event.EventType == "task_result_discarded" {
+				foundDiscarded = true
+				break
+			}
+		}
+		if !foundDiscarded {
+			time.Sleep(10 * time.Millisecond)
 		}
 	}
 	if !foundDiscarded {
