@@ -7,9 +7,9 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/sysinfo"
 )
 
 const (
@@ -143,39 +143,11 @@ func (p ReproductionResourceProbe) fullReproductionEligible() (bool, []string) {
 }
 
 func detectMemoryGB() float64 {
-	switch runtime.GOOS {
-	case "darwin":
-		raw, err := exec.Command("sysctl", "-n", "hw.memsize").Output()
-		if err == nil {
-			if bytes, parseErr := strconv.ParseFloat(strings.TrimSpace(string(raw)), 64); parseErr == nil {
-				return bytes / 1024 / 1024 / 1024
-			}
-		}
-	case "linux":
-		raw, err := os.ReadFile("/proc/meminfo")
-		if err == nil {
-			for _, line := range strings.Split(string(raw), "\n") {
-				if !strings.HasPrefix(line, "MemTotal:") {
-					continue
-				}
-				fields := strings.Fields(line)
-				if len(fields) >= 2 {
-					if kb, parseErr := strconv.ParseFloat(fields[1], 64); parseErr == nil {
-						return kb / 1024 / 1024
-					}
-				}
-			}
-		}
-	}
-	return 0
+	return float64(sysinfo.MemoryTotalBytes()) / 1024 / 1024 / 1024
 }
 
 func detectDiskFreeGB(path string) float64 {
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(path, &stat); err != nil {
-		return 0
-	}
-	return float64(stat.Bavail) * float64(stat.Bsize) / 1024 / 1024 / 1024
+	return float64(sysinfo.DiskFreeBytes(path)) / 1024 / 1024 / 1024
 }
 
 func detectCUDAGPUNames() []string {

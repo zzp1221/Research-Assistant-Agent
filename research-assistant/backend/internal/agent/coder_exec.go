@@ -16,10 +16,13 @@ func (a *CoderAgent) runPythonTaskInSandbox(ctx context.Context, sandboxID strin
 	if strings.TrimSpace(workspacePath) != "" && strings.TrimSpace(codeFilePath) != "" {
 		relPath, relErr := filepath.Rel(workspacePath, codeFilePath)
 		if relErr == nil && !strings.HasPrefix(relPath, "..") {
-			cmd := []string{"bash", "-lc", buildMountedWorkspacePythonCommand(relPath)}
+			cmd, cmdErr := buildMountedWorkspacePythonCommand(workspacePath, relPath)
+			if cmdErr != nil {
+				return nil, cmdErr
+			}
 			logToContext(ctx, "[%s] Executing repo entry file in mounted workspace: %s", a.Name, relPath)
 			started := time.Now()
-			response, err := a.Sandbox.ExecCommandStream(ctx, sandboxID, cmd, func(stream string, line string) {
+			response, err := a.Sandbox.ExecCommandStreamV2(ctx, sandboxID, cmd, func(stream string, line string) {
 				logToContext(ctx, "[%s] python %s: %s", a.Name, stream, line)
 			})
 			recordSandboxDuration(ctx, started)

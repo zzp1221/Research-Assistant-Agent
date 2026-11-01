@@ -25,6 +25,8 @@ func buildRuntimePolicy(payload RequestPayload, userID string) (models.RuntimePo
 			MaxDownloadBytes:  8 * 1024 * 1024 * 1024,
 			MaxDiskGB:         50,
 			MaxRuntimeSec:     3600,
+			MemoryMB:          4096,
+			MaxProcesses:      64,
 			AllowedRegistries: []string{"docker.io", "registry-1.docker.io", "ghcr.io"},
 		},
 	}

@@ -362,6 +362,7 @@ Windows 用户请使用 Docker Compose；`scripts/windows/start-backend.ps1` 会
 | `GET` / `POST` / `PUT` / `DELETE` | `/api/model-profiles`（及 `/:id/test`、`/probe-vision`）、`/api/model-routing` | 运行期模型 profile 与 routing |
 | `GET` | `/api/metrics`（及 `/metrics`） | Prometheus 文本指标（Bearer 鉴权） |
 | `GET` | `/api/audit/export` | 审计事件导出（调用者隔离） |
+| `GET` | `/api/sandbox/capabilities` | 当前沙箱 Provider 能力矩阵（桌面运行模式页使用） |
 | `GET` | `/openapi.json` | OpenAPI 3.1 合同（无需 Bearer；`/api/openapi.json` 同内容但走 API 鉴权） |
 
 Sandbox 服务（默认 `:8082`）另有：
@@ -409,10 +410,27 @@ cd docker-core && go test ./...
 容器内 E2E（需要运行中的 compose 栈；套件位于 `research-assistant/test/e2e/`，使用 `RA_API_URL` / `RA_API_TOKEN`）：
 
 - 既有：`http-smoke.mjs`、`routing-and-prompts.mjs`、`literature.mjs`、`literature-plan.mjs`、`document-intelligence.mjs`、`model-profiles.mjs`、`verification.mjs`、`sandbox-network.mjs`、`round6-*.mjs`
+- 桌面/命令：`desktop-smoke.mjs`（provider 能力矩阵）、`sandbox-command.mjs`（argv/legacy/截断）
 - 深度：`round7-api-coverage.mjs`、`round7-real-scenarios.mjs`、`round7-paper-reproduction.mjs`、`round7-autoresearch.mjs`、`round7-task-execute.mjs`、`round7-doc-assist.mjs`、`round7-sandbox-deep.mjs`
 - 最近一次结果与已知缺陷见 [docs/verification.md](docs/verification.md)；本地完整证据见 `reports/eval-2026-10-28/REPORT.md`（按约定不提交）
 
-### 3.5 模块说明
+### 3.5 Windows 桌面客户端（新增，feature/desk）
+
+`desktop/` 是独立的 Go module，包含 Windows 首发所需的桌面外壳支撑包：
+
+- `desktop/shell`：settings→端口→token→supervisor→proxy 编排、崩溃自动重启、`/desktop/state|diagnostics|retry` 与错误页。
+- `desktop/supervisor`：单实例锁、OS 分配端口、backend/sandbox 子进程启动与健康检查、退出顺序、Windows Job Object 回收。
+- `desktop/proxy`：固定 loopback origin 的反向代理，SSE `FlushInterval=-1`，Host/Origin 守卫与 SPA 回退。
+- `desktop/settings`：`settings.json`、环境变量注入表、Windows DPAPI 密钥存储（非 Windows 为显式 unsupported）。
+- `desktop/diagnostics` / `desktop/updater`：脱敏诊断包；semver + SHA-256 + Ed25519 更新校验。
+- `desktop/onboarding` / `desktop/bridge` / `desktop/tray`：首次启动向导、Wails 绑定、托盘契约。
+- `docker-sandbox/internal/engine/native`：uv 管理的 CPython + venv 缓存、命令翻译、AppContainer/lowil runner、双 profile 网络、Job 限额、附录 D 探针；非 Windows 返回 `unsupported_platform`。
+- `docker-sandbox/internal/engine/vm` / `remote`：WSL2 检测与执行路径（路径/argv 翻译）、OpenSandbox Provider 适配器。
+- 后端、docker-sandbox、desktop 均支持 `GOOS=windows GOARCH=amd64 go build ./...`（desktop 另验证 Wails tag）；Linux 容器内运行纯逻辑单测。
+
+构建说明见 [desktop/README.md](desktop/README.md)。Wails 入口使用 `//go:build desktop && wails`，不改变默认 CI 构建。
+
+### 3.6 模块说明
 
 - [docs](docs/README.md)：架构图、流程图、设计与轮次报告
 - [research-assistant](research-assistant/README.md)：产品主实现与启动方式

@@ -52,6 +52,7 @@ func (b RunBudget) BudgetPolicyOrDefault() string {
 type TaskUsage struct {
 	LLMPromptTokens     int     `json:"llm_prompt_tokens,omitempty"`
 	LLMCompletionTokens int     `json:"llm_completion_tokens,omitempty"`
+	LLMCachedTokens     int     `json:"llm_cached_tokens,omitempty"`
 	LLMCalls            int     `json:"llm_calls,omitempty"`
 	LLMCostUSD          float64 `json:"llm_cost_usd,omitempty"`
 	LLMEstimated        bool    `json:"llm_estimated,omitempty"`
@@ -97,6 +98,7 @@ func (u *TaskUsage) Add(other *TaskUsage) {
 	}
 	u.LLMPromptTokens += other.LLMPromptTokens
 	u.LLMCompletionTokens += other.LLMCompletionTokens
+	u.LLMCachedTokens += other.LLMCachedTokens
 	u.LLMCalls += other.LLMCalls
 	u.LLMCostUSD += other.LLMCostUSD
 	u.LLMEstimated = u.LLMEstimated || other.LLMEstimated
@@ -148,6 +150,7 @@ type RunUsage struct {
 	// cost dashboards show real spend instead of guesses.
 	LLMPromptTokens     int     `json:"llm_prompt_tokens,omitempty"`
 	LLMCompletionTokens int     `json:"llm_completion_tokens,omitempty"`
+	LLMCachedTokens     int     `json:"llm_cached_tokens,omitempty"`
 	LLMCalls            int     `json:"llm_calls,omitempty"`
 	LLMCostUSD          float64 `json:"llm_cost_usd,omitempty"`
 	LLMEstimated        bool    `json:"llm_estimated,omitempty"`
@@ -165,6 +168,7 @@ func (u *RunUsage) AddTaskUsage(task *TaskUsage) {
 	}
 	u.LLMPromptTokens += task.LLMPromptTokens
 	u.LLMCompletionTokens += task.LLMCompletionTokens
+	u.LLMCachedTokens += task.LLMCachedTokens
 	u.LLMCalls += task.LLMCalls
 	u.LLMCostUSD += task.LLMCostUSD
 	u.LLMEstimated = u.LLMEstimated || task.LLMEstimated

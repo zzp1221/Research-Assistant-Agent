@@ -54,6 +54,9 @@ func sandboxOptionsForTask(task *models.Task) sandbox.SandboxOptions {
 		MaxDownloadBytes: policy.HardLimits.MaxDownloadBytes,
 		MaxDiskGB:        policy.HardLimits.MaxDiskGB,
 		MaxRuntimeSec:    policy.HardLimits.MaxRuntimeSec,
+		MemoryMB:         policy.HardLimits.MemoryMB,
+		CPUPercent:       policy.HardLimits.CPUPercent,
+		MaxProcesses:     policy.HardLimits.MaxProcesses,
 	}
 	runtimeName := strings.TrimSpace(os.Getenv("SANDBOX_RUNTIME"))
 	return sandbox.SandboxOptions{NetworkMode: "none", Runtime: runtimeName, Limits: limits}

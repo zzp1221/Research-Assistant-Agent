@@ -600,8 +600,11 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
         const response = await chat(userPrompt, {
           userId: requestUserId,
           sessionId: requestSessionId,
-        });
-        appendMessageToSession(requestSessionId, { role: 'system', text: response.response });
+        }, { sessionId: requestSessionId });
+        const citationText = response.citations && response.citations.length > 0
+          ? `\n\n记忆引用：${response.citations.map((citation) => `[${citation.kind}] ${citation.title}`).join('；')}`
+          : '';
+        appendMessageToSession(requestSessionId, { role: 'system', text: response.response + citationText });
       }
     } catch (error) {
       console.error(error);

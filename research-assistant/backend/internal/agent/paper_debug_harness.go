@@ -15,6 +15,7 @@ import (
 
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
+	"research-assistant-backend/internal/sandbox"
 )
 
 const (
@@ -200,15 +201,15 @@ func (a *ResearchCodingAgent) runPaperCodeOnce(ctx context.Context, runtimeSessi
 	}
 	attempt.SourceFingerprintBefore = before
 
-	command := fmt.Sprintf("cd /workspace && PYTHONPATH=/workspace:${PYTHONPATH:-} python3 %s", shellEscape(filepath.ToSlash(entryRelative)))
+	argv := []string{"python", filepath.ToSlash(entryRelative)}
 	if len(runCommand) > 0 {
-		parts := make([]string, 0, len(runCommand))
-		for _, part := range runCommand {
-			parts = append(parts, shellEscape(part))
-		}
-		command = "cd /workspace && PYTHONPATH=/workspace:${PYTHONPATH:-} " + strings.Join(parts, " ")
+		argv = append([]string(nil), runCommand...)
 	}
-	response, runErr := a.Sandbox.ExecCommandStream(ctx, runtimeSession, []string{"bash", "-lc", command}, func(stream, line string) {
+	response, runErr := execResearchCommandStream(ctx, a.Sandbox, runtimeSession, sandbox.Command{
+		Argv: argv,
+		Cwd:  "/workspace",
+		Env:  map[string]string{"PYTHONPATH": "/workspace"},
+	}, func(stream, line string) {
 		logToContext(ctx, "[%s] paper debug %s: %s", a.Name, stream, line)
 	})
 	after, fingerprintErr := paperDebugSourceFingerprint(workspacePath)

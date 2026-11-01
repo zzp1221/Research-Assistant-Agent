@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/sandbox"
 )
 
 func (a *ResearchCodingAgent) evaluateAutoResearchCandidate(ctx context.Context, runtimeSession, workspacePath string, spec models.ResearchSpec) (autoResearchEvaluation, error) {
@@ -85,13 +86,12 @@ func (a *ResearchCodingAgent) runAutoResearchCommand(ctx context.Context, runtim
 		result.Error = err.Error()
 		return result, "", err
 	}
-	quoted := make([]string, 0, len(command))
-	for _, argument := range command {
-		quoted = append(quoted, shellEscape(argument))
-	}
-	shellCommand := "cd /workspace && PYTHONPATH=/workspace:${PYTHONPATH:-} " + strings.Join(quoted, " ")
 	started := time.Now()
-	response, err := a.Sandbox.ExecCommandStream(ctx, runtimeSession, []string{"bash", "-lc", shellCommand}, func(stream, line string) {
+	response, err := execResearchCommandStream(ctx, a.Sandbox, runtimeSession, sandbox.Command{
+		Argv: append([]string(nil), command...),
+		Cwd:  "/workspace",
+		Env:  map[string]string{"PYTHONPATH": "/workspace"},
+	}, func(stream, line string) {
 		logToContext(ctx, "[%s] AutoResearch %s: %s", a.Name, stream, line)
 	})
 	result.DurationMS = time.Since(started).Milliseconds()

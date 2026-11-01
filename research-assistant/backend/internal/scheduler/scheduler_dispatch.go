@@ -218,6 +218,7 @@ func taskUsageFromSnapshot(snapshot usage.Snapshot, duration time.Duration) *mod
 	taskUsage := &models.TaskUsage{
 		LLMPromptTokens:     snapshot.PromptTokens,
 		LLMCompletionTokens: snapshot.CompletionTokens,
+		LLMCachedTokens:     snapshot.LLMCachedTokens,
 		LLMCalls:            snapshot.LLMCalls,
 		LLMCostUSD:          snapshot.CostUSD,
 		LLMEstimated:        snapshot.Estimated,

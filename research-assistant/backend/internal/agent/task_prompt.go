@@ -68,10 +68,18 @@ func buildAgentPromptTextWithDescription(sharedContext map[string]interface{}, t
 		return prompts.BuildLegacyTaskPrompt(description, task.Inputs, legacyLimit), prompts.PromptReport{}, nil
 	}
 	planContext := ""
+	coreMemory := ""
+	retrievedMemory := ""
 	var plan *models.PlanGraph
 	if sharedContext != nil {
 		if value, ok := sharedContext["plan_context"].(string); ok {
 			planContext = value
+		}
+		if value, ok := sharedContext["core_memory"].(string); ok {
+			coreMemory = value
+		}
+		if value, ok := sharedContext["retrieved_memory"].(string); ok {
+			retrievedMemory = value
 		}
 		if value, ok := sharedContext["plan_graph"].(*models.PlanGraph); ok {
 			plan = value
@@ -79,6 +87,8 @@ func buildAgentPromptTextWithDescription(sharedContext map[string]interface{}, t
 	}
 	assembled, err := prompts.BuildTaskPrompt(prompts.TaskPromptInput{
 		System:          systemPrompt,
+		CoreMemory:      coreMemory,
+		RetrievedMemory: retrievedMemory,
 		Plan:            plan,
 		PlanContextText: planContext,
 		TaskName:        task.Name,

@@ -13,7 +13,11 @@ import { useResearchAssistantRuntime } from './hooks/useResearchAssistantRuntime
 import { readPlanRunTrigger, useGraphExecutionViewModel, type PlanRunTrigger } from './viewModels/useGraphExecutionViewModel';
 import { ExecutionSidebar } from '../features/execution/ExecutionSidebar';
 import { HelpDrawer, type HelpSection } from '../features/help/HelpDrawer';
+import { Onboarding } from '../features/onboarding/Onboarding';
 import { GraphPanel } from '../features/plan-graph/GraphPanel';
+import { DesktopStatusBanner } from '../components/DesktopStatusBanner';
+import { NetworkIsolationBanner } from '../components/NetworkIsolationBanner';
+import { UpdateAvailableBanner } from '../components/UpdateAvailableBanner';
 import { buildGraphLayout } from '../features/plan-graph/buildGraphLayout';
 import { SettingsPanel } from '../features/settings/SettingsPanel';
 import { PlanLibraryPanel } from '../features/plan-library/PlanLibraryPanel';
@@ -24,6 +28,8 @@ import { WorkbenchRail } from '../features/workbench/WorkbenchRail';
 import { WorkbenchStatusBar } from '../features/workbench/WorkbenchStatusBar';
 import { useWorkbenchBudget, type WorkbenchBudgetState } from './hooks/useWorkbenchBudget';
 import { answerQuestion, listApprovals } from '../services/api/researchAssistantApi';
+import { getDesktopBridge } from '../services/desktopBridge';
+import { usePlanCompletionNotification } from './hooks/usePlanCompletionNotification';
 import type { IntentContext, MissingRequirement, PlanQuestion, RuntimeAction, UploadedFile } from '../contracts/api';
 import type { PlanExecutionTrigger } from '../services/api/researchAssistantApi';
 import { isPdfAttachment } from '../features/pdf-viewer/pdfAttachment';
@@ -72,6 +78,7 @@ function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
   }, [graphExecutionViewModel.executionSidebarProps]);
 
   const graphProps = graphExecutionViewModel.graphPanelProps;
+  usePlanCompletionNotification(graphProps.planId, props.activePlanStatus);
   const stepCount = graphProps.nodes.length;
   const completedCount = graphProps.nodes.filter((node) => node.data.status === 'completed').length;
   const runningCount = graphProps.nodes.filter((node) => node.data.status === 'in_progress').length;
@@ -97,6 +104,9 @@ function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
         onOpenModelSettings={onOpenModelSettings}
       />
       <div className="research-assistant-workbench-stack">
+        <DesktopStatusBanner />
+        <UpdateAvailableBanner />
+        <NetworkIsolationBanner />
         <div className="research-assistant-workbench-row">
           <div className="research-assistant-mobile-tabbar">
             <button
@@ -418,6 +428,7 @@ export default function ResearchAssistantApp() {
   const [pendingWorkCounts, setPendingWorkCounts] = useState({ total: 0, approvals: 0, questions: 0 });
   const [showHelp, setShowHelp] = useState(false);
   const [helpSection, setHelpSection] = useState<HelpSection>('start');
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const runtimeActionsRef = useRef<((planId: string, trigger?: PlanExecutionTrigger) => void) | null>(null);
   const layout = useResearchAssistantLayoutState();
@@ -449,6 +460,33 @@ export default function ResearchAssistantApp() {
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let attempts = 0;
+    let timer: number | undefined;
+    const check = () => {
+      if (cancelled) return;
+      const bridge = getDesktopBridge();
+      if (!bridge) {
+        // Wails injects window.go asynchronously; retry briefly before giving up.
+        if (attempts++ < 20) timer = window.setTimeout(check, 100);
+        return;
+      }
+      Promise.resolve(bridge.needsOnboarding())
+        .then((required) => {
+          if (!cancelled) setShowOnboarding(Boolean(required));
+        })
+        .catch(() => {
+          // A broken bridge must not block the workbench.
+        });
+    };
+    check();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
     };
   }, []);
 
@@ -582,6 +620,10 @@ export default function ResearchAssistantApp() {
     }),
     [runtime],
   );
+
+  if (showOnboarding) {
+    return <Onboarding onComplete={() => setShowOnboarding(false)} />;
+  }
 
   return (
     <AutoRunOnCreateContext.Provider value={chatFlow.autoRunControl}>

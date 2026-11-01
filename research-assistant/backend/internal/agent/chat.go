@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
 )
@@ -22,6 +23,8 @@ type ChatAgent struct {
 	Coder        *CoderAgent // 注入 CoderAgent 以便在需要时执行代码
 	// Runtime resolves the caller's model profile per request.
 	Runtime *dynamicChatModel
+	// Model is the usage-wrapped chat model used by multi-turn calls.
+	Model model.BaseChatModel
 }
 
 func NewChatAgent(coder *CoderAgent) *ChatAgent {
@@ -65,8 +68,9 @@ func (a *ChatAgent) initEinoChain() {
 	}))
 
 	model := wrapRuntimeModel(a.Runtime, chatModel)
-	if model != nil {
-		graph.AddChatModelNode("LLM_Chat", wrapUsageModel(model))
+	a.Model = wrapUsageModel(model)
+	if a.Model != nil {
+		graph.AddChatModelNode("LLM_Chat", a.Model)
 	}
 
 	graph.AddLambdaNode("Response_Extractor", compose.InvokableLambda(func(ctx context.Context, msg *schema.Message) (string, error) {
@@ -119,6 +123,49 @@ func (a *ChatAgent) Answer(ctx context.Context, question string) (string, error)
 	}
 
 	return response, nil
+}
+
+func (a *ChatAgent) AnswerWithMessages(ctx context.Context, messages []*schema.Message) (string, error) {
+	if len(messages) == 0 {
+		return "", nil
+	}
+	last := messages[len(messages)-1].Content
+	if a.Model == nil {
+		return a.Answer(ctx, last)
+	}
+	message, err := a.Model.Generate(ctx, messages)
+	if err != nil {
+		return "", err
+	}
+	if message == nil {
+		return "", nil
+	}
+	response := message.Content
+	if strings.Contains(response, "[CODE_EXECUTION_REQUIRED]") {
+		log.Printf("[%s] 检测到代码执行需求，正在调用 CoderAgent 自动执行...", a.Name)
+		tempTask := &models.Task{
+			ID:          "chat-exec-" + questionPrefix(last),
+			Name:        "Auto-Execute from Chat",
+			Type:        "code_execution",
+			Description: last,
+			AssignedTo:  "coder_agent",
+			Status:      models.StatusPending,
+		}
+		err := a.Coder.ExecuteTask(ctx, tempTask, make(map[string]interface{}))
+		if err == nil {
+			response = strings.Replace(response, "[CODE_EXECUTION_REQUIRED]", "🤖 **已自动在沙箱中运行**：\n\n```python\n"+tempTask.Code+"\n```\n\n**执行结果**：\n```text\n"+tempTask.Result+"\n```\n\n---", 1)
+		} else {
+			response = strings.Replace(response, "[CODE_EXECUTION_REQUIRED]", "❌ **沙箱执行失败**: "+err.Error()+"\n\n", 1)
+		}
+	}
+	return response, nil
+}
+
+func questionPrefix(question string) string {
+	if len(question) > 10 {
+		return question[:10]
+	}
+	return question
 }
 
 func min(a, b int) int {

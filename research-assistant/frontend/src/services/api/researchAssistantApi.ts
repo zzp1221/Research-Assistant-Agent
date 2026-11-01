@@ -5,6 +5,9 @@ import type {
   ChatResponse,
   ExecutePlanResponse,
   MCPServer,
+  MemoryRecord,
+  MemorySettings,
+  MemoryStats,
   ModelProfile,
   ModelProfileListResponse,
   ModelProfilePayload,
@@ -20,6 +23,7 @@ import type {
   PromptEvalResult,
   PromptVersion,
   RuntimeAction,
+  SandboxCapabilities,
   ToolCallRecord,
   ToolDefinition,
   ToolGrant,
@@ -38,6 +42,12 @@ export interface ServerIdentity {
   user_id: string;
   session_id: string;
 }
+
+// getSandboxCapabilities returns the selected sandbox provider matrix.
+export const getSandboxCapabilities = async (): Promise<SandboxCapabilities> => {
+  const response = await httpClient.get<SandboxCapabilities>('/api/sandbox/capabilities');
+  return response.data;
+};
 
 // getMe resolves the server-derived principal (signed cookie based).
 export const getMe = async (): Promise<ServerIdentity> => {
@@ -80,6 +90,7 @@ export const createPlan = async (
   try {
     const response = await httpClient.post<PlanResponse>('/api/plan', {
       intent,
+      session_id: identity.sessionId,
       attachments,
       runtime_permission_mode: runtimePermissionMode,
       runtime_permission_acknowledged: runtimePermissionAcknowledged,
@@ -246,8 +257,20 @@ export const getUpload = async (uploadId: string): Promise<UploadedFile> => {
   return response.data;
 };
 
-export const chat = async (message: string, identity: RequestIdentity): Promise<ChatResponse> => {
-  const response = await httpClient.post<ChatResponse>('/api/chat', { message }, { headers: buildIdentityHeaders(identity) });
+export interface ChatRequestOptions {
+  sessionId?: string;
+  projectId?: string;
+  useMemory?: boolean;
+  messages?: Array<{ role: string; content: string }>;
+}
+
+export const chat = async (message: string, identity: RequestIdentity, options: ChatRequestOptions = {}): Promise<ChatResponse> => {
+  const payload: Record<string, unknown> = { message };
+  if (options.sessionId) payload.session_id = options.sessionId;
+  if (options.projectId) payload.project_id = options.projectId;
+  if (options.useMemory !== undefined) payload.use_memory = options.useMemory;
+  if (options.messages && options.messages.length > 0) payload.messages = options.messages;
+  const response = await httpClient.post<ChatResponse>('/api/chat', payload, { headers: buildIdentityHeaders(identity) });
   return response.data;
 };
 
@@ -795,5 +818,58 @@ export const listToolCalls = async (planId: string): Promise<ToolCallRecord[]> =
 
 export const replayToolCall = async (planId: string, callId: string, payload: { allow_side_effects?: boolean; approval_id?: string }): Promise<Record<string, unknown>> => {
   const response = await httpClient.post(`/api/plans/${planId}/tool-calls/${encodeURIComponent(callId)}/replay`, payload);
+  return response.data;
+};
+export const listMemories = async (params: { kind?: string; q?: string; status?: string; limit?: number } = {}): Promise<{ memories: MemoryRecord[]; total: number }> => {
+  const response = await httpClient.get<{ memories: MemoryRecord[]; total: number }>('/api/memories', { params });
+  return { memories: response.data.memories ?? [], total: response.data.total ?? 0 };
+};
+
+export const createMemory = async (payload: { kind?: string; title: string; content: string; tags?: string[]; importance?: number; pinned?: boolean }): Promise<MemoryRecord> => {
+  const response = await httpClient.post<{ memory: MemoryRecord }>('/api/memories', payload);
+  return response.data.memory;
+};
+
+export const updateMemory = async (id: string, patch: Record<string, unknown>): Promise<MemoryRecord> => {
+  const response = await httpClient.patch<{ memory: MemoryRecord }>(`/api/memories/${encodeURIComponent(id)}`, patch);
+  return response.data.memory;
+};
+
+export const deleteMemory = async (id: string): Promise<void> => {
+  await httpClient.delete(`/api/memories/${encodeURIComponent(id)}`);
+};
+
+export const searchMemories = async (payload: { query: string; kinds?: string[]; project_id?: string; session_id?: string; limit?: number }): Promise<Record<string, unknown>> => {
+  const response = await httpClient.post<Record<string, unknown>>('/api/memories/search', payload);
+  return response.data;
+};
+
+export const getMemoryStats = async (): Promise<MemoryStats> => {
+  const response = await httpClient.get<MemoryStats>('/api/memories/stats');
+  return response.data;
+};
+
+export const getMemorySettings = async (): Promise<MemorySettings> => {
+  const response = await httpClient.get<MemorySettings>('/api/memories/settings');
+  return response.data;
+};
+
+export const saveMemorySettings = async (settings: MemorySettings): Promise<MemorySettings> => {
+  const response = await httpClient.put<MemorySettings>('/api/memories/settings', settings);
+  return response.data;
+};
+
+export const listServerSessions = async (): Promise<Array<{ session_id: string; title?: string; kind?: string; plan_count: number; chat_turns: number; last_active: string }>> => {
+  const response = await httpClient.get<{ sessions: Array<{ session_id: string; title?: string; kind?: string; plan_count: number; chat_turns: number; last_active: string }> }>('/api/sessions');
+  return response.data.sessions ?? [];
+};
+
+export const createServerSession = async (payload: { project_id?: string; title?: string; kind?: string } = {}): Promise<{ session_id: string; title?: string; kind?: string }> => {
+  const response = await httpClient.post<{ session_id: string; title?: string; kind?: string }>('/api/sessions', payload);
+  return response.data;
+};
+
+export const activateServerSession = async (sessionId: string): Promise<{ session_id: string; title?: string; kind?: string }> => {
+  const response = await httpClient.post<{ session_id: string; title?: string; kind?: string }>(`/api/sessions/${encodeURIComponent(sessionId)}/activate`, {});
   return response.data;
 };

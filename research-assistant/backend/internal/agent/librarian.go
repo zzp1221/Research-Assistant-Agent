@@ -9,6 +9,7 @@ import (
 	"research-assistant-backend/internal/documents"
 	"research-assistant-backend/internal/literature"
 	"research-assistant-backend/internal/llmclient"
+	"research-assistant-backend/internal/memory"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
 	"sort"
@@ -34,6 +35,9 @@ type LibrarianAgent struct {
 	Library *literature.LibraryStore
 	// Runtime resolves the plan owner's model profile per request.
 	Runtime *dynamicChatModel
+	// Memory optionally caches document maps so a second plan does not repeat
+	// heading detection / parsing for the same PDF.
+	Memory memory.Store
 }
 
 type librarianContextKey string
@@ -122,9 +126,10 @@ func (a *LibrarianAgent) ExecuteTask(ctx context.Context, task *models.Task, sha
 	}
 
 	volatile := ""
+	documentID := ""
 	var loadedDocument *documents.Document
 	if task != nil && (task.Type == "paper_parse" || task.Type == "general_research") && a.Documents != nil {
-		documentID := strings.TrimSpace(fmt.Sprint(task.Inputs["document_id"]))
+		documentID = strings.TrimSpace(fmt.Sprint(task.Inputs["document_id"]))
 		if documentID != "" && documentID != "<nil>" {
 			ownerID := metadataString(task, "tenant_id")
 			document, err := a.Documents.GetDocument(ctx, ownerID, documentID)
@@ -188,6 +193,17 @@ func (a *LibrarianAgent) ExecuteTask(ctx context.Context, task *models.Task, sha
 			"parsed_paper":   output,
 			"paper_metadata": string(metadataJSON),
 			"paper_summary":  output,
+		}
+		if a.Memory != nil && memory.InjectionEnabled() && loadedDocument != nil {
+			sections := make([]string, 0, 20)
+			for _, section := range documents.Outline(loadedDocument) {
+				sections = append(sections, section.Title)
+			}
+			title := strings.TrimSpace(metadata.Title)
+			if title == "" {
+				title = "Document " + documentID
+			}
+			_ = memory.RecordDocument(ctx, a.Memory, metadataString(task, "tenant_id"), "", metadataString(task, "session_id"), metadataString(task, "plan_id"), documentID, title, loadedDocument.PageCount, sections, string(loadedDocument.Status))
 		}
 	}
 	logToContext(ctx, "[%s] 任务完成: %s", a.Name, task.Name)

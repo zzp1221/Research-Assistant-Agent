@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,6 +13,7 @@ import (
 	"strings"
 
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/sandbox"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -206,7 +208,7 @@ func shellEscape(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
 }
 
-func buildMountedWorkspacePythonCommand(relPath string) string {
+func buildMountedWorkspacePythonCommand(workspacePath, relPath string) (sandbox.Command, error) {
 	entryDir := filepath.ToSlash(filepath.Dir(relPath))
 	if entryDir == "." || entryDir == "/" {
 		entryDir = ""
@@ -220,18 +222,49 @@ func buildMountedWorkspacePythonCommand(relPath string) string {
 	// 兼容部分旧仓库：
 	// 1. 目录里有 Python 源码但没有 __init__.py
 	// 2. 与 site-packages 中的同名包（如 utils）发生导入冲突
-	// 这里在执行前最小化补齐包标记，并显式把源码目录放到 PYTHONPATH 最前面。
-	return fmt.Sprintf(
-		"cd /workspace && "+
-			"ENTRY_DIR=%s && "+
-			"find \"$ENTRY_DIR\" -type d | while read -r d; do "+
-			"if find \"$d\" -maxdepth 1 -type f -name '*.py' | grep -q . && [ ! -f \"$d/__init__.py\" ]; then : > \"$d/__init__.py\"; fi; "+
-			"done && "+
-			"PYTHONPATH=%s:/workspace:${PYTHONPATH:-} python3 %s",
-		shellEscape(workspaceEntryDir),
-		shellEscape(workspaceEntryDir),
-		shellEscape(filepath.ToSlash(relPath)),
-	)
+	// 过去这段逻辑通过 bash + find 在沙箱里完成；桌面 native 模式没有
+	// POSIX shell，因此在宿主侧准备好工作区，再以 argv 方式执行。
+	if err := ensurePythonPackageMarkers(filepath.Join(workspacePath, filepath.FromSlash(entryDir))); err != nil {
+		return sandbox.Command{}, err
+	}
+	return sandbox.Command{
+		Argv: []string{"python", filepath.ToSlash(relPath)},
+		Cwd:  "/workspace",
+		Env:  map[string]string{"PYTHONPATH": workspaceEntryDir + ":/workspace"},
+	}, nil
+}
+
+func ensurePythonPackageMarkers(root string) error {
+	if strings.TrimSpace(root) == "" {
+		return nil
+	}
+	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+		if !entry.IsDir() {
+			return nil
+		}
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return nil
+		}
+		hasPython := false
+		for _, item := range entries {
+			if !item.IsDir() && strings.HasSuffix(item.Name(), ".py") {
+				hasPython = true
+				break
+			}
+		}
+		if !hasPython {
+			return nil
+		}
+		marker := filepath.Join(path, "__init__.py")
+		if _, err := os.Stat(marker); os.IsNotExist(err) {
+			return os.WriteFile(marker, nil, 0o644)
+		}
+		return nil
+	})
 }
 
 func looksLikeRichTextDependencySpec(raw string) bool {

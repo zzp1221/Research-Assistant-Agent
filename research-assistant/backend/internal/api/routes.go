@@ -27,6 +27,8 @@ import (
 
 type RequestPayload struct {
 	Intent                        string   `json:"intent" binding:"required"`
+	SessionID                     string   `json:"session_id,omitempty"`
+	ProjectID                     string   `json:"project_id,omitempty"`
 	Attachments                   []string `json:"attachments,omitempty"`
 	RuntimePermissionMode         string   `json:"runtime_permission_mode,omitempty"`
 	RuntimePermissionAcknowledged bool     `json:"runtime_permission_acknowledged,omitempty"`
@@ -44,7 +46,16 @@ type RequestPayload struct {
 }
 
 type ChatPayload struct {
-	Message string `json:"message" binding:"required"`
+	Message   string        `json:"message"`
+	SessionID string        `json:"session_id,omitempty"`
+	ProjectID string        `json:"project_id,omitempty"`
+	UseMemory *bool         `json:"use_memory,omitempty"`
+	Messages  []ChatMessage `json:"messages,omitempty"`
+}
+
+type ChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
 }
 
 var (
@@ -115,10 +126,12 @@ func SetupRoutes(r *gin.Engine) {
 	sb := sandbox.NewSandboxClient(sandboxURL)
 	coderAgent := agent.NewCoderAgent(sb)
 	researchCodingAgent := agent.NewResearchCodingAgent(coderAgent)
+	researchCodingAgent.Memory = MemoryStore()
 	benchmarkAgent := agent.NewBenchmarkAgent()
 	optimizerURL := strings.TrimSpace(os.Getenv("RESEARCH_OPTIMIZER_URL"))
 	librarianAgent := agent.NewLibrarianAgent()
 	librarianAgent.Documents = documents.NewStore("")
+	librarianAgent.Memory = MemoryStore()
 	librarianAgent.Literature = getLiteratureClient()
 	librarianAgent.Library = getLiteratureLibrary()
 	dataAgent := agent.NewDataAgentWithRuntime(coderAgent.Runtime, agent.NewVisualVerifier(modelresolver.Default()))
@@ -129,6 +142,14 @@ func SetupRoutes(r *gin.Engine) {
 	apiGroup := r.Group("/api")
 	apiGroup.Use(APIAuthMiddleware())
 	apiGroup.GET("/openapi.json", serveOpenAPI)
+	apiGroup.GET("/sandbox/capabilities", func(c *gin.Context) {
+		capabilities, err := sb.Capabilities(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, capabilities)
+	})
 	registerObservabilityRoutes(r, apiGroup)
 	{
 		// Preflight handlers for the group
@@ -141,6 +162,8 @@ func SetupRoutes(r *gin.Engine) {
 		RegisterUploadRoutes(apiGroup)
 		RegisterLiteratureRoutes(apiGroup)
 		RegisterWebRoutes(apiGroup)
+		registerMemoryRuntime(apiGroup)
+		registerSessionRoutes(apiGroup)
 
 		apiGroup.GET("/hello", func(c *gin.Context) {
 			c.String(200, "hello api group")
@@ -161,22 +184,7 @@ func SetupRoutes(r *gin.Engine) {
 		})
 
 		apiGroup.POST("/chat", func(c *gin.Context) {
-			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
-			var payload ChatPayload
-			if err := c.ShouldBindJSON(&payload); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-
-			response, err := chatAgent.Answer(c.Request.Context(), payload.Message)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-
-			c.JSON(http.StatusOK, gin.H{
-				"response": response,
-			})
+			handleChat(c, chatAgent)
 		})
 
 		apiGroup.GET("/pdf-proxy", func(c *gin.Context) {

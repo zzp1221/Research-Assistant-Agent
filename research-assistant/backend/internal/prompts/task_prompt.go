@@ -15,6 +15,8 @@ import (
 // rendered plan context through sharedContext without re-marshalling the plan.
 type TaskPromptInput struct {
 	System          string
+	CoreMemory      string
+	RetrievedMemory string
 	Plan            *models.PlanGraph
 	PlanContextText string
 	Task            *models.TaskNode
@@ -58,6 +60,18 @@ func PlanContext(plan *models.PlanGraph) string {
 		for _, attachment := range plan.Context.Attachments {
 			builder.WriteString(fmt.Sprintf("\n- %s (role=%s, id=%s)", attachment.Name, attachment.Role, attachment.ID))
 		}
+	}
+	if plan.Context != nil && strings.TrimSpace(plan.Context.ParentPlanSummary) != "" {
+		builder.WriteString("\n\nParent plan summary:\n")
+		builder.WriteString(strings.TrimSpace(plan.Context.ParentPlanSummary))
+	}
+	if plan.ParentPlanID != "" {
+		builder.WriteString("\nParent plan id: ")
+		builder.WriteString(plan.ParentPlanID)
+	}
+	if plan.Context != nil && strings.TrimSpace(plan.Context.MemoryContext) != "" {
+		builder.WriteString("\n\nMemory context:\n")
+		builder.WriteString(strings.TrimSpace(plan.Context.MemoryContext))
 	}
 	return builder.String()
 }
@@ -134,12 +148,16 @@ func BuildTaskPrompt(in TaskPromptInput) (TaskPrompt, error) {
 	}
 
 	sections := []Section{
-		{Name: "plan_context", Content: planContext, Priority: 1},
+		{Name: "core_memory", Content: strings.TrimSpace(in.CoreMemory), Priority: 1},
+		{Name: "plan_context", Content: planContext, Priority: 2},
 		{Name: "task_instruction", Content: instruction, Priority: 2},
+	}
+	if retrieved := strings.TrimSpace(in.RetrievedMemory); retrieved != "" {
+		sections = append(sections, Section{Name: "retrieved_memory", Content: retrieved, Priority: 3})
 	}
 	if len(in.Inputs) > 0 {
 		if inputsText, _ := FormatTaskInputsForPrompt(in.Inputs, limit-systemTokens, counter); strings.TrimSpace(inputsText) != "" {
-			sections = append(sections, Section{Name: "task_inputs", Content: inputsText, Priority: 3})
+			sections = append(sections, Section{Name: "task_inputs", Content: inputsText, Priority: 4})
 		}
 	}
 	if strings.TrimSpace(in.Volatile) != "" {

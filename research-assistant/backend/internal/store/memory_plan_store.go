@@ -221,6 +221,17 @@ func clonePlanGraph(plan *models.PlanGraph) *models.PlanGraph {
 		cloned.Edges = append(cloned.Edges, &edgeCopy)
 	}
 
+	if plan.Context != nil {
+		contextCopy := *plan.Context
+		if plan.Context.MemoryRefs != nil {
+			contextCopy.MemoryRefs = append([]string(nil), plan.Context.MemoryRefs...)
+		}
+		cloned.Context = &contextCopy
+	}
+	if plan.Meta.MemoryRefs != nil {
+		cloned.Meta.MemoryRefs = append([]string(nil), plan.Meta.MemoryRefs...)
+	}
+
 	cloned.Artifacts = make(map[string]models.Artifact, len(plan.Artifacts))
 	for k, v := range plan.Artifacts {
 		artifactCopy := v

@@ -36,6 +36,13 @@ type PlanFinalizer interface {
 	Finalize(ctx context.Context, plan *models.PlanGraph) error
 }
 
+// MemorySink records plan/task memories after execution. Implementations must
+// be best-effort: a memory failure never changes the plan outcome.
+type MemorySink interface {
+	RecordPlan(ctx context.Context, plan *models.PlanGraph) error
+	RecordTask(ctx context.Context, plan *models.PlanGraph, task *models.TaskNode, result *models.TaskExecutionResult) error
+}
+
 // NoopEventPublisher is used until the SSE/event bus layer is wired in.
 type NoopEventPublisher struct{}
 
@@ -78,6 +85,8 @@ type Scheduler struct {
 	// dispatch. It is injected by the API layer so the scheduler does not need
 	// to know the tool registry.
 	toolGate ToolGateFunc
+	// memorySink records terminal plan memories; nil disables it.
+	memorySink MemorySink
 }
 
 // PollInterval is the idle fallback for the event-driven loop. Task completion
@@ -289,6 +298,11 @@ func (s *Scheduler) checkPlanStall(ctx context.Context, plan *models.PlanGraph) 
 		Timestamp: now,
 	})
 	metrics.Default().Inc("plan_stalled_total", nil)
+}
+
+// SetMemorySink installs the optional plan-memory recorder.
+func (s *Scheduler) SetMemorySink(sink MemorySink) {
+	s.memorySink = sink
 }
 
 func (s *Scheduler) SetFinalizer(finalizer PlanFinalizer) {

@@ -308,6 +308,9 @@ export interface TaskUsage {
   attempts?: number;
   models?: Record<string, number>;
   model_breakdown?: TaskUsageModel[];
+  prompt_budget_limit?: number;
+  prompt_truncated_sections?: number;
+  llm_cached_tokens?: number;
 }
 
 export interface PlanArtifact {
@@ -460,6 +463,8 @@ export interface PlanGraph {
   title?: string;
   user_intent: string;
   intent_type: string;
+  parent_plan_id?: string;
+  context?: { parent_plan_summary?: string; memory_refs?: string[]; memory_context?: string; [key: string]: unknown };
   status: string;
   outcome?: string;
   outcome_reason?: string;
@@ -525,6 +530,7 @@ export interface PlanGraph {
     complexity_source?: 'rule' | 'llm' | 'merged' | 'fallback' | 'disabled' | string;
     template_variant?: 'simple' | 'standard' | 'full' | 'light' | string;
     general_plan_shape?: 'direct' | 'research' | 'paper' | 'literature' | 'legacy' | string;
+    memory_refs?: string[];
   };
 }
 
@@ -599,11 +605,71 @@ export interface PlanResponse {
   user_id?: string;
 }
 
+export interface MemoryCitation {
+  memory_id: string;
+  title: string;
+  kind: string;
+  date?: string;
+  source?: string;
+  trust?: string;
+}
+
 export interface ChatResponse {
   response: string;
   session_id?: string;
   anon_user_id?: string;
   user_id?: string;
+  citations?: MemoryCitation[];
+}
+
+export interface MemoryRecord {
+  id: string;
+  version: number;
+  kind: string;
+  scope: { owner_id: string; project_id?: string; session_id?: string; plan_id?: string; agent_id?: string };
+  title: string;
+  content: string;
+  tags?: string[];
+  entities?: { type: string; value: string }[];
+  source: { type: string; ref?: string; url?: string; created_at?: string };
+  evidence: { class: string; confidence?: number; hidden?: boolean };
+  validity?: { valid_from?: string; valid_to?: string; recorded_at?: string };
+  importance: number;
+  confidence?: number;
+  trust: string;
+  status: string;
+  pinned?: boolean;
+  use_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MemorySettings {
+  enabled: boolean;
+  mode: string;
+  retrieval_topk: number;
+  core_budget_tokens: number;
+  retrieved_budget_tokens: number;
+  llm_extraction: boolean;
+  retention_days: number;
+}
+
+export interface MemoryStats {
+  total: number;
+  active: number;
+  by_kind: Record<string, number>;
+  by_status: Record<string, number>;
+  tokens: number;
+  pinned: number;
+}
+
+export interface SessionSummary {
+  session_id: string;
+  title?: string;
+  kind?: string;
+  plan_count: number;
+  chat_turns: number;
+  last_active: string;
 }
 
 export interface ExecutePlanResponse {
@@ -956,4 +1022,49 @@ export interface PromptEvalResult {
   cases: { name?: string; passed: boolean; score: number; detail?: string }[];
   mode: string;
   evaluated_at: string;
+}
+
+export interface SandboxProbeCase {
+  name: string;
+  security: boolean;
+  passed: boolean;
+  detail?: string;
+}
+
+export interface SandboxProbeReport {
+  cases?: SandboxProbeCase[];
+  appcontainer_ok?: boolean;
+  reason?: string;
+}
+
+export interface SandboxCapabilities {
+  probe?: SandboxProbeReport;
+  provider?: string;
+  isolation?: string;
+  images?: boolean;
+  network_control?: boolean;
+  network_enforced?: 'os' | 'firewall' | 'none' | string;
+  gpu?: boolean;
+  gpu_enforced?: boolean;
+  python_versions?: string[];
+  os?: string;
+  notes?: string[];
+  docker_available?: boolean;
+  server_version?: string;
+  cpu_count?: number;
+  memory_total_bytes?: number;
+  disk_free_bytes?: number;
+  network_mode?: string;
+}
+
+export interface EnvironmentManifestView {
+  sandbox_provider?: 'docker' | 'native' | 'vm' | 'remote' | string;
+  isolation?: 'container' | 'appcontainer' | 'lowil' | string;
+  runtime_hash?: string;
+  base_os?: string;
+  network_enforced?: 'os' | 'none' | string;
+  image?: string;
+  image_digest?: string;
+  python_version?: string;
+  status?: string;
 }

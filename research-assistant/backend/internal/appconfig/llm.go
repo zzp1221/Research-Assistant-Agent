@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 
+	"research-assistant-backend/internal/apppaths"
+
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -134,6 +136,21 @@ func isPlaceholderAPIKey(key string) bool {
 }
 
 func resolveConfigPath() (string, error) {
+	if explicit := apppaths.ConfigPath(); explicit != "" {
+		if st, err := os.Stat(explicit); err == nil && !st.IsDir() {
+			return explicit, nil
+		}
+		return "", fmt.Errorf("RA_CONFIG_PATH 指向的文件不存在或不可读: %s", explicit)
+	}
+	if dataDir := strings.TrimSpace(os.Getenv("APP_DATA_DIR")); dataDir != "" {
+		for _, name := range []string{"config.toml", "config-template.toml"} {
+			candidate := filepath.Join(dataDir, "config", name)
+			if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
+				return candidate, nil
+			}
+		}
+	}
+
 	wd, err := os.Getwd()
 	if err != nil {
 		return "", err

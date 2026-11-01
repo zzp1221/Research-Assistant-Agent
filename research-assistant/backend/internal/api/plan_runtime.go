@@ -23,6 +23,7 @@ import (
 	"research-assistant-backend/internal/budget"
 	"research-assistant-backend/internal/events"
 	intentpkg "research-assistant-backend/internal/intent"
+	"research-assistant-backend/internal/memory"
 	"research-assistant-backend/internal/metrics"
 	"research-assistant-backend/internal/modelresolver"
 	"research-assistant-backend/internal/models"
@@ -39,6 +40,10 @@ import (
 
 const planStreamEventName = "plan_event"
 
+type sandboxCapabilityProbe interface {
+	Capabilities(ctx context.Context) (*sandbox.SandboxCapabilities, error)
+}
+
 type planRuntime struct {
 	planner          *planner.Planner
 	store            store.PlanStore
@@ -52,6 +57,7 @@ type planRuntime struct {
 	toolRegistry     *tools.Registry
 	toolInvoker      *tools.Invoker
 	profileRegistry  *agentprofile.Registry
+	sandbox          sandboxCapabilityProbe
 
 	mu          sync.Mutex
 	running     map[string]context.CancelFunc
@@ -172,8 +178,10 @@ func RegisterPlanRuntimeRoutes(
 	toolRuntime := buildToolAgentRuntime(planStorePath)
 	executor := scheduler.NewRoutedTaskExecutor(librarian, data, coder, specialized...)
 	executor.SetAgentRuntime(toolRuntime.profiles, toolRuntime.profileRunner, toolRuntime.invoker)
+	executor.SetMemory(MemoryStore())
 	runner := scheduler.NewScheduler(planStore, executor, eventBus, 2)
 	runner.SetFinalizer(&planner.PlanFinalizer{})
+	runner.SetMemorySink(apiMemorySink{})
 	runner.SetToolGate(makeToolGate(toolRuntime.tools, toolRuntime.profiles))
 	// Plan-level sandbox cleanup: every terminal plan releases its persistent
 	// runtimes so failed/canceled plans cannot leak containers.
@@ -218,6 +226,7 @@ func RegisterPlanRuntimeRoutes(
 	runtime.toolRegistry = toolRuntime.tools
 	runtime.toolInvoker = toolRuntime.invoker
 	runtime.profileRegistry = toolRuntime.profiles
+	runtime.sandbox = sandboxClient
 	runtime.register(apiGroup)
 	RegisterToolRoutes(apiGroup, toolRuntime.tools, toolRuntime.invoker, toolRuntime.profiles)
 	RegisterAgentProfileRoutes(apiGroup, toolRuntime.profiles, toolRuntime.tools)
@@ -306,7 +315,15 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 	}
 
 	userID := resolveUserID(c)
-	sessionID := resolveSessionID(c)
+	sessionID := strings.TrimSpace(payload.SessionID)
+	if sessionID == "" {
+		sessionID = resolveSessionID(c)
+	} else if sessionStore := SessionStore(); sessionStore != nil {
+		if _, err := sessionStore.Ensure(c.Request.Context(), sessionID, userID, strings.TrimSpace(payload.ProjectID), "plan"); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "session not found", "code": "session_not_found"})
+			return
+		}
+	}
 
 	if allowed, retryAfter := r.planLimiter.Allow(userID); !allowed {
 		seconds := int(retryAfter.Seconds())
@@ -403,9 +420,6 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		}
 	}
 	researchContext, contextErr := buildResearchContext(userID, sessionID, payload.Intent, attachments, intentContext.IntentType)
-	if importedPaper != nil && researchContext.Paper == nil {
-		researchContext.Paper = importedPaper
-	}
 	if contextErr != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": contextErr.Error(),
@@ -418,6 +432,13 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		})
 		return
 	}
+	if researchContext == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to build research context"})
+		return
+	}
+	if importedPaper != nil && researchContext.Paper == nil {
+		researchContext.Paper = importedPaper
+	}
 	if researchContext.Paper != nil {
 		intentContext.Entities["paper_metadata"] = paperMetadataMap(researchContext.Paper)
 		existingTitle, _ := intentContext.Entities["paper_title"].(string)
@@ -427,6 +448,21 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		if existingQuery, _ := intentContext.Entities["paper_search_query"].(string); strings.TrimSpace(existingQuery) == "" {
 			intentContext.Entities["paper_search_query"] = researchContext.Paper.Title
 		}
+	}
+	parentPlan := r.findParentPlan(userID, sessionID)
+	followUp := parentPlan != nil && isFollowUpIntent(payload.Intent)
+	if followUp {
+		researchContext.ParentPlanSummary = summarizePlanForContext(parentPlan)
+	}
+	projectID := ""
+	if sessionStore := SessionStore(); sessionStore != nil {
+		if sess, sessErr := sessionStore.Get(c.Request.Context(), userID, sessionID); sessErr == nil {
+			projectID = sess.ProjectID
+		}
+	}
+	if refs, memText := collectPlanMemoryContext(userID, projectID, sessionID, payload.Intent); len(refs) > 0 {
+		researchContext.MemoryRefs = refs
+		researchContext.MemoryContext = memText
 	}
 	// The final route must be computed after attachments and paper metadata are
 	// resolved: the text-only intent classifier cannot see them.
@@ -442,7 +478,13 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate plan"})
 		return
 	}
-	if len(attachments) > 0 || importedPaper != nil {
+	if followUp && parentPlan != nil {
+		plan.ParentPlanID = parentPlan.ID
+	}
+	if len(researchContext.MemoryRefs) > 0 {
+		plan.Meta.MemoryRefs = append([]string(nil), researchContext.MemoryRefs...)
+	}
+	if len(attachments) > 0 || importedPaper != nil || followUp || len(researchContext.MemoryRefs) > 0 {
 		plan.Context = researchContext
 		if len(attachments) > 0 {
 			if err := planner.ValidatePlanContextCoverage(plan, researchContext); err != nil {
@@ -452,6 +494,7 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		}
 	}
 	plan.RuntimePolicy = runtimePolicy
+	r.attachSandboxCapabilities(c.Request.Context(), plan)
 	// Per-request budget caps override env defaults. They are applied before
 	// governance so a caller can always tighten a plan, never loosen a limit.
 	if payload.MaxCostUSD > 0 {
@@ -509,6 +552,9 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save plan"})
 		return
 	}
+	if memStore := MemoryStore(); memStore != nil {
+		_ = memory.RecordPlan(c.Request.Context(), memStore, plan)
+	}
 	_ = r.store.AppendEvent(plan.ID, models.PlanEvent{
 		PlanID:    plan.ID,
 		EventType: "plan_created",
@@ -549,6 +595,90 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 	}
 	r.idempotency.Store(userID, idempotencyKey, http.StatusOK, encoded, "application/json; charset=utf-8")
 	c.Data(http.StatusOK, "application/json; charset=utf-8", encoded)
+}
+
+// attachSandboxCapabilities freezes the provider matrix on the plan and turns
+// unsupported OCI-image requirements into an explicit blocking requirement
+// before the plan is saved.
+func (r *planRuntime) attachSandboxCapabilities(ctx context.Context, plan *models.PlanGraph) {
+	if r.sandbox == nil || plan == nil {
+		return
+	}
+	caps, err := r.sandbox.Capabilities(ctx)
+	if err != nil {
+		log.Printf("[sandbox] capability probe failed for plan %s: %v", plan.ID, err)
+		return
+	}
+	plan.Meta.SandboxCapabilities = &models.SandboxCapabilitySnapshot{
+		Provider:        caps.Provider,
+		Isolation:       caps.Isolation,
+		Images:          caps.Images,
+		NetworkControl:  caps.NetworkControl,
+		NetworkEnforced: caps.NetworkEnforced,
+		PythonVersions:  caps.PythonVersions,
+		OS:              caps.OS,
+	}
+	if !caps.Images {
+		for _, node := range plan.Nodes {
+			if node == nil || !strings.EqualFold(strings.TrimSpace(node.Type), "image_prepare") {
+				continue
+			}
+			// Native providers prepare a uv/venv runtime instead of pulling an
+			// OCI image. runtime_probe fails closed later if an explicit image
+			// is still required by the reproduction spec.
+			node.Type = "runtime_probe"
+			node.Name = "Probe Runtime Capabilities"
+			node.OutputArtifacts = []string{"runtime_capabilities", "missing_requirements"}
+		}
+	}
+	spec := planRuntimeSpec(plan)
+	if spec.GPURequired && !caps.GPU && !caps.GPURuntimeAvailable {
+		plan.MissingRequirements = append(plan.MissingRequirements, models.MissingRequirement{
+			Kind:        "gpu_unavailable",
+			Name:        chooseNonEmptyString(spec.GPUType, "gpu"),
+			Detail:      "当前 sandbox provider 没有可用的 GPU 执行能力",
+			Remediation: "改用支持 GPU 的 provider，或选择 CPU 可运行的实验。",
+		})
+	}
+	if version := strings.TrimSpace(spec.PythonVersion); version != "" && len(caps.PythonVersions) > 0 && !pythonVersionAllowed(version, caps.PythonVersions) {
+		plan.MissingRequirements = append(plan.MissingRequirements, models.MissingRequirement{
+			Kind:        "python_version_unavailable",
+			Name:        version,
+			Detail:      "当前 provider 支持的 Python 版本不包含 " + version,
+			Remediation: "升级应用，或改用包含该 Python 版本的容器/远程沙箱。",
+		})
+	}
+	if len(spec.SystemPackages) > 0 && strings.EqualFold(caps.Provider, "native") {
+		plan.MissingRequirements = append(plan.MissingRequirements, models.MissingRequirement{
+			Kind:        "system_package_unavailable",
+			Name:        strings.Join(spec.SystemPackages, ","),
+			Detail:      "native provider 不支持系统包安装",
+			Remediation: "改用 Docker/远程沙箱，或在宿主预装相关系统包后重试。",
+		})
+	}
+	if len(plan.MissingRequirements) > 0 {
+		plan.Status = models.StatusBlocked
+		plan.Outcome = models.OutcomeBlocked
+	}
+}
+
+// pythonVersionAllowed compares major.minor versions while tolerating patch
+// suffixes on either side.
+func pythonVersionAllowed(requested string, available []string) bool {
+	requested = strings.TrimSpace(requested)
+	if requested == "" {
+		return true
+	}
+	for _, candidate := range available {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if requested == candidate || strings.HasPrefix(requested, candidate+".") || strings.HasPrefix(candidate, requested+".") {
+			return true
+		}
+	}
+	return false
 }
 
 // countActivePlans counts the plans that currently occupy execution capacity.
@@ -606,37 +736,12 @@ func (r *planRuntime) deletePlan(c *gin.Context) {
 }
 
 func (r *planRuntime) listSessions(c *gin.Context) {
-	userID := resolveUserID(c)
 	all, err := r.store.ListPlans()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	type sessionSummary struct {
-		SessionID  string    `json:"session_id"`
-		PlanCount  int       `json:"plan_count"`
-		LastActive time.Time `json:"last_active"`
-	}
-	byID := map[string]*sessionSummary{}
-	for _, plan := range all {
-		if plan == nil || plan.OwnerID != userID || strings.TrimSpace(plan.SessionID) == "" {
-			continue
-		}
-		item, ok := byID[plan.SessionID]
-		if !ok {
-			item = &sessionSummary{SessionID: plan.SessionID}
-			byID[plan.SessionID] = item
-		}
-		item.PlanCount++
-		if plan.UpdatedAt.After(item.LastActive) {
-			item.LastActive = plan.UpdatedAt
-		}
-	}
-	items := make([]sessionSummary, 0, len(byID))
-	for _, item := range byID {
-		items = append(items, *item)
-	}
-	sort.Slice(items, func(i, j int) bool { return items[i].LastActive.After(items[j].LastActive) })
+	items := buildSessionSummaries(c, all)
 	c.JSON(http.StatusOK, gin.H{"sessions": items})
 }
 

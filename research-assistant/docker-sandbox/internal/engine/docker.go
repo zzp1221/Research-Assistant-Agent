@@ -691,13 +691,27 @@ func (e *NativeDockerEngine) ExecutePythonStream(ctx context.Context, id string,
 }
 
 func (e *NativeDockerEngine) ExecuteCommand(ctx context.Context, id string, cmdArr []string) (*ExecutionResponse, error) {
+	return e.ExecuteCommandSpec(ctx, id, Command{Argv: cmdArr})
+}
+
+// ExecuteCommandSpec executes a provider-neutral Command. Cwd is passed as
+// docker exec -w; Env as -e; Shell wraps the argv in sh -lc. The logical
+// interpreter name python maps to python3 inside the container.
+func (e *NativeDockerEngine) ExecuteCommandSpec(ctx context.Context, id string, spec Command) (*ExecutionResponse, error) {
 	if err := e.validateSandboxContainer(ctx, id); err != nil {
 		return nil, err
 	}
+	spec = spec.Normalized()
+	if len(spec.Argv) == 0 {
+		return nil, fmt.Errorf("command argv is empty")
+	}
 	e.prepareExecution(ctx, id)
-	args := append([]string{"exec", "-e", "RA_OUTPUT_DIR=" + executionOutputDir, id}, cmdArr...)
+	args := dockerExecArgs(id, spec)
 	fmt.Printf("[NativeDocker] Executing: docker %s\n", strings.Join(args, " "))
 	dockerCmd := exec.CommandContext(ctx, dockerCommand(), args...)
+	if spec.Stdin != "" {
+		dockerCmd.Stdin = strings.NewReader(spec.Stdin)
+	}
 	var stdout, stderr bytes.Buffer
 	dockerCmd.Stdout = &stdout
 	dockerCmd.Stderr = &stderr
@@ -717,22 +731,35 @@ func (e *NativeDockerEngine) ExecuteCommand(ctx context.Context, id string, cmdA
 		Stderr:   stderr.String(),
 		ExitCode: exitCode,
 	}
+	applyOutputLimit(response, spec.MaxOutputKB)
 	response.Images = e.collectGeneratedImages(ctx, id)
 	return response, nil
 }
 
 func (e *NativeDockerEngine) ExecuteCommandStream(ctx context.Context, id string, cmdArr []string, emit func(ExecutionStreamEvent) error) (*ExecutionResponse, error) {
+	return e.ExecuteCommandStreamSpec(ctx, id, Command{Argv: cmdArr}, emit)
+}
+
+func (e *NativeDockerEngine) ExecuteCommandStreamSpec(ctx context.Context, id string, spec Command, emit func(ExecutionStreamEvent) error) (*ExecutionResponse, error) {
 	if err := e.validateSandboxContainer(ctx, id); err != nil {
 		return nil, err
 	}
+	spec = spec.Normalized()
+	if len(spec.Argv) == 0 {
+		return nil, fmt.Errorf("command argv is empty")
+	}
 	e.prepareExecution(ctx, id)
-	args := append([]string{"exec", "-e", "RA_OUTPUT_DIR=" + executionOutputDir, id}, cmdArr...)
+	args := dockerExecArgs(id, spec)
 	fmt.Printf("[NativeDocker] Executing: docker %s\n", strings.Join(args, " "))
 	dockerCmd := exec.CommandContext(ctx, dockerCommand(), args...)
-	response, err := e.runStreamingCommand(ctx, dockerCmd, emit)
+	if spec.Stdin != "" {
+		dockerCmd.Stdin = strings.NewReader(spec.Stdin)
+	}
+	response, err := e.runStreamingCommandLimited(ctx, dockerCmd, emit, spec.MaxOutputKB)
 	if err != nil {
 		return nil, err
 	}
+	applyOutputLimit(response, spec.MaxOutputKB)
 	response.Images = e.collectGeneratedImages(ctx, id)
 	return response, emit(ExecutionStreamEvent{
 		Type:     "final",
@@ -740,7 +767,51 @@ func (e *NativeDockerEngine) ExecuteCommandStream(ctx context.Context, id string
 	})
 }
 
+func dockerExecArgs(id string, spec Command) []string {
+	args := []string{"exec"}
+	if spec.Cwd != "" {
+		args = append(args, "-w", spec.Cwd)
+	}
+	for _, kv := range spec.EnvList() {
+		args = append(args, "-e", kv)
+	}
+	args = append(args, "-e", "RA_OUTPUT_DIR="+executionOutputDir, id)
+	argv := append([]string(nil), spec.Argv...)
+	if len(argv) > 0 && argv[0] == "python" {
+		argv[0] = "python3"
+	}
+	if spec.Shell {
+		if len(argv) >= 3 && (argv[0] == "sh" || argv[0] == "bash") && (argv[1] == "-lc" || argv[1] == "-c") {
+			args = append(args, argv...)
+		} else {
+			args = append(args, "sh", "-lc", strings.Join(argv, " "))
+		}
+	} else {
+		args = append(args, argv...)
+	}
+	return args
+}
+
+func applyOutputLimit(response *ExecutionResponse, maxOutputKB int) {
+	if response == nil || maxOutputKB <= 0 {
+		return
+	}
+	limit := maxOutputKB * 1024
+	if len(response.Stdout) > limit {
+		response.Stdout = response.Stdout[:limit] + "...[truncated]"
+		response.Truncated = true
+	}
+	if len(response.Stderr) > limit {
+		response.Stderr = response.Stderr[:limit] + "...[truncated]"
+		response.Truncated = true
+	}
+}
+
 func (e *NativeDockerEngine) runStreamingCommand(ctx context.Context, cmd *exec.Cmd, emit func(ExecutionStreamEvent) error) (*ExecutionResponse, error) {
+	return e.runStreamingCommandLimited(ctx, cmd, emit, 0)
+}
+
+func (e *NativeDockerEngine) runStreamingCommandLimited(ctx context.Context, cmd *exec.Cmd, emit func(ExecutionStreamEvent) error, maxOutputKB int) (*ExecutionResponse, error) {
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err
@@ -770,11 +841,26 @@ func (e *NativeDockerEngine) runStreamingCommand(ctx context.Context, cmd *exec.
 		close(chunks)
 	}()
 
+	limit := 0
+	if maxOutputKB > 0 {
+		limit = maxOutputKB * 1024
+	}
+	emittedBytes := 0
 	for chunk := range chunks {
+		message := chunk.line
+		if limit > 0 {
+			if emittedBytes >= limit {
+				continue
+			}
+			if emittedBytes+len(message) > limit {
+				message = message[:limit-emittedBytes] + "...[truncated]"
+			}
+			emittedBytes += len(message)
+		}
 		if emitErr := emit(ExecutionStreamEvent{
 			Type:    "chunk",
 			Stream:  chunk.stream,
-			Message: chunk.line,
+			Message: message,
 		}); emitErr != nil {
 			return nil, emitErr
 		}

@@ -7,13 +7,19 @@ import (
 	"os"
 	"path/filepath"
 	"research-assistant-backend/internal/api"
+	"research-assistant-backend/internal/apppaths"
+	"research-assistant-backend/internal/logging"
+	"research-assistant-backend/internal/proxyenv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
+var backendLogWriter *logging.RotatingWriter
+
 func main() {
-	clearProxyEnv()
+	proxyenv.Apply()
 	configureFileLogging()
 
 	r := gin.Default()
@@ -46,6 +52,9 @@ func main() {
 }
 
 func serverAddr() string {
+	if addr := strings.TrimSpace(os.Getenv("APP_ADDR")); addr != "" {
+		return addr
+	}
 	if port := os.Getenv("PORT"); port != "" {
 		return ":" + port
 	}
@@ -53,65 +62,21 @@ func serverAddr() string {
 }
 
 func configureFileLogging() {
-	logDir := filepath.Join(resolveProjectRoot(), "logs")
-	if err := os.MkdirAll(logDir, 0755); err != nil {
+	logDir := apppaths.LogDir()
+	if err := apppaths.EnsureDir(logDir); err != nil {
 		log.Printf("failed to create log dir %s: %v", logDir, err)
 		return
 	}
 
-	logFile := filepath.Join(logDir, "backend.log")
-	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	writer, err := logging.Open(filepath.Join(logDir, "backend.log"), 20<<20, 5)
 	if err != nil {
-		log.Printf("failed to open backend log file %s: %v", logFile, err)
+		log.Printf("failed to open backend log file: %v", err)
 		return
 	}
-
-	writer := io.MultiWriter(os.Stdout, file)
-	log.SetOutput(writer)
-	gin.DefaultWriter = writer
-	gin.DefaultErrorWriter = writer
-	log.Printf("backend logs redirected to %s", logFile)
-}
-
-func resolveProjectRoot() string {
-	wd, err := os.Getwd()
-	if err != nil {
-		return "."
-	}
-
-	candidates := []string{wd, filepath.Dir(wd), filepath.Dir(filepath.Dir(wd))}
-	for _, candidate := range candidates {
-		if candidate == "" {
-			continue
-		}
-		if isProjectRoot(candidate) {
-			return candidate
-		}
-	}
-	return wd
-}
-
-func isProjectRoot(dir string) bool {
-	info, err := os.Stat(filepath.Join(dir, "backend"))
-	if err != nil || !info.IsDir() {
-		return false
-	}
-	info, err = os.Stat(filepath.Join(dir, "docker-sandbox"))
-	if err != nil || !info.IsDir() {
-		return false
-	}
-	return true
-}
-
-func clearProxyEnv() {
-	for _, key := range []string{
-		"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
-		"http_proxy", "https_proxy", "all_proxy",
-	} {
-		_ = os.Unsetenv(key)
-	}
-
-	for _, key := range []string{"NO_PROXY", "no_proxy"} {
-		_ = os.Setenv(key, "localhost,127.0.0.1,::1")
-	}
+	backendLogWriter = writer
+	multi := io.MultiWriter(os.Stdout, writer)
+	log.SetOutput(multi)
+	gin.DefaultWriter = multi
+	gin.DefaultErrorWriter = multi
+	log.Printf("backend logs redirected to %s", filepath.Join(logDir, "backend.log"))
 }

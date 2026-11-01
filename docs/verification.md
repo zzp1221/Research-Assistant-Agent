@@ -4,12 +4,13 @@
 
 ## 最近验证
 
-- 日期：2026-10-30（Asia/Shanghai）
-- 代码状态：`master` @ `1282a57` + 第十一轮 N-13 实现（含前十轮工作区实现）
+- 日期：2026-11-01（Asia/Shanghai）
+- 代码状态：`feature/memory` + Agent 记忆系统 M0–M3（基于 feature/desk 工作区）
 - 环境：Docker Compose 栈；容器内执行 Go/Node/Python 测试；真实 OpenAI-compatible provider
 
 | 层级 | 覆盖 | 结果 |
 |---|---|---|
+| 2026-11-01 记忆系统 | internal/memory + session + chat 多轮 + plan/任务注入 + consolidation + 前端 MemoryPanel | 容器内 `go build ./...`、`go vet ./...`、`go test ./...` 通过；前端 36 文件/144 tests + build + lint 通过；长对话 E2E 32 请求/24 消息上限/摘要生效；计划 A→B parent_plan_id 通过；真实 LLM（deepseek-v4.1-flash）15 轮基础 E2E 与 30 轮科研长任务 + 15 节点计划 A/B 通过；长任务发现并修复 createPlan nil pointer；详见 [MEMORY-TEST-REPORT](improvement-2026-11-01/MEMORY-TEST-REPORT.md) |
 | 后端构建/单测 | `go build ./...`、`go vet ./...`、`go test -count=1 ./...` | 通过（第八轮新增 api/budget/project/usage/scheduler 用例全绿） |
 | 后端 race | agent/conversation、prompts、planner、api、literature、documents、scheduler、modelprofile、modelresolver | 通过 |
 | Docker Sandbox | `go build ./...`、`go test ./...` | 通过 |
@@ -26,6 +27,21 @@
 | 第九轮回归 | `http-smoke`、`plan-library`、`repro-bundle`、`cost-budget`、`budget-recovery`、`routing-and-prompts` | 全部通过 |
 | 第十轮复核 | 独立复核 N-01/N-02/N-03/N-05；修复 review gate 绕过、revision 绑定、manifest revision、禁用节点、artifact 脱敏、单任务预算等 12 类问题 | 后端/前端全量通过；六套专项 E2E 通过；详见 [FIX-REPORT-ROUND10](improvement-2026-10-26/FIX-REPORT-ROUND10.md) |
 | 第十一轮 N-13 | 真 AllowedTools 白名单、ToolRegistry/ToolInvoker、native/HTTP/MCP stdio/MCP HTTP、tool_call 审批、ToolCallRecord 审计/回放、AgentProfile/PromptVersion、设置页工具/Agent tab | 后端全量通过；前端 128 tests + build + lint 通过；`tool-ecosystem.mjs` 44/44；详见 [FIX-REPORT-ROUND11](improvement-2026-10-26/FIX-REPORT-ROUND11.md) |
+| 最终收口 | 13 套 E2E + backend/docker-sandbox/desktop/前端全量 | 13 套 E2E 全部 exit 0；backend/docker-sandbox/desktop 全量与 Windows 交叉编译通过；前端 36 文件/144 tests + build + lint；残余为 Windows 真机/签名/真实服务环境边界；详见 [FIX-REPORT-ROUND26](improvement-2026-10-26/FIX-REPORT-ROUND26.md) |
+| 第二十五轮 运行时缓存清理 | CleanRuntimeCache + 清理链路 + UI | docker-sandbox/desktop 容器测试与 Windows 交叉编译通过；前端 36 文件/144 tests + build + lint；E2E 五套通过；详见 [FIX-REPORT-ROUND25](improvement-2026-10-26/FIX-REPORT-ROUND25.md) |
+| 第二十四轮 NSIS 版本/烟测 | installer VERSION 参数、makensis 容器编译 | Debian+nsis 编译通过；backend 全量通过；前端 36 文件/144 tests + build + lint；E2E 五套通过；详见 [FIX-REPORT-ROUND24](improvement-2026-10-26/FIX-REPORT-ROUND24.md) |
+| 第二十三轮 更新提示/系统包门禁 | 更新可用 banner、SystemPackages 门禁 | backend 全量通过；前端 36 文件/144 tests + build + lint；E2E 五套通过；详见 [FIX-REPORT-ROUND23](improvement-2026-10-26/FIX-REPORT-ROUND23.md) |
+| 第二十二轮 安装进度 | RuntimeManager 阶段进度、native 安装状态、RuntimePanel 轮询 | docker-sandbox/desktop 容器测试与 Windows 交叉编译通过；前端 35 文件/141 tests + build + lint；E2E 五套通过；详见 [FIX-REPORT-ROUND22](improvement-2026-10-26/FIX-REPORT-ROUND22.md) |
+| 第二十一轮 运行时安装/Docker 提示 | native InstallRuntime + sandbox/shell/bridge/UI、Docker 升级提示、阶段状态修正 | docker-sandbox/desktop 容器测试与 Windows 交叉编译通过；前端 35 文件/141 tests + build + lint；E2E 五套通过；详见 [FIX-REPORT-ROUND21](improvement-2026-10-26/FIX-REPORT-ROUND21.md) |
+| 第二十轮 设置/运行时状态 | provider 持久化、native RuntimeStatus、诊断/日志入口 | backend/desktop/docker-sandbox 容器测试与 Windows 交叉编译通过；前端 35 文件/141 tests + build + lint；E2E 五套通过；详见 [FIX-REPORT-ROUND20](improvement-2026-10-26/FIX-REPORT-ROUND20.md) |
+| 第十九轮 崩溃转储/打包/E2E | WER LocalDumps 注册、package.ps1、全量既有 E2E 回归 | backend/desktop/docker-sandbox 容器测试与 Windows 交叉编译通过；前端 35 文件/141 tests + build + lint；既有 E2E 13 套通过 + 环境限制项；详见 [FIX-REPORT-ROUND19](improvement-2026-10-26/FIX-REPORT-ROUND19.md) |
+| 第十八轮 VM/安装 | VM Provider 可测试化 + 伪 wsl 集成、更新安装闭环、NSIS 可选 PDF 关联 | backend/desktop/docker-sandbox 容器测试与 Windows 交叉编译通过；前端 35 文件/141 tests + build + lint；E2E 五套 + vm fake-wsl 集成测试通过；详见 [FIX-REPORT-ROUND18](improvement-2026-10-26/FIX-REPORT-ROUND18.md) |
+| 第十七轮 更新/remote/审计 | 自动更新闭环、remote mock 集成测试、导出审计、Windows 回归脚本 | backend/desktop/docker-sandbox 容器测试与 Windows 交叉编译通过；前端 35 文件/141 tests + build + lint；E2E 五套（含 repro-bundle）+ remote 集成测试通过；详见 [FIX-REPORT-ROUND17](improvement-2026-10-26/FIX-REPORT-ROUND17.md) |
+| 第十六轮 导出/门禁/对话框 | 导出 provider 分支、GPU/Python 门禁、原生对话框、签名脚手架 | backend/desktop/docker-sandbox 容器测试与 Windows 交叉编译通过；前端 35 文件/141 tests + build + lint；E2E 四套 + repro-bundle 通过；详见 [FIX-REPORT-ROUND16](improvement-2026-10-26/FIX-REPORT-ROUND16.md) |
+| 第十五轮 vm/门禁/指标 | vm WSL2 执行路径、规划器 capability 快照与 image_prepare→runtime_probe、/desktop/metrics、DesktopStatusBanner | 后端/desktop/docker-sandbox 容器测试与 Windows 交叉编译通过；前端 35 文件/141 tests + build + lint；E2E 全部通过；详见 [FIX-REPORT-ROUND15](improvement-2026-10-26/FIX-REPORT-ROUND15.md) |
+| 第十四轮 P2/P4 | AppContainer 双 profile 网络、vm/remote Provider、诊断包崩溃转储、systray 托盘 | docker-sandbox/backend/desktop 容器测试与 Windows 交叉编译通过；vm/remote health 实测通过；前端 138 tests + build + lint 通过；http-smoke/desktop-smoke/sandbox-command/sandbox-network 全部通过；详见 [FIX-REPORT-ROUND14](improvement-2026-10-26/FIX-REPORT-ROUND14.md) |
+| 第十三轮桌面产品化 | shell 编排/错误页/崩溃重启、Wails bridge、首次启动向导、诊断包、Ed25519 更新包、NSIS 静默安装；native AppContainer/lowil/Job 限额/探针与 runtime_hash | desktop/backend/docker-sandbox 容器全量测试通过；三模块 Windows 交叉编译（含 Wails tag）通过；前端 34 文件/138 tests + build + lint 通过；http-smoke 17/17、desktop-smoke 6/6、sandbox-command 8/8、sandbox-network 8/8；详见 [FIX-REPORT-ROUND13](improvement-2026-10-26/FIX-REPORT-ROUND13.md) |
+| 第十二轮 Windows 桌面 | 跨平台 procgroup/sysinfo、LOG_DIR/APP_DATA_DIR/RA_CONFIG_PATH、日志轮转、代理保留、Command argv 契约、Provider 抽象、native uv/venv 骨架、desktop supervisor/proxy/settings、运行模式页与环境徽章 | 后端与 docker-sandbox 容器全量测试通过；desktop 单测与三模块 Windows 交叉编译通过；前端 131 tests + build + lint 通过；compose 栈重建后 http-smoke 17/17、desktop-smoke 6/6；详见 [FIX-REPORT-ROUND12](improvement-2026-10-26/FIX-REPORT-ROUND12.md) |
 | Round7 深度测试 | deep API、真实 LLM 场景、任务执行/取消、文档 assist、sandbox 命令、AutoResearch、论文复现 | deep API 58/59；真实场景 18/18；AutoResearch 8/8 节点且 hidden holdout 3/3；论文复现 14/15 节点 |
 | 前端 Playwright | 11 个测试 | 10 passed / 1 failed |
 

@@ -6,11 +6,34 @@ import (
 	"errors"
 	"fmt"
 	"research-assistant-backend/internal/agent/conversation"
+	"research-assistant-backend/internal/memory"
 	"strings"
 	"time"
 
 	"research-assistant-backend/internal/models"
 )
+
+func autoResearchMemoryContext(ctx context.Context, agent *ResearchCodingAgent, task *models.Task, spec models.ResearchSpec, ledger models.ResearchTrialLedger) string {
+	if agent == nil || agent.Memory == nil || !memory.InjectionEnabled() {
+		return ""
+	}
+	planRef := &models.PlanGraph{
+		ID: metadataString(task, "plan_id"), OwnerID: metadataString(task, "tenant_id"),
+		SessionID: metadataString(task, "session_id"), ProjectID: metadataString(task, "project_id"),
+	}
+	_ = memory.RecordTrial(ctx, agent.Memory, planRef, ledger)
+	q := memory.Query{
+		OwnerID: planRef.OwnerID, ProjectID: planRef.ProjectID, SessionID: planRef.SessionID,
+		PlanID: planRef.ID, AgentID: agent.Name,
+		Text:  memory.BuildQuery(spec.Objective+" "+spec.MetricKey, nil, 1500),
+		Kinds: []memory.Kind{memory.KindProcedure, memory.KindNegative, memory.KindFact}, Limit: 5,
+	}
+	got, err := agent.Memory.Retrieve(ctx, q, 512, 1500)
+	if err != nil {
+		return ""
+	}
+	return got.RetrievedText
+}
 
 func (a *ResearchCodingAgent) executeAutoResearchRun(ctx context.Context, task *models.Task) error {
 	if a == nil || a.Sandbox == nil {
@@ -153,7 +176,12 @@ func (a *ResearchCodingAgent) executeAutoResearchRun(ctx context.Context, task *
 			ledger.StopReason = "wall_time_budget_exhausted"
 			break
 		}
-		proposal, session, proposalErr := a.proposeAutoResearchCandidateWithSession(runCtx, spec, candidateSpecJSON, ledger, bestSnapshots, readOnlyContext, rejectedCandidateFeedback, candidateSession)
+		trialMemory := autoResearchMemoryContext(runCtx, a, task, spec, ledger)
+		currentReadOnly := readOnlyContext
+		if trialMemory != "" {
+			currentReadOnly = "[retrieved memory]\n" + trialMemory + "\n\n" + currentReadOnly
+		}
+		proposal, session, proposalErr := a.proposeAutoResearchCandidateWithSession(runCtx, spec, candidateSpecJSON, ledger, bestSnapshots, currentReadOnly, rejectedCandidateFeedback, candidateSession)
 		candidateSession = session
 		if candidateSession != nil {
 			candidateSession.Record(task)

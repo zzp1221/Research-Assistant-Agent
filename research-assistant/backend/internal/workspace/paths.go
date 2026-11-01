@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+
+	"research-assistant-backend/internal/apppaths"
+	"research-assistant-backend/internal/winpath"
 )
 
 // UploadRoot returns the only directory tree from which uploaded files may be
@@ -14,6 +18,8 @@ func UploadRoots() []string {
 	roots := make([]string, 0, 2)
 	if configured := strings.TrimSpace(os.Getenv("UPLOAD_ROOT")); configured != "" {
 		roots = append(roots, configured)
+	} else if strings.TrimSpace(os.Getenv("APP_DATA_DIR")) != "" {
+		roots = append(roots, filepath.Join(apppaths.DataDir(), "uploads"))
 	} else {
 		roots = append(roots, os.TempDir())
 	}
@@ -25,6 +31,9 @@ func UploadRoots() []string {
 func WorkspaceRoots() []string {
 	raw := strings.TrimSpace(os.Getenv("SANDBOX_WORKSPACE_ROOTS"))
 	if raw == "" {
+		if strings.TrimSpace(os.Getenv("APP_DATA_DIR")) != "" {
+			return normalizeRoots([]string{filepath.Join(apppaths.DataDir(), "workspaces")})
+		}
 		return normalizeRoots([]string{os.TempDir()})
 	}
 	return normalizeRoots(filepath.SplitList(raw))
@@ -60,7 +69,7 @@ func validatePath(raw string, roots []string, requireDir bool) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve path: %w", err)
 	}
-	abs = filepath.Clean(abs)
+	abs = winpath.LongPath(filepath.Clean(abs))
 
 	info, err := os.Lstat(abs)
 	if err != nil {
@@ -87,7 +96,13 @@ func validatePath(raw string, roots []string, requireDir bool) (string, error) {
 	}
 
 	for _, root := range roots {
-		relative, relErr := filepath.Rel(root, resolved)
+		rootForCompare := root
+		resolvedForCompare := resolved
+		if runtime.GOOS == "windows" {
+			rootForCompare = strings.ToLower(root)
+			resolvedForCompare = strings.ToLower(resolved)
+		}
+		relative, relErr := filepath.Rel(rootForCompare, resolvedForCompare)
 		if relErr != nil {
 			continue
 		}
@@ -110,7 +125,7 @@ func normalizeRoots(raw []string) []string {
 		if err != nil {
 			continue
 		}
-		abs = filepath.Clean(abs)
+		abs = winpath.LongPath(filepath.Clean(abs))
 		if resolved, err := filepath.EvalSymlinks(abs); err == nil {
 			abs = filepath.Clean(resolved)
 		}

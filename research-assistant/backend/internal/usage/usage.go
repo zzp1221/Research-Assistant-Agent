@@ -30,6 +30,7 @@ type Snapshot struct {
 	LLMCalls         int                   `json:"llm_calls"`
 	PromptTokens     int                   `json:"prompt_tokens"`
 	CompletionTokens int                   `json:"completion_tokens"`
+	LLMCachedTokens  int                   `json:"llm_cached_tokens,omitempty"`
 	CostUSD          float64               `json:"cost_usd"`
 	Estimated        bool                  `json:"estimated,omitempty"`
 	CostSource       string                `json:"cost_source,omitempty"`
@@ -48,6 +49,7 @@ type Recorder struct {
 	llmCalls       int
 	promptTokens   int
 	completion     int
+	cachedTokens   int
 	costUSD        float64
 	estimated      bool
 	costSource     string
@@ -154,6 +156,16 @@ func weakerCostSource(left, right string) string {
 	return right
 }
 
+// RecordLLMCached adds provider-reported cached prompt tokens.
+func (r *Recorder) RecordLLMCached(tokens int) {
+	if r == nil || tokens <= 0 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.cachedTokens += tokens
+}
+
 // RecordSandbox adds sandbox execution seconds.
 func (r *Recorder) RecordSandbox(seconds float64) {
 	if r == nil || seconds <= 0 {
@@ -179,6 +191,7 @@ func (r *Recorder) Snapshot() Snapshot {
 		LLMCalls:         r.llmCalls,
 		PromptTokens:     r.promptTokens,
 		CompletionTokens: r.completion,
+		LLMCachedTokens:  r.cachedTokens,
 		CostUSD:          r.costUSD,
 		Estimated:        r.estimated,
 		CostSource:       r.costSource,
@@ -197,6 +210,7 @@ func (r *Recorder) Merge(snapshot Snapshot) {
 	r.llmCalls += snapshot.LLMCalls
 	r.promptTokens += snapshot.PromptTokens
 	r.completion += snapshot.CompletionTokens
+	r.cachedTokens += snapshot.LLMCachedTokens
 	r.costUSD += snapshot.CostUSD
 	r.estimated = r.estimated || snapshot.Estimated
 	r.costSource = weakerCostSource(r.costSource, snapshot.CostSource)

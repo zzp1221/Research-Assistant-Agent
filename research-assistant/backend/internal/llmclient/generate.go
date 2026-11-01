@@ -2,6 +2,7 @@ package llmclient
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -95,8 +96,34 @@ func RecordUsage(ctx context.Context, input []*schema.Message, message *schema.M
 	modelName := ModelName(ctx)
 	if recorder := usage.FromContext(ctx); recorder != nil {
 		recorder.RecordLLMWithPrice(modelName, promptTokens, completionTokens, estimated, ModelPriceFromContext(ctx))
+		recorder.RecordLLMCached(cachedTokensFromUsage(message))
 	}
 	metrics.RecordLLMCall(modelName, promptTokens, completionTokens, latency, estimated)
+}
+
+// cachedTokensFromUsage reads provider-specific cache counters without depending
+// on a particular Eino schema version.
+func cachedTokensFromUsage(message *schema.Message) int {
+	if message == nil || message.ResponseMeta == nil || message.ResponseMeta.Usage == nil {
+		return 0
+	}
+	raw, err := json.Marshal(message.ResponseMeta.Usage)
+	if err != nil {
+		return 0
+	}
+	var payload struct {
+		PromptTokensDetails struct {
+			CachedTokens int `json:"cached_tokens"`
+		} `json:"prompt_tokens_details"`
+		PromptCacheHitTokens int `json:"prompt_cache_hit_tokens"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return 0
+	}
+	if payload.PromptCacheHitTokens > payload.PromptTokensDetails.CachedTokens {
+		return payload.PromptCacheHitTokens
+	}
+	return payload.PromptTokensDetails.CachedTokens
 }
 
 // GenerateWithUsage calls an Eino chat model and records token usage, latency

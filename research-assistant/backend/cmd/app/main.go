@@ -10,6 +10,9 @@ import (
 	"path"
 	"path/filepath"
 	"research-assistant-backend/internal/api"
+	"research-assistant-backend/internal/apppaths"
+	"research-assistant-backend/internal/logging"
+	"research-assistant-backend/internal/proxyenv"
 	"research-assistant-backend/webui"
 	"strings"
 	"time"
@@ -17,12 +20,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var appLogWriter *logging.RotatingWriter
+
 func main() {
-	clearProxyEnv()
+	proxyenv.Apply()
 	configureFileLogging()
 
-	if strings.TrimSpace(os.Getenv("SANDBOX_URL")) == "" {
-		log.Fatal("SANDBOX_URL is required: the embedded sandbox was removed; start docker-sandbox or use docker compose")
+	if strings.TrimSpace(os.Getenv("SANDBOX_URL")) == "" && strings.TrimSpace(os.Getenv("APP_DATA_DIR")) == "" {
+		log.Printf("warning: SANDBOX_URL is not set; the desktop supervisor normally injects it. Falling back to http://127.0.0.1:8082 for development")
 	}
 
 	r := gin.Default()
@@ -113,65 +118,21 @@ func resolveListenAddr() string {
 }
 
 func configureFileLogging() {
-	logDir := filepath.Join(resolveProjectRoot(), "logs")
-	if err := os.MkdirAll(logDir, 0o755); err != nil {
+	logDir := apppaths.LogDir()
+	if err := apppaths.EnsureDir(logDir); err != nil {
 		log.Printf("failed to create log dir %s: %v", logDir, err)
 		return
 	}
 
-	logFile := filepath.Join(logDir, "app.log")
-	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	writer, err := logging.Open(filepath.Join(logDir, "app.log"), 20<<20, 5)
 	if err != nil {
-		log.Printf("failed to open app log file %s: %v", logFile, err)
+		log.Printf("failed to open app log file: %v", err)
 		return
 	}
-
-	writer := io.MultiWriter(os.Stdout, file)
-	log.SetOutput(writer)
-	gin.DefaultWriter = writer
-	gin.DefaultErrorWriter = writer
-	log.Printf("single-binary logs redirected to %s", logFile)
-}
-
-func resolveProjectRoot() string {
-	wd, err := os.Getwd()
-	if err != nil {
-		return "."
-	}
-
-	candidates := []string{wd, filepath.Dir(wd), filepath.Dir(filepath.Dir(wd))}
-	for _, candidate := range candidates {
-		if candidate == "" {
-			continue
-		}
-		if isProjectRoot(candidate) {
-			return candidate
-		}
-	}
-	return wd
-}
-
-func isProjectRoot(dir string) bool {
-	info, err := os.Stat(filepath.Join(dir, "backend"))
-	if err != nil || !info.IsDir() {
-		return false
-	}
-	info, err = os.Stat(filepath.Join(dir, "docker-sandbox"))
-	if err != nil || !info.IsDir() {
-		return false
-	}
-	return true
-}
-
-func clearProxyEnv() {
-	for _, key := range []string{
-		"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
-		"http_proxy", "https_proxy", "all_proxy",
-	} {
-		_ = os.Unsetenv(key)
-	}
-
-	for _, key := range []string{"NO_PROXY", "no_proxy"} {
-		_ = os.Setenv(key, "localhost,127.0.0.1,::1")
-	}
+	appLogWriter = writer
+	multi := io.MultiWriter(os.Stdout, writer)
+	log.SetOutput(multi)
+	gin.DefaultWriter = multi
+	gin.DefaultErrorWriter = multi
+	log.Printf("single-binary logs redirected to %s", filepath.Join(logDir, "app.log"))
 }

@@ -11,6 +11,14 @@ type ResearchContext struct {
 	Paper       *PaperMetadata  `json:"paper,omitempty"`
 	Entities    map[string]any  `json:"entities,omitempty"`
 	Constraints map[string]any  `json:"constraints,omitempty"`
+	// MemoryRefs are ids of memories injected when the plan was created. Only
+	// references travel with the plan; memory bodies stay in the memory store.
+	MemoryRefs []string `json:"memory_refs,omitempty"`
+	// MemoryContext is the bounded rendered memory block used for plan creation.
+	MemoryContext string `json:"memory_context,omitempty"`
+	// ParentPlanSummary is a bounded summary of the previous plan in the same
+	// session when this plan is a follow-up.
+	ParentPlanSummary string `json:"parent_plan_summary,omitempty"`
 }
 
 type AttachmentRef struct {
@@ -44,7 +52,7 @@ type PaperMetadata struct {
 }
 
 type MissingRequirement struct {
-	Kind        string `json:"kind"` // attachment / document / paper_metadata / image / dependency / gpu / dataset / model / disk / run_command
+	Kind        string `json:"kind"` // attachment / document / paper_metadata / image / dependency / gpu / dataset / model / disk / run_command / sandbox_capability
 	Name        string `json:"name,omitempty"`
 	Detail      string `json:"detail,omitempty"`
 	Remediation string `json:"remediation,omitempty"`

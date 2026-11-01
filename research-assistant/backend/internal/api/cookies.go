@@ -182,6 +182,16 @@ func resolveSessionID(c *gin.Context) string {
 	return resolved
 }
 
+// issueSessionCookie binds the current response to a server-owned session id.
+func issueSessionCookie(c *gin.Context, sessionID string) {
+	sessionID = sanitizeIdentityValue(sessionID)
+	if sessionID == "" {
+		return
+	}
+	setHTTPOnlyCookie(c, sessionCookieName, signIdentityCookie(sessionID), cookieMaxAgeSeconds())
+	c.Set(resolvedSessionContextKey, sessionID)
+}
+
 func cookieMaxAgeSeconds() int {
 	const defaultMaxAge = int((7 * 24 * time.Hour) / time.Second)
 	if v := strings.TrimSpace(os.Getenv("INTENT_SESSION_COOKIE_MAX_AGE_SECONDS")); v != "" {

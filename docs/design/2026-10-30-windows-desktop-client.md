@@ -1,10 +1,41 @@
 # Windows 桌面客户端实施方案
 
-- 状态：设计稿（方向已确认：Windows 首发；接受 native 作为默认沙箱档位）
+- 状态：设计稿（方向已确认：Windows 首发；接受 native 作为默认沙箱档位）；实施状态：🟡 容器内可验证项已完成（2026-10-31 第二十六轮，`feature/desk`）；Windows 真机/签名/真实服务未验证
 - 日期：2026-10-30
 - 范围：桌面外壳、进程模型、沙箱 Provider、后端 Windows 可移植性、打包发布
 - 关联：[总方案](2026-10-30-desktop-without-docker.md)、[backend](../../research-assistant/backend/README.md)、[docker-sandbox](../../research-assistant/docker-sandbox/README.md)、[frontend](../../research-assistant/frontend/README.md)
 - 一句话：用 Wails 把项目包成「本地运行时」——外壳只负责窗口、托盘和监督进程；后端与沙箱是可独立重启的子进程；沙箱新增 native Provider（uv 管理的 CPython + venv + Windows Job Object / AppContainer），Docker 降级为「检测到就用」的增强档位。
+
+## 实施状态标记（2026-10-31）
+
+> 代码基线：`feature/desk`。以下状态只代表当前工作区与容器内测试证据；Windows 真机、AppContainer 探针、安装包与签名尚未验证。完整证据、已修复项与未完成边界见 [FIX-REPORT-ROUND26](../improvement-2026-10-26/FIX-REPORT-ROUND26.md)。
+
+| 文档范围 | 状态 | 当前实现/说明 |
+|---|---|---|
+| 3.1–3.5 桌面外壳与进程模型 | 🟡 部分完成 | `desktop/shell` 编排（settings→ports→tokens→supervisor→proxy→状态/错误页/诊断接口）、崩溃自动重启（退避 3 次）、前端崩溃恢复提示、Wails bridge、systray 托盘驱动已实现；真实 WebView2/托盘交互未真机验证 |
+| 4.1–4.3 目录布局 | 🟡 部分完成 | `desktop/` module 与 per-user 路径已落地；NSIS per-user/静默安装/卸载保留数据/协议注册/可选 PDF 关联已完善，真机安装验收未执行 |
+| 5.1–5.4 配置与密钥 | 🟡 部分完成 | `settings.json`、DPAPI secret store、环境变量注入表、首次启动向导、provider 持久化、RuntimePanel“准备 Python 运行时”+ 阶段进度轮询已实现；真机 DPAPI/uv 下载未验证 |
+| 6.1 Provider 接口 | ✅ 已完成 | `engine.Provider`、`ProviderCapabilities`、`CreateSpec`、`Session`、`Event`、`Result`、`Usage` 已落地 |
+| 6.2 能力协商 | 🟡 部分完成 | `/api/v1/health`、`/api/v1/capabilities` 返回 provider 矩阵与 AppContainer 探针报告；Plan.Meta 写入 capability 快照，native 下 `image_prepare` 自动转 `runtime_probe`；GPU/Python/SystemPackages 门禁在 runtime_probe 与计划工件存在时前置检查 |
+| 6.3 native Provider | 🟡 部分完成 | uv/venv/命令翻译、AppContainer/lowil runner、Job 限额、附录 D 探针、双 profile 网络、RuntimeStatus + InstallRuntime + 阶段上报 + 缓存清理（伪 uv 单测）代码完成并 Windows 交叉编译；真机降权与探针未执行 |
+| 6.4 docker Provider | ✅ 已完成 | 包装现有 `NativeDockerEngine`，docker 模式回归测试通过 |
+| 6.5 vm/remote Provider | 🟡 部分完成 | vm：WSL2 检测、路径/argv 翻译、create/exec/delete/usage/reap、WSLPath 注入 + 伪 wsl 集成测试；remote：`OpenSandboxEngine` 适配器 + mock OpenSandbox 集成测试；真实 WSL2/远程服务未联调 |
+| 6.6 REST 映射 | 🟡 部分完成 | docker 路径保持兼容；native create/delete/exec/network/usage（含 runtime_hash）已接入，未在 Windows 真机跑通 |
+| 7 命令契约 | ✅ 已完成 | `argv + cwd + env` 已落地，6 处 `bash -lc` 与 `coder_image` 脚本迁移；docker E2E 通过 |
+| 8.1–8.4 Windows 可移植性 | ✅ 已完成 | procgroup/sysinfo/日志/路径/代理问题修复；backend、docker-sandbox、desktop 三模块 Windows 交叉编译通过 |
+| 9 环境保真度 | 🟡 部分完成 | `EnvironmentManifest` 增加 provider/isolation/runtime_hash/base_os/network_enforced；native usage 回填 runtime_hash；导出/复现包按 provider 分支（native runtime_hash / docker image digest）并输出 environment/manifest.json；导出审计记录 provider/isolation |
+| 10 前端改动清单 | 🟡 部分完成 | `RuntimePanel`（探针/指标/运行时状态/准备/清理/仓库目录/诊断/更新）、`EnvironmentBadge`、`Onboarding`、`NetworkIsolationBanner`、更新可用 banner、计划完成通知 hook、原生目录选择/在文件夹中显示已完成 |
+| 11 打包、签名、更新 | 🟡 部分完成 | `updater` 包（semver/sha256/ed25519）、`Manager` 检查/下载/安装闭环、bridge 与 RuntimePanel 更新区块、NSIS 版本参数化/静默安装/卸载保留数据/协议/可选 PDF 关联、`build/sign.ps1`、`build/package.ps1`、`installer-smoke.sh`（容器内 makensis 编译通过）、更新 manifest 示例、`RA_UPDATE_PUBLIC_KEY` 注入完成；真实证书与更新服务器未配置 |
+| 12 安全模型 | 🟡 部分完成 | loopback/token 等现有机制保留；AppContainer/lowil 代码已实现，真实隔离与安全回归未执行 |
+| 13 观测与诊断 | 🟡 部分完成 | 日志轮转、诊断包（脱敏设置/日志尾部/能力/失败计划/最近 3 个 crash dump）、WER LocalDumps 注册（shell/backend/sandbox）、`/desktop/metrics` 本地指标与 RuntimePanel 展示已实现 |
+| 14 测试策略 | 🟡 部分完成 | 容器内 Go/前端单测通过；既有 E2E 全量复跑：13 套通过，model-profiles/verification/document-intelligence/tool-ecosystem 的环境限制已记录；Windows 真机探针/启动残留脚本已提供（未执行） |
+| 15 P0 | 🟡 部分完成 | 编译、supervisor/proxy/settings、shell 编排、错误页、Wails 入口、安装脚本完成；托盘未验证 |
+| 15 P1 | 🟡 部分完成 | Provider/命令契约/native MVP 完成；Windows 真机 native 执行未验证 |
+| 15 P2 | 🟡 部分完成 | AppContainer/lowil、双 profile 网络、Job 限额、探针代码完成并交叉编译；真机验证未执行 |
+| 15 P3 | 🟡 部分完成 | 更新包、诊断包、首次启动向导完成；签名/静默安装真机未验证 |
+| 15 P4 | 🟡 部分完成 | vm WSL2 执行路径 + remote Provider 适配器；真实 WSL2/远程服务未联调 |
+
+**一句话结论：文档中的旧可移植性问题（8.1–8.4）与命令契约（第 7 节）已完成；第十三至十五轮补齐了桌面外壳编排、首次启动向导、诊断包（含崩溃转储）、签名更新包、Windows Runner（AppContainer/lowil/双 profile/限额/探针）、vm WSL2 执行路径、remote Provider 与 systray 托盘；Windows 真机安装、真实 WSL2/远程服务与签名仍未完成。**
 
 ---
 
@@ -694,7 +725,7 @@ GET https://update.example.com/latest.json
 
 ## 15. 分阶段实施
 
-### P0：外壳 + Windows 编译（第 1–2 周）
+### P0：外壳 + Windows 编译（第 1–2 周） — 🟡 部分完成（2026-10-31）
 
 任务：
 
@@ -707,7 +738,7 @@ GET https://update.example.com/latest.json
 
 验收：干净 Win11 上安装 → 启动 → 连已有 Docker 沙箱 → 创建并执行一个 General 计划 → 托盘退出后无残留进程。
 
-### P1：Provider 抽象 + native 引擎 MVP（第 3–4 周）
+### P1：Provider 抽象 + native 引擎 MVP（第 3–4 周） — 🟡 部分完成（2026-10-31）
 
 任务：
 
@@ -719,7 +750,7 @@ GET https://update.example.com/latest.json
 
 验收：**没有 Docker 的机器**上跑通 annotated-transformer torch smoke，`EnvironmentManifest.isolation=lowil`。
 
-### P2：AppContainer 与网络隔离（第 5–6 周）
+### P2：AppContainer 与网络隔离（第 5–6 周） — 🟡 部分完成（代码完成，真机未验证）
 
 任务：
 
@@ -732,7 +763,7 @@ GET https://update.example.com/latest.json
 
 验收：AppContainer 模式下网络连接被 OS 拒绝；探针失败时自动降级且 UI 明示。
 
-### P3：发布工程（第 7 周）
+### P3：发布工程（第 7 周） — 🟡 部分完成（代码完成，签名/安装未验证）
 
 任务：
 
@@ -744,7 +775,7 @@ GET https://update.example.com/latest.json
 
 验收：0.9.0 → 0.9.1 原地升级不丢数据；断网升级失败可回退。
 
-### P4：增强档位（第 8 周起）
+### P4：增强档位（第 8 周起） — 🟡 部分完成（vm/remote 适配器完成，真实服务未联调）
 
 1. docker 自动升级提示（检测到 Docker 时建议切换）
 2. vm provider（WSL2）POC

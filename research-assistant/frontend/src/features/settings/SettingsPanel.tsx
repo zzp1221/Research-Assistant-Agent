@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Bot, Plug, Settings2 } from 'lucide-react';
+import { Bot, Brain, Cpu, Plug, Settings2 } from 'lucide-react';
 import { ModelSettingsPanel } from './ModelSettingsPanel';
 import { ToolsSettingsPanel } from './ToolsSettingsPanel';
 import { AgentSettingsPanel } from './AgentSettingsPanel';
+import { RuntimePanel } from './RuntimePanel';
+import { MemoryPanel } from '../memory/MemoryPanel';
 
-export type SettingsTab = 'models' | 'tools' | 'agents';
+export type SettingsTab = 'models' | 'tools' | 'agents' | 'runtime' | 'memory';
 
 interface SettingsPanelProps {
   onClose?: () => void;
@@ -15,6 +17,8 @@ const tabs: { id: SettingsTab; label: string; icon: typeof Settings2 }[] = [
   { id: 'models', label: '模型', icon: Settings2 },
   { id: 'tools', label: '工具', icon: Plug },
   { id: 'agents', label: 'Agent', icon: Bot },
+  { id: 'runtime', label: '运行模式', icon: Cpu },
+  { id: 'memory', label: '记忆', icon: Brain },
 ];
 
 /** Settings shell: model, tool and agent configuration in one place. */
@@ -46,6 +50,8 @@ export function SettingsPanel({ onClose, initialTab = 'models' }: SettingsPanelP
         {tab === 'models' && <ModelSettingsPanel onClose={onClose} />}
         {tab === 'tools' && <ToolsSettingsPanel onClose={onClose} />}
         {tab === 'agents' && <AgentSettingsPanel onClose={onClose} />}
+        {tab === 'runtime' && <RuntimePanel onClose={onClose} />}
+        {tab === 'memory' && <MemoryPanel onClose={onClose} />}
       </div>
     </div>
   );

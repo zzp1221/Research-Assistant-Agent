@@ -89,6 +89,23 @@ type GraphMeta struct {
 	ComplexitySource string `json:"complexity_source,omitempty"`  // rule | llm | merged | fallback
 	TemplateVariant  string `json:"template_variant,omitempty"`   // simple | standard | full | light
 	GeneralPlanShape string `json:"general_plan_shape,omitempty"` // direct | research | paper | literature | legacy
+	// SandboxCapabilities freezes the provider matrix observed when the plan
+	// was created so missing requirements are explainable later.
+	SandboxCapabilities *SandboxCapabilitySnapshot `json:"sandbox_capabilities,omitempty"`
+	// MemoryRefs are ids of memories used to create this plan (citations only).
+	MemoryRefs []string `json:"memory_refs,omitempty"`
+}
+
+// SandboxCapabilitySnapshot mirrors the sandbox provider capability matrix at
+// plan creation time.
+type SandboxCapabilitySnapshot struct {
+	Provider        string   `json:"provider,omitempty"`
+	Isolation       string   `json:"isolation,omitempty"`
+	Images          bool     `json:"images"`
+	NetworkControl  bool     `json:"network_control"`
+	NetworkEnforced string   `json:"network_enforced,omitempty"`
+	PythonVersions  []string `json:"python_versions,omitempty"`
+	OS              string   `json:"os,omitempty"`
 }
 
 // PlanGraph is the executable DAG representation used by the refactored plan flow.
@@ -98,11 +115,13 @@ type PlanGraph struct {
 	// a title from UserIntent, preserving legacy behaviour.
 	Title string `json:"title,omitempty"`
 	// ProjectID groups the plan under a research project; empty means Inbox.
-	ProjectID           string                 `json:"project_id,omitempty"`
-	Archived            bool                   `json:"archived,omitempty"`
-	ArchivedAt          *time.Time             `json:"archived_at,omitempty"`
-	UserIntent          string                 `json:"user_intent"`
-	IntentType          string                 `json:"intent_type"`
+	ProjectID  string     `json:"project_id,omitempty"`
+	Archived   bool       `json:"archived,omitempty"`
+	ArchivedAt *time.Time `json:"archived_at,omitempty"`
+	UserIntent string     `json:"user_intent"`
+	IntentType string     `json:"intent_type"`
+	// ParentPlanID links a follow-up plan to the plan it continues.
+	ParentPlanID        string                 `json:"parent_plan_id,omitempty"`
 	Status              TaskStatus             `json:"status"`
 	Outcome             PlanOutcome            `json:"outcome,omitempty"`
 	OutcomeReason       string                 `json:"outcome_reason,omitempty"`

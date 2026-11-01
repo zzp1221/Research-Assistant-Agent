@@ -4,6 +4,10 @@ import (
 	"context"
 	"crypto/subtle"
 	"docker-sandbox/internal/engine"
+	"docker-sandbox/internal/engine/native"
+	"docker-sandbox/internal/engine/remote"
+	"docker-sandbox/internal/engine/vm"
+	"docker-sandbox/internal/logging"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,9 +32,14 @@ type Config struct {
 }
 
 type SandboxService struct {
-	osEngine *engine.OpenSandboxEngine
-	dkEngine *engine.NativeDockerEngine
-	config   Config
+	osEngine       *engine.OpenSandboxEngine
+	dkEngine       *engine.NativeDockerEngine
+	nativeProvider engine.Provider
+	vmProvider     engine.Provider
+	remoteProvider engine.Provider
+	provider       string
+	providerError  string
+	config         Config
 
 	limitsMu sync.RWMutex
 	limits   map[string]engine.Limits
@@ -61,14 +71,114 @@ func NewSandboxService(cfg Config) *SandboxService {
 	if cfg.EnableFallback && cfg.OpenSandboxURL != "" {
 		osEngine = engine.NewOpenSandboxEngine(cfg.OpenSandboxURL)
 	}
-
-	return &SandboxService{
+	service := &SandboxService{
 		osEngine: osEngine,
 		dkEngine: engine.NewNativeDockerEngine(),
+		provider: "docker",
 		config:   cfg,
 		limits:   map[string]engine.Limits{},
 		network:  map[string]string{},
 	}
+	service.nativeProvider = newNativeProviderFromEnv()
+	requested := strings.ToLower(strings.TrimSpace(os.Getenv("SANDBOX_PROVIDER")))
+	if requested == "" {
+		requested = "auto"
+	}
+	switch requested {
+	case "native":
+		if service.nativeProvider != nil {
+			service.provider = "native"
+		} else {
+			service.providerError = "SANDBOX_PROVIDER=native requested but the native provider is unavailable"
+			log.Printf("[Sandbox] %s", service.providerError)
+		}
+	case "vm":
+		service.vmProvider = vm.NewProvider(context.Background())
+		service.provider = "vm"
+		if provider, ok := service.vmProvider.(*vm.Provider); ok && !provider.Available() {
+			service.providerError = "vm provider unavailable: " + provider.DetectionReason()
+			log.Printf("[Sandbox] %s", service.providerError)
+		}
+	case "remote":
+		if strings.TrimSpace(cfg.OpenSandboxURL) == "" {
+			service.provider = "remote"
+			service.providerError = "SANDBOX_PROVIDER=remote requires OPEN_SANDBOX_URL"
+			log.Printf("[Sandbox] %s", service.providerError)
+			break
+		}
+		provider, err := remote.NewProvider(cfg.OpenSandboxURL)
+		if err != nil {
+			service.provider = "remote"
+			service.providerError = err.Error()
+			log.Printf("[Sandbox] remote provider unavailable: %v", err)
+			break
+		}
+		service.remoteProvider = provider
+		service.osEngine = engine.NewOpenSandboxEngine(cfg.OpenSandboxURL)
+		service.provider = "remote"
+	case "auto":
+		if service.nativeProvider != nil && !service.dkEngine.Health(context.Background()).Available {
+			service.provider = "native"
+		}
+	default:
+		service.providerError = fmt.Sprintf("unknown SANDBOX_PROVIDER %q", requested)
+		log.Printf("[Sandbox] %s", service.providerError)
+	}
+	return service
+}
+
+// activeProvider returns the non-docker provider selected for this process.
+func (s *SandboxService) activeProvider() engine.Provider {
+	switch s.provider {
+	case "native":
+		return s.nativeProvider
+	case "vm":
+		return s.vmProvider
+	case "remote":
+		return s.remoteProvider
+	default:
+		return nil
+	}
+}
+
+func newNativeProviderFromEnv() engine.Provider {
+	requested := strings.ToLower(strings.TrimSpace(os.Getenv("SANDBOX_PROVIDER")))
+	if requested != "" && requested != "auto" && requested != "native" {
+		return nil
+	}
+	dataDir := strings.TrimSpace(os.Getenv("APP_DATA_DIR"))
+	if dataDir == "" {
+		dataDir = filepath.Join(os.TempDir(), "research-assistant-desktop")
+	}
+	workspaceRoot := ""
+	if roots := filepath.SplitList(strings.TrimSpace(os.Getenv("SANDBOX_WORKSPACE_ROOTS"))); len(roots) > 0 {
+		workspaceRoot = roots[0]
+	}
+	provider, err := native.NewProvider(native.Config{
+		DataDir:       dataDir,
+		WorkspaceRoot: workspaceRoot,
+		UVPath:        strings.TrimSpace(os.Getenv("UV_PATH")),
+		PythonVersion: strings.TrimSpace(os.Getenv("SANDBOX_DEFAULT_PYTHON")),
+		Runner:        strings.TrimSpace(os.Getenv("SANDBOX_WINDOWS_RUNNER")),
+		MemoryMB:      envInt("SANDBOX_MEMORY_MB"),
+		CPUCores:      envInt("SANDBOX_CPU_CORES"),
+		MaxProcesses:  envInt("SANDBOX_MAX_PROCESSES"),
+	})
+	if err != nil {
+		if requested == "native" {
+			log.Printf("[Sandbox] native provider unavailable: %v", err)
+		}
+		return nil
+	}
+	return provider
+}
+
+func envInt(name string) int {
+	value, err := strconv.Atoi(strings.TrimSpace(os.Getenv(name)))
+	if err != nil || value < 0 {
+		return 0
+	}
+	return value
 }
 
 func (s *SandboxService) setLimits(id string, limits engine.Limits, networkMode string) {
@@ -135,25 +245,37 @@ func (s *SandboxService) enforceUsage(ctx context.Context, id string, res *engin
 	return nil
 }
 
+var sandboxLogWriter *logging.RotatingWriter
+
 func configureFileLogging() {
-	logDir := filepath.Join(resolveProjectRoot(), "logs")
+	logDir := resolveLogDir()
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		log.Printf("failed to create log dir %s: %v", logDir, err)
 		return
 	}
 
 	logFile := filepath.Join(logDir, "docker-sandbox.log")
-	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	writer, err := logging.Open(logFile, 20<<20, 5)
 	if err != nil {
 		log.Printf("failed to open sandbox log file %s: %v", logFile, err)
 		return
 	}
-
-	writer := io.MultiWriter(os.Stdout, file)
-	log.SetOutput(writer)
-	gin.DefaultWriter = writer
-	gin.DefaultErrorWriter = writer
+	sandboxLogWriter = writer
+	multi := io.MultiWriter(os.Stdout, writer)
+	log.SetOutput(multi)
+	gin.DefaultWriter = multi
+	gin.DefaultErrorWriter = multi
 	log.Printf("sandbox logs redirected to %s", logFile)
+}
+
+func resolveLogDir() string {
+	if configured := strings.TrimSpace(os.Getenv("LOG_DIR")); configured != "" {
+		return configured
+	}
+	if dataDir := strings.TrimSpace(os.Getenv("APP_DATA_DIR")); dataDir != "" {
+		return filepath.Join(dataDir, "logs")
+	}
+	return filepath.Join(resolveProjectRoot(), "logs")
 }
 
 func resolveProjectRoot() string {
@@ -220,20 +342,102 @@ type ExecuteRequest struct {
 }
 
 type CommandRequest struct {
-	Cmd []string `json:"cmd"`
+	Cmd         []string          `json:"cmd,omitempty"`
+	Argv        []string          `json:"argv,omitempty"`
+	Cwd         string            `json:"cwd,omitempty"`
+	Env         map[string]string `json:"env,omitempty"`
+	Shell       bool              `json:"shell,omitempty"`
+	TimeoutSec  int               `json:"timeout_sec,omitempty"`
+	Stdin       string            `json:"stdin,omitempty"`
+	MaxOutputKB int               `json:"max_output_kb,omitempty"`
+}
+
+func (r CommandRequest) engineCommand() engine.Command {
+	argv := r.Argv
+	if len(argv) == 0 {
+		argv = r.Cmd
+	}
+	return engine.Command{
+		Argv:        argv,
+		Cwd:         r.Cwd,
+		Env:         r.Env,
+		Shell:       r.Shell,
+		Timeout:     time.Duration(r.TimeoutSec) * time.Second,
+		Stdin:       r.Stdin,
+		MaxOutputKB: r.MaxOutputKB,
+	}
 }
 
 // --- 处理器 ---
 
 func (s *SandboxService) Health(c *gin.Context) {
 	dockerHealth := s.dkEngine.Health(c.Request.Context())
-	c.JSON(http.StatusOK, gin.H{
-		"ok":                 dockerHealth.Available,
-		"native_docker":      dockerHealth,
-		"fallback_enabled":   s.config.EnableFallback,
-		"opensandbox_url":    s.config.OpenSandboxURL,
-		"effective_strategy": chooseHealthStrategy(dockerHealth.Available, s.config.EnableFallback),
-	})
+	ok := dockerHealth.Available
+	switch s.provider {
+	case "native":
+		ok = s.nativeProvider != nil
+	case "vm":
+		ok = s.vmProvider != nil
+	case "remote":
+		ok = s.remoteProvider != nil
+	}
+	if s.providerError != "" {
+		ok = false
+	}
+	payload := gin.H{
+		"ok":                    ok,
+		"provider":              s.provider,
+		"provider_capabilities": s.providerCapabilities(c.Request.Context()),
+		"native_docker":         dockerHealth,
+		"fallback_enabled":      s.config.EnableFallback,
+		"opensandbox_url":       s.config.OpenSandboxURL,
+		"effective_strategy":    chooseHealthStrategy(dockerHealth.Available, s.config.EnableFallback),
+	}
+	if s.providerError != "" {
+		payload["error"] = s.providerError
+	}
+	c.JSON(http.StatusOK, payload)
+}
+
+type providerCapabilitiesResponse struct {
+	engine.Capabilities
+	Provider        string              `json:"provider"`
+	Isolation       string              `json:"isolation"`
+	Images          bool                `json:"images"`
+	NetworkControl  bool                `json:"network_control"`
+	NetworkEnforced string              `json:"network_enforced"`
+	GPU             bool                `json:"gpu"`
+	GPUEnforced     bool                `json:"gpu_enforced"`
+	PythonVersions  []string            `json:"python_versions,omitempty"`
+	OS              string              `json:"os"`
+	Notes           []string            `json:"notes,omitempty"`
+	Probe           *engine.ProbeReport `json:"probe,omitempty"`
+}
+
+func (s *SandboxService) providerCapabilities(ctx context.Context) providerCapabilitiesResponse {
+	if provider := s.activeProvider(); provider != nil {
+		caps, err := provider.Capabilities(ctx)
+		if err == nil {
+			return providerCapabilitiesResponse{
+				Provider: caps.Provider, Isolation: caps.Isolation, Images: caps.Images,
+				NetworkControl: caps.NetworkControl, NetworkEnforced: caps.NetworkEnforced,
+				GPU: caps.GPU, GPUEnforced: caps.GPUEnforced, PythonVersions: caps.PythonVersions,
+				OS: caps.OS, Notes: caps.Notes, Probe: caps.Probe,
+			}
+		}
+	}
+	caps := s.dkEngine.Capabilities(ctx)
+	return providerCapabilitiesResponse{
+		Capabilities:    caps,
+		Provider:        "docker",
+		Isolation:       "container",
+		Images:          true,
+		NetworkControl:  true,
+		NetworkEnforced: "os",
+		GPU:             strings.TrimSpace(caps.GPURequest) != "",
+		GPUEnforced:     caps.GPURuntimeAvailable,
+		OS:              runtime.GOOS,
+	}
 }
 
 func (s *SandboxService) CreateSandbox(c *gin.Context) {
@@ -259,6 +463,19 @@ func (s *SandboxService) CreateSandbox(c *gin.Context) {
 	networkMode, networkErr := engine.EffectiveNetworkMode(req.NetworkMode)
 	if networkErr != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": networkErr.Error()})
+		return
+	}
+
+	if provider := s.activeProvider(); provider != nil {
+		session, err := provider.Create(c.Request.Context(), engine.CreateSpec{
+			Image: req.Image, MountPath: req.MountPath, Labels: labels, Limits: limits,
+			NetworkMode: networkMode, PythonVer: req.Runtime,
+		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, CreateResponse{SandboxID: session.ID})
 		return
 	}
 
@@ -350,6 +567,30 @@ func chooseHealthStrategy(nativeDockerAvailable bool, fallbackEnabled bool) stri
 func (s *SandboxService) DeleteSandbox(c *gin.Context) {
 	id := c.Param("id")
 	ctx := c.Request.Context()
+	if strings.HasPrefix(id, "nt-") {
+		if s.nativeProvider == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "native provider is unavailable"})
+			return
+		}
+		if err := s.nativeProvider.Delete(ctx, id); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.Status(http.StatusOK)
+		return
+	}
+	if strings.HasPrefix(id, "vm-") {
+		if s.vmProvider == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "vm provider is unavailable"})
+			return
+		}
+		if err := s.vmProvider.Delete(ctx, id); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.Status(http.StatusOK)
+		return
+	}
 	if strings.HasPrefix(id, "os-") {
 		if s.osEngine == nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "opensandbox fallback is disabled"})
@@ -376,6 +617,49 @@ func (s *SandboxService) DeleteSandbox(c *gin.Context) {
 // this around an approved dependency install and always closes it afterwards.
 func (s *SandboxService) SetSandboxNetwork(c *gin.Context) {
 	id := c.Param("id")
+	if strings.HasPrefix(id, "nt-") {
+		var req NetworkRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if s.nativeProvider == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "native provider is unavailable"})
+			return
+		}
+		if err := s.nativeProvider.SetNetwork(c.Request.Context(), id, strings.EqualFold(req.Mode, "bridge")); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"sandbox_id": id, "network_mode": req.Mode})
+		return
+	}
+	if strings.HasPrefix(id, "vm-") && s.vmProvider != nil {
+		var req NetworkRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if err := s.vmProvider.SetNetwork(c.Request.Context(), id, strings.EqualFold(req.Mode, "bridge")); err != nil {
+			c.JSON(http.StatusNotImplemented, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"sandbox_id": id, "network_mode": req.Mode})
+		return
+	}
+	if strings.HasPrefix(id, "os-") && s.remoteProvider != nil {
+		var req NetworkRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if err := s.remoteProvider.SetNetwork(c.Request.Context(), id, strings.EqualFold(req.Mode, "bridge")); err != nil {
+			c.JSON(http.StatusNotImplemented, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"sandbox_id": id, "network_mode": req.Mode})
+		return
+	}
 	if !strings.HasPrefix(id, "dk-") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "network control is only supported for native docker sandboxes"})
 		return
@@ -403,6 +687,37 @@ func (s *SandboxService) SetSandboxNetwork(c *gin.Context) {
 // SandboxUsage reports live network and disk usage for one sandbox.
 func (s *SandboxService) SandboxUsage(c *gin.Context) {
 	id := c.Param("id")
+	if strings.HasPrefix(id, "nt-") {
+		if s.nativeProvider == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "native provider is unavailable"})
+			return
+		}
+		usage, err := s.nativeProvider.Usage(c.Request.Context(), id)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"sandbox_id": id, "disk_used_mb": usage.DiskUsedMB, "runtime_hash": usage.RuntimeHash})
+		return
+	}
+	if strings.HasPrefix(id, "vm-") && s.vmProvider != nil {
+		usage, err := s.vmProvider.Usage(c.Request.Context(), id)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"sandbox_id": id, "disk_used_mb": usage.DiskUsedMB})
+		return
+	}
+	if strings.HasPrefix(id, "os-") && s.remoteProvider != nil {
+		usage, err := s.remoteProvider.Usage(c.Request.Context(), id)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"sandbox_id": id, "disk_used_mb": usage.DiskUsedMB, "runtime_hash": usage.RuntimeHash})
+		return
+	}
 	if !strings.HasPrefix(id, "dk-") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "usage is only supported for native docker sandboxes"})
 		return
@@ -424,6 +739,60 @@ func (s *SandboxService) SandboxUsage(c *gin.Context) {
 		payload["disk_used_mb"] = disk
 	}
 	c.JSON(http.StatusOK, payload)
+}
+
+// RuntimeStatus reports the native runtime cache state.
+func (s *SandboxService) RuntimeStatus(c *gin.Context) {
+	if s.provider == "native" {
+		if provider, ok := s.nativeProvider.(*native.Provider); ok {
+			status, err := provider.RuntimeStatus(c.Request.Context())
+			if err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, status)
+			return
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"supported": false, "provider": s.provider})
+}
+
+type runtimeInstallRequest struct {
+	PythonVersion string `json:"python_version"`
+}
+
+// InstallRuntime triggers the native uv runtime preparation.
+func (s *SandboxService) InstallRuntime(c *gin.Context) {
+	if s.provider == "native" {
+		if provider, ok := s.nativeProvider.(*native.Provider); ok {
+			var req runtimeInstallRequest
+			_ = c.ShouldBindJSON(&req)
+			status, err := provider.InstallRuntime(c.Request.Context(), req.PythonVersion)
+			if err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, status)
+			return
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"supported": false, "provider": s.provider})
+}
+
+// CleanupRuntime clears the native runtime/venv cache.
+func (s *SandboxService) CleanupRuntime(c *gin.Context) {
+	if s.provider == "native" {
+		if provider, ok := s.nativeProvider.(*native.Provider); ok {
+			status, err := provider.CleanupRuntimeCache(c.Request.Context())
+			if err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, status)
+			return
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"supported": false, "provider": s.provider})
 }
 
 func (s *SandboxService) ListSandboxes(c *gin.Context) {
@@ -486,6 +855,21 @@ func startSandboxReaper(ctx context.Context, svc *SandboxService) {
 				log.Printf("[Sandbox] reaper failed: %v", err)
 				continue
 			}
+			if svc.nativeProvider != nil {
+				if nativeRemoved, nativeErr := svc.nativeProvider.Reap(context.Background(), time.Duration(ttlMinutes)*time.Minute); nativeErr == nil {
+					removed += nativeRemoved
+				}
+			}
+			if svc.remoteProvider != nil {
+				if remoteRemoved, remoteErr := svc.remoteProvider.Reap(context.Background(), time.Duration(ttlMinutes)*time.Minute); remoteErr == nil {
+					removed += remoteRemoved
+				}
+			}
+			if svc.vmProvider != nil {
+				if vmRemoved, vmErr := svc.vmProvider.Reap(context.Background(), time.Duration(ttlMinutes)*time.Minute); vmErr == nil {
+					removed += vmRemoved
+				}
+			}
 			if removed > 0 {
 				log.Printf("[Sandbox] reaper removed %d stale sandbox container(s) (ttl=%dm)", removed, ttlMinutes)
 			}
@@ -494,7 +878,7 @@ func startSandboxReaper(ctx context.Context, svc *SandboxService) {
 }
 
 func (s *SandboxService) Capabilities(c *gin.Context) {
-	c.JSON(http.StatusOK, s.dkEngine.Capabilities(c.Request.Context()))
+	c.JSON(http.StatusOK, s.providerCapabilities(c.Request.Context()))
 }
 
 type ensureImageRequest struct {
@@ -533,7 +917,27 @@ func (s *SandboxService) ExecutePython(c *gin.Context) {
 	ctx, cancel := s.executionContext(c.Request.Context(), containerID)
 	defer cancel()
 
-	if strings.HasPrefix(id, "os-") {
+	if strings.HasPrefix(id, "nt-") {
+		if s.nativeProvider == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "native provider is unavailable"})
+			return
+		}
+		result, execErr := s.nativeProvider.Exec(ctx, id, engine.Command{Argv: []string{"python", "-c", req.Code}, Cwd: "/workspace"}, nil)
+		err = execErr
+		if result != nil {
+			res = resultToExecutionResponse(result)
+		}
+	} else if strings.HasPrefix(id, "vm-") {
+		if s.vmProvider == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "vm provider is unavailable"})
+			return
+		}
+		result, execErr := s.vmProvider.Exec(ctx, id, engine.Command{Argv: []string{"python3", "-c", req.Code}, Cwd: "/workspace"}, nil)
+		err = execErr
+		if result != nil {
+			res = resultToExecutionResponse(result)
+		}
+	} else if strings.HasPrefix(id, "os-") {
 		if s.osEngine == nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "opensandbox fallback is disabled"})
 			return
@@ -601,6 +1005,17 @@ func (s *SandboxService) ExecutePythonStream(c *gin.Context) {
 		if guardErr := s.enforceUsage(c.Request.Context(), containerID, res); guardErr != nil {
 			writeStreamError(c.Writer, flushWriter, guardErr)
 		}
+	case strings.HasPrefix(id, "vm-"):
+		if s.vmProvider == nil {
+			writeStreamError(c.Writer, flushWriter, fmt.Errorf("vm provider is unavailable"))
+			return
+		}
+		result, execErr := s.vmProvider.Exec(ctx, id, engine.Command{Argv: []string{"python3", "-c", req.Code}, Cwd: "/workspace"}, nil)
+		if execErr != nil {
+			writeStreamError(c.Writer, flushWriter, execErr)
+			return
+		}
+		_ = emit(engine.ExecutionStreamEvent{Type: "final", Response: resultToExecutionResponse(result)})
 	case strings.HasPrefix(id, "os-"):
 		if s.osEngine == nil {
 			writeStreamError(c.Writer, flushWriter, fmt.Errorf("opensandbox fallback is disabled"))
@@ -631,14 +1046,40 @@ func (s *SandboxService) ExecuteCommand(c *gin.Context) {
 	ctx, cancel := s.executionContext(c.Request.Context(), containerID)
 	defer cancel()
 
-	if strings.HasPrefix(id, "os-") {
+	cmd := req.engineCommand()
+	if cmd.Timeout > 0 {
+		var timeoutCancel context.CancelFunc
+		ctx, timeoutCancel = context.WithTimeout(ctx, cmd.Timeout)
+		defer timeoutCancel()
+	}
+	if strings.HasPrefix(id, "nt-") {
+		if s.nativeProvider == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "native provider is unavailable"})
+			return
+		}
+		result, execErr := s.nativeProvider.Exec(ctx, id, cmd, nil)
+		err = execErr
+		if result != nil {
+			res = resultToExecutionResponse(result)
+		}
+	} else if strings.HasPrefix(id, "vm-") {
+		if s.vmProvider == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "vm provider is unavailable"})
+			return
+		}
+		result, execErr := s.vmProvider.Exec(ctx, id, cmd, nil)
+		err = execErr
+		if result != nil {
+			res = resultToExecutionResponse(result)
+		}
+	} else if strings.HasPrefix(id, "os-") {
 		if s.osEngine == nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "opensandbox fallback is disabled"})
 			return
 		}
-		res, err = s.osEngine.ExecuteCommand(c.Request.Context(), strings.TrimPrefix(id, "os-"), req.Cmd)
+		res, err = s.osEngine.ExecuteCommand(c.Request.Context(), strings.TrimPrefix(id, "os-"), cmd.Argv)
 	} else if strings.HasPrefix(id, "dk-") {
-		res, err = s.dkEngine.ExecuteCommand(ctx, containerID, req.Cmd)
+		res, err = s.dkEngine.ExecuteCommandSpec(ctx, containerID, cmd)
 	} else {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown sandbox id prefix"})
 		return
@@ -689,9 +1130,35 @@ func (s *SandboxService) ExecuteCommandStream(c *gin.Context) {
 	containerID := strings.TrimPrefix(id, "dk-")
 	ctx, cancel := s.executionContext(c.Request.Context(), containerID)
 	defer cancel()
+	cmd := req.engineCommand()
+	if cmd.Timeout > 0 {
+		var timeoutCancel context.CancelFunc
+		ctx, timeoutCancel = context.WithTimeout(ctx, cmd.Timeout)
+		defer timeoutCancel()
+	}
 	switch {
+	case strings.HasPrefix(id, "nt-"):
+		if s.nativeProvider == nil {
+			writeStreamError(c.Writer, flushWriter, fmt.Errorf("native provider is unavailable"))
+			return
+		}
+		result, execErr := s.nativeProvider.Exec(ctx, id, cmd, func(event engine.Event) error {
+			if event.Type == "chunk" {
+				return emit(engine.ExecutionStreamEvent{Type: "chunk", Stream: event.Stream, Message: event.Message})
+			}
+			return nil
+		})
+		if execErr != nil {
+			writeStreamError(c.Writer, flushWriter, execErr)
+			return
+		}
+		res := resultToExecutionResponse(result)
+		if guardErr := s.enforceUsage(c.Request.Context(), containerID, res); guardErr != nil {
+			writeStreamError(c.Writer, flushWriter, guardErr)
+		}
+		_ = emit(engine.ExecutionStreamEvent{Type: "final", Response: res})
 	case strings.HasPrefix(id, "dk-"):
-		res, err := s.dkEngine.ExecuteCommandStream(ctx, containerID, req.Cmd, emit)
+		res, err := s.dkEngine.ExecuteCommandStreamSpec(ctx, containerID, cmd, emit)
 		if err != nil {
 			writeStreamError(c.Writer, flushWriter, err)
 			return
@@ -699,12 +1166,23 @@ func (s *SandboxService) ExecuteCommandStream(c *gin.Context) {
 		if guardErr := s.enforceUsage(c.Request.Context(), containerID, res); guardErr != nil {
 			writeStreamError(c.Writer, flushWriter, guardErr)
 		}
+	case strings.HasPrefix(id, "vm-"):
+		if s.vmProvider == nil {
+			writeStreamError(c.Writer, flushWriter, fmt.Errorf("vm provider is unavailable"))
+			return
+		}
+		result, execErr := s.vmProvider.Exec(ctx, id, cmd, nil)
+		if execErr != nil {
+			writeStreamError(c.Writer, flushWriter, execErr)
+			return
+		}
+		_ = emit(engine.ExecutionStreamEvent{Type: "final", Response: resultToExecutionResponse(result)})
 	case strings.HasPrefix(id, "os-"):
 		if s.osEngine == nil {
 			writeStreamError(c.Writer, flushWriter, fmt.Errorf("opensandbox fallback is disabled"))
 			return
 		}
-		res, err := s.osEngine.ExecuteCommand(ctx, strings.TrimPrefix(id, "os-"), req.Cmd)
+		res, err := s.osEngine.ExecuteCommand(ctx, strings.TrimPrefix(id, "os-"), cmd.Argv)
 		if err != nil {
 			writeStreamError(c.Writer, flushWriter, err)
 			return
@@ -712,6 +1190,15 @@ func (s *SandboxService) ExecuteCommandStream(c *gin.Context) {
 		_ = emit(engine.ExecutionStreamEvent{Type: "final", Response: res})
 	default:
 		writeStreamError(c.Writer, flushWriter, fmt.Errorf("unknown sandbox id prefix"))
+	}
+}
+
+func resultToExecutionResponse(result *engine.Result) *engine.ExecutionResponse {
+	if result == nil {
+		return nil
+	}
+	return &engine.ExecutionResponse{
+		Stdout: result.Stdout, Stderr: result.Stderr, ExitCode: result.ExitCode, Truncated: result.Truncated,
 	}
 }
 
@@ -776,6 +1263,9 @@ func runEngine() {
 		api.DELETE("/sandboxes/:id", svc.DeleteSandbox)
 		api.POST("/sandboxes/:id/network", svc.SetSandboxNetwork)
 		api.GET("/sandboxes/:id/usage", svc.SandboxUsage)
+		api.GET("/runtime/status", svc.RuntimeStatus)
+		api.POST("/runtime/install", svc.InstallRuntime)
+		api.POST("/runtime/cleanup", svc.CleanupRuntime)
 		api.POST("/sandboxes/:id/python", svc.ExecutePython)
 		api.POST("/sandboxes/:id/python/stream", svc.ExecutePythonStream)
 		api.POST("/sandboxes/:id/commands", svc.ExecuteCommand)

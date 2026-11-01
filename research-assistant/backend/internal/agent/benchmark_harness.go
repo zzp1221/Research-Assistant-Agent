@@ -19,6 +19,7 @@ import (
 
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
+	"research-assistant-backend/internal/sandbox"
 )
 
 func (a *ResearchCodingAgent) executeAdapterPreflight(ctx context.Context, task *models.Task) error {
@@ -345,13 +346,12 @@ func (a *ResearchCodingAgent) runBenchmarkHarness(ctx context.Context, sandboxID
 	}
 	containerDataset := "/workspace/" + filepath.ToSlash(datasetRelative)
 	containerOutput := "/workspace/" + filepath.ToSlash(outputRelative)
-	command := []string{
-		"bash", "-lc", fmt.Sprintf(
-			"cd /workspace && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/workspace:${PYTHONPATH:-} python3 %s --dataset %s --output-dir %s --limit %d --repo-root /workspace --seed 17",
-			shellEscape(benchmarkAdapterFile), shellEscape(containerDataset), shellEscape(containerOutput), limit,
-		),
+	command := sandbox.Command{
+		Argv: []string{"python", benchmarkAdapterFile, "--dataset", containerDataset, "--output-dir", containerOutput, "--limit", strconv.Itoa(limit), "--repo-root", "/workspace", "--seed", "17"},
+		Cwd:  "/workspace",
+		Env:  map[string]string{"PYTHONPATH": "/workspace", "PYTHONDONTWRITEBYTECODE": "1"},
 	}
-	result, execErr := a.Sandbox.ExecCommandStream(ctx, sandboxID, command, func(stream, line string) {
+	result, execErr := execResearchCommandStream(ctx, a.Sandbox, sandboxID, command, func(stream, line string) {
 		logToContext(ctx, "[%s] benchmark %s: %s", a.Name, stream, line)
 	})
 	after, fingerprintErr := benchmarkRepositoryFingerprint(workspacePath)
@@ -417,14 +417,12 @@ func (a *ResearchCodingAgent) runBenchmarkPredictionHarness(ctx context.Context,
 	if err != nil {
 		return models.BenchmarkHarnessReport{}, err
 	}
-	command := []string{
-		"bash", "-lc", fmt.Sprintf(
-			"cd /workspace && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/workspace:${PYTHONPATH:-} python3 %s --dataset %s --output-dir %s --limit %d --repo-root /workspace --seed 17",
-			shellEscape(benchmarkAdapterFile), shellEscape("/workspace/"+filepath.ToSlash(datasetRelative)),
-			shellEscape("/workspace/"+filepath.ToSlash(outputRelative)), limit,
-		),
+	command := sandbox.Command{
+		Argv: []string{"python", benchmarkAdapterFile, "--dataset", "/workspace/" + filepath.ToSlash(datasetRelative), "--output-dir", "/workspace/" + filepath.ToSlash(outputRelative), "--limit", strconv.Itoa(limit), "--repo-root", "/workspace", "--seed", "17"},
+		Cwd:  "/workspace",
+		Env:  map[string]string{"PYTHONPATH": "/workspace", "PYTHONDONTWRITEBYTECODE": "1"},
 	}
-	result, execErr := a.Sandbox.ExecCommandStream(ctx, sandboxID, command, func(stream, line string) {
+	result, execErr := execResearchCommandStream(ctx, a.Sandbox, sandboxID, command, func(stream, line string) {
 		logToContext(ctx, "[%s] benchmark %s: %s", a.Name, stream, line)
 	})
 	repositoryAfter, fingerprintErr := benchmarkRepositoryFingerprint(workspacePath)

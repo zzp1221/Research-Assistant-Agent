@@ -15,12 +15,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 	"text/template"
 	"time"
 
 	"research-assistant-backend/internal/catalog"
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/procgroup"
 	"research-assistant-backend/internal/workspace"
 )
 
@@ -650,12 +650,9 @@ func cloneRepositoryWithRetry(ctx context.Context, repoURL, workspacePath, revis
 		cloneCtx, cancel := context.WithTimeout(ctx, envDuration("REPO_CLONE_TIMEOUT", 45*time.Second))
 		cmd := exec.CommandContext(cloneCtx, "git", args...)
 		cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		procgroup.Configure(cmd)
 		cmd.Cancel = func() error {
-			if cmd.Process == nil {
-				return nil
-			}
-			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			return procgroup.Kill(cmd)
 		}
 		cmd.WaitDelay = 5 * time.Second
 		output, err := cmd.CombinedOutput()
@@ -774,12 +771,9 @@ func cloneRepositoryRevisionWithRetry(ctx context.Context, repoURL, workspacePat
 func runRepositoryGitCommand(ctx context.Context, arguments ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", arguments...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	procgroup.Configure(cmd)
 	cmd.Cancel = func() error {
-		if cmd.Process == nil {
-			return nil
-		}
-		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		return procgroup.Kill(cmd)
 	}
 	cmd.WaitDelay = 5 * time.Second
 	return cmd.CombinedOutput()

@@ -9,6 +9,7 @@ type ExecutionResponse struct {
 	Stdout         string   `json:"stdout"`
 	Stderr         string   `json:"stderr"`
 	ExitCode       int      `json:"exit_code"`
+	Truncated      bool     `json:"truncated,omitempty"`
 	Images         []string `json:"images,omitempty"`
 	NetworkRXBytes int64    `json:"network_rx_bytes,omitempty"`
 	NetworkTXBytes int64    `json:"network_tx_bytes,omitempty"`

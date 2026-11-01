@@ -56,8 +56,13 @@ type bundleOmittedEntry struct {
 }
 
 type bundleEnvironment struct {
-	Image       string `json:"image,omitempty"`
-	ImageDigest string `json:"image_digest,omitempty"`
+	Image           string `json:"image,omitempty"`
+	ImageDigest     string `json:"image_digest,omitempty"`
+	SandboxProvider string `json:"sandbox_provider,omitempty"`
+	Isolation       string `json:"isolation,omitempty"`
+	RuntimeHash     string `json:"runtime_hash,omitempty"`
+	BaseOS          string `json:"base_os,omitempty"`
+	NetworkEnforced string `json:"network_enforced,omitempty"`
 }
 
 type bundleManifest struct {
@@ -138,6 +143,12 @@ func (r *planRuntime) deleteSession(c *gin.Context) {
 		r.scheduler.CleanupPlanSandboxes(c.Request.Context(), plan.ID)
 		deleted = append(deleted, plan.ID)
 	}
+	if chats := ChatStore(); chats != nil {
+		_ = chats.Delete(userID, sessionID)
+	}
+	if sessions := SessionStore(); sessions != nil {
+		_ = sessions.Delete(c.Request.Context(), userID, sessionID)
+	}
 	recordAuditEvent("session_deleted", userID, sessionID, map[string]any{"plans": len(deleted)})
 	c.JSON(http.StatusOK, gin.H{"deleted": len(deleted), "plan_ids": deleted, "session_id": sessionID})
 }
@@ -162,7 +173,8 @@ func (r *planRuntime) exportPlan(c *gin.Context) {
 		}
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", baseName+".json"))
 		c.Header("X-Repro-Schema", planExportVersion)
-		recordAuditEvent("plan_exported", resolveUserID(c), plan.ID, map[string]any{"format": "json", "bytes": len(payload), "schema": planExportVersion})
+		provider, isolation := planEnvironmentAudit(plan)
+		recordAuditEvent("plan_exported", resolveUserID(c), plan.ID, map[string]any{"format": "json", "bytes": len(payload), "schema": planExportVersion, "sandbox_provider": provider, "isolation": isolation})
 		metrics.RecordPlanExport("json", "complete")
 		c.Data(http.StatusOK, "application/json; charset=utf-8", payload)
 	case "md", "markdown":
@@ -170,7 +182,8 @@ func (r *planRuntime) exportPlan(c *gin.Context) {
 		markdown = redactString(markdown)
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", baseName+".md"))
 		c.Header("X-Repro-Schema", planExportVersion)
-		recordAuditEvent("plan_exported", resolveUserID(c), plan.ID, map[string]any{"format": "md", "bytes": len(markdown), "schema": planExportVersion})
+		provider, isolation := planEnvironmentAudit(plan)
+		recordAuditEvent("plan_exported", resolveUserID(c), plan.ID, map[string]any{"format": "md", "bytes": len(markdown), "schema": planExportVersion, "sandbox_provider": provider, "isolation": isolation})
 		metrics.RecordPlanExport("md", "complete")
 		c.Data(http.StatusOK, "text/markdown; charset=utf-8", []byte(markdown))
 	case "zip":
@@ -286,8 +299,13 @@ func renderPlanMarkdown(plan *models.PlanGraph, events []models.PlanEvent) strin
 
 	builder.WriteString("## How to reproduce\n\n")
 	builder.WriteString("1. Unpack the bundle and verify every file: `sha256sum -c checksums.sha256`.\n")
-	builder.WriteString("2. Build the environment: `docker build -f environment/Dockerfile -t plan-" + plan.ID + " .`.\n")
-	builder.WriteString("3. Run the recorded command: `docker run --rm -v \"$PWD\":/workspace plan-" + plan.ID + "`.\n")
+	if plan.EnvironmentManifest != nil && strings.EqualFold(strings.TrimSpace(plan.EnvironmentManifest.SandboxProvider), "native") {
+		builder.WriteString("2. Recreate the native runtime: `python -m venv .venv && .venv/bin/pip install -r environment/requirements.lock`.\n")
+		builder.WriteString("3. Run the recorded command from `environment/run.sh` (or `environment/manifest.json`).\n")
+	} else {
+		builder.WriteString("2. Build the environment: `docker build -f environment/Dockerfile -t plan-" + plan.ID + " .`.\n")
+		builder.WriteString("3. Run the recorded command: `docker run --rm -v \"$PWD\":/workspace plan-" + plan.ID + "`.\n")
+	}
 	builder.WriteString("4. Compare the results against `manifest.json` expected outputs and the artifact hashes below.\n")
 	builder.WriteString("\nThe bundle is statically verifiable; a full replay in a clean container is a separate step.\n\n")
 
@@ -448,10 +466,12 @@ func buildPlanBundle(plan *models.PlanGraph, events []models.PlanEvent, limits e
 		missing["run_command"] = true
 		manifest.Notes = append(manifest.Notes, "No run command was recorded; run.sh only explains what is missing.")
 	}
+	environmentJSON, _ := json.MarshalIndent(env, "", "  ")
 	add("environment/requirements.lock", "environment", requirements)
 	add("environment/system-packages.txt", "environment", systemPackages)
 	add("environment/Dockerfile", "environment", dockerfile)
 	add("environment/run.sh", "environment", runScript)
+	add("environment/manifest.json", "environment", environmentJSON)
 
 	modelSnapshot, _ := json.MarshalIndent(plan.ModelSnapshot, "", "  ")
 	if plan.ModelSnapshot == nil {
@@ -465,14 +485,26 @@ func buildPlanBundle(plan *models.PlanGraph, events []models.PlanEvent, limits e
 	add("provenance/dataset-hashes.json", "provenance", datasetHashes)
 	add("provenance/model-hashes.json", "provenance", modelHashes)
 
-	manifest.Environment = bundleEnvironment{Image: env.Image, ImageDigest: env.ImageDigest}
-	manifest.RunCommand = append([]string(nil), env.RunCommand...)
-	if strings.TrimSpace(env.Image) == "" {
-		missing["environment_image"] = true
+	manifest.Environment = bundleEnvironment{
+		Image: env.Image, ImageDigest: env.ImageDigest,
+		SandboxProvider: env.SandboxProvider, Isolation: env.Isolation,
+		RuntimeHash: env.RuntimeHash, BaseOS: env.BaseOS, NetworkEnforced: env.NetworkEnforced,
 	}
-	if strings.TrimSpace(env.ImageDigest) == "" {
-		missing["image_digest"] = true
-		manifest.Notes = append(manifest.Notes, "Image digest is missing; the base image is not pinned.")
+	manifest.RunCommand = append([]string(nil), env.RunCommand...)
+	provider := strings.ToLower(strings.TrimSpace(env.SandboxProvider))
+	if provider == "native" {
+		if strings.TrimSpace(env.RuntimeHash) == "" {
+			missing["runtime_hash"] = true
+			manifest.Notes = append(manifest.Notes, "Native runtime hash is missing; the venv cannot be reproduced exactly.")
+		}
+	} else {
+		if strings.TrimSpace(env.Image) == "" {
+			missing["environment_image"] = true
+		}
+		if strings.TrimSpace(env.ImageDigest) == "" {
+			missing["image_digest"] = true
+			manifest.Notes = append(manifest.Notes, "Image digest is missing; the base image is not pinned.")
+		}
 	}
 
 	artifactKeys := make([]string, 0, len(plan.Artifacts))
@@ -559,6 +591,20 @@ func buildPlanBundle(plan *models.PlanGraph, events []models.PlanEvent, limits e
 	}
 	bundle.TotalBytes += int64(len(manifestBytes) + len(bundle.Checksums))
 	return bundle, nil
+}
+
+// planEnvironmentAudit returns the provider/isolation recorded on a plan.
+func planEnvironmentAudit(plan *models.PlanGraph) (string, string) {
+	if plan == nil {
+		return "", ""
+	}
+	if plan.EnvironmentManifest != nil {
+		return plan.EnvironmentManifest.SandboxProvider, plan.EnvironmentManifest.Isolation
+	}
+	if plan.Meta.SandboxCapabilities != nil {
+		return plan.Meta.SandboxCapabilities.Provider, plan.Meta.SandboxCapabilities.Isolation
+	}
+	return "", ""
 }
 
 func renderChecksums(manifestBytes []byte, files []bundleFile) []byte {
@@ -826,13 +872,16 @@ func (r *planRuntime) writePlanZip(c *gin.Context, plan *models.PlanGraph, filen
 	for _, entry := range bundle.Manifest.Omitted {
 		omittedBytes += entry.SizeBytes
 	}
+	provider, isolation := planEnvironmentAudit(plan)
 	recordAuditEvent("plan_exported", resolveUserID(c), plan.ID, map[string]any{
-		"format":          "zip",
-		"bytes":           writer.bytes,
-		"bundle_sha256":   bundle.BundleSHA256,
-		"omitted_count":   len(bundle.Manifest.Omitted),
-		"omitted_bytes":   omittedBytes,
-		"reproducibility": bundle.Manifest.Reproducibility,
+		"format":           "zip",
+		"bytes":            writer.bytes,
+		"bundle_sha256":    bundle.BundleSHA256,
+		"omitted_count":    len(bundle.Manifest.Omitted),
+		"omitted_bytes":    omittedBytes,
+		"reproducibility":  bundle.Manifest.Reproducibility,
+		"sandbox_provider": provider,
+		"isolation":        isolation,
 	})
 	metrics.RecordPlanExport("zip", bundle.Manifest.Reproducibility)
 	metrics.RecordExportOmittedBytes(omittedBytes)

@@ -187,6 +187,9 @@ executionLoop:
 					eventType = "plan_failed"
 				}
 				latest, _ := s.store.GetPlan(planID)
+				if s.memorySink != nil && latest != nil {
+					_ = s.memorySink.RecordPlan(ctx, latest)
+				}
 				outcome := models.OutcomeCompleted
 				if latest != nil && latest.Outcome != "" {
 					outcome = latest.Outcome

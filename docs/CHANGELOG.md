@@ -2,6 +2,32 @@
 
 本文件按时间倒序汇总仓库的主要提交与交付内容，供 README 只保留稳定说明。逐轮设计、缺陷清单与验收证据仍在 [design](design/) 与 [improvement-2026-10-26](improvement-2026-10-26/) 中。
 
+## 2026-11-01
+
+| 提交 | 内容 |
+|---|---|
+| 工作区（feature/memory） | 落地 Agent 记忆系统 M0–M3：internal/memory（JSONL+快照+BM25+RRF/MMR+预算+脱敏）、/api/memories、server session/ChatSession、chat 多轮+摘要+citations、prompts core/retrieved section、scheduler 注入、计划 episode/ParentPlanID/MemoryRefs、AutoResearch trial 记忆、document 记忆、consolidation、前端 MemoryPanel；真实 LLM 30 轮科研长任务与计划 A/B 验证，并修复 createPlan nil pointer。详见 [MEMORY-IMPLEMENTATION](improvement-2026-11-01/MEMORY-IMPLEMENTATION.md) 与 [MEMORY-TEST-REPORT](improvement-2026-11-01/MEMORY-TEST-REPORT.md)。 |
+
+## 2026-10-31
+
+| 提交 | 内容 |
+|---|---|
+| 工作区（最终收口） | 13 套 E2E + 四模块全量回归通过；容器内可验证项完成；残余仅为 Windows 真机/签名/真实服务环境边界。详见 [FIX-REPORT-ROUND26](improvement-2026-10-26/FIX-REPORT-ROUND26.md)。 |
+| 工作区（第二十五轮） | native 运行时缓存清理（CleanRuntimeCache/CleanupRuntimeCache）+ sandbox/shell/bridge/UI 清理链路、安装中拒绝、二次确认。详见 [FIX-REPORT-ROUND25](improvement-2026-10-26/FIX-REPORT-ROUND25.md)。 |
+| 工作区（第二十四轮） | NSIS VERSION 参数化（VIProductVersion/DisplayVersion）、installer-smoke.sh 容器内 makensis 编译烟测、LegalCopyright。详见 [FIX-REPORT-ROUND24](improvement-2026-10-26/FIX-REPORT-ROUND24.md)。 |
+| 工作区（第二十三轮） | 更新可用 banner（Wails ra:update-available）、native SystemPackages 能力门禁（runtimeProbe + 计划前置）。详见 [FIX-REPORT-ROUND23](improvement-2026-10-26/FIX-REPORT-ROUND23.md)。 |
+| 工作区（第二十二轮） | RuntimeManager EnsureRuntimeWithProgress（python/venv/dependencies/freeze/done）、native 安装状态与 RuntimeStatus、RuntimePanel 安装阶段轮询。详见 [FIX-REPORT-ROUND22](improvement-2026-10-26/FIX-REPORT-ROUND22.md)。 |
+| 工作区（第二十一轮） | native InstallRuntime + sandbox/shell/bridge/UI 触发链、RuntimePanel Docker 升级提示、设计文档 P2/P3/P4 阶段标题修正。详见 [FIX-REPORT-ROUND21](improvement-2026-10-26/FIX-REPORT-ROUND21.md)。 |
+| 工作区（第二十轮） | RuntimePanel provider 持久化（bridge Get/Update）、native RuntimeStatus + /api/v1/runtime/status + /desktop/runtime、诊断包/日志目录 UI 入口。详见 [FIX-REPORT-ROUND20](improvement-2026-10-26/FIX-REPORT-ROUND20.md)。 |
+| 工作区（第十九轮） | WER LocalDumps 崩溃转储注册（shell/backend/sandbox）、desktop/build/package.ps1 打包流水线、全量既有 E2E 回归与环境限制记录。详见 [FIX-REPORT-ROUND19](improvement-2026-10-26/FIX-REPORT-ROUND19.md)。 |
+| 工作区（第十八轮） | VM Provider WSLPath 注入 + 伪 wsl 集成测试、updater.Manager.Install + bridge/RuntimePanel 安装闭环、NSIS 可选 PDF 关联。详见 [FIX-REPORT-ROUND18](improvement-2026-10-26/FIX-REPORT-ROUND18.md)。 |
+| 工作区（第十七轮） | 自动更新闭环（updater.Manager + bridge 检查/下载 + RuntimePanel 更新区块）、remote Provider mock OpenSandbox 集成测试、导出审计 provider/isolation、Windows 真机探针/启动残留脚本。详见 [FIX-REPORT-ROUND17](improvement-2026-10-26/FIX-REPORT-ROUND17.md)。 |
+| 工作区（第十六轮） | 导出/复现包按 provider 分支（native runtime_hash / docker image digest + environment/manifest.json）、GPU/Python 细粒度能力门禁、原生目录选择/在文件夹中显示、签名脚本与更新公钥注入。详见 [FIX-REPORT-ROUND16](improvement-2026-10-26/FIX-REPORT-ROUND16.md)。 |
+| 工作区（第十五轮） | vm Provider WSL2 执行路径（路径/argv 翻译、create/exec/delete/usage）、规划器能力快照与 `image_prepare→runtime_probe`、`/desktop/metrics` 本地指标、崩溃恢复提示条。详见 [FIX-REPORT-ROUND15](improvement-2026-10-26/FIX-REPORT-ROUND15.md)。 |
+| 工作区（第十四轮） | AppContainer 双 profile 网络（离线/在线 internetClient）、vm/remote Provider（WSL2 检测 + OpenSandbox 适配）、诊断包崩溃转储、systray Windows 托盘。详见 [FIX-REPORT-ROUND14](improvement-2026-10-26/FIX-REPORT-ROUND14.md)。 |
+| 工作区（第十三轮） | 桌面外壳产品化：`desktop/shell` 编排（端口/token/supervisor/proxy/错误页/崩溃重启）、Wails 入口与 bridge、首次启动向导、诊断包、Ed25519 签名更新包、NSIS 静默安装/卸载保留数据；native Windows Runner 补齐 AppContainer/lowil/Job 限额/附录 D 探针与 runtime_hash 回填。详见 [FIX-REPORT-ROUND13](improvement-2026-10-26/FIX-REPORT-ROUND13.md)。 |
+| 工作区（第十二轮） | Windows 桌面客户端与去 Docker 化基础：跨平台 procgroup/sysinfo、LOG_DIR/APP_DATA_DIR/RA_CONFIG_PATH、日志轮转、代理保留、Command argv 契约、Provider 抽象、native uv/venv 骨架、desktop supervisor/proxy/settings、运行模式页与环境徽章。详见 [FIX-REPORT-ROUND12](improvement-2026-10-26/FIX-REPORT-ROUND12.md)。 |
+
 ## 2026-10-30
 
 | 提交 | 内容 |

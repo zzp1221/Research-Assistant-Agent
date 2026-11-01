@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/sandbox"
 )
 
 func runtimeSpecFromTask(task *models.Task) (models.ReproductionRuntimeSpec, error) {
@@ -20,6 +21,23 @@ func runtimeSpecFromTask(task *models.Task) (models.ReproductionRuntimeSpec, err
 		return spec, fmt.Errorf("invalid reproduction_runtime_spec: %w", err)
 	}
 	return spec, nil
+}
+
+func agentPythonVersionAllowed(requested string, available []string) bool {
+	requested = strings.TrimSpace(requested)
+	if requested == "" {
+		return true
+	}
+	for _, candidate := range available {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if requested == candidate || strings.HasPrefix(requested, candidate+".") || strings.HasPrefix(candidate, requested+".") {
+			return true
+		}
+	}
+	return false
 }
 
 func imageAllowedByList(image string, allowlist []string) bool {
@@ -50,8 +68,14 @@ func (a *CoderAgent) runtimeProbe(ctx context.Context, task *models.Task) error 
 		return nil
 	}
 	missing := make([]models.MissingRequirement, 0)
-	if spec.GPURequired && !caps.GPURuntimeAvailable {
-		missing = append(missing, models.MissingRequirement{Kind: "gpu_unavailable", Name: spec.GPUType, Detail: "当前 sandbox 没有可用的 NVIDIA runtime", Remediation: "安装 NVIDIA Container Toolkit，或改用 CPU 可运行的论文实验。"})
+	if spec.GPURequired && !caps.GPU && !caps.GPURuntimeAvailable {
+		missing = append(missing, models.MissingRequirement{Kind: "gpu_unavailable", Name: spec.GPUType, Detail: "当前 sandbox 没有可用的 GPU 执行能力", Remediation: "安装 NVIDIA Container Toolkit、改用支持 GPU 的 provider，或改用 CPU 可运行的论文实验。"})
+	}
+	if version := strings.TrimSpace(spec.PythonVersion); version != "" && len(caps.PythonVersions) > 0 && !agentPythonVersionAllowed(version, caps.PythonVersions) {
+		missing = append(missing, models.MissingRequirement{Kind: "python_version_unavailable", Name: version, Detail: "当前 sandbox provider 不支持该 Python 版本", Remediation: "升级应用，或改用包含该 Python 版本的容器/远程沙箱。"})
+	}
+	if len(spec.SystemPackages) > 0 && strings.EqualFold(caps.Provider, "native") {
+		missing = append(missing, models.MissingRequirement{Kind: "system_package_unavailable", Name: strings.Join(spec.SystemPackages, ","), Detail: "native provider 不支持系统包安装", Remediation: "改用 Docker/远程沙箱，或在宿主预装相关系统包后重试。"})
 	}
 	if spec.DiskGB > 0 && float64(caps.DiskFreeBytes)/float64(1<<30) < spec.DiskGB {
 		missing = append(missing, models.MissingRequirement{Kind: "disk_insufficient", Name: "workspace", Detail: fmt.Sprintf("需要 %.1f GB，当前可用 %.2f GB", spec.DiskGB, float64(caps.DiskFreeBytes)/float64(1<<30)), Remediation: "清理磁盘或扩容后重试。"})
@@ -59,6 +83,9 @@ func (a *CoderAgent) runtimeProbe(ctx context.Context, task *models.Task) error 
 	baseImage := strings.TrimSpace(spec.BaseImage)
 	if baseImage == "" {
 		baseImage = "python:3.11-bullseye"
+	}
+	if strings.EqualFold(caps.Provider, "native") && strings.TrimSpace(spec.BaseImage) != "" {
+		missing = append(missing, models.MissingRequirement{Kind: "sandbox_capability", Name: "image", Detail: "native provider 不支持 OCI 镜像", Remediation: "改用 Docker/远程沙箱，或改用 uv 运行时并清空 BaseImage。"})
 	}
 	if !imageAllowedByList(baseImage, caps.ImageAllowlist) {
 		missing = append(missing, models.MissingRequirement{Kind: "image_not_allowed", Name: baseImage, Detail: "镜像不在 SANDBOX_IMAGE_ALLOWLIST 中", Remediation: "改用 allowlist 中的预构建镜像。"})
@@ -125,13 +152,31 @@ func (a *CoderAgent) runtimeValidate(ctx context.Context, task *models.Task) err
 		return nil
 	}
 	started := time.Now()
-	response, err := a.Sandbox.ExecCommandStream(ctx, session, []string{"bash", "-lc", "cd /workspace && python3 --version && python3 -m pip freeze"}, func(stream, line string) {
-		logToContext(ctx, "[%s] runtime validate %s: %s", a.Name, stream, line)
-	})
-	if err != nil || response == nil || response.ExitCode != 0 {
+	response := &sandbox.PythonRunResponse{}
+	var execErr error
+	commands := []sandbox.Command{
+		{Argv: []string{"python", "--version"}, Cwd: "/workspace"},
+		{Argv: []string{"python", "-m", "pip", "freeze"}, Cwd: "/workspace"},
+	}
+	for _, command := range commands {
+		var result *sandbox.PythonRunResponse
+		result, callErr := a.Sandbox.ExecCommandStreamV2(ctx, session, command, func(stream, line string) {
+			logToContext(ctx, "[%s] runtime validate %s: %s", a.Name, stream, line)
+		})
+		execErr = callErr
+		if result != nil {
+			response.Stdout += result.Stdout
+			response.Stderr += result.Stderr
+			response.ExitCode = result.ExitCode
+		}
+		if execErr != nil || result == nil || result.ExitCode != 0 {
+			break
+		}
+	}
+	if execErr != nil || response == nil || response.ExitCode != 0 {
 		detail := "runtime validation command failed"
-		if err != nil {
-			detail = err.Error()
+		if execErr != nil {
+			detail = execErr.Error()
 		} else if response != nil {
 			detail = chooseNonEmpty(response.Stderr, response.Stdout, detail)
 		}
@@ -198,10 +243,12 @@ func (a *CoderAgent) runtimeValidate(ctx context.Context, task *models.Task) err
 		}
 	}
 	var networkRX, networkTX int64
+	runtimeHash := ""
 	if a.Sandbox != nil && session != "" {
 		if usage, usageErr := a.Sandbox.SandboxUsage(ctx, session); usageErr == nil && usage != nil {
 			networkRX = usage.NetworkRXBytes
 			networkTX = usage.NetworkTXBytes
+			runtimeHash = usage.RuntimeHash
 			if strings.TrimSpace(usage.NetworkMode) != "" && usage.NetworkMode != "none" {
 				networkMode = usage.NetworkMode
 			}
@@ -209,23 +256,35 @@ func (a *CoderAgent) runtimeValidate(ctx context.Context, task *models.Task) err
 	}
 	policy := runtimePolicyForTask(task)
 	hardLimits := policy.HardLimits
+	sandboxProvider, isolation, baseOS, networkEnforced := "", "", "", ""
+	if caps, capsErr := a.Sandbox.Capabilities(ctx); capsErr == nil && caps != nil {
+		sandboxProvider = caps.Provider
+		isolation = caps.Isolation
+		baseOS = caps.OS
+		networkEnforced = caps.NetworkEnforced
+	}
 	manifest := models.EnvironmentManifest{
-		Version:        "environment.manifest/v1",
-		Image:          image,
-		ImageDigest:    digest,
-		Language:       "python",
-		PythonVersion:  pythonVersion,
-		PipFreeze:      packages,
-		SystemPackages: spec.SystemPackages,
-		RunCommand:     spec.RunCommand,
-		WorkingDir:     chooseNonEmpty(spec.WorkingDir, "/workspace"),
-		NetworkMode:    networkMode,
-		NetworkRXBytes: networkRX,
-		NetworkTXBytes: networkTX,
-		HardLimits:     &hardLimits,
-		StartedAt:      started,
-		FinishedAt:     &finished,
-		Status:         "ready",
+		Version:         "environment.manifest/v1",
+		SandboxProvider: sandboxProvider,
+		Isolation:       isolation,
+		BaseOS:          baseOS,
+		NetworkEnforced: networkEnforced,
+		RuntimeHash:     runtimeHash,
+		Image:           image,
+		ImageDigest:     digest,
+		Language:        "python",
+		PythonVersion:   pythonVersion,
+		PipFreeze:       packages,
+		SystemPackages:  spec.SystemPackages,
+		RunCommand:      spec.RunCommand,
+		WorkingDir:      chooseNonEmpty(spec.WorkingDir, "/workspace"),
+		NetworkMode:     networkMode,
+		NetworkRXBytes:  networkRX,
+		NetworkTXBytes:  networkTX,
+		HardLimits:      &hardLimits,
+		StartedAt:       started,
+		FinishedAt:      &finished,
+		Status:          "ready",
 	}
 	if len(missing) > 0 {
 		manifest.Status = "blocked"

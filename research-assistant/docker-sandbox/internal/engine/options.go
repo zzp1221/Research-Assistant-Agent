@@ -33,6 +33,11 @@ type Limits struct {
 	MaxDownloadBytes int64   `json:"max_download_bytes,omitempty"`
 	MaxDiskGB        float64 `json:"max_disk_gb,omitempty"`
 	MaxRuntimeSec    int     `json:"max_runtime_sec,omitempty"`
+	// MemoryMB, CPUPercent and MaxProcesses are enforced by the native
+	// Windows runner through a Job Object; the docker engine ignores them.
+	MemoryMB     int `json:"memory_mb,omitempty"`
+	CPUPercent   int `json:"cpu_percent,omitempty"`
+	MaxProcesses int `json:"max_processes,omitempty"`
 }
 
 // CreateOptions is the complete sandbox creation request.

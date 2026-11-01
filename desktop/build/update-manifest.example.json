@@ -1,0 +1,7 @@
+{
+  "version": "0.9.2",
+  "url": "https://update.example.com/ResearchAssistant-0.9.2.exe",
+  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "signature": "BASE64_ED25519_SIGNATURE_OVER_SHA256_HEX",
+  "release_notes_url": "https://update.example.com/releases/0.9.2"
+}

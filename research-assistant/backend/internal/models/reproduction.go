@@ -16,6 +16,9 @@ type RuntimeHardLimits struct {
 	MaxDownloadBytes  int64    `json:"max_download_bytes,omitempty"`
 	MaxDiskGB         float64  `json:"max_disk_gb,omitempty"`
 	MaxRuntimeSec     int      `json:"max_runtime_sec,omitempty"`
+	MemoryMB          int      `json:"memory_mb,omitempty"`
+	CPUPercent        int      `json:"cpu_percent,omitempty"`
+	MaxProcesses      int      `json:"max_processes,omitempty"`
 	AllowedRegistries []string `json:"allowed_registries,omitempty"`
 }
 
@@ -147,12 +150,19 @@ type EnvironmentManifest struct {
 	WorkingDir     string            `json:"working_dir,omitempty"`
 	// NetworkMode records whether the runtime ever had egress (none/bridge) and
 	// Network*Bytes the measured traffic, so a reproduction is auditable.
-	NetworkMode    string               `json:"network_mode,omitempty"`
-	NetworkRXBytes int64                `json:"network_rx_bytes,omitempty"`
-	NetworkTXBytes int64                `json:"network_tx_bytes,omitempty"`
-	HardLimits     *RuntimeHardLimits   `json:"hard_limits,omitempty"`
-	StartedAt      time.Time            `json:"started_at"`
-	FinishedAt     *time.Time           `json:"finished_at,omitempty"`
-	Status         string               `json:"status"`
-	Missing        []MissingRequirement `json:"missing,omitempty"`
+	NetworkMode    string `json:"network_mode,omitempty"`
+	NetworkRXBytes int64  `json:"network_rx_bytes,omitempty"`
+	NetworkTXBytes int64  `json:"network_tx_bytes,omitempty"`
+	// Desktop/provider fidelity. Docker leaves Image/ImageDigest populated;
+	// native records the venv hash and the honest isolation/network level.
+	SandboxProvider string               `json:"sandbox_provider,omitempty"`
+	Isolation       string               `json:"isolation,omitempty"`
+	RuntimeHash     string               `json:"runtime_hash,omitempty"`
+	BaseOS          string               `json:"base_os,omitempty"`
+	NetworkEnforced string               `json:"network_enforced,omitempty"`
+	HardLimits      *RuntimeHardLimits   `json:"hard_limits,omitempty"`
+	StartedAt       time.Time            `json:"started_at"`
+	FinishedAt      *time.Time           `json:"finished_at,omitempty"`
+	Status          string               `json:"status"`
+	Missing         []MissingRequirement `json:"missing,omitempty"`
 }

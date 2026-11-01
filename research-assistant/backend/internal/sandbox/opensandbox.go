@@ -38,6 +38,9 @@ type SandboxLimits struct {
 	MaxDownloadBytes int64   `json:"max_download_bytes,omitempty"`
 	MaxDiskGB        float64 `json:"max_disk_gb,omitempty"`
 	MaxRuntimeSec    int     `json:"max_runtime_sec,omitempty"`
+	MemoryMB         int     `json:"memory_mb,omitempty"`
+	CPUPercent       int     `json:"cpu_percent,omitempty"`
+	MaxProcesses     int     `json:"max_processes,omitempty"`
 }
 
 // SandboxOptions carries network policy and hard limits for a new sandbox.
@@ -67,6 +70,7 @@ type SandboxUsageResponse struct {
 	NetworkRXBytes int64         `json:"network_rx_bytes,omitempty"`
 	NetworkTXBytes int64         `json:"network_tx_bytes,omitempty"`
 	DiskUsedMB     float64       `json:"disk_used_mb,omitempty"`
+	RuntimeHash    string        `json:"runtime_hash,omitempty"`
 }
 
 // SandboxCreateResponse 创建沙箱响应
@@ -84,6 +88,7 @@ type PythonRunResponse struct {
 	Stdout         string   `json:"stdout"`
 	Stderr         string   `json:"stderr"`
 	ExitCode       int      `json:"exit_code"`
+	Truncated      bool     `json:"truncated,omitempty"`
 	Images         []string `json:"images,omitempty"`
 	NetworkRXBytes int64    `json:"network_rx_bytes,omitempty"`
 	NetworkTXBytes int64    `json:"network_tx_bytes,omitempty"`
@@ -368,6 +373,16 @@ type SandboxCapabilities struct {
 	DiskFreeBytes       int64    `json:"disk_free_bytes"`
 	ImageAllowlist      []string `json:"image_allowlist"`
 	NetworkMode         string   `json:"network_mode"`
+	Provider            string   `json:"provider,omitempty"`
+	Isolation           string   `json:"isolation,omitempty"`
+	Images              bool     `json:"images,omitempty"`
+	NetworkControl      bool     `json:"network_control,omitempty"`
+	NetworkEnforced     string   `json:"network_enforced,omitempty"`
+	GPU                 bool     `json:"gpu,omitempty"`
+	GPUEnforced         bool     `json:"gpu_enforced,omitempty"`
+	PythonVersions      []string `json:"python_versions,omitempty"`
+	OS                  string   `json:"os,omitempty"`
+	Notes               []string `json:"notes,omitempty"`
 }
 
 type SandboxImageInfo struct {

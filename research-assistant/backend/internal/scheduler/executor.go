@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"research-assistant-backend/internal/agentprofile"
+	"research-assistant-backend/internal/memory"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/planner"
 	"research-assistant-backend/internal/prompts"
@@ -74,6 +75,8 @@ type RoutedTaskExecutor struct {
 	ProfileRunner AgentRunner
 	// ToolInvoker executes tool_call nodes.
 	ToolInvoker *tools.Invoker
+	// Memory optionally injects core/retrieved memory and records task episodes.
+	Memory memory.Store
 }
 
 // SetAgentRuntime wires the tool and agent-profile runtime. It is separate from
@@ -82,6 +85,11 @@ func (e *RoutedTaskExecutor) SetAgentRuntime(profiles *agentprofile.Registry, pr
 	e.Profiles = profiles
 	e.ProfileRunner = profileRunner
 	e.ToolInvoker = invoker
+}
+
+// SetMemory wires the optional memory store used for injection and task episodes.
+func (e *RoutedTaskExecutor) SetMemory(store memory.Store) {
+	e.Memory = store
 }
 
 func NewRoutedTaskExecutor(librarian, data, coder AgentRunner, specialized ...AgentRunner) *RoutedTaskExecutor {
@@ -163,6 +171,8 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		Metadata: map[string]any{
 			"plan_id":        plan.ID,
 			"tenant_id":      plan.OwnerID,
+			"session_id":     plan.SessionID,
+			"project_id":     plan.ProjectID,
 			"runtime_policy": plan.RuntimePolicy,
 			"network_access": networkAccessApproved(plan, task.ID),
 		},
@@ -274,6 +284,24 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		}
 		sharedContext["prompt_budget"] = budget
 	}
+	if e.Memory != nil && memory.InjectionEnabled() {
+		settings := memory.DefaultSettings()
+		query := memory.Query{
+			OwnerID: plan.OwnerID, ProjectID: plan.ProjectID, SessionID: plan.SessionID,
+			PlanID: plan.ID, AgentID: task.AssignedTo,
+			Text:  memory.BuildQuery(task.Name+" "+prompts.TruncateRunes(task.Description, 500), nil, 2000),
+			Limit: settings.RetrievalTopK,
+		}
+		if memCtx, memErr := e.Memory.Retrieve(ctx, query, settings.CoreBudgetTokens, 3000); memErr == nil {
+			sharedContext["core_memory"] = memCtx.CoreText
+			sharedContext["retrieved_memory"] = memCtx.RetrievedText
+			refs := make([]string, 0, len(memCtx.Citations))
+			for _, citation := range memCtx.Citations {
+				refs = append(refs, citation.MemoryID)
+			}
+			sharedContext["memory_refs"] = refs
+		}
+	}
 
 	runner, err := e.resolveRunner(task.AssignedTo)
 	if err != nil {
@@ -284,13 +312,17 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		if status != models.StatusCanceled {
 			status = models.StatusFailed
 		}
-		return &models.TaskExecutionResult{
+		result := &models.TaskExecutionResult{
 			Status:         status,
 			Result:         runtimeTask.Result,
 			Code:           runtimeTask.Code,
 			StructuredData: runtimeTask.StructuredData,
 			Error:          chooseNonEmpty(runtimeTask.Error, err.Error()),
-		}, nil
+		}
+		if e.Memory != nil {
+			_ = memory.RecordTask(ctx, e.Memory, plan, task, result)
+		}
+		return result, nil
 	}
 
 	status := runtimeTask.Status
@@ -299,7 +331,7 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		status = models.StatusCompleted
 	}
 
-	return &models.TaskExecutionResult{
+	result := &models.TaskExecutionResult{
 		Status:              status,
 		Result:              runtimeTask.Result,
 		Code:                runtimeTask.Code,
@@ -310,7 +342,11 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		MissingRequirements: missingRequirementsFromTask(runtimeTask),
 		Verification:        verificationFromTask(runtimeTask),
 		Metadata:            promptMetadataFromTask(runtimeTask),
-	}, nil
+	}
+	if e.Memory != nil {
+		_ = memory.RecordTask(ctx, e.Memory, plan, task, result)
+	}
+	return result, nil
 }
 
 // promptMetadataFromTask copies prompt-budget diagnostics from the runtime task
@@ -321,7 +357,7 @@ func promptMetadataFromTask(runtimeTask *models.Task) map[string]any {
 	}
 	out := map[string]any{}
 	for _, key := range []string{
-		"prompt_budget", "prompt_truncated_sections",
+		"prompt_budget", "prompt_truncated_sections", "memory_refs",
 		"agent_profile_id", "prompt_version_id", "prompt_version", "prompt_hash",
 		"model_profile_id", "model", "max_steps",
 	} {

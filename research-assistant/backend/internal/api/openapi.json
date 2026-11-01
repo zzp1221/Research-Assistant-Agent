@@ -45,6 +45,12 @@
           "intent_type": {
             "type": "string"
           },
+          "parent_plan_id": {
+            "type": "string"
+          },
+          "context": {
+            "type": "object"
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -992,6 +998,12 @@
                     "type": "string",
                     "maxLength": 20000
                   },
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string"
+                  },
                   "attachments": {
                     "type": "array",
                     "items": {
@@ -1521,10 +1533,44 @@
     "/api/sessions": {
       "get": {
         "operationId": "listSessions",
-        "summary": "List sessions derived from owned plans",
+        "summary": "List server-owned sessions with plan and chat counts",
         "responses": {
           "200": {
             "description": "Sessions"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createSession",
+        "summary": "Create a server-owned session and issue its cookie",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "project_id": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "plan",
+                      "chat",
+                      "mixed"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
           }
         }
       }
@@ -1549,6 +1595,157 @@
           },
           "409": {
             "description": "Session has an active plan"
+          }
+        }
+      }
+    },
+    "/api/sessions/{id}/activate": {
+      "post": {
+        "operationId": "activateSession",
+        "summary": "Switch the current identity cookie to an owned session",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Activated"
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        }
+      }
+    },
+    "/api/memories": {
+      "get": {
+        "operationId": "listMemories",
+        "summary": "List owned memories",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Memory list"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createMemory",
+        "summary": "Create a user-explicit memory",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/api/memories/search": {
+      "post": {
+        "operationId": "searchMemories",
+        "summary": "Search memories and return rendered context plus citations",
+        "responses": {
+          "200": {
+            "description": "Search result"
+          }
+        }
+      }
+    },
+    "/api/memories/stats": {
+      "get": {
+        "operationId": "memoryStats",
+        "summary": "Memory counts and token totals",
+        "responses": {
+          "200": {
+            "description": "Stats"
+          }
+        }
+      }
+    },
+    "/api/memories/settings": {
+      "get": {
+        "operationId": "getMemorySettings",
+        "summary": "Read per-owner memory settings",
+        "responses": {
+          "200": {
+            "description": "Settings"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putMemorySettings",
+        "summary": "Update per-owner memory settings",
+        "responses": {
+          "200": {
+            "description": "Settings saved"
+          }
+        }
+      }
+    },
+    "/api/memories/{id}": {
+      "get": {
+        "operationId": "getMemory",
+        "summary": "Read one memory",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Memory"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchMemory",
+        "summary": "Edit title/content/tags/importance/pinned/status",
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteMemory",
+        "summary": "Soft delete a memory (hard delete requires admin token)",
+        "responses": {
+          "200": {
+            "description": "Deleted"
           }
         }
       }
