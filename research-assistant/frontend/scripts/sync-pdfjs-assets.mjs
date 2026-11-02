@@ -20,6 +20,19 @@ if (!fs.existsSync(source)) {
   process.exit(1);
 }
 
+function copyDirectory(from, to) {
+  fs.mkdirSync(to, { recursive: true });
+  for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
+    const source = path.join(from, entry.name);
+    const destination = path.join(to, entry.name);
+    if (entry.isDirectory()) {
+      copyDirectory(source, destination);
+    } else if (entry.isFile()) {
+      fs.copyFileSync(source, destination);
+    }
+  }
+}
+
 fs.mkdirSync(target, { recursive: true });
 for (const [from, to] of files) {
   const fromPath = path.join(source, from);
@@ -36,6 +49,6 @@ for (const directory of directories) {
     process.exit(1);
   }
   fs.rmSync(path.join(target, directory), { recursive: true, force: true });
-  fs.cpSync(fromPath, path.join(target, directory), { recursive: true });
+  copyDirectory(fromPath, path.join(target, directory));
 }
 console.log('[pdfjs] synced worker, cmaps and standard fonts into public/pdfjs');

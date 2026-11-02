@@ -54,6 +54,9 @@ coverage.out
 **/dist/
 !research-assistant/backend/webui/dist/
 !research-assistant/backend/webui/dist/placeholder.txt
+!desktop/webui/dist/
+desktop/webui/dist/*
+!desktop/webui/dist/.gitkeep
 **/bin/
 **/.gocache/
 **/.gocache_verify*/

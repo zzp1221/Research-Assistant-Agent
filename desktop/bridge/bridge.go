@@ -1,4 +1,6 @@
-// Package bridge exposes desktop shell capabilities to the Wails frontend.
+// Package bridge exposes desktop shell capabilities to the desktop frontend.
+// The same methods are bound by the MyGo entrypoint (mygo.Bind) and the Wails
+// fallback (window.go.main.API).
 package bridge
 
 import (
@@ -34,7 +36,8 @@ type RuntimeSettingsView struct {
 	WindowsRunner  string `json:"windows_runner"`
 }
 
-// API is bound into Wails as window.go.main.API.
+// API is bound into the desktop shell: mygo.Bind(api) in the MyGo entrypoint,
+// window.go.main.API in the Wails fallback.
 type API struct {
 	shell           *shell.Shell
 	settingsPath    string

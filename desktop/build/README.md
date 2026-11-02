@@ -1,24 +1,59 @@
 # Desktop build
 
-## Package
+## One command
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File package.ps1 -Version 0.9.0 -WailsBin "C:\build\bin"
+powershell -ExecutionPolicy Bypass -File build.ps1 -Version 0.9.0
 ```
 
-`WailsBin` must contain:
+`build.ps1` runs the whole pipeline:
 
-- `ResearchAssistant.exe`
-- `backend.exe`
-- `sandbox.exe`
-- `uv.exe`（可选，缺失时安装包不包含 uv）
-- `webview\`（前端构建产物）
+1. builds the React frontend (`npm --prefix research-assistant/frontend run build`)
+   and copies its `dist` to `desktop/webui/dist`, which the Go binary embeds;
+2. builds `backend.exe` (from `research-assistant/backend/cmd/api`) and
+   `sandbox.exe` (from `research-assistant/docker-sandbox`);
+3. runs `mygo build -skip-installer` in `desktop`, producing
+   `desktop/build/mygo/windows-amd64/ResearchAssistant.exe`;
+4. stages the artifacts and runs `package.ps1`, which writes
+   `dist/ResearchAssistant-<version>-Setup.exe`.
 
-脚本会把文件暂存到 `build/staging`，调用 `makensis` 生成 `ResearchAssistant-Setup.exe`，并复制到 `dist/ResearchAssistant-<version>-Setup.exe`。
+The installer is a standard MUI2 wizard: welcome, **install location**
+(with a Browse button), components (including the optional PDF association),
+install progress and finish. It remembers the previous install directory.
 
-`Version` 必须是三段式（例如 `0.9.0`），会写入 VIProductVersion 与卸载项 DisplayVersion。
+Requires Go 1.27.3, Node.js 22 or later and `makensis` on `PATH`; pass
+`-Go C:\path\to\go.exe` when Go is not on `PATH`. `-SkipFrontend`,
+`-SkipRuntime`, `-SkipInstaller` and `-Output` narrow the run.
+Set `UV_EXE` to copy a `uv.exe` into the installer.
 
-NSIS 脚本可在 Linux 容器里做编译烟测：
+## Running the installer
+
+Run `ResearchAssistant-<version>-Setup.exe` from a normal user folder such as
+Desktop or Downloads. NSIS creates and deletes a temporary file next to the
+installer; a folder whose ACL denies `DeleteSubdirectoriesAndFiles` (some
+sandboxed workspaces do) makes it fail with `Error writing temporary file.
+Make sure your temp folder is valid.` Copy the setup out of such a folder, or
+build with `-Output "$env:USERPROFILE\Downloads"`.
+
+## Package only
+
+```powershell
+powershell -ExecutionPolicy Bypass -File package.ps1 -Version 0.9.0 `
+  -MyGoBin "desktop\build\mygo\windows-amd64" `
+  -RuntimeBin "desktop\build\runtime"
+```
+
+`MyGoBin` must contain `ResearchAssistant.exe` from the MyGo build;
+`RuntimeBin` must contain `backend.exe` and `sandbox.exe`, and may contain
+`uv.exe`. Both default to `build/mygo/windows-amd64`.
+
+The script stages the files in `build/staging`, calls `makensis` with
+`installer.nsi`, and copies `ResearchAssistant-Setup.exe` to
+`dist/ResearchAssistant-<version>-Setup.exe`. `Version` must be three
+parts (for example `0.9.0`); it is written to VIProductVersion and the
+uninstall entry.
+
+The NSIS script can be smoke-tested in a Linux container:
 
 ```bash
 docker run --rm -v "$PWD/desktop/build:/build" -w /build debian:bookworm-slim \
@@ -31,6 +66,12 @@ docker run --rm -v "$PWD/desktop/build:/build" -w /build debian:bookworm-slim \
 powershell -ExecutionPolicy Bypass -File sign.ps1 -CertPath "C:\certs\ra.pfx" -CertPassword "..."
 ```
 
+`sign.ps1` signs `ResearchAssistant.exe`, `backend.exe`, `sandbox.exe`,
+`uv.exe` and the installer when they are in the current directory (the
+staging directory).
+
 ## Update manifest
 
-`update-manifest.example.json` 是 latest.json 的结构示例；`sha256` 为安装包哈希，`signature` 为对 sha256 十六进制字符串的 Ed25519 签名（base64）。
+`update-manifest.example.json` is the structure of `latest.json`: `sha256`
+is the installer hash and `signature` is the Ed25519 signature of the
+lower-case hex hash, base64 encoded.

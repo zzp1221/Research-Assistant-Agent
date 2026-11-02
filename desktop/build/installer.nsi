@@ -1,6 +1,7 @@
-; ResearchAssistant per-user installer.
+﻿; ResearchAssistant per-user installer.
 ; Build with: makensis /DVERSION=0.9.0 installer.nsi after staging
-; ResearchAssistant.exe, backend.exe, sandbox.exe, uv.exe and webview\*.
+; ResearchAssistant.exe (from the MyGo build), backend.exe, sandbox.exe and
+; optionally uv.exe.
 Unicode true
 !ifndef VERSION
   !define VERSION "0.9.0"
@@ -11,6 +12,27 @@ InstallDir "$LOCALAPPDATA\Programs\ResearchAssistant"
 InstallDirRegKey HKCU "Software\ResearchAssistant" "InstallDir"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
+
+!include "MUI2.nsh"
+
+!define MUI_ABORTWARNING
+!define MUI_WELCOMEPAGE_TITLE "ResearchAssistant 安装"
+!define MUI_WELCOMEPAGE_TEXT "本向导将安装 ResearchAssistant 桌面客户端。可以选择安装位置；用户数据会保存在 %LOCALAPPDATA%\ResearchAssistant，卸载时默认保留。"
+!define MUI_FINISHPAGE_RUN "$INSTDIR\ResearchAssistant.exe"
+!define MUI_FINISHPAGE_RUN_TEXT "运行 ResearchAssistant"
+
+!insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_COMPONENTS
+!insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_PAGE_FINISH
+
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+
+!insertmacro MUI_LANGUAGE "SimpChinese"
+!insertmacro MUI_LANGUAGE "English"
+
 VIProductVersion "${VERSION}.0"
 VIAddVersionKey "ProductName" "ResearchAssistant"
 VIAddVersionKey "CompanyName" "DeepSeek"
@@ -26,9 +48,6 @@ Section "Install"
   File "backend.exe"
   File "sandbox.exe"
   File /nonfatal "uv.exe"
-  SetOutPath "$INSTDIR\webview"
-  File /r "webview\*"
-  SetOutPath "$INSTDIR"
 
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   CreateShortcut "$SMPROGRAMS\ResearchAssistant.lnk" "$INSTDIR\ResearchAssistant.exe"
