@@ -8,7 +8,11 @@ param(
 $ErrorActionPreference = "Stop"
 $desktopRoot = Split-Path -Parent $PSScriptRoot
 if (-not $MyGoBin) { $MyGoBin = Join-Path $desktopRoot "build\mygo\windows-amd64" }
-if (-not $RuntimeBin) { $RuntimeBin = $MyGoBin }
+if (-not $RuntimeBin) {
+  $RuntimeBin = Join-Path $desktopRoot "build\runtime"
+  if (-not (Test-Path $RuntimeBin)) { $RuntimeBin = $MyGoBin }
+}
+if (-not [IO.Path]::IsPathRooted($Output)) { $Output = Join-Path $desktopRoot $Output }
 $staging = Join-Path $desktopRoot "build\staging"
 Remove-Item -Recurse -Force $staging -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $staging | Out-Null

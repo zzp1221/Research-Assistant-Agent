@@ -39,7 +39,8 @@ GOOS=windows GOARCH=amd64 go build -tags headless ./...
 Release builds use `desktop/build/build.ps1`; it builds the frontend, the
 backend and sandbox executables, runs `mygo build` and packages the result
 with the existing NSIS script. `desktop/mygo.json` pins the MyGo app name,
-version, resources and bindings.
+version, resources and bindings. The NSIS wizard lets the user choose the
+install directory and optionally the PDF association.
 
 The frontend build output must be copied to `webui/dist` before a release
 build; `build.ps1` does it. The checked-in placeholder only keeps the embed

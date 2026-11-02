@@ -11,6 +11,9 @@ func (ExecRunner) Start(spec CommandSpec) (Process, error) {
 	cmd := exec.Command(spec.Path, spec.Args...)
 	cmd.Dir = spec.Dir
 	cmd.Env = spec.Env
+	// backend.exe and sandbox.exe are console-subsystem programs; without
+	// this Windows would open a console window for each of them.
+	configureProcess(cmd)
 	return &execProcess{cmd: cmd}, nil
 }
 

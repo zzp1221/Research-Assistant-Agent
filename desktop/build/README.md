@@ -17,6 +17,10 @@ powershell -ExecutionPolicy Bypass -File build.ps1 -Version 0.9.0
 4. stages the artifacts and runs `package.ps1`, which writes
    `dist/ResearchAssistant-<version>-Setup.exe`.
 
+The installer is a standard MUI2 wizard: welcome, **install location**
+(with a Browse button), components (including the optional PDF association),
+install progress and finish. It remembers the previous install directory.
+
 Requires Go 1.27.3, Node.js 22 or later and `makensis` on `PATH`; pass
 `-Go C:\path\to\go.exe` when Go is not on `PATH`. `-SkipFrontend`,
 `-SkipRuntime`, `-SkipInstaller` and `-Output` narrow the run.
