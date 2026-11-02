@@ -192,6 +192,44 @@ func TestDiagnosticsEndpoint(t *testing.T) {
 	}
 }
 
+func TestPrepareServesLoadingPage(t *testing.T) {
+	health := healthServer()
+	defer health.Close()
+	shell := newTestShell(t, health)
+	if err := shell.Prepare(); err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	defer shell.Stop(context.Background())
+	proxyURL := shell.ProxyURL()
+	if proxyURL == "" {
+		t.Fatal("ProxyURL is empty after Prepare")
+	}
+	response, err := http.Get(proxyURL + "/")
+	if err != nil {
+		t.Fatalf("GET loading page: %v", err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "正在启动") {
+		t.Fatalf("loading page = %d %q", response.StatusCode, string(body))
+	}
+	if err := shell.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if shell.ProxyURL() != proxyURL {
+		t.Fatalf("Start moved the proxy from %q to %q", proxyURL, shell.ProxyURL())
+	}
+	response, err = http.Get(proxyURL + "/")
+	if err != nil {
+		t.Fatalf("GET frontend: %v", err)
+	}
+	body, _ = io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "desktop index") {
+		t.Fatalf("frontend = %d %q", response.StatusCode, string(body))
+	}
+}
+
 func TestHandlerRejectsNonLoopbackHost(t *testing.T) {
 	health := healthServer()
 	defer health.Close()

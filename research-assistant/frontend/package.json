@@ -8,8 +8,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "predev": "npm run sync:pdfjs",
-    "build": "npm run sync:pdfjs && tsc -b && vite build",
+    "predev": "node scripts/sync-pdfjs-assets.mjs",
+    "build": "node scripts/sync-pdfjs-assets.mjs && node ./node_modules/typescript/bin/tsc -b && node ./node_modules/vite/bin/vite.js build",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "lint": "eslint .",
     "test": "npm run test:unit && npm run test:components",
@@ -30,6 +30,7 @@
     "@xyflow/react": "^12.10.1",
     "axios": "^1.13.6",
     "lucide-react": "^0.577.0",
+    "mygo-runtime": "^0.7.4",
     "pdfjs-dist": "^3.11.174",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

@@ -1,4 +1,4 @@
-//go:build desktop && wails
+//go:build desktop && wails && !headless
 
 package main
 

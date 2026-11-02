@@ -423,12 +423,13 @@ cd docker-core && go test ./...
 - `desktop/proxy`：固定 loopback origin 的反向代理，SSE `FlushInterval=-1`，Host/Origin 守卫与 SPA 回退。
 - `desktop/settings`：`settings.json`、环境变量注入表、Windows DPAPI 密钥存储（非 Windows 为显式 unsupported）。
 - `desktop/diagnostics` / `desktop/updater`：脱敏诊断包；semver + SHA-256 + Ed25519 更新校验。
-- `desktop/onboarding` / `desktop/bridge` / `desktop/tray`：首次启动向导、Wails 绑定、托盘契约。
+- `desktop/onboarding` / `desktop/bridge` / `desktop/tray`：首次启动向导、MyGo 绑定（`mygo.Bind`；Wails 回退仍暴露 `window.go.main.API`）、托盘契约。
+- `desktop/mygo`：MyGo 适配层（托盘、对话框、通知、Shell），业务只依赖这一层。
 - `docker-sandbox/internal/engine/native`：uv 管理的 CPython + venv 缓存、命令翻译、AppContainer/lowil runner、双 profile 网络、Job 限额、附录 D 探针；非 Windows 返回 `unsupported_platform`。
 - `docker-sandbox/internal/engine/vm` / `remote`：WSL2 检测与执行路径（路径/argv 翻译）、OpenSandbox Provider 适配器。
-- 后端、docker-sandbox、desktop 均支持 `GOOS=windows GOARCH=amd64 go build ./...`（desktop 另验证 Wails tag）；Linux 容器内运行纯逻辑单测。
+- 后端、docker-sandbox、desktop 均支持 `GOOS=windows GOARCH=amd64 go build ./...`；desktop 默认走 MyGo 入口，Wails 回退用 `-tags "desktop wails"`，headless stub 用 `-tags headless`。Linux 容器内运行纯逻辑单测。
 
-构建说明见 [desktop/README.md](desktop/README.md)。Wails 入口使用 `//go:build desktop && wails`，不改变默认 CI 构建。
+构建说明见 [desktop/README.md](desktop/README.md)。默认入口是 MyGo（`desktop/main_mygo.go`，`mygo.Bind` + 现有 loopback proxy），Wails 入口保留为 `-tags "desktop wails"` 回退，headless stub 为 `-tags headless`。
 
 ### 3.6 模块说明
 

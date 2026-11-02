@@ -2,6 +2,12 @@
 
 本文件按时间倒序汇总仓库的主要提交与交付内容，供 README 只保留稳定说明。逐轮设计、缺陷清单与验收证据仍在 [design](design/) 与 [improvement-2026-10-26](improvement-2026-10-26/) 中。
 
+## 2026-11-02
+
+| 提交 | 内容 |
+|---|---|
+| 工作区（feature/desk） | 用 MyGo 0.7.4 替换 Wails 作为默认桌面外壳：新增 `desktop/main_mygo.go`、`desktop/mygo` 适配层（托盘/对话框/通知/Shell）、`desktop/mygo.json`、生成的 `research-assistant/frontend/src/services/mygo.ts`；bridge 通过 `mygo.Bind` 暴露，窗口加载现有 loopback proxy（方案 B），保留 Wails `-tags "desktop wails"` 回退；单实例改为 MyGo 锁并修复崩溃后 supervisor 陈旧锁；Go 工作区升级到 1.27.3；新增 `desktop/build/build.ps1` 与 MyGo 产物打包流程。详见 [2026-11-02-mygo-desktop-shell](design/2026-11-02-mygo-desktop-shell.md)。 |
+
 ## 2026-11-01
 
 | 提交 | 内容 |

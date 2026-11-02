@@ -4,12 +4,13 @@
 
 ## 最近验证
 
-- 日期：2026-11-01（Asia/Shanghai）
-- 代码状态：`feature/memory` + Agent 记忆系统 M0–M3（基于 feature/desk 工作区）
-- 环境：Docker Compose 栈；容器内执行 Go/Node/Python 测试；真实 OpenAI-compatible provider
+- 日期：2026-11-02（Asia/Shanghai）
+- 代码状态：`feature/desk` + MyGo 0.7.4 桌面外壳（Wails 回退保留）
+- 环境：Windows 11 本机（Go 1.27.3、WebView2 156、NSIS 3.13）+ CI 容器回归
 
 | 层级 | 覆盖 | 结果 |
 |---|---|---|
+| 2026-11-02 MyGo 桌面外壳 | `desktop/main_mygo.go`、`desktop/mygo` 适配层、`mygo.Bind`、loopback proxy、托盘/通知/单实例/NSIS 安装包 | `go test ./...`、`go vet ./...`（desktop）通过；Windows `mygo build` 产出 18.6 MB exe 与 20 MB NSIS 安装包；真实启动验证窗口、前端、`/api/health` 与 bridge（NeedsOnboarding/GetRuntimeSettings/ExportDiagnostics/Notify）；关闭到托盘与第二实例唤起通过；Wails `-tags "desktop wails"` 与 Linux 交叉编译通过；前端 37 文件/146 tests + build + lint + bundle 通过。Windows 本机 backend/docker-sandbox 的失败项均为平台限制（symlink 权限、POSIX 文件权限、PDF OCR 外部工具、Windows 文件锁）；Linux 容器（golang:1.27.3-bookworm）内 backend/docker-sandbox/desktop 全量测试与 go vet 通过 |
 | 2026-11-01 记忆系统 | internal/memory + session + chat 多轮 + plan/任务注入 + consolidation + 前端 MemoryPanel | 容器内 `go build ./...`、`go vet ./...`、`go test ./...` 通过；前端 36 文件/144 tests + build + lint 通过；长对话 E2E 32 请求/24 消息上限/摘要生效；计划 A→B parent_plan_id 通过；真实 LLM（deepseek-v4.1-flash）15 轮基础 E2E 与 30 轮科研长任务 + 15 节点计划 A/B 通过；长任务发现并修复 createPlan nil pointer；详见 [MEMORY-TEST-REPORT](improvement-2026-11-01/MEMORY-TEST-REPORT.md) |
 | 后端构建/单测 | `go build ./...`、`go vet ./...`、`go test -count=1 ./...` | 通过（第八轮新增 api/budget/project/usage/scheduler 用例全绿） |
 | 后端 race | agent/conversation、prompts、planner、api、literature、documents、scheduler、modelprofile、modelresolver | 通过 |

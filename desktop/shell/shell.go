@@ -104,6 +104,34 @@ func New(cfg Config) *Shell {
 	return &Shell{cfg: cfg, status: Status{State: StateIdle, AppVersion: cfg.AppVersion, LogDir: cfg.LogDir, DataDir: cfg.DataDir}}
 }
 
+// Prepare binds the loopback listener and serves the loading page before the
+// child services start, so a desktop window can open immediately. Start calls
+// it when it has not been called yet.
+func (s *Shell) Prepare() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.listener != nil {
+		return nil
+	}
+	listenAddr := s.cfg.ListenAddr
+	if listenAddr == "" {
+		listenAddr = "127.0.0.1:0"
+	}
+	listener, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		return fmt.Errorf("listen proxy: %w", err)
+	}
+	server := &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	s.listener = listener
+	s.server = server
+	s.proxyURL = "http://" + listener.Addr().String()
+	s.status.ProxyURL = s.proxyURL
+	go func() {
+		_ = server.Serve(listener)
+	}()
+	return nil
+}
+
 // Start launches the backend and sandbox, then serves the loopback UI proxy.
 func (s *Shell) Start(ctx context.Context) error {
 	s.mu.Lock()
@@ -192,16 +220,10 @@ func (s *Shell) Start(ctx context.Context) error {
 		_ = sup.Stop(context.Background())
 		return s.fail(fmt.Errorf("create proxy: %w", err))
 	}
-	listenAddr := s.cfg.ListenAddr
-	if listenAddr == "" {
-		listenAddr = "127.0.0.1:0"
-	}
-	listener, err := net.Listen("tcp", listenAddr)
-	if err != nil {
+	if err := s.Prepare(); err != nil {
 		_ = sup.Stop(context.Background())
-		return s.fail(fmt.Errorf("listen proxy: %w", err))
+		return s.fail(err)
 	}
-	server := &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	s.mu.Lock()
 	s.settings = cfg
 	s.paths = dataPaths
@@ -210,20 +232,13 @@ func (s *Shell) Start(ctx context.Context) error {
 	s.sandboxTok = sandboxToken
 	s.sup = sup
 	s.handler = proxyHandler
-	s.listener = listener
-	s.server = server
-	s.proxyURL = "http://" + listener.Addr().String()
 	s.status.State = StateRunning
-	s.status.ProxyURL = s.proxyURL
 	s.status.BackendURL = backendURL
 	s.status.SandboxURL = sandboxURL
 	s.status.OnboardingRequired = !cfg.OnboardingCompleted
 	s.status.LogDir = s.cfg.LogDir
 	s.status.DataDir = s.cfg.DataDir
 	s.mu.Unlock()
-	go func() {
-		_ = server.Serve(listener)
-	}()
 	s.startMonitor()
 	return nil
 }

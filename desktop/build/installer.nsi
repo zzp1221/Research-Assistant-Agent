@@ -1,6 +1,7 @@
-; ResearchAssistant per-user installer.
+﻿; ResearchAssistant per-user installer.
 ; Build with: makensis /DVERSION=0.9.0 installer.nsi after staging
-; ResearchAssistant.exe, backend.exe, sandbox.exe, uv.exe and webview\*.
+; ResearchAssistant.exe (from the MyGo build), backend.exe, sandbox.exe and
+; optionally uv.exe.
 Unicode true
 !ifndef VERSION
   !define VERSION "0.9.0"
@@ -26,9 +27,6 @@ Section "Install"
   File "backend.exe"
   File "sandbox.exe"
   File /nonfatal "uv.exe"
-  SetOutPath "$INSTDIR\webview"
-  File /r "webview\*"
-  SetOutPath "$INSTDIR"
 
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   CreateShortcut "$SMPROGRAMS\ResearchAssistant.lnk" "$INSTDIR\ResearchAssistant.exe"

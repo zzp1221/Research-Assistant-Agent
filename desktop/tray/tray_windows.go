@@ -94,7 +94,8 @@ func (t *windowsTray) Notify(title, body string) error {
 }
 
 // notifyNow uses the tray tooltip as a fallback because systray does not expose
-// Windows toast notifications. The Wails layer still emits a UI event.
+// Windows toast notifications. The MyGo tray implementation shows real system
+// notifications; this systray driver remains for the Wails fallback.
 func (t *windowsTray) notifyNow(notification Notification) {
 	if notification.Title == "" && notification.Body == "" {
 		return

@@ -1,5 +1,5 @@
-# Keep the builder version aligned with docker-sandbox/go.mod (go 1.26.1).
-FROM golang:1.26.1-bookworm AS builder
+# Keep the builder version aligned with docker-sandbox/go.mod (go 1.27.3).
+FROM golang:1.27.3-bookworm AS builder
 
 ENV GOTOOLCHAIN=local \
     GOPROXY=https://goproxy.cn,direct

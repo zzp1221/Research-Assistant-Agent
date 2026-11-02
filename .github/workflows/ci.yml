@@ -86,6 +86,62 @@ jobs:
         working-directory: tool
         run: go build ./...
 
+  desktop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache: true
+      - name: Desktop tests
+        working-directory: desktop
+        run: |
+          go test ./...
+          go vet ./...
+      - name: Desktop Windows cross-build
+        working-directory: desktop
+        run: GOOS=windows GOARCH=amd64 go build ./...
+
+  desktop-mygo:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: research-assistant/frontend/package-lock.json
+      - name: Install frontend
+        working-directory: research-assistant/frontend
+        run: npm ci --no-audit --no-fund
+      - name: Build frontend
+        working-directory: research-assistant/frontend
+        run: npm run build
+      - name: Stage frontend for the embed
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force desktop/webui/dist -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path desktop/webui/dist | Out-Null
+          Copy-Item -Recurse -Force research-assistant/frontend/dist/* desktop/webui/dist
+      - name: Generated TypeScript client is up to date
+        working-directory: desktop
+        run: |
+          go run github.com/egoist/mygo/cmd/mygo@v0.7.4 generate .
+          git diff --exit-code -- ../research-assistant/frontend/src/services/mygo.ts
+      - name: Build ResearchAssistant.exe with MyGo
+        working-directory: desktop
+        run: go run github.com/egoist/mygo/cmd/mygo@v0.7.4 build -skip-installer .
+      - name: Upload the desktop executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: ResearchAssistant-mygo-windows
+          path: desktop/build/mygo/windows-amd64
+
   frontend:
     runs-on: ubuntu-latest
     steps:
