@@ -69,11 +69,21 @@ func buildResearchContext(ownerID, sessionID, rawIntent string, attachments []ma
 			continue
 		}
 		// Provider metadata (arXiv/Crossref) corrects the known PDF extraction
-		// gaps: split author names, the arXiv stamp year and missing DOI.
+		// gaps: split author names, the arXiv stamp year and missing DOI. The
+		// record form keeps the DOI on models.PaperMetadata so PaperIdentity can
+		// use it as the highest-priority canonical key.
 		if providerRaw := stringValue(item["paper_metadata"]); providerRaw != "" {
 			var provider models.PaperMetadata
 			if json.Unmarshal([]byte(providerRaw), &provider) == nil {
-				metadata = documents.ApplyProviderMetadata(metadata, provider)
+				merged, doi := documents.ApplyProviderRecord(metadata, documents.ProviderRecord{
+					Source: provider.Source, Title: provider.Title, Authors: provider.Authors,
+					Year: provider.Year, Venue: provider.Venue, DOI: provider.DOI,
+					ArxivID: provider.ArxivID, Abstract: provider.Abstract, Confidence: provider.Confidence,
+				})
+				metadata = merged
+				if doi != "" {
+					metadata.DOI = doi
+				}
 			}
 		}
 		if title := extractQuotedPaperTitle(rawIntent); title != "" {

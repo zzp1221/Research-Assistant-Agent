@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { Bot, Brain, Cpu, Plug, Settings2 } from 'lucide-react';
+import { BookOpen, Bot, Brain, Cpu, Plug, Settings2 } from 'lucide-react';
 import { ModelSettingsPanel } from './ModelSettingsPanel';
 import { ToolsSettingsPanel } from './ToolsSettingsPanel';
 import { AgentSettingsPanel } from './AgentSettingsPanel';
 import { RuntimePanel } from './RuntimePanel';
 import { MemoryPanel } from '../memory/MemoryPanel';
+import { PaperWikiPanel } from '../wiki/PaperWikiPanel';
 
-export type SettingsTab = 'models' | 'tools' | 'agents' | 'runtime' | 'memory';
+export type SettingsTab = 'models' | 'tools' | 'agents' | 'runtime' | 'memory' | 'wiki';
 
 interface SettingsPanelProps {
   onClose?: () => void;
@@ -19,6 +20,7 @@ const tabs: { id: SettingsTab; label: string; icon: typeof Settings2 }[] = [
   { id: 'agents', label: 'Agent', icon: Bot },
   { id: 'runtime', label: '运行模式', icon: Cpu },
   { id: 'memory', label: '记忆', icon: Brain },
+  { id: 'wiki', label: '论文', icon: BookOpen },
 ];
 
 /** Settings shell: model, tool and agent configuration in one place. */
@@ -52,6 +54,7 @@ export function SettingsPanel({ onClose, initialTab = 'models' }: SettingsPanelP
         {tab === 'agents' && <AgentSettingsPanel onClose={onClose} />}
         {tab === 'runtime' && <RuntimePanel onClose={onClose} />}
         {tab === 'memory' && <MemoryPanel onClose={onClose} />}
+        {tab === 'wiki' && <PaperWikiPanel onClose={onClose} />}
       </div>
     </div>
   );

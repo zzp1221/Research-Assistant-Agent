@@ -17,6 +17,7 @@ type TaskPromptInput struct {
 	System          string
 	CoreMemory      string
 	RetrievedMemory string
+	WikiContext     string
 	Plan            *models.PlanGraph
 	PlanContextText string
 	Task            *models.TaskNode
@@ -155,6 +156,12 @@ func BuildTaskPrompt(in TaskPromptInput) (TaskPrompt, error) {
 	if retrieved := strings.TrimSpace(in.RetrievedMemory); retrieved != "" {
 		sections = append(sections, Section{Name: "retrieved_memory", Content: retrieved, Priority: 3})
 	}
+	// wiki_context shares priority 3 with retrieved_memory; stable sorting keeps
+	// the documented order (retrieved first, wiki second) because it is appended
+	// after it.
+	if wikiContext := strings.TrimSpace(in.WikiContext); wikiContext != "" {
+		sections = append(sections, Section{Name: "wiki_context", Content: wikiContext, Priority: 3})
+	}
 	if len(in.Inputs) > 0 {
 		if inputsText, _ := FormatTaskInputsForPrompt(in.Inputs, limit-systemTokens, counter); strings.TrimSpace(inputsText) != "" {
 			sections = append(sections, Section{Name: "task_inputs", Content: inputsText, Priority: 4})
@@ -169,6 +176,11 @@ func BuildTaskPrompt(in TaskPromptInput) (TaskPrompt, error) {
 	}
 	report.Budget = limit
 	report.TotalTokens += systemTokens
+	for _, section := range report.Sections {
+		if section.Name == "wiki_context" {
+			report.WikiTokens = section.IncludedTokens
+		}
+	}
 	return TaskPrompt{System: in.System, User: user, Report: report}, nil
 }
 

@@ -122,8 +122,8 @@ func RecordPlan(ctx context.Context, store Store, plan *models.PlanGraph) error 
 		fact := Record{
 			ID: "mem-paper-" + plan.ID, Kind: KindFact, Scope: scope,
 			Title:   truncateRunes("论文："+paper.Title, 120),
-			Content: fmt.Sprintf("标题：%s；作者：%s；年份：%d；会议：%s；arXiv：%s；仓库：%s", paper.Title, strings.Join(paper.Authors, ", "), paper.Year, paper.Venue, paper.ArxivID, paper.RepoURL),
-			Tags:    []string{"paper", "metadata"}, Entities: []Entity{{Type: "paper", Value: paper.Title}, {Type: "paper", Value: paper.ArxivID}},
+			Content: fmt.Sprintf("标题：%s；作者：%s；年份：%d；会议：%s；DOI：%s；arXiv：%s；仓库：%s", paper.Title, strings.Join(paper.Authors, ", "), paper.Year, paper.Venue, paper.DOI, paper.ArxivID, paper.RepoURL),
+			Tags:    []string{"paper", "metadata"}, Entities: []Entity{{Type: "paper", Value: paper.Title}, {Type: "paper", Value: "doi:" + paper.DOI}, {Type: "paper", Value: paper.ArxivID}},
 			Source:   Source{Type: "plan", Ref: plan.ID, CreatedAt: now},
 			Evidence: Evidence{Class: "paper_derived", Confidence: paper.Confidence}, Validity: Validity{ValidFrom: planTime(plan), RecordedAt: now},
 			Importance: 8, Confidence: 0.95, Trust: TrustVerified, Sensitivity: "private", Status: StatusActive,

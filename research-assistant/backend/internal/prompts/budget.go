@@ -110,6 +110,7 @@ type SectionReport struct {
 type PromptReport struct {
 	TotalTokens int             `json:"total_tokens"`
 	Budget      int             `json:"budget"`
+	WikiTokens  int             `json:"wiki_tokens,omitempty"`
 	Sections    []SectionReport `json:"sections,omitempty"`
 }
 

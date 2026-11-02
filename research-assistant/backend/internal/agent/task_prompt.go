@@ -70,6 +70,7 @@ func buildAgentPromptTextWithDescription(sharedContext map[string]interface{}, t
 	planContext := ""
 	coreMemory := ""
 	retrievedMemory := ""
+	wikiContext := ""
 	var plan *models.PlanGraph
 	if sharedContext != nil {
 		if value, ok := sharedContext["plan_context"].(string); ok {
@@ -81,6 +82,9 @@ func buildAgentPromptTextWithDescription(sharedContext map[string]interface{}, t
 		if value, ok := sharedContext["retrieved_memory"].(string); ok {
 			retrievedMemory = value
 		}
+		if value, ok := sharedContext["wiki_context"].(string); ok {
+			wikiContext = value
+		}
 		if value, ok := sharedContext["plan_graph"].(*models.PlanGraph); ok {
 			plan = value
 		}
@@ -89,6 +93,7 @@ func buildAgentPromptTextWithDescription(sharedContext map[string]interface{}, t
 		System:          systemPrompt,
 		CoreMemory:      coreMemory,
 		RetrievedMemory: retrievedMemory,
+		WikiContext:     wikiContext,
 		Plan:            plan,
 		PlanContextText: planContext,
 		TaskName:        task.Name,

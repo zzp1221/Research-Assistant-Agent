@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"research-assistant-backend/internal/lockfile"
 )
 
 // Store is the durable memory interface. Every method takes an owner-scoped
@@ -113,26 +115,12 @@ func NewMemoryStore() *FileStore {
 }
 
 func (s *FileStore) acquireLock() error {
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		f, err := os.OpenFile(s.lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-		if err == nil {
-			_, _ = fmt.Fprintf(f, "%d\n%s\n", os.Getpid(), time.Now().UTC().Format(time.RFC3339Nano))
-			_ = f.Close()
-			return nil
-		}
-		if !os.IsExist(err) {
-			return fmt.Errorf("create memory lock: %w", err)
-		}
-		if info, statErr := os.Stat(s.lockPath); statErr == nil && time.Since(info.ModTime()) > 10*time.Minute {
-			_ = os.Remove(s.lockPath)
-			continue
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("memory store is locked by another process: %s", s.lockPath)
-		}
-		time.Sleep(50 * time.Millisecond)
+	file, err := lockfile.Acquire(s.lockPath, 3*time.Second)
+	if err != nil {
+		return fmt.Errorf("memory store lock: %w", err)
 	}
+	_ = file.Close()
+	return nil
 }
 
 func (s *FileStore) releaseLock() {
@@ -313,6 +301,15 @@ func (s *FileStore) Update(ctx context.Context, ownerID, id string, patch Patch)
 	}
 	if patch.Status != nil {
 		rec.Status = *patch.Status
+	}
+	if patch.Refs != nil {
+		rec.Refs = append([]SourceRef(nil), (*patch.Refs)...)
+	}
+	if patch.Attributes != nil {
+		rec.Attributes = map[string]any{}
+		for key, value := range *patch.Attributes {
+			rec.Attributes[key] = value
+		}
 	}
 	rec.Version++
 	rec.UpdatedAt = time.Now().UTC()

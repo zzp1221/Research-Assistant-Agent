@@ -94,6 +94,20 @@ type Evidence struct {
 	Hidden     bool    `json:"hidden,omitempty"`
 }
 
+// SourceRef is one external piece of evidence a memory points at. It is
+// deliberately separate from Evidence: Evidence says how trustworthy the
+// record is, SourceRef says which page/section/quote/artifact it cites.
+type SourceRef struct {
+	DocumentID  string `json:"document_id,omitempty"`
+	BlockID     string `json:"block_id,omitempty"`
+	Page        int    `json:"page,omitempty"`
+	Section     string `json:"section,omitempty"`
+	Quote       string `json:"quote,omitempty"`
+	ArtifactRef string `json:"artifact_ref,omitempty"`
+	TaskID      string `json:"task_id,omitempty"`
+	PlanID      string `json:"plan_id,omitempty"`
+}
+
 // Validity is the bi-temporal window of a fact.
 type Validity struct {
 	ValidFrom    *time.Time `json:"valid_from,omitempty"`
@@ -111,32 +125,34 @@ type Entity struct {
 
 // Record is one durable memory.
 type Record struct {
-	ID           string     `json:"id"`
-	Version      int        `json:"version"`
-	Kind         Kind       `json:"kind"`
-	Scope        Scope      `json:"scope"`
-	Title        string     `json:"title"`
-	Content      string     `json:"content"`
-	Tags         []string   `json:"tags,omitempty"`
-	Entities     []Entity   `json:"entities,omitempty"`
-	Source       Source     `json:"source"`
-	Evidence     Evidence   `json:"evidence"`
-	Validity     Validity   `json:"validity"`
-	Importance   int        `json:"importance"`
-	Confidence   float64    `json:"confidence,omitempty"`
-	Trust        Trust      `json:"trust"`
-	Sensitivity  string     `json:"sensitivity,omitempty"`
-	Status       Status     `json:"status"`
-	Pinned       bool       `json:"pinned,omitempty"`
-	UseCount     int        `json:"use_count,omitempty"`
-	LastUsedAt   *time.Time `json:"last_used_at,omitempty"`
-	ContentHash  string     `json:"content_hash,omitempty"`
-	Tokens       int        `json:"tokens,omitempty"`
-	DerivedFrom  []string   `json:"derived_from,omitempty"`
-	PromotedFrom string     `json:"promoted_from,omitempty"`
-	Conflict     bool       `json:"conflict,omitempty"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID           string         `json:"id"`
+	Version      int            `json:"version"`
+	Kind         Kind           `json:"kind"`
+	Scope        Scope          `json:"scope"`
+	Title        string         `json:"title"`
+	Content      string         `json:"content"`
+	Tags         []string       `json:"tags,omitempty"`
+	Entities     []Entity       `json:"entities,omitempty"`
+	Source       Source         `json:"source"`
+	Evidence     Evidence       `json:"evidence"`
+	Refs         []SourceRef    `json:"refs,omitempty"`
+	Attributes   map[string]any `json:"attributes,omitempty"`
+	Validity     Validity       `json:"validity"`
+	Importance   int            `json:"importance"`
+	Confidence   float64        `json:"confidence,omitempty"`
+	Trust        Trust          `json:"trust"`
+	Sensitivity  string         `json:"sensitivity,omitempty"`
+	Status       Status         `json:"status"`
+	Pinned       bool           `json:"pinned,omitempty"`
+	UseCount     int            `json:"use_count,omitempty"`
+	LastUsedAt   *time.Time     `json:"last_used_at,omitempty"`
+	ContentHash  string         `json:"content_hash,omitempty"`
+	Tokens       int            `json:"tokens,omitempty"`
+	DerivedFrom  []string       `json:"derived_from,omitempty"`
+	PromotedFrom string         `json:"promoted_from,omitempty"`
+	Conflict     bool           `json:"conflict,omitempty"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
 }
 
 // Normalize fills default fields and computes the content hash. It is called
@@ -233,7 +249,9 @@ type ScoredRecord struct {
 	PinnedBonus bool    `json:"pinned_bonus,omitempty"`
 }
 
-// Citation is the user-visible reference for an injected memory.
+// Citation is the user-visible reference for an injected memory. PaperID,
+// PointID, Page, Section and Quote are optional wiki extensions; older clients
+// that only read the original fields keep working.
 type Citation struct {
 	MemoryID string `json:"memory_id"`
 	Title    string `json:"title"`
@@ -241,6 +259,11 @@ type Citation struct {
 	Date     string `json:"date,omitempty"`
 	Source   string `json:"source,omitempty"`
 	Trust    Trust  `json:"trust,omitempty"`
+	PaperID  string `json:"paper_id,omitempty"`
+	PointID  string `json:"point_id,omitempty"`
+	Page     int    `json:"page,omitempty"`
+	Section  string `json:"section,omitempty"`
+	Quote    string `json:"quote,omitempty"`
 }
 
 // Context is the rendered memory context for one prompt.
@@ -300,10 +323,12 @@ func DefaultSettings() Settings {
 
 // Patch is a partial update for PATCH /api/memories/:id.
 type Patch struct {
-	Title      *string   `json:"title,omitempty"`
-	Content    *string   `json:"content,omitempty"`
-	Tags       *[]string `json:"tags,omitempty"`
-	Importance *int      `json:"importance,omitempty"`
-	Pinned     *bool     `json:"pinned,omitempty"`
-	Status     *Status   `json:"status,omitempty"`
+	Title      *string         `json:"title,omitempty"`
+	Content    *string         `json:"content,omitempty"`
+	Tags       *[]string       `json:"tags,omitempty"`
+	Importance *int            `json:"importance,omitempty"`
+	Pinned     *bool           `json:"pinned,omitempty"`
+	Status     *Status         `json:"status,omitempty"`
+	Refs       *[]SourceRef    `json:"refs,omitempty"`
+	Attributes *map[string]any `json:"attributes,omitempty"`
 }

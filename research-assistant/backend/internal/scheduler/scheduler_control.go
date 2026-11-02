@@ -65,6 +65,14 @@ func (s *Scheduler) CancelPlanWithActor(planID, reason, actor string) error {
 		payload["canceled_runtime_actions"] = canceledActions
 	}
 	s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "plan_canceled", TaskStatus: string(models.StatusCanceled), Payload: payload, Timestamp: now})
+	// The normal terminal path records plan memory in scheduler_execute.go; the
+	// cancel path bypasses it, so record the canceled plan here as well. The
+	// memory sink also refreshes the Paper Wiki reproduction/negative point.
+	if s.memorySink != nil {
+		if latest, err := s.store.GetPlan(planID); err == nil && latest != nil {
+			_ = s.memorySink.RecordPlan(context.Background(), latest)
+		}
+	}
 	s.cleanupPlanSandboxes(context.Background(), planID)
 	s.releasePlanBudget(planID)
 	s.recordTerminalMetrics(planID)

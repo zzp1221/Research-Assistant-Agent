@@ -614,7 +614,10 @@ func limitResults(results []Result, limit int) []Result {
 	return results[:limit]
 }
 
-func normalizeTitle(raw string) string {
+// NormalizeTitle lowercases a title and keeps only letters/digits separated by
+// single spaces. Wiki paper identity uses the same normalization so title-based
+// aliases match the literature library exactly.
+func NormalizeTitle(raw string) string {
 	var builder strings.Builder
 	space := false
 	for _, char := range strings.ToLower(strings.TrimSpace(raw)) {
@@ -630,6 +633,8 @@ func normalizeTitle(raw string) string {
 	}
 	return strings.TrimSpace(builder.String())
 }
+
+func normalizeTitle(raw string) string { return NormalizeTitle(raw) }
 
 func cleanText(raw string) string {
 	return strings.Join(strings.Fields(raw), " ")

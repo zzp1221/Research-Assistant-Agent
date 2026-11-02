@@ -12,6 +12,7 @@ import (
 	"research-assistant-backend/internal/planner"
 	"research-assistant-backend/internal/prompts"
 	"research-assistant-backend/internal/tools"
+	"research-assistant-backend/internal/wiki"
 	"research-assistant-backend/internal/workspace"
 	"strings"
 	"time"
@@ -77,6 +78,15 @@ type RoutedTaskExecutor struct {
 	ToolInvoker *tools.Invoker
 	// Memory optionally injects core/retrieved memory and records task episodes.
 	Memory memory.Store
+	// Wiki optionally injects paper wiki context and records wiki points.
+	Wiki WikiSource
+}
+
+// WikiSource is the Paper Wiki hook used by the routed executor. The API layer
+// implements it with wiki.Builder; tests can inject a fake.
+type WikiSource interface {
+	RetrieveForTask(ctx context.Context, q wiki.TaskQuery) (wiki.WikiContext, error)
+	RefreshForTask(ctx context.Context, plan *models.PlanGraph, task *models.TaskNode, result *models.TaskExecutionResult) error
 }
 
 // SetAgentRuntime wires the tool and agent-profile runtime. It is separate from
@@ -90,6 +100,11 @@ func (e *RoutedTaskExecutor) SetAgentRuntime(profiles *agentprofile.Registry, pr
 // SetMemory wires the optional memory store used for injection and task episodes.
 func (e *RoutedTaskExecutor) SetMemory(store memory.Store) {
 	e.Memory = store
+}
+
+// SetWiki wires the optional Paper Wiki source used for context injection.
+func (e *RoutedTaskExecutor) SetWiki(source WikiSource) {
+	e.Wiki = source
 }
 
 func NewRoutedTaskExecutor(librarian, data, coder AgentRunner, specialized ...AgentRunner) *RoutedTaskExecutor {
@@ -284,6 +299,34 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		}
 		sharedContext["prompt_budget"] = budget
 	}
+	budget := prompts.DefaultPromptBudget()
+	if plan.ModelSnapshot != nil && plan.ModelSnapshot.Text != nil {
+		if plan.ModelSnapshot.Text.ContextWindowTokens > 0 {
+			budget.ContextWindow = plan.ModelSnapshot.Text.ContextWindowTokens
+		}
+		if plan.ModelSnapshot.Text.MaxOutputTokens > 0 {
+			budget.MaxOutput = plan.ModelSnapshot.Text.MaxOutputTokens
+		}
+	}
+	// Wiki context is computed first so the retrieved-memory budget can be
+	// reduced by the wiki tokens (shared dynamic budget, design §10.3).
+	wikiTokens := 0
+	if e.Wiki != nil && wiki.InjectionEnabled() {
+		entities := make([]memory.Entity, 0, 3)
+		if plan.Context != nil && plan.Context.Paper != nil {
+			entities = append(entities, wiki.MatchEntities(plan.Context.Paper)...)
+		}
+		query := wiki.TaskQuery{
+			OwnerID: plan.OwnerID, ProjectID: plan.ProjectID, SessionID: plan.SessionID,
+			Text: task.Name + " " + prompts.TruncateRunes(task.Description, 500), Entities: entities,
+			Limit: 2, PromptLimit: budget.PromptLimit(),
+		}
+		if wikiCtx, wikiErr := e.Wiki.RetrieveForTask(ctx, query); wikiErr == nil && strings.TrimSpace(wikiCtx.Text) != "" {
+			sharedContext["wiki_context"] = wikiCtx.Text
+			sharedContext["wiki_refs"] = wikiCtx.PaperIDs
+			wikiTokens = wikiCtx.Tokens
+		}
+	}
 	if e.Memory != nil && memory.InjectionEnabled() {
 		settings := memory.DefaultSettings()
 		query := memory.Query{
@@ -292,7 +335,11 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 			Text:  memory.BuildQuery(task.Name+" "+prompts.TruncateRunes(task.Description, 500), nil, 2000),
 			Limit: settings.RetrievalTopK,
 		}
-		if memCtx, memErr := e.Memory.Retrieve(ctx, query, settings.CoreBudgetTokens, 3000); memErr == nil {
+		retrievedBudget := 3000 - wikiTokens
+		if retrievedBudget < 0 {
+			retrievedBudget = 0
+		}
+		if memCtx, memErr := e.Memory.Retrieve(ctx, query, settings.CoreBudgetTokens, retrievedBudget); memErr == nil {
 			sharedContext["core_memory"] = memCtx.CoreText
 			sharedContext["retrieved_memory"] = memCtx.RetrievedText
 			refs := make([]string, 0, len(memCtx.Citations))
@@ -345,6 +392,9 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 	}
 	if e.Memory != nil {
 		_ = memory.RecordTask(ctx, e.Memory, plan, task, result)
+	}
+	if e.Wiki != nil {
+		_ = e.Wiki.RefreshForTask(ctx, plan, task, result)
 	}
 	return result, nil
 }

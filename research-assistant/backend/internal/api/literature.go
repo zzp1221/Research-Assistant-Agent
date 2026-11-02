@@ -562,6 +562,7 @@ func (r *planRuntime) importPlanReference(ctx context.Context, ownerID, sessionI
 		Authors:    result.Authors,
 		Year:       result.Year,
 		Venue:      result.Venue,
+		DOI:        result.DOI,
 		ArxivID:    result.ArxivID,
 		Abstract:   result.Abstract,
 		Source:     result.Source,

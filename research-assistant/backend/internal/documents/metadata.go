@@ -697,9 +697,9 @@ func foldDiacritics(value string) string {
 }
 
 // ProviderRecord is a trusted metadata record returned by an external provider
-// (arXiv, Crossref, Semantic Scholar). DOI lives here because
-// models.PaperMetadata has no DOI field yet; callers that need to persist it
-// take the second return value of ApplyProviderRecord.
+// (arXiv, Crossref, Semantic Scholar). DOI is mirrored into
+// models.PaperMetadata by ApplyProviderRecord and also returned for callers
+// that keep the provider record separate.
 type ProviderRecord struct {
 	Source     string
 	Title      string
@@ -742,6 +742,11 @@ func ApplyProviderMetadata(base models.PaperMetadata, provider models.PaperMetad
 		contributed = true
 		identified = true
 	}
+	if doi := normalizeProviderDOI(provider.DOI); doi != "" {
+		merged.DOI = doi
+		contributed = true
+		identified = true
+	}
 	if arxivID := paperid.StripVersion(provider.ArxivID); arxivID != "" {
 		merged.ArxivID = arxivID
 		contributed = true
@@ -769,20 +774,38 @@ func ApplyProviderMetadata(base models.PaperMetadata, provider models.PaperMetad
 }
 
 // ApplyProviderRecord merges a full provider record and returns the merged
-// metadata plus the provider DOI (empty when absent). The DOI is returned
-// separately because models.PaperMetadata has no DOI field yet.
+// metadata plus the normalized provider DOI (empty when absent).
 func ApplyProviderRecord(base models.PaperMetadata, record ProviderRecord) (models.PaperMetadata, string) {
+	doi := normalizeProviderDOI(record.DOI)
 	merged := ApplyProviderMetadata(base, models.PaperMetadata{
 		Title:      record.Title,
 		Authors:    record.Authors,
 		Year:       record.Year,
 		Venue:      record.Venue,
+		DOI:        doi,
 		ArxivID:    record.ArxivID,
 		Abstract:   record.Abstract,
 		Source:     record.Source,
 		Confidence: record.Confidence,
 	})
-	return merged, strings.TrimSpace(record.DOI)
+	if doi != "" {
+		merged.DOI = doi
+	}
+	return merged, doi
+}
+
+// normalizeProviderDOI trims a provider DOI and strips common URL/prefix forms
+// so the canonical identity key is stable across arXiv, Crossref and OpenAlex.
+func normalizeProviderDOI(raw string) string {
+	doi := strings.TrimSpace(raw)
+	lower := strings.ToLower(doi)
+	for _, prefix := range []string{"https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "http://dx.doi.org/", "doi:"} {
+		if strings.HasPrefix(lower, prefix) {
+			doi = strings.TrimSpace(doi[len(prefix):])
+			break
+		}
+	}
+	return doi
 }
 
 func normalizeProviderSource(source string) string {

@@ -620,6 +620,7 @@ export interface ChatResponse {
   anon_user_id?: string;
   user_id?: string;
   citations?: MemoryCitation[];
+  wiki_citations?: MemoryCitation[];
 }
 
 export interface MemoryRecord {
@@ -1067,4 +1068,109 @@ export interface EnvironmentManifestView {
   image_digest?: string;
   python_version?: string;
   status?: string;
+}
+// ---- Paper Wiki (PaperPage / Point / Link) ----
+
+export interface WikiSourceRef {
+  document_id?: string;
+  block_id?: string;
+  page?: number;
+  section?: string;
+  quote?: string;
+  artifact_ref?: string;
+  task_id?: string;
+  plan_id?: string;
+}
+
+export interface WikiPoint {
+  record: MemoryRecord;
+  paper_id: string;
+  kind: string;
+  refs?: WikiSourceRef[];
+}
+
+export interface WikiLink {
+  id: string;
+  owner_id: string;
+  project_id?: string;
+  from_paper: string;
+  to_paper: string;
+  type: string;
+  evidence?: WikiSourceRef[];
+  source: string;
+  confidence: number;
+  status: string;
+  revision: number;
+  superseded_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WikiReproductionStatus {
+  status: string;
+  last_plan_id?: string;
+  last_error?: string;
+}
+
+export interface WikiPaperPage {
+  paper_id: string;
+  canonical_key?: string;
+  owner_id: string;
+  project_id?: string;
+  title: string;
+  authors?: string[];
+  year?: number;
+  venue?: string;
+  arxiv_id?: string;
+  doi?: string;
+  abstract?: string;
+  tldr?: string;
+  tldr_inferred?: boolean;
+  sections?: { title: string; start_page: number; end_page: number; chunks: number; characters: number }[];
+  point_ids?: string[];
+  link_ids?: string[];
+  reproduction: WikiReproductionStatus;
+  document_ids?: string[];
+  entities?: { type: string; value: string }[];
+  archived?: boolean;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WikiPaperList {
+  papers: WikiPaperPage[];
+  total: number;
+  next_cursor: number;
+}
+
+export interface WikiPointList {
+  points: WikiPoint[];
+  total: number;
+  next_cursor: number;
+}
+
+export interface WikiLinkList {
+  links: WikiLink[];
+  total: number;
+  next_cursor: number;
+}
+
+export interface WikiStats {
+  papers: number;
+  points: number;
+  links: number;
+  pending_links: number;
+  by_kind?: Record<string, number>;
+}
+
+export interface WikiBuildJob {
+  job_id: string;
+  mode: string;
+  status: string;
+  started_at: string;
+  finished_at?: string;
+  papers: number;
+  links: number;
+  error?: string;
 }

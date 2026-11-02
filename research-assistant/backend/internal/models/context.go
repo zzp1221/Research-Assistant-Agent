@@ -43,6 +43,7 @@ type PaperMetadata struct {
 	Authors    []string `json:"authors,omitempty"`
 	Year       int      `json:"year,omitempty"`
 	Venue      string   `json:"venue,omitempty"`
+	DOI        string   `json:"doi,omitempty"`
 	ArxivID    string   `json:"arxiv_id,omitempty"`
 	RepoURL    string   `json:"repo_url,omitempty"`
 	Abstract   string   `json:"abstract,omitempty"`

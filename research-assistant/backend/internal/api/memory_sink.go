@@ -16,7 +16,13 @@ func (apiMemorySink) RecordPlan(ctx context.Context, plan *models.PlanGraph) err
 	if store == nil || !memory.Enabled() {
 		return nil
 	}
-	return memory.RecordPlan(ctx, store, plan)
+	if err := memory.RecordPlan(ctx, store, plan); err != nil {
+		return err
+	}
+	// W1: the deterministic plan records become wiki points and the paper page
+	// is refreshed. Wiki failures never change the plan result.
+	tagAndRefreshPlan(store, plan)
+	return nil
 }
 
 func (apiMemorySink) RecordTask(ctx context.Context, plan *models.PlanGraph, task *models.TaskNode, result *models.TaskExecutionResult) error {
@@ -24,5 +30,9 @@ func (apiMemorySink) RecordTask(ctx context.Context, plan *models.PlanGraph, tas
 	if store == nil || !memory.Enabled() {
 		return nil
 	}
-	return memory.RecordTask(ctx, store, plan, task, result)
+	if err := memory.RecordTask(ctx, store, plan, task, result); err != nil {
+		return err
+	}
+	tagTaskAndIngest(ctx, store, plan, task, result)
+	return nil
 }

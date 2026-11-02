@@ -73,7 +73,58 @@ func ValidateRecord(rec *Record) error {
 	if hasLargeBase64(combined) {
 		return fmt.Errorf("memory contains a large base64 payload and was rejected")
 	}
+	for index := range rec.Refs {
+		ref := &rec.Refs[index]
+		if utf8.RuneCountInString(ref.Quote) > 500 {
+			return fmt.Errorf("memory ref %d quote exceeds 500 characters", index)
+		}
+		if ref.DocumentID != "" && IsHiddenSource(Source{Ref: ref.DocumentID}) {
+			return fmt.Errorf("memory ref %d points at a hidden document", index)
+		}
+		if ref.ArtifactRef != "" && IsHiddenSource(Source{Ref: ref.ArtifactRef}) {
+			return fmt.Errorf("memory ref %d points at a hidden artifact", index)
+		}
+		if IsHiddenText(ref.Quote) {
+			return fmt.Errorf("memory ref %d quote contains a hidden benchmark marker", index)
+		}
+		if matched, _ := ScanInjection(ref.Quote); matched {
+			// Never persist an injected quote as trusted content: downgrade so it
+			// cannot be injected into a prompt.
+			rec.Trust = TrustUntrusted
+		}
+	}
+	if rec.Attributes != nil {
+		for key, value := range rec.Attributes {
+			text, ok := value.(string)
+			if !ok {
+				continue
+			}
+			if IsHiddenText(text) {
+				return fmt.Errorf("memory attribute %q contains a hidden benchmark marker", key)
+			}
+		}
+	}
 	return nil
+}
+
+// IsHiddenText reports whether arbitrary text carries a hidden-benchmark
+// marker. PaperPage titles/abstracts/authors are scanned with this before they
+// become a new persistence surface outside the memory store.
+func IsHiddenText(text string) bool {
+	lower := strings.ToLower(strings.TrimSpace(text))
+	if lower == "" {
+		return false
+	}
+	for _, marker := range []string{"hidden benchmark", "benchmark_private", "private-benchmark", "benchmark-private"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	root := strings.TrimSpace(os.Getenv("BENCHMARK_PRIVATE_ROOT"))
+	if root != "" && strings.Contains(lower, strings.ToLower(filepath.Clean(root))) {
+		return true
+	}
+	return false
 }
 
 // IsHiddenSource rejects records whose source points into the private benchmark

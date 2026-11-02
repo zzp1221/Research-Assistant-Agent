@@ -164,6 +164,7 @@ func SetupRoutes(r *gin.Engine) {
 		RegisterWebRoutes(apiGroup)
 		registerMemoryRuntime(apiGroup)
 		registerSessionRoutes(apiGroup)
+		registerWikiRuntime(apiGroup)
 
 		apiGroup.GET("/hello", func(c *gin.Context) {
 			c.String(200, "hello api group")

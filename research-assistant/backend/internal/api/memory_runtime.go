@@ -43,6 +43,18 @@ func MemoryEnabled() bool {
 	return memoryRuntimeOnce.enabled
 }
 
+// CloseRuntimeStores flushes and closes the process-wide memory and wiki
+// stores. It is called from the graceful shutdown path so file locks are
+// released and snapshots are written before the process exits.
+func CloseRuntimeStores() {
+	if memoryRuntimeOnce.store != nil {
+		_ = memoryRuntimeOnce.store.Close()
+	}
+	if wikiRuntimeOnce.store != nil {
+		_ = wikiRuntimeOnce.store.Close()
+	}
+}
+
 func MemoryMode() string {
 	raw := strings.ToLower(strings.TrimSpace(os.Getenv("MEMORY_MODE")))
 	if raw == "" {

@@ -8,6 +8,7 @@ import (
 	"research-assistant-backend/internal/memory"
 	"research-assistant-backend/internal/modelresolver"
 	"research-assistant-backend/internal/prompts"
+	"research-assistant-backend/internal/wiki"
 
 	"github.com/cloudwego/eino/schema"
 	"github.com/gin-gonic/gin"
@@ -81,11 +82,24 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 		}
 	}
 
-	var memCtx memory.Context
 	useMemory := true
 	if payload.UseMemory != nil {
 		useMemory = *payload.UseMemory
 	}
+
+	// Wiki context is computed first so the retrieved-memory budget can be
+	// reduced by the wiki tokens (the two dynamic blocks share one budget).
+	var wikiCtx wiki.WikiContext
+	if useMemory && WikiEnabled() && wiki.InjectionEnabled() {
+		if builder := WikiBuilder(); builder != nil {
+			query := wiki.TaskQuery{OwnerID: ownerID, ProjectID: projectID, SessionID: sessionID, Text: message, Limit: 2, PromptLimit: prompts.DefaultPromptBudget().PromptLimit()}
+			if got, wikiErr := builder.RetrieveForTask(c.Request.Context(), query); wikiErr == nil {
+				wikiCtx = got
+			}
+		}
+	}
+
+	var memCtx memory.Context
 	if useMemory && MemoryEnabled() {
 		settings := memory.DefaultSettings()
 		if MemorySettings() != nil {
@@ -102,8 +116,12 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 				OwnerID: ownerID, ProjectID: projectID, SessionID: sessionID,
 				Text: memory.BuildQuery(message, recent, 2000), Limit: settings.RetrievalTopK,
 			}
+			retrievedBudget := settings.RetrievedBudgetTokens - wikiCtx.Tokens
+			if retrievedBudget < 0 {
+				retrievedBudget = 0
+			}
 			if store := MemoryStore(); store != nil {
-				if got, err := store.Retrieve(c.Request.Context(), q, settings.CoreBudgetTokens, settings.RetrievedBudgetTokens); err == nil {
+				if got, err := store.Retrieve(c.Request.Context(), q, settings.CoreBudgetTokens, retrievedBudget); err == nil {
 					memCtx = got
 				}
 			}
@@ -127,6 +145,9 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 	}
 	if memCtx.RetrievedText != "" {
 		messages = append(messages, &schema.Message{Role: schema.System, Content: "[retrieved memory]\n" + memCtx.RetrievedText})
+	}
+	if wikiCtx.Text != "" {
+		messages = append(messages, &schema.Message{Role: schema.System, Content: "[wiki context]\n" + wikiCtx.Text})
 	}
 	messages = append(messages, &schema.Message{Role: schema.User, Content: message})
 
@@ -157,8 +178,9 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"response":   response,
-		"session_id": sessionID,
-		"citations":  memCtx.Citations,
+		"response":       response,
+		"session_id":     sessionID,
+		"citations":      memCtx.Citations,
+		"wiki_citations": wikiCtx.Citations,
 	})
 }
