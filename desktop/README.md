@@ -45,6 +45,12 @@ The frontend build output must be copied to `webui/dist` before a release
 build; `build.ps1` does it. The checked-in placeholder only keeps the embed
 directive valid.
 
+Run the produced installer from a normal user folder such as Desktop or
+Downloads. NSIS needs to create a temporary file next to the installer, and a
+sandboxed workspace ACL that denies `DeleteSubdirectoriesAndFiles` makes it
+fail with `Error writing temporary file. Make sure your temp folder is valid.`
+See [desktop/build/README.md](build/README.md).
+
 `mygo generate` writes the typed client to
 `research-assistant/frontend/src/services/mygo.ts`. Run it after changing the
 bound `bridge.API` methods or the declared events.

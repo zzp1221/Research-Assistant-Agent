@@ -22,6 +22,15 @@ Requires Go 1.27.3, Node.js 22 or later and `makensis` on `PATH`; pass
 `-SkipRuntime`, `-SkipInstaller` and `-Output` narrow the run.
 Set `UV_EXE` to copy a `uv.exe` into the installer.
 
+## Running the installer
+
+Run `ResearchAssistant-<version>-Setup.exe` from a normal user folder such as
+Desktop or Downloads. NSIS creates and deletes a temporary file next to the
+installer; a folder whose ACL denies `DeleteSubdirectoriesAndFiles` (some
+sandboxed workspaces do) makes it fail with `Error writing temporary file.
+Make sure your temp folder is valid.` Copy the setup out of such a folder, or
+build with `-Output "$env:USERPROFILE\Downloads"`.
+
 ## Package only
 
 ```powershell
