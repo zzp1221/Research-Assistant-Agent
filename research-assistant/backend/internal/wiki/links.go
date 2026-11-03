@@ -105,6 +105,7 @@ func (b *Builder) BuildLinksForPaper(ctx context.Context, ownerID, paperID strin
 	}
 	candidates := make([]LinkCandidate, 0, 32)
 	candidates = append(candidates, b.entityCandidates(page, allPages)...)
+	candidates = append(candidates, b.pdfReferenceCandidates(ctx, ownerID, page, allPages)...)
 	if LinkAdjudicationEnabled() && b.LLM != nil {
 		pairs := map[string]bool{}
 		for _, candidate := range candidates {

@@ -1,9 +1,9 @@
 # Paper Wiki 测试报告（feature/memory）
 
-- 日期：2026-11-02（W3 更新：2026-11-03）
+- 日期：2026-11-02（W3/W2.5 更新：2026-11-03）
 - 环境：容器内（golang:1.27.3-bookworm 构建/单测；python:3.11-bullseye 运行后端二进制与 E2E；node:22-bookworm-slim 前端 build/test/lint）
 - 约束：所有功能测试在容器内执行；真实 compose 栈（backend 18080 / frontend 15173 / sandbox 8082）只做只读健康冒烟
-- 结论：**通过**。全量后端测试、前端测试、wiki API E2E、真实 LLM 30+ 轮长对话 + 计划 A/B、W3 自动 LLM 摘要与 Link 裁决均通过；未发现新增回归。
+- 结论：**通过**。全量后端测试、前端测试、wiki API E2E、真实 LLM 30+ 轮长对话 + 计划 A/B、W3 自动 LLM 摘要与 Link 裁决、W2.5 PDF references 均通过；未发现新增回归。
 
 ## 1. 构建与静态检查
 
@@ -97,6 +97,27 @@ W3 单测（`internal/wiki/summarize_test.go`）：
 - `TestAdjudicateLink`：LLM 返回 `contradicts` 被接受、非法 type 被拒绝；
 - `TestTextSimilarityCandidates`：文本相似候选生成。
 
+## 4.6 W2.5 PDF references E2E（wiki-pdfrefs-e2e.py）
+
+脚本：`research-assistant/test/e2e/wiki-pdfrefs-e2e.py`（合成 `document.json`，无需真实 PDF/LLM）。
+
+- 合成 Paper A 的 `document.json`，References 页含 2 条带 arXiv/DOI 的条目；
+- 创建 Attention（arXiv:1706.03762）与 BERT（DOI:10.18653/v1/N19-1423）两个 PaperPage；
+- `WIKI_PDF_REFS=true` 下 full build → Paper A 得到 2 条 `cites` Link，`source=pdf_references`、`status=active`，evidence 含 document/page/quote；
+- `WIKI_PDF_REFS=false` 的独立实例 build 后不产生 `pdf_references` Link。
+
+实测输出：
+
+```
+PASS w2_5_pdf_references links=2
+PASS w2_5_disabled_switch
+```
+
+W2.5 单测：
+- `internal/documents/references_test.go`：编号条目、作者-年份条目、跨页 References、无 References 章节；
+- `internal/wiki/pdfrefs_test.go`：DOI>arXiv>title+year 匹配、年份差 >1 不合并、自引用忽略、候选去重与 evidence、`WIKI_PDF_REFS` 默认关闭；
+- `internal/wiki/pdfrefs_integration_test.go`：真实 `documents.Store` + `UPLOAD_ROOT` 加载 `document.json` 后生成 2 条候选。
+
 ## 5. 测试过程中发现并修复的缺陷
 
 | # | 缺陷 | 影响 | 修复 |
@@ -117,7 +138,7 @@ W3 单测（`internal/wiki/summarize_test.go`）：
 
 - W3 已接线；自动摘要依赖部署的模型配置（env-bootstrap 或用户模型 profile），无 provider 时静默降级、不阻塞论文创建。
 - W4 embedding/图增强未实现（设计默认关闭、可选）。
-- PDF references（W2.5）未实现（默认关闭）。
+- W2.5 PDF references 已实现但默认关闭（`WIKI_PDF_REFS=false`）；解析为启发式，复杂排版可能需要 fixture 调优。
 - 设计 §16.4 的 1 万篇/10 万 Point 性能指标未压测；本轮仅验证功能正确性与预算上限。
 
 ## 8. 清理

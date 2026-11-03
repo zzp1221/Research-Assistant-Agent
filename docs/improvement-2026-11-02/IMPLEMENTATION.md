@@ -1,6 +1,6 @@
 # Paper Wiki 实现对照（feature/memory）
 
-- 日期：2026-11-02（W3 更新：2026-11-03）
+- 日期：2026-11-02（W3/W2.5 更新：2026-11-03）
 - 设计依据：[docs/design/2026-11-02-paper-wiki-memory.md](../design/2026-11-02-paper-wiki-memory.md)（v1.1）
 - 评审依据：[docs/review/2026-11-02-paper-wiki-memory-review.md](../review/2026-11-02-paper-wiki-memory-review.md)
 - 分支：feature/memory（从 master fast-forward 后实施）
@@ -14,6 +14,7 @@
 | W0 | internal/wiki types/identity/store/builder/points、PaperPage 与 Point API | 完成 |
 | W1 | Plan/Task/Trial 记录打 wiki_point 标签、memory_sink 刷新、取消路径 RecordPlan、paper_parse 摘要、metrics result Point | 完成 |
 | W2 | 实体倒排 + cites provider 接口 + 对称方向规范化 + 稳定 Link ID/revision + links API/confirm/reject | 完成 |
+| W2.5 | PDF references 解析（documents/references.go）→ cites 补充（wiki/pdfrefs.go），默认关闭 | 完成 |
 | W3 | 自动 LLM TLDR/段落摘要、Link 类型裁决、Quote LocateQuote 校验、pending_review、注入与预算 | 完成 |
 | W4 | embedding/图增强 | 未实现（设计默认关闭，非本轮验收） |
 | 前端 | PaperWikiPanel + wikiApi + 设置页“论文”tab | 完成 |
@@ -31,13 +32,15 @@
 - `internal/wiki/retrieve.go`：BudgetTokens（2%/3%/150-1500）、RetrieveForTask、wiki XML 渲染、Citation 生成。
 - `internal/wiki/ingest.go`：RefreshForTask（paper_parse/metrics/task 标签）。
 - `internal/wiki/summarize.go`：W3 LLM 接口、严格 JSON（最多 2 次）、TLDR/摘要 Point、LocateQuote 校验、TLDR memory 持久化、Link 裁决。
+- `internal/documents/references.go`：W2.5 PDF References 章节定位、条目切分、DOI/arXiv/年份/标题/作者/venue 抽取。
+- `internal/wiki/pdfrefs.go`：W2.5 条目与 PaperPage 的 DOI>arXiv>title+year 匹配，生成 `cites` 候选。
 - `internal/wiki/settings.go`：WIKI_ENABLED/WIKI_MODE/WIKI_LLM_MODE/WIKI_LINK_MODE/WIKI_BUDGET_TOKENS/WIKI_PDF_REFS。
-- `internal/wiki/*_test.go`：身份、store、Point、Link、检索、设置、W3 摘要与 Link 裁决单测。
+- `internal/wiki/*_test.go`：身份、store、Point、Link、检索、设置、W3 摘要与 Link 裁决、W2.5 PDF references 单测。
 - `internal/lockfile/`：带 PID 存活检测的跨平台文件锁（修复重启后内存库回退问题）。
 - `internal/api/wiki.go` / `wiki_runtime.go`：wiki API 与进程级 builder。
 - `internal/api/wiki_test.go`：API CRUD/owner/hidden/links/stats/build。
 - `frontend/src/services/api/wikiApi.ts`、`frontend/src/features/wiki/PaperWikiPanel.tsx`。
-- `test/e2e/wiki-e2e.py`、`test/e2e/wiki-long-chat.py`、`test/e2e/wiki-w3-e2e.py`。
+- `test/e2e/wiki-e2e.py`、`test/e2e/wiki-long-chat.py`、`test/e2e/wiki-w3-e2e.py`、`test/e2e/wiki-pdfrefs-e2e.py`。
 
 ### 修改
 
@@ -77,7 +80,7 @@
 
 1. **W3 已接线**：`Builder.LLM` 由 `api/wiki_runtime.go` 的 `wikiModelLLM` 适配 `modelresolver.Resolver.Complete`；`WIKI_LLM_MODE=summary|all` 自动生成 TLDR/摘要 Point，`links|all` 做 Link 类型裁决。无 provider 或调用失败时静默降级，不阻塞论文创建。
 2. **W4 未实现**：设计明确 W4 可选且默认关闭；本轮不做 embedding/图增强。
-3. **PDF references（W2.5）未实现**：默认关闭的可选项；cites 通过 CitationProvider 接口接入（生产为 literature.Client.Citations）。
+3. **PDF references（W2.5）已实现但默认关闭**：`WIKI_PDF_REFS=true` 时解析 PDF References 并与已知 PaperPage 匹配生成 `cites`；默认 `false`，外部引用图（OpenAlex）仍是首选。
 4. **前端入口**：PaperWikiPanel 放在设置页“论文”tab（而非独立一级路由），复用现有设置壳，减少导航改动。
 5. **PaperPage 额外字段**：CanonicalKey、DocumentIDs、Entities、Archived；均为重建/链接所需，不影响设计契约。
 
