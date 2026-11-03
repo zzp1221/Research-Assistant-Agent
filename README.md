@@ -13,21 +13,20 @@ Research Assistant Agent 由 DeepSeek 构建与维护，当前版本 **0.9.0**�
 ## 目录
 
 - [0. 项目定位](#0-项目定位)
-- [1. 本轮升级概览](#1-本轮升级概览)
-- [2. 核心能力](#2-核心能力)
-- [3. 系统架构](#3-系统架构)
-- [4. Agent 矩阵](#4-agent-矩阵)
-- [5. 沙箱与运行时](#5-沙箱与运行时)
-- [6. 记忆系统](#6-记忆系统)
-- [7. 工具生态与 MCP](#7-工具生态与-mcp)
-- [8. 桌面客户端](#8-桌面客户端)
-- [9. 快速开始](#9-快速开始)
-- [10. 配置](#10-配置)
-- [11. API 摘要](#11-api-摘要)
-- [12. 仓库结构](#12-仓库结构)
-- [13. 测试与质量门禁](#13-测试与质量门禁)
-- [14. 运行边界与安全](#14-运行边界与安全)
-- [15. 文档索引](#15-文档索引)
+- [1. 核心能力](#1-核心能力)
+- [2. 系统架构](#2-系统架构)
+- [3. Agent 矩阵](#3-agent-矩阵)
+- [4. 沙箱与运行时](#4-沙箱与运行时)
+- [5. 记忆系统](#5-记忆系统)
+- [6. 工具生态与 MCP](#6-工具生态与-mcp)
+- [7. 桌面客户端](#7-桌面客户端)
+- [8. 快速开始](#8-快速开始)
+- [9. 配置](#9-配置)
+- [10. API 摘要](#10-api-摘要)
+- [11. 仓库结构](#11-仓库结构)
+- [12. 测试与质量门禁](#12-测试与质量门禁)
+- [13. 运行边界与安全](#13-运行边界与安全)
+- [14. 文档索引](#14-文档索引)
 
 ---
 
@@ -63,27 +62,9 @@ Research Assistant Agent 把这类任务拆成一条可审计的链路：
 
 ---
 
-## 1. 本轮升级概览
+## 1. 核心能力
 
-2026-10 至 2026-11 的连续升级把系统从“单机 Web 原型”推进到“可交付的科研执行平台”。主要变化：
-
-| 领域 | 升级内容 |
-|---|---|
-| 桌面交付 | 用 **MyGo 0.7.4** 替换 Wails 作为默认桌面外壳；新增 NSIS MUI2 安装向导、托盘、单实例、崩溃转储、脱敏诊断包、Ed25519 签名自动更新；安装包内置 `backend.exe`、`sandbox.exe` 与前端资源 |
-| 沙箱执行 | 从单一 Docker 扩展为 **docker / native / vm / remote** 四类 Provider；新增 uv 管理的 CPython、每计划 venv、Windows AppContainer/lowil runner、WSL2 路径翻译与 OpenSandbox 适配；UI 展示真实能力矩阵 |
-| Agent 记忆 | 落地 **M0–M3 记忆系统 + Paper Wiki（W0–W3/W2.5）**：JSONL + 快照、BM25 + 中文 bigram、RRF/MMR、core/retrieved/wiki 预算、聊天多轮、计划/任务/文档/AutoResearch 抽取、consolidation、PaperPage/Point/Link、W3 自动摘要、W2.5 PDF references、MemoryPanel/PaperWikiPanel 与完整 API |
-| 计划治理 | 计划库（项目/搜索/分页/归档/复制）、不可变 revision、审阅门、结构化提问、审批收件箱、成本与预算控制台 |
-| 工具生态 | N-13：ToolRegistry、ToolGrant、native/HTTP/MCP stdio/MCP HTTP、tool_call 节点与审批、ToolCallRecord 审计/回放、AgentProfile/PromptVersion 评测与回滚 |
-| 文献与文档 | N-04/N-07：多 provider 文献检索与文献库、引用图、PDF OCR/版面/表格/图注/质量报告、BM25 + 中文 bigram 检索、全文翻译 |
-| 工作台 UI | 科研仪器风格工作台：对话、DAG、执行侧栏、PDF 阅读、文献库、计划库、审阅、成本、记忆与设置统一到一个信息层级 |
-
-> [Paper Wiki](docs/design/2026-11-02-paper-wiki-memory.md) 已实现（W0–W3 + W2.5，PDF references 默认关闭）；[N-14 文献 MCP/Skill 生态](docs/design/n14-literature-mcp-skill-ecosystem.md) 尚未实现，仅作为后续路线记录。
-
----
-
-## 2. 核心能力
-
-### 2.1 研究任务与规划
+### 1.1 研究任务与规划
 
 | 能力 | 说明 |
 |---|---|
@@ -95,7 +76,7 @@ Research Assistant Agent 把这类任务拆成一条可审计的链路：
 | 计划库 | 项目分组、标题/意图搜索、状态/类型过滤、keyset 分页、重命名、归档/恢复、复制、导出与删除 |
 | 不可变 revision | 每次编辑生成 r1/r2… 快照；`base_revision` 乐观锁；运行中的计划拒绝编辑/执行新 revision |
 
-### 2.2 执行与验收
+### 1.2 执行与验收
 
 | 能力 | 说明 |
 |---|---|
@@ -112,7 +93,7 @@ Research Assistant Agent 把这类任务拆成一条可审计的链路：
 | 视觉校验 | 图像结构门禁 + 多模态视觉判定（pass / fail / inconclusive），视觉 fail 不伪造 completed |
 | 可复现导出 | `manifest.json` + `checksums.sha256` + `environment/*` + `provenance/*`；缺关键证据时标记 partial 并列出 missing |
 
-### 2.3 记忆、工具与治理
+### 1.3 记忆、工具与治理
 
 | 能力 | 说明 |
 |---|---|
@@ -129,9 +110,9 @@ Research Assistant Agent 把这类任务拆成一条可审计的链路：
 
 ---
 
-## 3. 系统架构
+## 2. 系统架构
 
-### 3.1 架构图
+### 2.1 架构图
 
 | 图 | draw.io 源文件 | SVG 预览 | 说明 |
 |---|---|---|---|
@@ -148,7 +129,7 @@ Archify 交互式图（自包含 HTML，浏览器直接打开，支持明暗主�
 
 ![系统架构图](docs/diagrams/architecture.svg)
 
-### 3.2 分层说明
+### 2.2 分层说明
 
 ```text
 Researcher / Paper / Repository / Dataset
@@ -203,7 +184,7 @@ Windows Desktop (MyGo)      Web Browser / API Client
 | 状态层 | Plan/Revision/Memory/Upload/Document/Literature/Budget/Audit | 持久化与可回放状态 |
 | 外部依赖 | LLM Provider、Research Optimizer、文献数据源 | 模型、候选排序、文献检索 |
 
-### 3.3 一次请求的完整路径
+### 2.3 一次请求的完整路径
 
 1. **输入与上下文**：用户输入目标、上传 PDF/CSV/仓库链接；后端解析 `AttachmentRef` / `DocumentRef` / `PaperMetadata`，写入 `ResearchContext`，并检索相关记忆。
 2. **意图与复杂度**：Intent Router 输出意图类型与置信度；Complexity Router 在上下文解析后做 L0–L4 最终路由，选择模板变体或 agent planner。
@@ -217,7 +198,7 @@ Windows Desktop (MyGo)      Web Browser / API Client
 
 ---
 
-## 4. Agent 矩阵
+## 3. Agent 矩阵
 
 | Agent | 主要职责 | 典型任务类型 |
 |---|---|---|
@@ -238,9 +219,9 @@ Agent 之间不直接共享可变内存；所有跨 Agent 数据通过 Artifact�
 
 ---
 
-## 5. 沙箱与运行时
+## 4. 沙箱与运行时
 
-### 5.1 Provider 矩阵
+### 4.1 Provider 矩阵
 
 沙箱服务把执行能力抽象为统一 `Provider` 接口，由 `SANDBOX_PROVIDER` 选择；`auto` 在 Docker 不可用时优先选择 native。
 
@@ -253,7 +234,7 @@ Agent 之间不直接共享可变内存；所有跨 Agent 数据通过 Artifact�
 
 Provider 通过 `GET /api/v1/capabilities` 返回真实能力矩阵（镜像、网络、GPU、Python 版本、探针结果）。任务需要的能力不满足时，系统返回 `blocked` + `missing_requirements=[sandbox_capability]`，并给出可操作建议，而不是静默降级。
 
-### 5.2 运行时链
+### 4.2 运行时链
 
 论文复现主链：
 
@@ -266,7 +247,7 @@ reproduction_spec -> runtime_probe -> image_prepare -> prepare_runtime
 - 完整复现资源不足时不会用 smoke 冒充成功；`outcome` 明确标记 `smoke`、`partial` 或 `blocked`。
 - 运行时权限只决定“是否自动执行重要操作”，不会绕过镜像 allowlist、资源上限、沙箱隔离或计划所有权检查。
 
-### 5.3 安全边界
+### 4.3 安全边界
 
 - Compose 中 gateway 不挂载 Docker socket、不挂载宿主工作区；只有不发布端口的内部 executor 持有 socket。
 - 容器默认 `network=none`（内部离线网络）；联网需显式审批并临时打开，命令结束立即恢复。
@@ -276,7 +257,7 @@ reproduction_spec -> runtime_probe -> image_prepare -> prepare_runtime
 
 ---
 
-## 6. 记忆系统
+## 5. 记忆系统
 
 Agent 记忆系统由两层组成：
 
@@ -285,7 +266,7 @@ Agent 记忆系统由两层组成：
 
 两者共享 owner 隔离、trust/status 生命周期、token 预算与安全边界；关闭开关后完全回退，不影响既有聊天、计划与任务。
 
-### 6.1 记忆类型
+### 5.1 记忆类型
 
 | 类型 | 内容 |
 |---|---|
@@ -299,7 +280,7 @@ Agent 记忆系统由两层组成：
 | `working` | 当前会话的短期工作记忆 |
 | `reflection` | 由多条 episode/negative 归纳的反思（默认 pending_review） |
 
-### 6.2 写入管道
+### 5.2 写入管道
 
 | 触发 | 写入内容 |
 |---|---|
@@ -314,7 +295,7 @@ Agent 记忆系统由两层组成：
 
 所有写入先经过 `ValidateRecord`：owner 必填、secret/私钥/大 base64 拒绝、hidden benchmark 拒绝、Refs quote ≤500 字并做 injection 扫描。
 
-### 6.3 检索与注入
+### 5.3 检索与注入
 
 - **索引**：中英混合 tokenizer（CJK bigram）、BM25、实体 / kind / status 倒排。
 - **召回**：BM25 + 实体 + 时间召回，RRF 融合，trust / importance / recency / confidence / scope 加权，MMR 去冗余。
@@ -324,7 +305,7 @@ Agent 记忆系统由两层组成：
 - **引用**：注入记忆带 citation；wiki 注入额外返回 `wiki_citations`（paper/point/page/section/quote）。
 - **安全**：owner 硬隔离；记忆内容作为数据而非指令；hidden benchmark、secret、injection 在写入与注入两侧过滤。
 
-### 6.4 Paper Wiki
+### 5.4 Paper Wiki
 
 Paper Wiki 不建第二套事实源：**PaperPage 是可删除、可重建的投影缓存，Point 和 Link 都是 `memory.Record` 的视图**。
 
@@ -340,7 +321,7 @@ Paper Wiki 不建第二套事实源：**PaperPage 是可删除、可重建的投
 - **可重建**：删除 `data/wiki` 后，PaperPage 从 memory 的 paper/document fact 重建，Point/Link 从 memory 恢复，用户 confirm/reject 决策保留；TLDR 持久化为 `wiki_tldr` memory 记录，重建不重新调用 LLM。
 - **治理**：LLM-only Point/Link 默认 `pending_review`；Link 支持 confirm/reject、revision、supersede；Point 支持 pin、编辑、软删除与 point_key supersede。
 
-### 6.5 开关与回滚
+### 5.5 开关与回滚
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
@@ -358,7 +339,7 @@ Paper Wiki 不建第二套事实源：**PaperPage 是可删除、可重建的投
 
 前端「设置 → 记忆」提供列表、搜索、新建、pin、删除、设置与导出/导入；「设置 → 论文」提供 PaperPage 列表、Point 分组、Link 确认/拒绝与重建；计划详情展示本次使用的记忆引用。
 
-### 6.6 记忆系统架构图
+### 5.6 记忆系统架构图
 
 | 图 | draw.io 源文件 | SVG 预览 | 说明 |
 |---|---|---|---|
@@ -369,7 +350,7 @@ Paper Wiki 不建第二套事实源：**PaperPage 是可删除、可重建的投
 
 ---
 
-## 7. 工具生态与 MCP
+## 6. 工具生态与 MCP
 
 N-13 把“工具”从 Prompt 里的自由文本变成有 schema、有权限、有审计的受控能力。
 
@@ -382,11 +363,11 @@ N-13 把“工具”从 Prompt 里的自由文本变成有 schema、有权限、
 
 ---
 
-## 8. 桌面客户端
+## 7. 桌面客户端
 
 Windows 桌面客户端是 0.9.0 的首发交付形态，位于 `desktop/`（独立 Go module）。
 
-### 8.1 组成
+### 7.1 组成
 
 | 包 | 职责 |
 |---|---|
@@ -402,14 +383,14 @@ Windows 桌面客户端是 0.9.0 的首发交付形态，位于 `desktop/`（独
 | `desktop/mygo` | MyGo 适配层（托盘、对话框、通知、Shell），业务只依赖这一层 |
 | `desktop/tray` | 托盘/通知契约（MyGo 驱动、systray 回退、测试用 memory 驱动） |
 
-### 8.2 运行目录
+### 7.2 运行目录
 
 ```text
 %LOCALAPPDATA%\Programs\ResearchAssistant\   ResearchAssistant.exe backend.exe sandbox.exe uv.exe
 %LOCALAPPDATA%\ResearchAssistant\            settings.json secrets.dat lock data\ runtimes\ workspaces\ logs\
 ```
 
-### 8.3 构建
+### 7.3 构建
 
 ```powershell
 # 一键构建（前端 + backend.exe + sandbox.exe + MyGo exe + NSIS 安装包）
@@ -424,7 +405,7 @@ GOOS=windows GOARCH=amd64 go build ./...
 
 默认入口为 `desktop/main_mygo.go`（build tag `!wails && !headless`）；Wails 回退为 `-tags "desktop wails"`；headless stub 为 `-tags headless`。构建产物默认写入 `desktop/dist/ResearchAssistant-<version>-Setup.exe`。
 
-### 8.4 更新与诊断
+### 7.4 更新与诊断
 
 - `RA_UPDATE_ENDPOINT` + `RA_UPDATE_PUBLIC_KEY` 启用签名更新；安装包与更新清单使用 SHA-256 + Ed25519。
 - 崩溃转储通过 WER LocalDumps 注册到 `%LOCALAPPDATA%\ResearchAssistant\crashes`。
@@ -432,16 +413,16 @@ GOOS=windows GOARCH=amd64 go build ./...
 
 ---
 
-## 9. 快速开始
+## 8. 快速开始
 
-### 9.1 前置条件
+### 8.1 前置条件
 
 - **桌面客户端**：Windows 10/11 + WebView2 Runtime（Win11 自带）。
 - **Docker Compose**：Docker Engine 20.10+、Docker Compose v2、Git。
 - **源码开发**：Go 1.27.3、Node.js 22+、Python 3.12（可选 AI 服务/优化器）、Docker（沙箱）。
 - 一个 OpenAI-compatible LLM API Key（默认指向 DeepSeek）。
 
-### 9.2 方式 A：Windows 桌面客户端
+### 8.2 方式 A：Windows 桌面客户端
 
 1. 运行 `desktop/dist/ResearchAssistant-0.9.0-Setup.exe`，按向导选择安装位置与可选 PDF 关联。
 2. 首次启动完成 Onboarding：填写 Base URL、模型名与 API Key（保存到 DPAPI）。
@@ -450,7 +431,7 @@ GOOS=windows GOARCH=amd64 go build ./...
 
 > 安装包必须在普通用户目录（如 Desktop/Downloads）运行；某些受 ACL 限制的工作区目录会因 NSIS 临时文件检查失败。
 
-### 9.3 方式 B：Docker Compose
+### 8.3 方式 B：Docker Compose
 
 ```bash
 cd research-assistant
@@ -478,7 +459,7 @@ docker compose logs -f
 docker compose down
 ```
 
-### 9.4 方式 C：本地开发
+### 8.4 方式 C：本地开发
 
 ```bash
 cd research-assistant
@@ -491,7 +472,7 @@ make run-frontend    # 终端 3：Vite 开发服务器
 
 Windows 开发者优先使用桌面客户端或 Docker Compose。后端已通过 `procgroup` / `sysinfo` 抽象支持 Windows 构建，桌面版以 `backend.exe` 子进程运行；但部分依赖 POSIX 的测试/功能（symlink、文件权限、PDF OCR 外部工具）在 Windows 上受限，服务端仍推荐 Linux 容器。
 
-### 9.5 典型任务
+### 8.5 典型任务
 
 #### 论文复现
 
@@ -527,11 +508,11 @@ Benchmark Agent 会审计列映射、生成泄漏安全的 train/validation/test
 
 ---
 
-## 10. 配置
+## 9. 配置
 
 完整变量见 [backend.env.example](research-assistant/backend.env.example)、[docker-compose.yml](research-assistant/docker-compose.yml) 与 [backend/README.md](research-assistant/backend/README.md)。常用项按用途分组：
 
-### 10.1 LLM 与模型
+### 9.1 LLM 与模型
 
 | 变量 | 必填 | 说明 |
 |---|---:|---|
@@ -542,7 +523,7 @@ Benchmark Agent 会审计列映射、生成泄漏安全的 train/validation/test
 | `ADMIN_TOKEN` | 否 | 可创建/修改全局模型 profile 的运营 Token |
 | `LLM_MAX_ATTEMPTS` / `LLM_ATTEMPT_TIMEOUT_SECONDS` / `LLM_RETRY_BASE_MS` / `LLM_RETRY_MAX_MS` | 否 | LLM 重试与超时 |
 
-### 10.2 意图与规划
+### 9.2 意图与规划
 
 | 变量 | 说明 |
 |---|---|
@@ -554,7 +535,7 @@ Benchmark Agent 会审计列映射、生成泄漏安全的 train/validation/test
 | `COMPLEXITY_ROUTER_ENABLED` | 默认 `true`：启用 L0–L4 复杂度路由 |
 | `PLANNER_MAX_NODES_L3` / `PLANNER_MAX_NODES_L4` | agent planner 在 L3/L4 的节点上限（默认 16 / 24） |
 
-### 10.3 沙箱与运行时
+### 9.3 沙箱与运行时
 
 | 变量 | 说明 |
 |---|---|
@@ -569,7 +550,7 @@ Benchmark Agent 会审计列映射、生成泄漏安全的 train/validation/test
 | `SANDBOX_TTL_MINUTES` / `SANDBOX_REAPER_INTERVAL_SECONDS` | 沙箱最长存活时间与回收扫描间隔 |
 | `OPEN_SANDBOX_URL` / `ENABLE_OPENSANDBOX_FALLBACK` | OpenSandbox 地址与 fallback 开关 |
 
-### 10.4 存储与记忆
+### 9.4 存储与记忆
 
 | 变量 | 说明 |
 |---|---|
@@ -585,7 +566,7 @@ Benchmark Agent 会审计列映射、生成泄漏安全的 train/validation/test
 | `DOCUMENT_CACHE_DIR` / `LITERATURE_CACHE_DIR` / `LITERATURE_LIBRARY_DIR` | 文档缓存、文献缓存与文献库 |
 | `PROJECT_STORE_PATH` / `BUDGET_STORE_PATH` | 计划项目与成本台账；默认在 `PLAN_STORE_PATH` 旁生成 |
 
-### 10.5 审批、预算与安全
+### 9.5 审批、预算与安全
 
 | 变量 | 说明 |
 |---|---|
@@ -599,7 +580,7 @@ Benchmark Agent 会审计列映射、生成泄漏安全的 train/validation/test
 | `PLAN_RATE_LIMIT_PER_MINUTE` / `PLAN_RATE_LIMIT_BURST` / `PLAN_MAX_ACTIVE_PER_USER` | 计划创建限流与每用户活跃计划上限 |
 | `EXPORT_MAX_FILE_MB` / `EXPORT_MAX_TOTAL_MB` | 可复现导出包单文件与总大小上限（默认 16 / 128 MB） |
 
-### 10.6 文献与文档
+### 9.6 文献与文档
 
 | 变量 | 说明 |
 |---|---|
@@ -613,11 +594,11 @@ Benchmark Agent 会审计列映射、生成泄漏安全的 train/validation/test
 
 ---
 
-## 11. API 摘要
+## 10. API 摘要
 
 Backend API 默认 `:8080`。除 `GET /ping`、`GET /api/health` 与 `GET /openapi.json` 外，其余 `/api` 路由经过 `APIAuthMiddleware`；`GET /api/plans/:id/stream` 可用 60 秒 HMAC ticket 替代 Bearer。完整契约见 [OpenAPI](research-assistant/backend/internal/api/openapi.json) 与 [backend/README.md](research-assistant/backend/README.md)。
 
-### 11.1 健康、身份与元数据
+### 10.1 健康、身份与元数据
 
 | Method | Endpoint | 说明 |
 |---|---|---|
@@ -628,7 +609,7 @@ Backend API 默认 `:8080`。除 `GET /ping`、`GET /api/health` 与 `GET /opena
 | `GET` | `/api/metrics`（及 `/metrics`） | Prometheus 文本指标（Bearer 鉴权） |
 | `GET` | `/api/audit/export` | 审计事件导出（调用者隔离） |
 
-### 11.2 计划、revision 与审阅
+### 10.2 计划、revision 与审阅
 
 | Method | Endpoint | 说明 |
 |---|---|---|
@@ -646,7 +627,7 @@ Backend API 默认 `:8080`。除 `GET /ping`、`GET /api/health` 与 `GET /opena
 | `GET` | `/api/plans/:id/export?format=md` / `json` / `zip` | 导出最小复现包 |
 | `POST` | `/api/plans/:id/reproduce/verify` | 静态校验复现包完整性 |
 
-### 11.3 事件、运行时与工具
+### 10.3 事件、运行时与工具
 
 | Method | Endpoint | 说明 |
 |---|---|---|
@@ -661,7 +642,7 @@ Backend API 默认 `:8080`。除 `GET /ping`、`GET /api/health` 与 `GET /opena
 | `POST` | `.../prompt-versions/:id/activate` / `eval` | 激活/评测 Prompt |
 | `GET` | `/api/plans/:id/tool-calls` / `POST .../replay` | 工具调用审计与回放 |
 
-### 11.4 记忆、会话与上传
+### 10.4 记忆、会话与上传
 
 | Method | Endpoint | 说明 |
 |---|---|---|
@@ -679,7 +660,7 @@ Backend API 默认 `:8080`。除 `GET /ping`、`GET /api/health` 与 `GET /opena
 | `POST` | `/api/uploads/:id/assist` / `translation-jobs` | 划词翻译/解释 / 全文翻译任务 |
 | `DELETE` | `/api/uploads/:id` | 删除上传及派生文档 |
 
-### 11.5 文献、模型与网页
+### 10.5 文献、模型与网页
 
 | Method | Endpoint | 说明 |
 |---|---|---|
@@ -696,7 +677,7 @@ Sandbox 服务（默认 `:8082`）另提供 `/api/v1/health`、`/capabilities`�
 
 ---
 
-## 12. 仓库结构
+## 11. 仓库结构
 
 ```text
 Research Assistant Agent/
@@ -736,9 +717,9 @@ Research Assistant Agent/
 
 ---
 
-## 13. 测试与质量门禁
+## 12. 测试与质量门禁
 
-### 13.1 本地命令
+### 12.1 本地命令
 
 ```bash
 # 后端（Linux 或容器内）
@@ -765,7 +746,7 @@ GOOS=windows GOARCH=amd64 go build ./...
 cd research-assistant/research-optimizer && python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-### 13.2 CI 覆盖
+### 12.2 CI 覆盖
 
 - **Go**：Linux/Windows 矩阵；gofmt、后端测试/race/安全回归/覆盖率门禁、沙箱与 docker-core 测试、Windows 交叉构建。
 - **Desktop**：Linux 纯逻辑测试 + Windows 交叉构建；Windows MyGo 构建、生成客户端一致性检查与安装包产物。
@@ -776,7 +757,7 @@ cd research-assistant/research-optimizer && python -m unittest discover -s tests
 
 最近一次验证状态（2026-11-02）与已知缺陷见 [docs/verification.md](docs/verification.md)。
 
-### 13.3 E2E
+### 12.3 E2E
 
 E2E 脚本位于 `research-assistant/test/e2e/`，使用 `RA_API_URL` / `RA_API_TOKEN`。覆盖：
 
@@ -788,7 +769,7 @@ E2E 脚本位于 `research-assistant/test/e2e/`，使用 `RA_API_URL` / `RA_API_
 
 ---
 
-## 14. 运行边界与安全
+## 13. 运行边界与安全
 
 - 本项目是研究原型，接口和数据结构可能调整，不承诺向后兼容。
 - 单机持久化基于“按计划原子快照 + 小型 append-only JSONL 索引/事件日志”；多副本部署需要共享事务数据库与 leader election。
@@ -803,9 +784,9 @@ E2E 脚本位于 `research-assistant/test/e2e/`，使用 `RA_API_URL` / `RA_API_
 
 ---
 
-## 15. 文档索引
+## 14. 文档索引
 
-### 15.1 模块 README
+### 14.1 模块 README
 
 | 模块 | 中文 | English |
 |---|---|---|
@@ -821,7 +802,7 @@ E2E 脚本位于 `research-assistant/test/e2e/`，使用 `RA_API_URL` / `RA_API_
 | 沙箱内核实验 | [docker-core](docker-core/README.md) | [English](docker-core/README.en.md) |
 | 工具调用示例 | [tool](tool/README.md) | [English](tool/README.en.md) |
 
-### 15.2 项目文档
+### 14.2 项目文档
 
 - [docs/README.md](docs/README.md)：架构图、设计、ADR 与轮次报告索引
 - [docs/diagrams/README.md](docs/diagrams/README.md)：图形文件与编辑方式
