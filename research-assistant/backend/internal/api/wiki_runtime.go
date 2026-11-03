@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -13,7 +14,9 @@ import (
 	"research-assistant-backend/internal/apppaths"
 	"research-assistant-backend/internal/documents"
 	"research-assistant-backend/internal/memory"
+	"research-assistant-backend/internal/modelresolver"
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/oaichat"
 	"research-assistant-backend/internal/wiki"
 )
 
@@ -69,6 +72,7 @@ func initWikiRuntime() {
 	wikiRuntimeOnce.store = store
 	wikiRuntimeOnce.builder = wiki.NewBuilder(store, MemoryStore(), documents.NewStore(""), getLiteratureLibrary(), wiki.NewAliasStore(dir))
 	wikiRuntimeOnce.builder.Citations = getLiteratureClient()
+	wikiRuntimeOnce.builder.LLM = wikiModelLLM{}
 	log.Printf("[wiki] store ready dir=%s mode=%s", dir, wiki.Mode())
 }
 
@@ -114,4 +118,26 @@ func tagTaskAndIngest(ctx context.Context, store memory.Store, plan *models.Plan
 	if err := builder.RefreshForTask(ctx, plan, task, result); err != nil {
 		log.Printf("[wiki] refresh task %s failed: %v", task.ID, err)
 	}
+}
+
+// wikiModelLLM adapts the deployment model resolver to wiki.LLM. It uses the
+// owner's text profile (or the env-bootstrap profile) and asks for strict JSON.
+type wikiModelLLM struct{}
+
+func (wikiModelLLM) Complete(ctx context.Context, ownerID, system, user string) (string, error) {
+	resolver := modelresolver.Default()
+	if resolver == nil {
+		return "", fmt.Errorf("model resolver is not configured")
+	}
+	response, _, err := resolver.Complete(ctx, ownerID, []oaichat.Message{
+		{Role: "system", Text: system},
+		{Role: "user", Text: user},
+	}, oaichat.Options{Temperature: 0.2, MaxOutputTokens: 1600, ResponseFormatJSON: true})
+	if err != nil {
+		return "", err
+	}
+	if response == nil {
+		return "", fmt.Errorf("empty llm response")
+	}
+	return response.Content, nil
 }

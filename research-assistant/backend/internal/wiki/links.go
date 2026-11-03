@@ -4,11 +4,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
+	"research-assistant-backend/internal/documents"
 	"research-assistant-backend/internal/literature"
 	"research-assistant-backend/internal/memory"
 )
@@ -102,6 +105,28 @@ func (b *Builder) BuildLinksForPaper(ctx context.Context, ownerID, paperID strin
 	}
 	candidates := make([]LinkCandidate, 0, 32)
 	candidates = append(candidates, b.entityCandidates(page, allPages)...)
+	if LinkAdjudicationEnabled() && b.LLM != nil {
+		pairs := map[string]bool{}
+		for _, candidate := range candidates {
+			pairs[candidate.FromPaper+"|"+candidate.ToPaper] = true
+			pairs[candidate.ToPaper+"|"+candidate.FromPaper] = true
+		}
+		for _, candidate := range b.textSimilarityCandidates(page, allPages) {
+			if pairs[candidate.FromPaper+"|"+candidate.ToPaper] {
+				continue
+			}
+			target := findPaperByID(allPages, candidate.ToPaper)
+			if target == nil {
+				continue
+			}
+			if adjudicated, ok := b.adjudicateLink(ctx, ownerID, page, *target); ok {
+				candidate = adjudicated
+			}
+			candidates = append(candidates, candidate)
+			pairs[candidate.FromPaper+"|"+candidate.ToPaper] = true
+			pairs[candidate.ToPaper+"|"+candidate.FromPaper] = true
+		}
+	}
 	candidates = append(candidates, b.citationCandidates(ctx, page, allPages)...)
 	links := make([]Link, 0, len(candidates))
 	seen := map[string]bool{}
@@ -462,4 +487,172 @@ func (b *Builder) RebuildLinksForOwner(ctx context.Context, ownerID string) (int
 		count += len(links)
 	}
 	return count, nil
+}
+
+// textSimilarityCandidates produces low-confidence related candidates from
+// title/abstract token overlap. They are only used when WIKI_LLM_MODE allows
+// link adjudication; the LLM may upgrade the type, otherwise they stay pending.
+func (b *Builder) textSimilarityCandidates(page PaperPage, pages []PaperPage) []LinkCandidate {
+	tokens := similarityTokens(page.Title + " " + page.Abstract)
+	if len(tokens) == 0 {
+		return nil
+	}
+	out := make([]LinkCandidate, 0, 3)
+	for _, other := range pages {
+		if other.PaperID == page.PaperID {
+			continue
+		}
+		score := jaccard(tokens, similarityTokens(other.Title+" "+other.Abstract))
+		if score < 0.12 {
+			continue
+		}
+		confidence := 0.3 + score
+		if confidence > 0.5 {
+			confidence = 0.5
+		}
+		out = append(out, LinkCandidate{
+			FromPaper: page.PaperID, ToPaper: other.PaperID, Type: LinkRelated,
+			Evidence: []memory.SourceRef{{Section: "abstract", Quote: truncate("text_similarity:"+other.Title, 500)}},
+			Source:   "text_similarity", Confidence: confidence,
+		})
+		if len(out) >= 3 {
+			break
+		}
+	}
+	return out
+}
+
+func similarityTokens(text string) map[string]bool {
+	tokens := map[string]bool{}
+	for _, field := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	}) {
+		if len([]rune(field)) >= 3 {
+			tokens[field] = true
+		}
+	}
+	return tokens
+}
+
+func jaccard(left, right map[string]bool) float64 {
+	if len(left) == 0 || len(right) == 0 {
+		return 0
+	}
+	intersection := 0
+	for token := range left {
+		if right[token] {
+			intersection++
+		}
+	}
+	union := len(left) + len(right) - intersection
+	if union == 0 {
+		return 0
+	}
+	return float64(intersection) / float64(union)
+}
+
+func findPaperByID(pages []PaperPage, paperID string) *PaperPage {
+	for index := range pages {
+		if pages[index].PaperID == paperID {
+			return &pages[index]
+		}
+	}
+	return nil
+}
+
+const linkAdjudicationSystemPrompt = "你是论文关系裁决器。只输出严格 JSON，不要输出 Markdown 代码块或解释。\n" +
+	"JSON schema: {\"type\":\"extends|contradicts|related\",\"confidence\":0.0,\"evidence_quote\":\"逐字原文摘录\"}\n" +
+	"type 定义：extends=A 在 B 基础上改进；contradicts=A 与 B 的结论或指标冲突；related=一般相关。\n" +
+	"不确定时使用 related 且 confidence<=0.5。evidence_quote 必须逐字来自 A 或 B 的原文，不得编造。"
+
+type linkAdjudicationPayload struct {
+	Type          string  `json:"type"`
+	Confidence    float64 `json:"confidence"`
+	EvidenceQuote string  `json:"evidence_quote"`
+}
+
+// adjudicateLink asks the LLM to classify one ambiguous pair. The returned
+// candidate is always pending_review because Source=="llm".
+func (b *Builder) adjudicateLink(ctx context.Context, ownerID string, from, to PaperPage) (LinkCandidate, bool) {
+	if b == nil || b.LLM == nil || !LinkAdjudicationEnabled() {
+		return LinkCandidate{}, false
+	}
+	user := fmt.Sprintf("论文A：%s\n摘要：%s\n\n论文B：%s\n摘要：%s",
+		from.Title, truncate(from.Abstract, 1500), to.Title, truncate(to.Abstract, 1500))
+	raw, err := b.LLM.Complete(ctx, ownerID, linkAdjudicationSystemPrompt, user)
+	if err != nil {
+		return LinkCandidate{}, false
+	}
+	payload, parseErr := parseLinkAdjudicationJSON(raw)
+	if parseErr != nil {
+		return LinkCandidate{}, false
+	}
+	linkType := LinkType(payload.Type)
+	if linkType != LinkExtends && linkType != LinkContradicts && linkType != LinkRelated {
+		return LinkCandidate{}, false
+	}
+	confidence := payload.Confidence
+	if confidence < 0.3 {
+		confidence = 0.3
+	}
+	if confidence > 0.9 {
+		confidence = 0.9
+	}
+	evidence := []memory.SourceRef{}
+	if quote := strings.TrimSpace(payload.EvidenceQuote); quote != "" {
+		if document := b.documentForPaper(ctx, ownerID, from); document != nil {
+			if location := documents.LocateQuoteLocation(document, quote); location.Found {
+				evidence = append(evidence, memory.SourceRef{
+					DocumentID: firstNonEmpty(documentIDOf(from), ""),
+					BlockID:    location.BlockID,
+					Page:       location.Page,
+					Quote:      truncate(quote, 500),
+				})
+			}
+		}
+	}
+	return LinkCandidate{
+		FromPaper: from.PaperID, ToPaper: to.PaperID, Type: linkType,
+		Evidence: evidence, Source: "llm", Confidence: confidence,
+	}, true
+}
+
+func parseLinkAdjudicationJSON(raw string) (linkAdjudicationPayload, error) {
+	var payload linkAdjudicationPayload
+	text := strings.TrimSpace(raw)
+	fence := "\x60\x60\x60"
+	text = strings.TrimPrefix(text, fence+"json")
+	text = strings.TrimPrefix(text, fence)
+	text = strings.TrimSuffix(text, fence)
+	if start := strings.Index(text, "{"); start >= 0 {
+		if end := strings.LastIndex(text, "}"); end > start {
+			text = text[start : end+1]
+		}
+	}
+	if err := json.Unmarshal([]byte(text), &payload); err != nil {
+		return linkAdjudicationPayload{}, err
+	}
+	payload.Type = strings.TrimSpace(payload.Type)
+	if payload.Type == "" {
+		return linkAdjudicationPayload{}, fmt.Errorf("missing link type")
+	}
+	return payload, nil
+}
+
+func (b *Builder) documentForPaper(ctx context.Context, ownerID string, page PaperPage) *documents.Document {
+	if b.Documents == nil || len(page.DocumentIDs) == 0 {
+		return nil
+	}
+	document, err := b.Documents.GetDocument(ctx, ownerID, page.DocumentIDs[0])
+	if err != nil {
+		return nil
+	}
+	return document
+}
+
+func documentIDOf(page PaperPage) string {
+	if len(page.DocumentIDs) == 0 {
+		return ""
+	}
+	return page.DocumentIDs[0]
 }

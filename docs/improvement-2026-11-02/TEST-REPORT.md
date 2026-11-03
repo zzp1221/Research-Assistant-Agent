@@ -1,9 +1,9 @@
 # Paper Wiki 测试报告（feature/memory）
 
-- 日期：2026-11-02
+- 日期：2026-11-02（W3 更新：2026-11-03）
 - 环境：容器内（golang:1.27.3-bookworm 构建/单测；python:3.11-bullseye 运行后端二进制与 E2E；node:22-bookworm-slim 前端 build/test/lint）
 - 约束：所有功能测试在容器内执行；真实 compose 栈（backend 18080 / frontend 15173 / sandbox 8082）只做只读健康冒烟
-- 结论：**通过**。全量后端测试、前端测试、wiki API E2E、真实 LLM 30+ 轮长对话 + 计划 A/B 均通过；未发现新增回归。
+- 结论：**通过**。全量后端测试、前端测试、wiki API E2E、真实 LLM 30+ 轮长对话 + 计划 A/B、W3 自动 LLM 摘要与 Link 裁决均通过；未发现新增回归。
 
 ## 1. 构建与静态检查
 
@@ -71,6 +71,32 @@ PASS real_llm_wiki_plan plan_a=ae555df9-261c-4103-987c-3eec990f1984 parent=ae555
 - 计划 A/B 同 session，B 的 `parent_plan_id` 指向 A，`memory_context` 含 27.3，说明计划上下文与记忆在长任务中未丢失；
 - 全程无 4xx/5xx、无任务错误。
 
+## 4.5 W3 自动 LLM 摘要与 Link 裁决 E2E（wiki-w3-e2e.py）
+
+脚本：`research-assistant/test/e2e/wiki-w3-e2e.py`；真实 provider `deepseek-v4.1-flash`，`WIKI_LLM_MODE=all`。
+
+- 创建 Attention Is All You Need（仅摘要，无 PDF）→ PaperPage 自动生成 `tldr` 且 `tldr_inferred=true`；
+- `GET /api/memories?q=TLDR` 能查到 `wiki_tldr` 记录（证明 TLDR 持久化到 memory，删除 wiki 可恢复且不重复调用 LLM）；
+- 创建 BERT 论文后 full build，`GET /api/wiki/links?status=pending_review` 返回 `source=llm` 的 Link（本次 `extends`/`related` 视模型判断），状态 `pending_review`；
+- `WIKI_LLM_MODE=off` 的第二个实例创建同论文不生成 TLDR（开关生效）。
+
+实测输出：
+
+```
+tldr: Transformer 用多头自注意力替代循环层，在 WMT14 英德翻译上达到 27.3 BLEU，且训练速度快于 RNN 基线。
+llm_link: related pending_review 0.9
+PASS w3_auto_tldr_and_link_adjudication
+PASS w3_llm_mode_off
+```
+
+W3 单测（`internal/wiki/summarize_test.go`）：
+- `TestMaybeSummarizePaperCreatesTLDRAndVerifiedPoints`：3 个 Point 中 2 个 quote 定位成功、1 个失败保持 pending 且 quote 清空（quote 定位率 2/3）；
+- `TestMaybeSummarizePaperRejectsInvalidJSON`：非法 JSON 恰好重试 2 次后失败；
+- `TestSummaryModeOffDoesNotCallLLM`：off 模式 0 次调用；
+- `TestEnsurePaperRestoresTLDRWithoutCallingLLM`：删除 wiki 后重建 0 次 LLM 调用且 TLDR 恢复；
+- `TestAdjudicateLink`：LLM 返回 `contradicts` 被接受、非法 type 被拒绝；
+- `TestTextSimilarityCandidates`：文本相似候选生成。
+
 ## 5. 测试过程中发现并修复的缺陷
 
 | # | 缺陷 | 影响 | 修复 |
@@ -89,7 +115,7 @@ PASS real_llm_wiki_plan plan_a=ae555df9-261c-4103-987c-3eec990f1984 parent=ae555
 
 ## 7. 未覆盖/已知限制
 
-- W3 自动 LLM 摘要未接线：TLDR 由 API 写入并标记 inferred；WIKI_LLM_MODE 开关已预留。
+- W3 已接线；自动摘要依赖部署的模型配置（env-bootstrap 或用户模型 profile），无 provider 时静默降级、不阻塞论文创建。
 - W4 embedding/图增强未实现（设计默认关闭、可选）。
 - PDF references（W2.5）未实现（默认关闭）。
 - 设计 §16.4 的 1 万篇/10 万 Point 性能指标未压测；本轮仅验证功能正确性与预算上限。

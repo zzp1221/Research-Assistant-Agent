@@ -22,6 +22,8 @@ type Builder struct {
 	Library   *literature.LibraryStore
 	Aliases   *AliasStore
 	Citations CitationProvider
+	// LLM optionally generates TLDR/summary points and link adjudications (W3).
+	LLM LLM
 }
 
 // NewBuilder wires the wiki builder.
@@ -76,6 +78,28 @@ func (b *Builder) EnsurePaper(ctx context.Context, ownerID, projectID string, me
 	saved, err := b.Store.Put(ctx, page)
 	if err != nil {
 		return PaperPage{}, err
+	}
+	// Restore a previously generated TLDR first: rebuilding data/wiki must not
+	// call the LLM again (the TLDR is persisted as a wiki_tldr memory record).
+	if strings.TrimSpace(saved.TLDR) == "" {
+		if tldr, ok := b.loadTLDR(ctx, ownerID, saved.PaperID); ok {
+			saved.TLDR = tldr
+			saved.TLDRInferred = true
+			if updated, putErr := b.Store.Put(ctx, saved); putErr == nil {
+				saved = updated
+			}
+		}
+	}
+	if strings.TrimSpace(saved.TLDR) == "" && b.LLM != nil && SummaryEnabled() {
+		var document *documents.Document
+		if documentID != "" && b.Documents != nil {
+			document, _ = b.Documents.GetDocument(ctx, ownerID, documentID)
+		}
+		if summarizeErr := b.maybeSummarizePaper(ctx, ownerID, &saved, documentID, document); summarizeErr == nil {
+			if updated, putErr := b.Store.Put(ctx, saved); putErr == nil {
+				saved = updated
+			}
+		}
 	}
 	return b.RefreshPaper(ctx, ownerID, saved.PaperID)
 }

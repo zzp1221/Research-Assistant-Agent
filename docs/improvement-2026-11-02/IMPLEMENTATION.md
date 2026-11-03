@@ -1,6 +1,6 @@
 # Paper Wiki 实现对照（feature/memory）
 
-- 日期：2026-11-02
+- 日期：2026-11-02（W3 更新：2026-11-03）
 - 设计依据：[docs/design/2026-11-02-paper-wiki-memory.md](../design/2026-11-02-paper-wiki-memory.md)（v1.1）
 - 评审依据：[docs/review/2026-11-02-paper-wiki-memory-review.md](../review/2026-11-02-paper-wiki-memory-review.md)
 - 分支：feature/memory（从 master fast-forward 后实施）
@@ -14,7 +14,7 @@
 | W0 | internal/wiki types/identity/store/builder/points、PaperPage 与 Point API | 完成 |
 | W1 | Plan/Task/Trial 记录打 wiki_point 标签、memory_sink 刷新、取消路径 RecordPlan、paper_parse 摘要、metrics result Point | 完成 |
 | W2 | 实体倒排 + cites provider 接口 + 对称方向规范化 + 稳定 Link ID/revision + links API/confirm/reject | 完成 |
-| W3 | WIKI_LLM_MODE/WIKI_LINK_MODE 开关、Quote LocateQuote 校验、pending_review、注入与预算 | 部分（自动 LLM 摘要未接线，TLDR 由 API 写入并标记 inferred） |
+| W3 | 自动 LLM TLDR/段落摘要、Link 类型裁决、Quote LocateQuote 校验、pending_review、注入与预算 | 完成 |
 | W4 | embedding/图增强 | 未实现（设计默认关闭，非本轮验收） |
 | 前端 | PaperWikiPanel + wikiApi + 设置页“论文”tab | 完成 |
 
@@ -30,13 +30,14 @@
 - `internal/wiki/links.go`：实体候选、cites provider、稳定 key/revision、confirm/reject、RebuildLinksForOwner。
 - `internal/wiki/retrieve.go`：BudgetTokens（2%/3%/150-1500）、RetrieveForTask、wiki XML 渲染、Citation 生成。
 - `internal/wiki/ingest.go`：RefreshForTask（paper_parse/metrics/task 标签）。
+- `internal/wiki/summarize.go`：W3 LLM 接口、严格 JSON（最多 2 次）、TLDR/摘要 Point、LocateQuote 校验、TLDR memory 持久化、Link 裁决。
 - `internal/wiki/settings.go`：WIKI_ENABLED/WIKI_MODE/WIKI_LLM_MODE/WIKI_LINK_MODE/WIKI_BUDGET_TOKENS/WIKI_PDF_REFS。
-- `internal/wiki/*_test.go`：身份、store、Point、Link、检索、设置单测。
+- `internal/wiki/*_test.go`：身份、store、Point、Link、检索、设置、W3 摘要与 Link 裁决单测。
 - `internal/lockfile/`：带 PID 存活检测的跨平台文件锁（修复重启后内存库回退问题）。
 - `internal/api/wiki.go` / `wiki_runtime.go`：wiki API 与进程级 builder。
 - `internal/api/wiki_test.go`：API CRUD/owner/hidden/links/stats/build。
 - `frontend/src/services/api/wikiApi.ts`、`frontend/src/features/wiki/PaperWikiPanel.tsx`。
-- `test/e2e/wiki-e2e.py`、`test/e2e/wiki-long-chat.py`。
+- `test/e2e/wiki-e2e.py`、`test/e2e/wiki-long-chat.py`、`test/e2e/wiki-w3-e2e.py`。
 
 ### 修改
 
@@ -74,7 +75,7 @@
 
 ## 4. 与设计文档的差异（以实际代码为准）
 
-1. **W3 自动 LLM 摘要未接线**：设计允许 TLDR 由 LLM 生成并标记 inferred；本轮实现提供 API 写入 TLDR（TLDRInferred=true）与 WIKI_LLM_MODE 开关，但未把项目 llmclient 接入 Builder 自动生成。原因：避免在无 provider 的测试环境引入不确定网络调用；接口预留，后续可注入。
+1. **W3 已接线**：`Builder.LLM` 由 `api/wiki_runtime.go` 的 `wikiModelLLM` 适配 `modelresolver.Resolver.Complete`；`WIKI_LLM_MODE=summary|all` 自动生成 TLDR/摘要 Point，`links|all` 做 Link 类型裁决。无 provider 或调用失败时静默降级，不阻塞论文创建。
 2. **W4 未实现**：设计明确 W4 可选且默认关闭；本轮不做 embedding/图增强。
 3. **PDF references（W2.5）未实现**：默认关闭的可选项；cites 通过 CitationProvider 接口接入（生产为 literature.Client.Citations）。
 4. **前端入口**：PaperWikiPanel 放在设置页“论文”tab（而非独立一级路由），复用现有设置壳，减少导航改动。
@@ -86,6 +87,8 @@
 - hidden benchmark：PaperPage Title/Abstract/Authors 与 Refs DocumentID/ArtifactRef/Quote 全部扫描；命中不入库、列表不返回。
 - 注入扫描：Refs.Quote 命中 ScanInjection 时 Trust 降为 untrusted，不参与注入。
 - 可重建：`RebuildOwner` 从 memory 的 paper/metadata fact 与 document/sections fact 重建 PaperPage；Point 来自 memory；Link 来自 memory；用户 confirm/reject 状态保存在 Record.Status。
+- W3 可重建：自动 TLDR 持久化为 `wiki_tldr` memory 记录（StatusPending、TrustInferred）；删除 `data/wiki` 后 `EnsurePaper` 先读该记录，**不重新调用 LLM**。
+- W3 quote：LLM 产出的每个 Point 必须带 quote，`documents.LocateQuoteLocation` 定位失败则清空 quote 并保持 `pending_review`；无 document 时只生成 TLDR，不生成事实 Point。
 - 并发：单进程文件锁 + WAL + snapshot；锁带 PID 存活检测，崩溃后不会永久阻塞。
 
 ## 6. API 一览
