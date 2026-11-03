@@ -410,8 +410,9 @@ func startWikiBuild(c *gin.Context, builder *wiki.Builder) {
 		c.JSON(http.StatusConflict, gin.H{"error": "wiki_build_in_progress"})
 		return
 	}
-	job := &wikiBuildJob{ID: "wiki-build-" + strconv.FormatInt(time.Now().UnixNano(), 36), Mode: mode, Status: "running", StartedAt: time.Now().UTC()}
-	wikiBuildState.jobs[job.ID] = job
+	jobID := "wiki-build-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	job := &wikiBuildJob{ID: jobID, Mode: mode, Status: "running", StartedAt: time.Now().UTC()}
+	wikiBuildState.jobs[jobID] = job
 	wikiBuildState.running = true
 	wikiBuildState.Unlock()
 	ownerID := resolveUserID(c)
@@ -434,12 +435,16 @@ func startWikiBuild(c *gin.Context, builder *wiki.Builder) {
 		wikiBuildState.running = false
 		wikiBuildState.Unlock()
 	}()
-	c.JSON(http.StatusAccepted, gin.H{"job_id": job.ID, "status": job.Status})
+	c.JSON(http.StatusAccepted, gin.H{"job_id": jobID, "status": "running"})
 }
 
 func getWikiBuild(c *gin.Context) {
 	wikiBuildState.Lock()
-	job, ok := wikiBuildState.jobs[c.Param("jobID")]
+	stored, ok := wikiBuildState.jobs[c.Param("jobID")]
+	var job wikiBuildJob
+	if ok {
+		job = *stored
+	}
 	wikiBuildState.Unlock()
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "build job not found"})
