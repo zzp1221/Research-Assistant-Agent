@@ -6,7 +6,7 @@
 
 > 把自然语言研究目标转换为可验证的执行计划：理解任务 → 检索资料 → 固化评测契约 → 生成 DAG → 隔离执行 → 以 Artifact、指标、环境清单与证据图给出可审计结果。
 
-Research Assistant Agent 由 DeepSeek 构建与维护，当前版本 **0.9.0**。项目同时提供 **Windows 桌面客户端**、**Docker Compose 服务端** 与 **源码开发** 三种使用形态，覆盖从单机科研到团队服务器的不同场景。
+Research Assistant Agent 当前版本 **0.9.0**。项目同时提供 **Windows 桌面客户端**、**Docker Compose 服务端** 与 **源码开发** 三种使用形态，覆盖从单机科研到团队服务器的不同场景。
 
 ---
 
@@ -420,7 +420,7 @@ GOOS=windows GOARCH=amd64 go build ./...
 - **桌面客户端**：Windows 10/11 + WebView2 Runtime（Win11 自带）。
 - **Docker Compose**：Docker Engine 20.10+、Docker Compose v2、Git。
 - **源码开发**：Go 1.27.3、Node.js 22+、Python 3.12（可选 AI 服务/优化器）、Docker（沙箱）。
-- 一个 OpenAI-compatible LLM API Key（默认指向 DeepSeek）。
+- 一个兼容 Chat Completions 协议的 LLM API Key（由部署配置提供）。
 
 ### 8.2 方式 A：Windows 桌面客户端
 
@@ -516,9 +516,9 @@ Benchmark Agent 会审计列映射、生成泄漏安全的 train/validation/test
 
 | 变量 | 必填 | 说明 |
 |---|---:|---|
-| `OPENAI_API_KEY` | 是 | OpenAI-compatible API 密钥 |
-| `OPENAI_BASE_URL` | 否 | API Base URL；未设置时回退 `https://api.deepseek.com/v1` |
-| `OPENAI_MODEL_NAME` | 否 | 模型名称；未设置时回退 `deepseek-chat` |
+| `OPENAI_API_KEY` | 是 | 兼容服务的 API 密钥 |
+| `OPENAI_BASE_URL` | 否 | API Base URL；未设置时使用部署默认值 |
+| `OPENAI_MODEL_NAME` | 否 | 模型名称；未设置时使用部署默认值 |
 | `MODEL_PROFILE_DIR` / `MODEL_PROFILE_ENCRYPTION_KEY` | 否 | 运行期模型 profile 存储与加密；未配置密钥时禁止保存 profile |
 | `ADMIN_TOKEN` | 否 | 可创建/修改全局模型 profile 的运营 Token |
 | `LLM_MAX_ATTEMPTS` / `LLM_ATTEMPT_TIMEOUT_SECONDS` / `LLM_RETRY_BASE_MS` / `LLM_RETRY_MAX_MS` | 否 | LLM 重试与超时 |
@@ -778,7 +778,7 @@ E2E 脚本位于 `research-assistant/test/e2e/`，使用 `RA_API_URL` / `RA_API_
 - 默认运行时镜像是 CPU/通用 Python 镜像；GPU 透传需要 NVIDIA Container Toolkit 与 `SANDBOX_DOCKER_GPUS=all`。
 - native Provider 的隔离强度低于容器；不应对不可信代码使用 `full_access`，也不要在多租户环境共享同一桌面数据目录。
 - 论文复现重点是轻量 smoke 与结构消融，不包含大规模数据集训练；资源不足时返回 `blocked/partial`。
-- Framework_Evaluation 保留 deterministic offline baseline；它不是真实 LangChain/LlamaIndex 性能 benchmark。
+- Framework_Evaluation 保留 deterministic offline baseline；它不是真实 Agent 框架性能 benchmark。
 - 候选搜索是真实 Validation Reward 驱动的分层 UCB、Top-K Beam 与 UCT-style 搜索，不是完整 MCTS 或通用强化学习。
 - 记忆系统默认只做确定性抽取；LLM 抽取与 embedding/图扩展默认关闭，需显式开启并评估。
 
@@ -808,10 +808,11 @@ E2E 脚本位于 `research-assistant/test/e2e/`，使用 `RA_API_URL` / `RA_API_
 - [docs/diagrams/README.md](docs/diagrams/README.md)：图形文件与编辑方式
 - [docs/CHANGELOG.md](docs/CHANGELOG.md)：按提交整理的变更记录
 - [docs/verification.md](docs/verification.md)：最近验证状态与已知缺陷
+- [docs/test/2026-11-03-memory-stress-test-plan.md](docs/test/2026-11-03-memory-stress-test-plan.md)：记忆系统压力测试方案（长任务 / 长论文 / 交叉论文）
 - [reports/README.md](reports/README.md)：本地验收报告目录说明
 
 ---
 
 <p align="center">
-  <sub>Research Assistant Agent · 由 DeepSeek 构建与维护 · 0.9.0</sub>
+  <sub>Research Assistant Agent · 0.9.0</sub>
 </p>
