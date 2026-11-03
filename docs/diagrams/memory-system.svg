@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1760" height="920" viewBox="0 0 1760 920">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#495057"/></marker></defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<rect data-node-id="G-UI" x="40" y="90" width="320" height="380" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="52" y="112" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#343a40">Interfaces</text>
+<rect data-node-id="G-CORE" x="390" y="90" width="860" height="700" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="402" y="112" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#343a40">Go backend — memory, retrieval, extraction and Paper Wiki</text>
+<rect data-node-id="G-STORE" x="1290" y="90" width="430" height="700" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="1302" y="112" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#343a40">Owner-scoped persistence</text>
+<polyline points="200.0,172.0 200.0,190.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="200.0" y="177.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">chat / task</text>
+<polyline points="340.0,211.0 340.0,210.0 400.0,210.0 400.0,150.0 410.0,150.0 410.0,153.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="370.0" y="206.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">REST / SSE</text>
+<polyline points="340.0,271.0 340.0,270.0 400.0,270.0 400.0,150.0 410.0,150.0 410.0,153.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="400.0" y="206.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">CRUD / review</text>
+<polyline points="540.0,176.0 540.0,210.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="540.0" y="189.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">retrieve</text>
+<polyline points="540.0,256.0 540.0,290.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="540.0" y="269.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">scored records</text>
+<polyline points="540.0,336.0 540.0,370.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="540.0" y="349.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">bounded context</text>
+<polyline points="540.0,416.0 540.0,450.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="540.0" y="429.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">inject</text>
+<polyline points="670.0,473.0 670.0,470.0 710.0,470.0 710.0,150.0 720.0,150.0 720.0,153.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="710.0" y="306.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">record plan/task/trial</text>
+<polyline points="670.0,473.0 670.0,470.0 710.0,470.0 710.0,230.0 720.0,230.0 720.0,233.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="710.0" y="346.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">paper_parse</text>
+<polyline points="670.0,473.0 670.0,470.0 710.0,470.0 710.0,310.0 720.0,310.0 720.0,313.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="710.0" y="386.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">build links</text>
+<polyline points="670.0,473.0 670.0,470.0 720.0,470.0 720.0,393.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="720.0" y="427.5" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">background</text>
+<polyline points="670.0,233.0 670.0,190.0 1310.0,190.0 1310.0,159.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="990.0" y="186.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">records + index</text>
+<polyline points="970.0,153.0 970.0,160.0 1310.0,160.0 1310.0,159.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1140.0" y="156.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">Put</text>
+<polyline points="970.0,233.0 970.0,230.0 1300.0,230.0 1300.0,160.0 1310.0,160.0 1310.0,159.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1135.0" y="226.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">wiki_tldr / points</text>
+<polyline points="970.0,313.0 970.0,310.0 1300.0,310.0 1300.0,160.0 1310.0,160.0 1310.0,159.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1135.0" y="306.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">wiki_link records</text>
+<polyline points="970.0,393.0 970.0,390.0 1300.0,390.0 1300.0,160.0 1310.0,160.0 1310.0,159.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1135.0" y="386.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">merge / TTL</text>
+<polyline points="970.0,313.0 970.0,340.0 1310.0,340.0 1310.0,339.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1140.0" y="336.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">PaperPage / links</text>
+<polyline points="670.0,153.0 670.0,200.0 1300.0,200.0 1300.0,340.0 1310.0,340.0 1310.0,339.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="985.0" y="196.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">papers / points</text>
+<polyline points="1310.0,339.0 1310.0,340.0 1300.0,340.0 1300.0,160.0 1310.0,160.0 1310.0,159.0" fill="none" stroke="#495057" stroke-width="1.3" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<text x="1300.0" y="246.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">rebuild</text>
+<polyline points="970.0,313.0 970.0,310.0 1300.0,310.0 1300.0,430.0 1310.0,430.0 1310.0,429.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="1135.0" y="306.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">PDF refs / DOI</text>
+<rect data-node-id="T" x="40" y="16" width="1680" height="40" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text data-node-id="T" x="880" y="43" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="20" font-weight="700" fill="#212529">Agent Memory &amp; Paper Wiki — System Architecture</text>
+<rect data-node-id="U1" x="60" y="130" width="280" height="42" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text data-node-id="U1" x="200" y="151.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Researcher / Desktop user</text>
+<rect data-node-id="U2" x="60" y="190" width="280" height="42" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text data-node-id="U2" x="200" y="211.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Chat &amp; Plan UI</text>
+<rect data-node-id="U3" x="60" y="250" width="280" height="42" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text data-node-id="U3" x="200" y="271.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">MemoryPanel / PaperWikiPanel</text>
+<rect data-node-id="U4" x="60" y="310" width="280" height="42" rx="8" fill="#fff2cc" stroke="#d6b656" stroke-width="1.2"/>
+<text data-node-id="U4" x="200" y="331.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Citations &amp; review actions</text>
+<rect data-node-id="C1" x="410" y="130" width="260" height="46" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text data-node-id="C1" x="540" y="146.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Memory &amp; Wiki API</text>
+<text data-node-id="C1" x="540" y="161.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">/api/memories · /api/wiki</text>
+<rect data-node-id="C2" x="410" y="210" width="260" height="46" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text data-node-id="C2" x="540" y="226.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Retrieval pipeline</text>
+<text data-node-id="C2" x="540" y="241.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">BM25 + entity + RRF/MMR</text>
+<rect data-node-id="C3" x="410" y="290" width="260" height="46" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text data-node-id="C3" x="540" y="306.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Budget &amp; render</text>
+<text data-node-id="C3" x="540" y="321.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">core / retrieved / wiki</text>
+<rect data-node-id="C4" x="410" y="370" width="260" height="46" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text data-node-id="C4" x="540" y="386.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Prompt assembly</text>
+<text data-node-id="C4" x="540" y="401.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">core_memory · retrieved_memory · wiki_context</text>
+<rect data-node-id="C5" x="410" y="450" width="260" height="46" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text data-node-id="C5" x="540" y="466.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">ChatAgent / RoutedTaskExecutor</text>
+<text data-node-id="C5" x="540" y="481.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">inject + record</text>
+<rect data-node-id="C6" x="720" y="130" width="250" height="46" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text data-node-id="C6" x="845" y="146.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Deterministic extractors</text>
+<text data-node-id="C6" x="845" y="161.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">RecordPlan / Task / Trial / Document</text>
+<rect data-node-id="C7" x="720" y="210" width="250" height="46" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text data-node-id="C7" x="845" y="226.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">LLM summarizer (W3)</text>
+<text data-node-id="C7" x="845" y="241.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">TLDR · method · limitation</text>
+<rect data-node-id="C8" x="720" y="290" width="250" height="46" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text data-node-id="C8" x="845" y="306.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Link builder (W2/W2.5)</text>
+<text data-node-id="C8" x="845" y="321.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">entities · OpenAlex · PDF refs</text>
+<rect data-node-id="C9" x="720" y="370" width="250" height="46" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
+<text data-node-id="C9" x="845" y="386.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Consolidator</text>
+<text data-node-id="C9" x="845" y="401.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">ADD/UPDATE/DELETE/NOOP · TTL</text>
+<rect data-node-id="NOTE1" x="410" y="530" width="800" height="48" rx="8" fill="#fff2cc" stroke="#d6b656" stroke-width="1.2"/>
+<text data-node-id="NOTE1" x="810" y="554.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Memory is data, never instructions. Every write is owner-scoped, redacted, hidden-benchmark filtered and injection-scanned.</text>
+<rect data-node-id="S1" x="1310" y="130" width="390" height="58" rx="8" fill="#ffe6cc" stroke="#d79b00" stroke-width="1.2"/>
+<text data-node-id="S1" x="1505" y="152.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Memory FileStore</text>
+<text data-node-id="S1" x="1505" y="167.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">memory.wal.jsonl + memory.snapshot.json + lock</text>
+<rect data-node-id="S2" x="1310" y="220" width="390" height="52" rx="8" fill="#ffe6cc" stroke="#d79b00" stroke-width="1.2"/>
+<text data-node-id="S2" x="1505" y="239.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">ChatSessionStore + per-owner settings</text>
+<text data-node-id="S2" x="1505" y="254.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">turns · summary · switches</text>
+<rect data-node-id="S3" x="1310" y="310" width="390" height="58" rx="8" fill="#ffe6cc" stroke="#d79b00" stroke-width="1.2"/>
+<text data-node-id="S3" x="1505" y="332.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Paper Wiki store</text>
+<text data-node-id="S3" x="1505" y="347.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">papers.jsonl + papers.snapshot.json + aliases.json</text>
+<rect data-node-id="S4" x="1310" y="400" width="390" height="58" rx="8" fill="#ffe6cc" stroke="#d79b00" stroke-width="1.2"/>
+<text data-node-id="S4" x="1505" y="422.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">DocumentStore + Literature library</text>
+<text data-node-id="S4" x="1505" y="437.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">PDF text/sections · DOI/arXiv records</text>
+<rect data-node-id="NOTE2" x="1310" y="500" width="390" height="80" rx="8" fill="#fff2cc" stroke="#d6b656" stroke-width="1.2"/>
+<text data-node-id="NOTE2" x="1505" y="540.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">PaperPage is a rebuildable projection; Point and Link are memory.Record views. Deleting data/wiki never loses points, links or review decisions.</text>
+</svg>

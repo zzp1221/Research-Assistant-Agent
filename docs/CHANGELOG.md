@@ -2,10 +2,17 @@
 
 本文件按时间倒序汇总仓库的主要提交与交付内容，供 README 只保留稳定说明。逐轮设计、缺陷清单与验收证据仍在 [design](design/) 与 [improvement-2026-10-26](improvement-2026-10-26/) 中。
 
+## 2026-11-03
+
+| 提交 | 内容 |
+|---|---|
+| 工作区（文档） | 完善 README 记忆系统章节：补充 Paper Wiki（W0–W3/W2.5）、写入管道、检索/注入顺序、wiki 预算与开关；新增 `memory-system.drawio`/`.svg` 与 Archify 交互图 `memory-system.html`，同步 `docs/diagrams/README` 索引。 |
+
 ## 2026-11-02
 
 | 提交 | 内容 |
 |---|---|
+| 工作区（文档） | 全量 README 中英双语重写（34 组）；重建系统架构、运行流程、Agent 执行三张 draw.io/SVG 图，以及 `system-architecture.html`、`multi-agent-workflow.html` 两张 Archify 交互图；同步 docs 索引、CHANGELOG 与验证状态。 |
 | 工作区（feature/desk，安装体验） | NSIS 安装向导改为 MUI2 五页（欢迎/安装位置/组件/安装/完成），可选择安装目录与可选 PDF 关联；supervisor 子进程使用 `CREATE_NO_WINDOW`，运行 backend/sandbox 时不再弹出控制台窗口。 |
 | 工作区（feature/desk） | 用 MyGo 0.7.4 替换 Wails 作为默认桌面外壳：新增 `desktop/main_mygo.go`、`desktop/mygo` 适配层（托盘/对话框/通知/Shell）、`desktop/mygo.json`、生成的 `research-assistant/frontend/src/services/mygo.ts`；bridge 通过 `mygo.Bind` 暴露，窗口加载现有 loopback proxy（方案 B），保留 Wails `-tags "desktop wails"` 回退；单实例改为 MyGo 锁并修复崩溃后 supervisor 陈旧锁；Go 工作区升级到 1.27.3；新增 `desktop/build/build.ps1` 与 MyGo 产物打包流程。详见 [2026-11-02-mygo-desktop-shell](design/2026-11-02-mygo-desktop-shell.md)。 |
 
