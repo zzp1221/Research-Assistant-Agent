@@ -205,7 +205,7 @@ func pointRecordID(input PointInput) string {
 
 func (b *Builder) supersedePointKey(ctx context.Context, ownerID, paperID, pointKey string) error {
 	records, _, err := b.Memory.List(ctx, memory.Query{
-		OwnerID: ownerID, Tags: []string{TagWikiPoint, PaperTag(paperID)}, IncludePending: true, Limit: 2000,
+		OwnerID: ownerID, Tags: []string{TagWikiPoint, PaperTag(paperID)}, IncludePending: true, AllScopes: true, Limit: 2000,
 	})
 	if err != nil {
 		return err
@@ -357,7 +357,7 @@ func (b *Builder) ListPoints(ctx context.Context, ownerID, paperID string, kind 
 	if kind != "" {
 		tags = append(tags, PointTag(kind))
 	}
-	records, total, err := b.Memory.List(ctx, memory.Query{OwnerID: ownerID, Tags: tags, IncludePending: true, Limit: 2000})
+	records, total, err := b.Memory.List(ctx, memory.Query{OwnerID: ownerID, Tags: tags, IncludePending: true, AllScopes: true, Limit: 2000})
 	if err != nil {
 		return nil, 0, err
 	}

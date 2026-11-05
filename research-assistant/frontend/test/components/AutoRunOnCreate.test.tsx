@@ -101,6 +101,39 @@ describe('auto-run on create switch', () => {
     vi.mocked(api.listPlans).mockResolvedValue({ plans: [], total: 0, next_cursor: '' });
   });
 
+  it('shows checked answer excerpts without presenting retrieval candidates as evidence', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.chat).mockResolvedValue({
+      response: '固定划分是 SPLIT-73F。',
+      citations: [{ memory_id: 'gpu', kind: 'fact', title: '无关 GPU 候选' }],
+      retrieved_sources: [{ memory_id: 'gpu', kind: 'fact', title: '无关 GPU 候选' }],
+      answer_citations: [{ memory_id: 'split', kind: 'fact', title: '划分约束', quote: '固定划分是 SPLIT-73F。' }],
+    });
+    render(<Harness onPlanReady={noop} />);
+    await waitFor(() => expect(api.getMe).toHaveBeenCalled());
+    await user.type(screen.getByRole('textbox'), '你好，划分口令是什么？');
+    await user.click(screen.getByRole('button', { name: '发送消息' }));
+    await waitFor(() => expect(screen.getByText(/原文依据/)).toBeInTheDocument());
+    expect(chatTexts().join('\n')).toContain('划分约束：“固定划分是 SPLIT-73F。”');
+    expect(chatTexts().join('\n')).not.toContain('无关 GPU 候选');
+  });
+
+  it('does not add an evidence footer to an answer with only retrieval candidates', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.chat).mockResolvedValue({
+      response: '不知道，没有该口令的记录。',
+      citations: [{ memory_id: 'gpu', kind: 'fact', title: '无关 GPU 候选' }],
+      answer_citations: [],
+    });
+    render(<Harness onPlanReady={noop} />);
+    await waitFor(() => expect(api.getMe).toHaveBeenCalled());
+    await user.type(screen.getByRole('textbox'), '你好，未知口令是什么？');
+    await user.click(screen.getByRole('button', { name: '发送消息' }));
+    await waitFor(() => expect(screen.getByText('不知道，没有该口令的记录。')).toBeInTheDocument());
+    expect(chatTexts().join('\n')).not.toContain('原文依据');
+    expect(chatTexts().join('\n')).not.toContain('无关 GPU 候选');
+  });
+
   it('persists the toggle and passes autoRun to the flow before starting', async () => {
     const user = userEvent.setup();
     const onPlanReady = vi.fn();

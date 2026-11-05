@@ -63,6 +63,20 @@ func BudgetOverride() int {
 	return value
 }
 
+// DocumentContextBudget returns the document-evidence token budget. Default is
+// 1200 tokens; 0 disables document-context injection.
+func DocumentContextBudget() int {
+	raw := strings.TrimSpace(os.Getenv("DOCUMENT_CONTEXT_BUDGET_TOKENS"))
+	if raw == "" {
+		return 1200
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 {
+		return 1200
+	}
+	return value
+}
+
 // PDFRefsEnabled reports whether the optional PDF references parser is on.
 func PDFRefsEnabled() bool {
 	raw := strings.TrimSpace(os.Getenv("WIKI_PDF_REFS"))

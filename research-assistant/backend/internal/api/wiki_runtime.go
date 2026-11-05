@@ -22,9 +22,12 @@ import (
 
 var wikiRuntimeOnce struct {
 	sync.Once
-	store   *wiki.PaperStore
-	builder *wiki.Builder
-	enabled bool
+	store     *wiki.PaperStore
+	builder   *wiki.Builder
+	enabled   bool
+	degraded  bool
+	ephemeral bool
+	reason    string
 }
 
 // WikiDirectory resolves the on-disk wiki root once per process.
@@ -40,7 +43,8 @@ func WikiDirectory() string {
 	return dir
 }
 
-// WikiStore returns the process-wide paper store (nil when disabled).
+// WikiStore returns the process-wide paper store (nil when disabled or failed
+// closed).
 func WikiStore() *wiki.PaperStore {
 	wikiRuntimeOnce.Do(initWikiRuntime)
 	return wikiRuntimeOnce.store
@@ -52,10 +56,34 @@ func WikiBuilder() *wiki.Builder {
 	return wikiRuntimeOnce.builder
 }
 
-// WikiEnabled reports whether the wiki is enabled.
+// WikiEnabled reports whether the wiki is configured.
 func WikiEnabled() bool {
 	wikiRuntimeOnce.Do(initWikiRuntime)
 	return wikiRuntimeOnce.enabled
+}
+
+// WikiAvailable reports whether the wiki store is usable.
+func WikiAvailable() bool {
+	wikiRuntimeOnce.Do(initWikiRuntime)
+	return wikiRuntimeOnce.store != nil && wikiRuntimeOnce.builder != nil
+}
+
+// WikiHealth is embedded in /api/health.
+func WikiHealth() gin.H {
+	health := gin.H{
+		"ok":        wikiRuntimeOnce.store != nil || !wikiRuntimeOnce.enabled,
+		"enabled":   wikiRuntimeOnce.enabled,
+		"degraded":  wikiRuntimeOnce.degraded,
+		"ephemeral": wikiRuntimeOnce.ephemeral,
+	}
+	if wikiRuntimeOnce.reason != "" {
+		health["reason"] = wikiRuntimeOnce.reason
+	}
+	return health
+}
+
+func allowEphemeralWiki() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("WIKI_ALLOW_EPHEMERAL")), "true")
 }
 
 func initWikiRuntime() {
@@ -66,18 +94,42 @@ func initWikiRuntime() {
 	dir := WikiDirectory()
 	store, err := wiki.NewPaperStore(dir)
 	if err != nil {
-		log.Printf("[wiki] init failed dir=%s: %v (falling back to in-memory store)", dir, err)
-		store = wiki.NewMemoryPaperStore()
+		wikiRuntimeOnce.degraded = true
+		wikiRuntimeOnce.reason = err.Error()
+		if allowEphemeralWiki() {
+			log.Printf("[wiki] init failed dir=%s: %v (WIKI_ALLOW_EPHEMERAL=true, using ephemeral store)", dir, err)
+			store = wiki.NewMemoryPaperStore()
+			wikiRuntimeOnce.store = store
+			wikiRuntimeOnce.ephemeral = true
+		} else {
+			log.Printf("[wiki] init failed dir=%s: %v (fail-closed; wiki routes will return 503)", dir, err)
+			return
+		}
+	} else {
+		wikiRuntimeOnce.store = store
 	}
-	wikiRuntimeOnce.store = store
 	wikiRuntimeOnce.builder = wiki.NewBuilder(store, MemoryStore(), documents.NewStore(""), getLiteratureLibrary(), wiki.NewAliasStore(dir))
-	wikiRuntimeOnce.builder.Citations = getLiteratureClient()
+	// External citation lookup is optional and off unless the deployment
+	// configures an OpenAlex contact (or opts in explicitly). This keeps
+	// deterministic builds fast and offline-safe.
+	if strings.TrimSpace(os.Getenv("OPENALEX_MAILTO")) != "" || strings.EqualFold(strings.TrimSpace(os.Getenv("WIKI_CITATIONS_ENABLED")), "true") {
+		wikiRuntimeOnce.builder.Citations = getLiteratureClient()
+	}
 	wikiRuntimeOnce.builder.LLM = wikiModelLLM{}
-	log.Printf("[wiki] store ready dir=%s mode=%s", dir, wiki.Mode())
+	log.Printf("[wiki] store ready dir=%s mode=%s degraded=%v", dir, wiki.Mode(), wikiRuntimeOnce.degraded)
+}
+
+func wikiUnavailable(c *gin.Context) {
+	c.JSON(503, gin.H{"error": "wiki_store_unavailable", "reason": wikiRuntimeOnce.reason})
 }
 
 func registerWikiRuntime(apiGroup *gin.RouterGroup) {
-	if !WikiEnabled() || WikiStore() == nil {
+	if !WikiEnabled() {
+		return
+	}
+	if !WikiAvailable() {
+		apiGroup.Any("/wiki", wikiUnavailable)
+		apiGroup.Any("/wiki/*path", wikiUnavailable)
 		return
 	}
 	RegisterWikiRoutes(apiGroup, WikiBuilder())

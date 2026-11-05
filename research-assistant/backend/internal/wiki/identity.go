@@ -5,11 +5,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/google/uuid"
 
 	"research-assistant-backend/internal/literature"
 	"research-assistant-backend/internal/models"
@@ -96,6 +99,7 @@ type AliasEntry struct {
 	Aliases      []string `json:"aliases"`
 	Title        string   `json:"title,omitempty"`
 	Year         int      `json:"year,omitempty"`
+	Authors      []string `json:"authors,omitempty"`
 	MergedFrom   []string `json:"merged_from,omitempty"`
 }
 
@@ -165,57 +169,112 @@ func (s *AliasStore) saveLocked(ownerID string, payload aliasFile) error {
 }
 
 // Resolve returns the paper id for a metadata record, registering all aliases.
-// It merges into an existing paper when a DOI/arXiv alias matches, or when the
-// normalized title matches and the year differs by at most one. A larger year
-// gap keeps the papers separate so distinct editions do not silently merge.
 func (s *AliasStore) Resolve(ownerID string, meta models.PaperMetadata, record *literature.Record) (string, string, error) {
+	paperID, canonicalKey, _, err := s.ResolveWithReason(ownerID, meta, record)
+	return paperID, canonicalKey, err
+}
+
+// ResolveWithReason applies the documented identity rules and returns a short
+// audit reason: alias:doi, alias:arxiv, alias:library, alias:title,
+// title_year_author, canonical, or new.
+func (s *AliasStore) ResolveWithReason(ownerID string, meta models.PaperMetadata, record *literature.Record) (string, string, string, error) {
 	canonicalKey := CanonicalKey(meta, record)
 	if canonicalKey == "" {
-		return "", "", fmt.Errorf("paper identity requires a DOI, arXiv id or title")
+		return "", "", "", fmt.Errorf("paper identity requires a DOI, arXiv id or title")
 	}
 	aliases := BuildAliases(meta, record)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	payload, err := s.loadLocked(ownerID)
-	if err != nil {
-		return "", "", err
-	}
-	paperID := ""
-	for _, alias := range aliases {
-		if existing, ok := payload.Aliases[alias]; ok && existing != "" {
-			paperID = existing
-			break
-		}
-	}
+	title := literature.NormalizeTitle(firstNonEmpty(meta.Title, recordTitle(record)))
 	year := meta.Year
 	if year == 0 {
 		year = recordYear(record)
 	}
-	if paperID == "" {
-		// Title+year candidate merge: only when the same normalized title exists
-		// and the years are compatible.
-		titleAlias := "title:" + literature.NormalizeTitle(firstNonEmpty(meta.Title, recordTitle(record)))
-		for alias, existing := range payload.Aliases {
-			if !strings.HasPrefix(alias, titleAlias+":") {
+	authors := normalizeAuthors(append(append([]string{}, meta.Authors...), recordAuthors(record)...))
+	candidateStrong := strings.HasPrefix(canonicalKey, "doi:") || strings.HasPrefix(canonicalKey, "arxiv:")
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	payload, err := s.loadLocked(ownerID)
+	if err != nil {
+		return "", "", "", err
+	}
+	paperID := ""
+	reason := ""
+	for _, alias := range aliases {
+		existing, ok := payload.Aliases[alias]
+		if !ok || existing == "" {
+			continue
+		}
+		entry := payload.Papers[existing]
+		if strings.HasPrefix(alias, "title:") {
+			if !titleAliasCompatible(canonicalKey, candidateStrong, entry, authors) {
 				continue
 			}
-			entry := payload.Papers[existing]
-			if entry.Year == 0 || year == 0 || absInt(entry.Year-year) <= 1 {
-				paperID = existing
-				break
+		}
+		paperID = existing
+		switch {
+		case strings.HasPrefix(alias, "doi:"):
+			reason = "alias:doi"
+		case strings.HasPrefix(alias, "arxiv:"):
+			reason = "alias:arxiv"
+		case strings.HasPrefix(alias, "library:"):
+			reason = "alias:library"
+		default:
+			reason = "alias:title"
+		}
+		break
+	}
+	if paperID == "" && title != "" {
+		for existing, entry := range payload.Papers {
+			if literature.NormalizeTitle(entry.Title) != title {
+				continue
 			}
+			if year == 0 || entry.Year == 0 || year != entry.Year {
+				continue
+			}
+			entryStrong := entryHasStrongIdentity(entry)
+			entryAuthors := normalizeAuthors(entry.Authors)
+			intersect := authorsIntersect(authors, entryAuthors)
+			if !intersect {
+				if !candidateStrong && !entryStrong {
+					continue
+				}
+				if candidateStrong && entryStrong && !arxivDOIPair(canonicalKey, entry.CanonicalKey) {
+					continue
+				}
+			}
+			paperID = existing
+			reason = "title_year_author"
+			break
 		}
 	}
-	if paperID == "" {
+	if paperID == "" && (strings.HasPrefix(canonicalKey, "doi:") || strings.HasPrefix(canonicalKey, "arxiv:")) {
 		for existing, entry := range payload.Papers {
 			if entry.CanonicalKey == canonicalKey {
 				paperID = existing
+				reason = "canonical"
 				break
 			}
 		}
 	}
 	if paperID == "" {
-		paperID = PaperID(ownerID, canonicalKey)
+		ambiguousDuplicate := false
+		if !candidateStrong && title != "" {
+			for _, entry := range payload.Papers {
+				if literature.NormalizeTitle(entry.Title) == title && entry.Year == year && !entryHasStrongIdentity(entry) {
+					ambiguousDuplicate = true
+					break
+				}
+			}
+		}
+		if ambiguousDuplicate {
+			// Two bare title+year records with no author evidence are treated as
+			// distinct papers (CP-03). A deterministic id would collapse them, so
+			// add a one-time disambiguator.
+			paperID = PaperID(ownerID, canonicalKey+"|ambiguous:"+uuid.NewString())
+		} else {
+			paperID = PaperID(ownerID, canonicalKey)
+		}
+		reason = "new"
 	}
 	entry := payload.Papers[paperID]
 	if entry.CanonicalKey == "" || identityRank(canonicalKey) < identityRank(entry.CanonicalKey) {
@@ -225,15 +284,82 @@ func (s *AliasStore) Resolve(ownerID string, meta models.PaperMetadata, record *
 	if entry.Year == 0 {
 		entry.Year = year
 	}
+	entry.Authors = mergeStrings(entry.Authors, authors)
 	entry.Aliases = mergeStrings(entry.Aliases, aliases)
 	for _, alias := range aliases {
 		payload.Aliases[alias] = paperID
 	}
 	payload.Papers[paperID] = entry
 	if err := s.saveLocked(ownerID, payload); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	return paperID, entry.CanonicalKey, nil
+	log.Printf("[wiki] alias resolve owner=%s paper=%s reason=%s key=%s", ownerID, paperID, reason, entry.CanonicalKey)
+	return paperID, entry.CanonicalKey, reason, nil
+}
+
+func entryHasStrongIdentity(entry AliasEntry) bool {
+	if strings.HasPrefix(entry.CanonicalKey, "doi:") || strings.HasPrefix(entry.CanonicalKey, "arxiv:") {
+		return true
+	}
+	for _, alias := range entry.Aliases {
+		if strings.HasPrefix(alias, "doi:") || strings.HasPrefix(alias, "arxiv:") || strings.HasPrefix(alias, "library:") {
+			return true
+		}
+	}
+	return false
+}
+
+func titleAliasCompatible(canonicalKey string, candidateStrong bool, entry AliasEntry, authors []string) bool {
+	if !candidateStrong {
+		return true
+	}
+	if !entryHasStrongIdentity(entry) {
+		return true
+	}
+	if authorsIntersect(authors, normalizeAuthors(entry.Authors)) {
+		return true
+	}
+	return arxivDOIPair(canonicalKey, entry.CanonicalKey)
+}
+
+func arxivDOIPair(left, right string) bool {
+	return (strings.HasPrefix(left, "arxiv:") && strings.HasPrefix(right, "doi:")) ||
+		(strings.HasPrefix(left, "doi:") && strings.HasPrefix(right, "arxiv:"))
+}
+
+func normalizeAuthors(authors []string) []string {
+	out := make([]string, 0, len(authors))
+	for _, author := range authors {
+		normalized := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(author)), " "))
+		if normalized != "" {
+			out = append(out, normalized)
+		}
+	}
+	return dedupeStrings(out)
+}
+
+func authorsIntersect(left, right []string) bool {
+	if len(left) == 0 || len(right) == 0 {
+		return false
+	}
+	keys := map[string]bool{}
+	for _, author := range left {
+		keys[author] = true
+		fields := strings.Fields(author)
+		if len(fields) > 1 {
+			keys[fields[len(fields)-1]] = true
+		}
+	}
+	for _, author := range right {
+		if keys[author] {
+			return true
+		}
+		fields := strings.Fields(author)
+		if len(fields) > 1 && keys[fields[len(fields)-1]] {
+			return true
+		}
+	}
+	return false
 }
 
 // BuildAliases returns every key that should map to the same paper.
@@ -245,7 +371,10 @@ func BuildAliases(meta models.PaperMetadata, record *literature.Record) []string
 	if arxiv := strings.ToLower(paperid.StripVersion(firstNonEmpty(recordArxiv(record), meta.ArxivID))); arxiv != "" {
 		aliases = append(aliases, "arxiv:"+arxiv)
 	}
-	if title := literature.NormalizeTitle(firstNonEmpty(meta.Title, recordTitle(record))); title != "" {
+	hasStrongIdentity := normalizeDOI(firstNonEmpty(recordDOI(record), meta.DOI)) != "" ||
+		strings.TrimSpace(paperid.StripVersion(firstNonEmpty(recordArxiv(record), meta.ArxivID))) != "" ||
+		(record != nil && strings.TrimSpace(record.ID) != "")
+	if title := literature.NormalizeTitle(firstNonEmpty(meta.Title, recordTitle(record))); title != "" && hasStrongIdentity {
 		year := meta.Year
 		if year == 0 {
 			year = recordYear(record)

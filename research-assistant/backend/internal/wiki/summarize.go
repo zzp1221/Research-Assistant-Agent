@@ -244,7 +244,7 @@ func (b *Builder) loadTLDR(ctx context.Context, ownerID, paperID string) (string
 	if b.Memory == nil {
 		return "", false
 	}
-	records, _, err := b.Memory.List(ctx, memory.Query{OwnerID: ownerID, Tags: []string{"wiki_tldr", PaperTag(paperID)}, IncludePending: true, Limit: 10})
+	records, _, err := b.Memory.List(ctx, memory.Query{OwnerID: ownerID, Tags: []string{"wiki_tldr", PaperTag(paperID)}, IncludePending: true, AllScopes: true, Limit: 10})
 	if err != nil || len(records) == 0 {
 		return "", false
 	}

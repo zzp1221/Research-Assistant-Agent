@@ -42,8 +42,12 @@ func RecordPlan(ctx context.Context, store Store, plan *models.PlanGraph) error 
 	if store == nil || plan == nil || strings.TrimSpace(plan.OwnerID) == "" {
 		return nil
 	}
+	// Unfinished plans have no execution evidence to promote.
+	if plan.Status != models.StatusCompleted && plan.Status != models.StatusFailed && plan.Status != models.StatusCanceled {
+		return nil
+	}
 	now := time.Now().UTC()
-	scope := Scope{OwnerID: plan.OwnerID, ProjectID: plan.ProjectID, SessionID: plan.SessionID, PlanID: plan.ID}
+	scope := projectExperienceScope(plan)
 	outcome := string(plan.Outcome)
 	if outcome == "" {
 		outcome = "pending"
@@ -110,6 +114,7 @@ func RecordPlan(ctx context.Context, store Store, plan *models.PlanGraph) error 
 		Content: truncateRunes(builder.String(), 800), Tags: []string{"plan", plan.IntentType},
 		Entities:   []Entity{{Type: "plan", Value: plan.ID}},
 		Source:     Source{Type: "plan", Ref: plan.ID, CreatedAt: now},
+		Refs:       []SourceRef{{PlanID: plan.ID, SessionID: plan.SessionID}},
 		Evidence:   Evidence{Class: "execution_derived", Confidence: 0.95},
 		Validity:   Validity{ValidFrom: planTime(plan), RecordedAt: now},
 		Importance: importance, Confidence: 0.95, Trust: TrustVerified, Sensitivity: "private", Status: StatusActive,
@@ -235,7 +240,17 @@ func RecordTask(ctx context.Context, store Store, plan *models.PlanGraph, task *
 			Evidence: Evidence{Class: "execution_derived", Confidence: 0.9}, Validity: Validity{ValidFrom: taskTime(task), RecordedAt: now},
 			Importance: 7, Confidence: 0.9, Trust: TrustVerified, Sensitivity: "private", Status: StatusActive,
 		}
-		return putIgnoreDuplicate(ctx, store, rec)
+		if err := putIgnoreDuplicate(ctx, store, rec); err != nil {
+			return err
+		}
+		if plan.ProjectID != "" {
+			rec.ID += "-project"
+			rec.Kind = KindNegative
+			rec.Scope = projectExperienceScope(plan)
+			rec.Refs = []SourceRef{{PlanID: plan.ID, TaskID: task.ID, SessionID: plan.SessionID}}
+			return putIgnoreDuplicate(ctx, store, rec)
+		}
+		return nil
 	}
 	if status == models.StatusCompleted && task.RunCount > 1 {
 		trigger := "task retry"
@@ -245,17 +260,31 @@ func RecordTask(ctx context.Context, store Store, plan *models.PlanGraph, task *
 			}
 		}
 		proc := Record{
-			ID: "mem-proc-" + plan.ID + "-" + task.ID, Kind: KindProcedure, Scope: scope,
+			ID: "mem-proc-" + plan.ID + "-" + task.ID, Kind: KindProcedure, Scope: projectExperienceScope(plan),
 			Title:   truncateRunes("修复经验："+task.Name, 120),
 			Content: fmt.Sprintf("触发：%s；动作：重试/修复后成功；任务：%s；证据：task=%s", trigger, task.Name, task.ID),
 			Tags:    []string{"procedure", "repair"}, Entities: []Entity{{Type: "task", Value: task.ID}},
 			Source:   Source{Type: "task", Ref: task.ID, CreatedAt: now},
+			Refs:     []SourceRef{{PlanID: plan.ID, TaskID: task.ID, SessionID: plan.SessionID}},
 			Evidence: Evidence{Class: "execution_derived", Confidence: 0.8}, Validity: Validity{ValidFrom: taskTime(task), RecordedAt: now},
 			Importance: 7, Confidence: 0.8, Trust: TrustVerified, Sensitivity: "private", Status: StatusActive,
 		}
 		return putIgnoreDuplicate(ctx, store, proc)
 	}
 	return nil
+}
+
+// Execution provenance belongs in refs/source. Only a project authorizes
+// cross-session reuse; ungrouped tasks remain private to their session.
+func projectExperienceScope(plan *models.PlanGraph) Scope {
+	scope := Scope{OwnerID: plan.OwnerID, ProjectID: plan.ProjectID}
+	if plan.ProjectID == "" {
+		scope.SessionID = plan.SessionID
+		if scope.SessionID == "" {
+			scope.PlanID = plan.ID
+		}
+	}
+	return scope
 }
 
 func taskTime(task *models.TaskNode) *time.Time {

@@ -179,6 +179,7 @@ func RegisterPlanRuntimeRoutes(
 	executor := scheduler.NewRoutedTaskExecutor(librarian, data, coder, specialized...)
 	executor.SetAgentRuntime(toolRuntime.profiles, toolRuntime.profileRunner, toolRuntime.invoker)
 	executor.SetMemory(MemoryStore())
+	executor.SetMemorySettings(MemorySettings())
 	executor.SetWiki(WikiBuilder())
 	runner := scheduler.NewScheduler(planStore, executor, eventBus, 2)
 	runner.SetFinalizer(&planner.PlanFinalizer{})

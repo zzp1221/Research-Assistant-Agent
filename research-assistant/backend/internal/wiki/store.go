@@ -332,6 +332,25 @@ func (s *PaperStore) List(ctx context.Context, q PaperQuery) ([]PaperPage, int, 
 	return all[offset:end], total, nil
 }
 
+// ListAll returns every paper for one owner without the API pagination cap.
+// Internal build/rebuild paths use it; GET /api/wiki/papers keeps limit<=200.
+func (s *PaperStore) ListAll(ctx context.Context, ownerID string) ([]PaperPage, error) {
+	_ = ctx
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	pages := make([]PaperPage, 0, len(s.papers[ownerID]))
+	for _, page := range s.papers[ownerID] {
+		pages = append(pages, page)
+	}
+	sort.Slice(pages, func(i, j int) bool {
+		if pages[i].UpdatedAt.Equal(pages[j].UpdatedAt) {
+			return pages[i].PaperID < pages[j].PaperID
+		}
+		return pages[i].UpdatedAt.After(pages[j].UpdatedAt)
+	})
+	return pages, nil
+}
+
 // Archive marks one paper archived without deleting its points.
 func (s *PaperStore) Archive(ctx context.Context, ownerID, paperID string, archived bool) (PaperPage, error) {
 	page, err := s.Get(ctx, ownerID, paperID)

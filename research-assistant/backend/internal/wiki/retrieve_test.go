@@ -32,7 +32,7 @@ func TestRenderContext(t *testing.T) {
 	if context.Text == "" || !strings.Contains(context.Text, "<wiki_paper") || !strings.Contains(context.Text, "<wiki_point") || !strings.Contains(context.Text, "</wiki_paper>") {
 		t.Fatalf("unexpected wiki text: %q", context.Text)
 	}
-	if context.Tokens <= 0 || len(context.Citations) != 1 || context.Citations[0].PaperID != "paper-a" {
+	if context.Tokens <= 0 || len(context.Citations) < 2 || context.Citations[0].PaperID != "paper-a" || context.Citations[0].MemoryID != "paper:paper-a" {
 		t.Fatalf("citations=%+v tokens=%d", context.Citations, context.Tokens)
 	}
 	if got := RenderContext([]PaperContext{{Paper: page}}, 0); got.Text != "" {

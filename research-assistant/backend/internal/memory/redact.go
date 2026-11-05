@@ -70,8 +70,14 @@ func ValidateRecord(rec *Record) error {
 	if rec.Evidence.Hidden || IsHiddenSource(rec.Source) {
 		return fmt.Errorf("hidden benchmark memory cannot be persisted")
 	}
+	if IsHiddenText(combined) {
+		return fmt.Errorf("memory contains a hidden benchmark marker")
+	}
 	if hasLargeBase64(combined) {
 		return fmt.Errorf("memory contains a large base64 payload and was rejected")
+	}
+	if matched, pattern := ScanInjection(combined); matched {
+		markInjection(rec, pattern)
 	}
 	for index := range rec.Refs {
 		ref := &rec.Refs[index]
@@ -94,14 +100,55 @@ func ValidateRecord(rec *Record) error {
 		}
 	}
 	if rec.Attributes != nil {
-		for key, value := range rec.Attributes {
-			text, ok := value.(string)
-			if !ok {
-				continue
+		if err := walkAttributes(rec.Attributes, 1, "attributes", rec); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// markInjection downgrades a record and records why. Injection is data, not an
+// instruction, so the record is kept (never silently dropped).
+func markInjection(rec *Record, pattern string) {
+	rec.Trust = TrustUntrusted
+	if rec.Attributes == nil {
+		rec.Attributes = map[string]any{}
+	}
+	rec.Attributes["injection_flag"] = true
+	rec.Attributes["injection_pattern"] = pattern
+}
+
+// walkAttributes validates nested attribute values. Depth is capped at 5 so a
+// hostile payload cannot cause unbounded recursion.
+func walkAttributes(value any, depth int, path string, rec *Record) error {
+	if depth > 5 {
+		return fmt.Errorf("memory attribute %q exceeds maximum nesting depth", path)
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, item := range typed {
+			if err := walkAttributes(item, depth+1, path+"."+key, rec); err != nil {
+				return err
 			}
-			if IsHiddenText(text) {
-				return fmt.Errorf("memory attribute %q contains a hidden benchmark marker", key)
+		}
+	case []any:
+		for index, item := range typed {
+			if err := walkAttributes(item, depth+1, fmt.Sprintf("%s[%d]", path, index), rec); err != nil {
+				return err
 			}
+		}
+	case []string:
+		for index, item := range typed {
+			if err := walkAttributes(item, depth+1, fmt.Sprintf("%s[%d]", path, index), rec); err != nil {
+				return err
+			}
+		}
+	case string:
+		if IsHiddenText(typed) {
+			return fmt.Errorf("memory attribute %q contains a hidden benchmark marker", path)
+		}
+		if matched, pattern := ScanInjection(typed); matched {
+			markInjection(rec, pattern)
 		}
 	}
 	return nil

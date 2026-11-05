@@ -380,6 +380,7 @@ func rejectWikiLink(c *gin.Context, builder *wiki.Builder) {
 
 type wikiBuildJob struct {
 	ID         string     `json:"job_id"`
+	OwnerID    string     `json:"-"`
 	Mode       string     `json:"mode"`
 	Status     string     `json:"status"`
 	StartedAt  time.Time  `json:"started_at"`
@@ -389,11 +390,21 @@ type wikiBuildJob struct {
 	Error      string     `json:"error,omitempty"`
 }
 
+const wikiBuildJobTTL = 15 * time.Minute
+
 var wikiBuildState = struct {
 	sync.Mutex
 	jobs    map[string]*wikiBuildJob
-	running bool
-}{jobs: map[string]*wikiBuildJob{}}
+	running map[string]string
+}{jobs: map[string]*wikiBuildJob{}, running: map[string]string{}}
+
+func cleanupWikiBuildJobsLocked(now time.Time) {
+	for id, job := range wikiBuildState.jobs {
+		if job.FinishedAt != nil && now.Sub(*job.FinishedAt) > wikiBuildJobTTL {
+			delete(wikiBuildState.jobs, id)
+		}
+	}
+}
 
 func startWikiBuild(c *gin.Context, builder *wiki.Builder) {
 	var payload struct {
@@ -404,18 +415,19 @@ func startWikiBuild(c *gin.Context, builder *wiki.Builder) {
 	if mode == "" {
 		mode = "incremental"
 	}
+	ownerID := resolveUserID(c)
 	wikiBuildState.Lock()
-	if wikiBuildState.running {
+	cleanupWikiBuildJobsLocked(time.Now().UTC())
+	if _, running := wikiBuildState.running[ownerID]; running {
 		wikiBuildState.Unlock()
 		c.JSON(http.StatusConflict, gin.H{"error": "wiki_build_in_progress"})
 		return
 	}
 	jobID := "wiki-build-" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	job := &wikiBuildJob{ID: jobID, Mode: mode, Status: "running", StartedAt: time.Now().UTC()}
+	job := &wikiBuildJob{ID: jobID, OwnerID: ownerID, Mode: mode, Status: "running", StartedAt: time.Now().UTC()}
 	wikiBuildState.jobs[jobID] = job
-	wikiBuildState.running = true
+	wikiBuildState.running[ownerID] = jobID
 	wikiBuildState.Unlock()
-	ownerID := resolveUserID(c)
 	go func() {
 		papers, err := builder.RebuildOwner(context.Background(), ownerID)
 		links := 0
@@ -432,18 +444,21 @@ func startWikiBuild(c *gin.Context, builder *wiki.Builder) {
 			job.Status = "failed"
 			job.Error = err.Error()
 		}
-		wikiBuildState.running = false
+		delete(wikiBuildState.running, ownerID)
 		wikiBuildState.Unlock()
 	}()
 	c.JSON(http.StatusAccepted, gin.H{"job_id": jobID, "status": "running"})
 }
 
 func getWikiBuild(c *gin.Context) {
+	ownerID := resolveUserID(c)
 	wikiBuildState.Lock()
 	stored, ok := wikiBuildState.jobs[c.Param("jobID")]
 	var job wikiBuildJob
-	if ok {
+	if ok && stored.OwnerID == ownerID {
 		job = *stored
+	} else {
+		ok = false
 	}
 	wikiBuildState.Unlock()
 	if !ok {
@@ -458,14 +473,14 @@ func wikiStats(c *gin.Context, builder *wiki.Builder) {
 	stats := builder.Store.Stats(c.Request.Context(), ownerID)
 	store := builder.Memory
 	if store != nil {
-		records, _, err := store.List(c.Request.Context(), memory.Query{OwnerID: ownerID, Tags: []string{wiki.TagWikiPoint}, IncludePending: true, Limit: 5000})
+		records, _, err := store.List(c.Request.Context(), memory.Query{OwnerID: ownerID, Tags: []string{wiki.TagWikiPoint}, IncludePending: true, AllScopes: true, Limit: 100000})
 		if err == nil {
 			stats.Points = len(records)
 			for _, record := range records {
 				stats.ByKind[string(wiki.PointKindFromRecord(record))]++
 			}
 		}
-		links, _, linkErr := store.List(c.Request.Context(), memory.Query{OwnerID: ownerID, Tags: []string{wiki.TagWikiLink}, Statuses: []memory.Status{memory.StatusActive, memory.StatusPending, memory.StatusArchived, memory.StatusSuperseded}, Limit: 5000})
+		links, _, linkErr := store.List(c.Request.Context(), memory.Query{OwnerID: ownerID, Tags: []string{wiki.TagWikiLink}, Statuses: []memory.Status{memory.StatusActive, memory.StatusPending, memory.StatusArchived, memory.StatusSuperseded}, AllScopes: true, Limit: 100000})
 		if linkErr == nil {
 			stats.Links = len(links)
 			for _, record := range links {

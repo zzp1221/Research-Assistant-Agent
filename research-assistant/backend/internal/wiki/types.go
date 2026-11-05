@@ -171,13 +171,18 @@ type Stats struct {
 
 // TaskQuery asks the wiki for the context of one task.
 type TaskQuery struct {
-	OwnerID     string
-	ProjectID   string
-	SessionID   string
-	Text        string
-	Entities    []memory.Entity
-	Limit       int
-	PromptLimit int
+	OwnerID        string
+	ProjectID      string
+	SessionID      string
+	PaperID        string
+	DocumentID     string
+	Text           string
+	Entities       []memory.Entity
+	Limit          int
+	PromptLimit    int
+	ContextBudget  *int
+	DocumentBudget int
+	DocumentLimit  int
 }
 
 // PaperContext is one paper plus its most relevant points and links.
@@ -189,9 +194,12 @@ type PaperContext struct {
 
 // WikiContext is the bounded block injected into a prompt.
 type WikiContext struct {
-	Text      string            `json:"text,omitempty"`
-	Papers    []PaperContext    `json:"papers,omitempty"`
-	Citations []memory.Citation `json:"citations,omitempty"`
-	PaperIDs  []string          `json:"paper_ids,omitempty"`
-	Tokens    int               `json:"tokens,omitempty"`
+	Text           string            `json:"text,omitempty"`
+	DocumentText   string            `json:"document_text,omitempty"`
+	Papers         []PaperContext    `json:"papers,omitempty"`
+	Citations      []memory.Citation `json:"citations,omitempty"`
+	PaperIDs       []string          `json:"paper_ids,omitempty"`
+	MatchReason    string            `json:"match_reason,omitempty"`
+	Tokens         int               `json:"tokens,omitempty"`
+	DocumentTokens int               `json:"document_tokens,omitempty"`
 }

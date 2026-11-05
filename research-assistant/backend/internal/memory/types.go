@@ -3,6 +3,7 @@ package memory
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"os"
 	"strings"
 	"time"
 )
@@ -98,6 +99,8 @@ type Evidence struct {
 // deliberately separate from Evidence: Evidence says how trustworthy the
 // record is, SourceRef says which page/section/quote/artifact it cites.
 type SourceRef struct {
+	SessionID   string `json:"session_id,omitempty"`
+	MessageID   string `json:"message_id,omitempty"`
 	DocumentID  string `json:"document_id,omitempty"`
 	BlockID     string `json:"block_id,omitempty"`
 	Page        int    `json:"page,omitempty"`
@@ -126,6 +129,8 @@ type Entity struct {
 // Record is one durable memory.
 type Record struct {
 	ID           string         `json:"id"`
+	FactID       string         `json:"fact_id,omitempty"`
+	RevisionID   string         `json:"revision_id,omitempty"`
 	Version      int            `json:"version"`
 	Kind         Kind           `json:"kind"`
 	Scope        Scope          `json:"scope"`
@@ -200,6 +205,31 @@ func ContentHash(kind Kind, scope Scope, title, content string) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
+// DedupeKey is the storage-level dedupe key. ContentHash intentionally keeps
+// its original external meaning (kind + scope + title + content); paper identity
+// is added here so identical text on two different papers is not collapsed.
+func (r Record) DedupeKey() string {
+	identity := ""
+	if r.Attributes != nil {
+		if value, ok := r.Attributes["paper_id"].(string); ok {
+			identity = strings.TrimSpace(value)
+		}
+	}
+	if identity == "" {
+		for _, tag := range r.Tags {
+			trimmed := strings.TrimSpace(tag)
+			if strings.HasPrefix(strings.ToLower(trimmed), "paper:") {
+				identity = strings.TrimSpace(trimmed[len("paper:"):])
+				break
+			}
+		}
+	}
+	if fact, ambiguous := recordIdentity(r); fact != "" && !ambiguous {
+		identity += "|" + fact
+	}
+	return r.Scope.OwnerID + "|" + r.ContentHash + "|" + identity
+}
+
 // FactKey returns a stable key for a subject/attribute fact.
 func FactKey(scope Scope, kind Kind, subject, attribute string) string {
 	payload := scope.OwnerID + "|" + scope.ProjectID + "|" + string(kind) + "|" + NormalizeText(subject) + "|" + NormalizeText(attribute)
@@ -236,7 +266,11 @@ type Query struct {
 	// IncludeSuperseded is used by as-of/history queries. Injection never sets it.
 	IncludeSuperseded bool
 	IncludePending    bool
-	AsOf              *time.Time
+	// AllScopes disables project/session/plan/agent filtering for internal
+	// management paths (export, consolidate, wiki projection). Normal retrieval
+	// must never set it.
+	AllScopes bool
+	AsOf      *time.Time
 }
 
 // ScoredRecord is a retrieval candidate with its ranking diagnostics.
@@ -253,17 +287,22 @@ type ScoredRecord struct {
 // PointID, Page, Section and Quote are optional wiki extensions; older clients
 // that only read the original fields keep working.
 type Citation struct {
-	MemoryID string `json:"memory_id"`
-	Title    string `json:"title"`
-	Kind     Kind   `json:"kind"`
-	Date     string `json:"date,omitempty"`
-	Source   string `json:"source,omitempty"`
-	Trust    Trust  `json:"trust,omitempty"`
-	PaperID  string `json:"paper_id,omitempty"`
-	PointID  string `json:"point_id,omitempty"`
-	Page     int    `json:"page,omitempty"`
-	Section  string `json:"section,omitempty"`
-	Quote    string `json:"quote,omitempty"`
+	SessionID  string `json:"session_id,omitempty"`
+	MessageID  string `json:"message_id,omitempty"`
+	FactID     string `json:"fact_id,omitempty"`
+	RevisionID string `json:"revision_id,omitempty"`
+	MemoryID   string `json:"memory_id"`
+	Title      string `json:"title"`
+	Kind       Kind   `json:"kind"`
+	Date       string `json:"date,omitempty"`
+	Source     string `json:"source,omitempty"`
+	Trust      Trust  `json:"trust,omitempty"`
+	PaperID    string `json:"paper_id,omitempty"`
+	PointID    string `json:"point_id,omitempty"`
+	DocumentID string `json:"document_id,omitempty"`
+	Page       int    `json:"page,omitempty"`
+	Section    string `json:"section,omitempty"`
+	Quote      string `json:"quote,omitempty"`
 }
 
 // Context is the rendered memory context for one prompt.
@@ -279,6 +318,8 @@ type Context struct {
 
 // RetrieveReport records how the budget was spent.
 type RetrieveReport struct {
+	OwnerRecords    int `json:"owner_records"`
+	VisibleRecords  int `json:"visible_records"`
 	Candidates      int `json:"candidates"`
 	Selected        int `json:"selected"`
 	CoreTokens      int `json:"core_tokens"`
@@ -319,6 +360,32 @@ func DefaultSettings() Settings {
 		LLMExtraction:         false,
 		RetentionDays:         180,
 	}
+}
+
+// EffectiveMode composes the environment override with the per-owner setting.
+// MEMORY_MODE=off/shadow always wins; otherwise an explicitly disabled owner
+// setting is off and an empty mode falls back to on.
+func EffectiveMode(settings Settings) string {
+	env := strings.ToLower(strings.TrimSpace(os.Getenv("MEMORY_MODE")))
+	if env == "off" {
+		return "off"
+	}
+	if env == "shadow" {
+		return "shadow"
+	}
+	if !settings.Enabled {
+		return "off"
+	}
+	mode := strings.ToLower(strings.TrimSpace(settings.Mode))
+	if mode == "" {
+		return "on"
+	}
+	return mode
+}
+
+// EffectiveInjectionEnabled reports whether memory text may be injected.
+func EffectiveInjectionEnabled(settings Settings) bool {
+	return EffectiveMode(settings) == "on"
 }
 
 // Patch is a partial update for PATCH /api/memories/:id.

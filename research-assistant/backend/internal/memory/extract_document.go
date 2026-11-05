@@ -34,14 +34,23 @@ func RecordDocument(ctx context.Context, store Store, ownerID, projectID, sessio
 	}
 	rec := Record{
 		ID: "mem-doc-" + documentID, Kind: KindDocument,
-		Scope: Scope{OwnerID: ownerID, ProjectID: projectID, SessionID: sessionID, PlanID: planID},
+		Scope: documentExperienceScope(ownerID, projectID, sessionID),
 		Title: truncateRunes("文档："+title, 120), Content: truncateRunes(content, 800),
 		Tags: []string{"document", "sections"}, Entities: []Entity{{Type: "document", Value: documentID}},
 		Source:     Source{Type: "document", Ref: documentID, CreatedAt: now},
+		Refs:       []SourceRef{{DocumentID: documentID, PlanID: planID, SessionID: sessionID}},
 		Evidence:   Evidence{Class: "paper_derived", Confidence: 0.9},
 		Validity:   Validity{RecordedAt: now},
 		Importance: 8, Confidence: 0.9, Trust: TrustVerified, Sensitivity: "private", Status: recordStatus,
 	}
 	_, err := store.Put(ctx, rec)
 	return err
+}
+
+func documentExperienceScope(ownerID, projectID, sessionID string) Scope {
+	scope := Scope{OwnerID: ownerID, ProjectID: projectID}
+	if projectID == "" {
+		scope.SessionID = sessionID
+	}
+	return scope
 }

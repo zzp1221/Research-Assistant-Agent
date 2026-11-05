@@ -35,7 +35,7 @@ func BudgetTokens(promptLimit int) int {
 }
 
 // RetrieveForTask finds the papers relevant to a task and renders a bounded
-// wiki context block.
+// wiki context block plus an optional document-evidence block.
 func (b *Builder) RetrieveForTask(ctx context.Context, q TaskQuery) (WikiContext, error) {
 	if b == nil || b.Store == nil {
 		return WikiContext{}, nil
@@ -44,7 +44,7 @@ func (b *Builder) RetrieveForTask(ctx context.Context, q TaskQuery) (WikiContext
 	if limit <= 0 {
 		limit = 3
 	}
-	papers := b.matchPapers(ctx, q, limit)
+	papers, reason := b.matchPapers(ctx, q, limit)
 	contexts := make([]PaperContext, 0, len(papers))
 	for _, page := range papers {
 		points, _, err := b.ListPoints(ctx, q.OwnerID, page.PaperID, "", 10, 0)
@@ -64,7 +64,21 @@ func (b *Builder) RetrieveForTask(ctx context.Context, q TaskQuery) (WikiContext
 		}
 		contexts = append(contexts, PaperContext{Paper: page, Points: filtered, Links: links})
 	}
-	return RenderContext(contexts, BudgetTokens(q.PromptLimit)), nil
+	budget := BudgetTokens(q.PromptLimit)
+	if q.ContextBudget != nil && budget > *q.ContextBudget {
+		budget = *q.ContextBudget
+	}
+	result := RenderContext(contexts, budget)
+	result.MatchReason = reason
+	documentBudget := q.DocumentBudget
+	if documentBudget > 0 && len(papers) > 0 {
+		documentContext := b.buildDocumentContext(ctx, q.OwnerID, papers, q.Text, documentBudget, q.DocumentLimit)
+		result.DocumentText = documentContext.Text
+		result.DocumentTokens = documentContext.Tokens
+		result.Citations = append(result.Citations, documentContext.Citations...)
+		result.Tokens += documentContext.Tokens
+	}
+	return result, nil
 }
 
 func injectablePoint(point Point) bool {
@@ -78,27 +92,59 @@ func injectablePoint(point Point) bool {
 	return true
 }
 
-func (b *Builder) matchPapers(ctx context.Context, q TaskQuery, limit int) []PaperPage {
-	pages, _, err := b.Store.List(ctx, PaperQuery{OwnerID: q.OwnerID, ProjectID: q.ProjectID, Status: "active", Limit: 200})
+func (b *Builder) matchPapers(ctx context.Context, q TaskQuery, limit int) ([]PaperPage, string) {
+	pages, err := b.Store.ListAll(ctx, q.OwnerID)
 	if err != nil {
-		return nil
+		return nil, "none"
+	}
+	active := make([]PaperPage, 0, len(pages))
+	for _, page := range pages {
+		if page.Archived {
+			continue
+		}
+		if !memory.ScopeMatches(page.ProjectID, q.ProjectID) {
+			continue
+		}
+		active = append(active, page)
+	}
+	if q.PaperID != "" {
+		for _, page := range active {
+			if page.PaperID == q.PaperID {
+				return []PaperPage{page}, "explicit"
+			}
+		}
+		return nil, "none"
+	}
+	if q.DocumentID != "" {
+		matched := make([]PaperPage, 0, 2)
+		for _, page := range active {
+			for _, documentID := range page.DocumentIDs {
+				if documentID == q.DocumentID {
+					matched = append(matched, page)
+					break
+				}
+			}
+		}
+		if len(matched) > 0 {
+			return capPapers(matched, limit), "document_binding"
+		}
 	}
 	type scored struct {
 		page  PaperPage
 		score int
 	}
-	results := make([]scored, 0, len(pages))
-	text := strings.ToLower(strings.TrimSpace(q.Text))
-	for _, page := range pages {
+	results := make([]scored, 0, len(active))
+	tokens := memory.Tokenize(strings.ToLower(strings.TrimSpace(q.Text)))
+	for _, page := range active {
 		score := 0
 		for _, entity := range q.Entities {
 			if paperHasEntity(page, entity) {
 				score += 10
 			}
 		}
-		if text != "" {
-			haystack := strings.ToLower(page.Title + " " + page.Abstract + " " + page.TLDR + " " + page.DOI + " " + page.ArxivID)
-			for _, token := range strings.Fields(text) {
+		if len(tokens) > 0 {
+			haystack := strings.ToLower(page.Title + " " + page.Abstract + " " + page.TLDR + " " + page.DOI + " " + page.ArxivID + " " + strings.Join(page.Authors, " "))
+			for _, token := range tokens {
 				if len([]rune(token)) >= 2 && strings.Contains(haystack, token) {
 					score += 2
 				}
@@ -121,19 +167,32 @@ func (b *Builder) matchPapers(ctx context.Context, q TaskQuery, limit int) []Pap
 		}
 		out = append(out, result.page)
 	}
-	if len(out) == 0 && len(pages) > 0 {
-		// Chat frequently says "this paper" / "这篇论文" without naming it.
-		// Fall back to the most recently updated papers so a project with one
-		// active paper still gets its bounded wiki block instead of silence.
-		sort.SliceStable(pages, func(i, j int) bool { return pages[i].UpdatedAt.After(pages[j].UpdatedAt) })
-		for _, page := range pages {
-			if len(out) >= limit {
-				break
-			}
-			out = append(out, page)
+	if len(out) > 0 {
+		return out, "token_match"
+	}
+	// "This paper" fallback is safe only when the current scope has exactly one
+	// active paper. Never inject the most recent N papers.
+	if len(active) == 1 && refersToCurrentPaper(q.Text) {
+		return active, "single_paper_fallback"
+	}
+	return nil, "none"
+}
+
+func refersToCurrentPaper(text string) bool {
+	text = strings.ToLower(text)
+	for _, phrase := range []string{"这篇论文", "该论文", "上述论文", "当前论文", "这篇文章", "this paper", "the current paper", "this article"} {
+		if strings.Contains(text, phrase) {
+			return true
 		}
 	}
-	return out
+	return false
+}
+
+func capPapers(pages []PaperPage, limit int) []PaperPage {
+	if limit <= 0 || len(pages) <= limit {
+		return pages
+	}
+	return pages[:limit]
 }
 
 // RenderContext renders paper contexts into the documented wiki XML block,
@@ -161,6 +220,12 @@ func RenderContext(contexts []PaperContext, budget int) WikiContext {
 		}
 		builder.WriteString(block)
 		paperIDs = append(paperIDs, page.PaperID)
+		citations = append(citations, memory.Citation{
+			MemoryID: "paper:" + page.PaperID, Title: page.Title, Kind: memory.KindFact,
+			Date: page.UpdatedAt.Format("2006-01-02"), Source: "wiki", Trust: memory.TrustVerified,
+			PaperID: page.PaperID, Section: "paper",
+			Quote: truncate(fmt.Sprintf("%s (%d)", page.Title, page.Year), 500),
+		})
 		for _, point := range context.Points {
 			citation := memory.Citation{
 				MemoryID: point.Record.ID, Title: point.Record.Title, Kind: point.Record.Kind,
@@ -173,6 +238,14 @@ func RenderContext(contexts []PaperContext, budget int) WikiContext {
 				citation.Quote = point.Refs[0].Quote
 			}
 			citations = append(citations, citation)
+		}
+		for _, link := range context.Links {
+			citations = append(citations, memory.Citation{
+				MemoryID: link.ID, Title: fmt.Sprintf("%s: %s ↔ %s", link.Type, link.FromPaper, link.ToPaper),
+				Kind: memory.KindFact, Date: link.UpdatedAt.Format("2006-01-02"), Source: "wiki",
+				Trust: memory.TrustVerified, PaperID: page.PaperID, Section: "link",
+				Quote: truncate(link.Source, 500),
+			})
 		}
 	}
 	text := strings.TrimSpace(builder.String())

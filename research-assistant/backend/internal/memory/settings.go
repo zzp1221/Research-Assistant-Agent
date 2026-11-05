@@ -55,6 +55,12 @@ func (s *SettingsStore) Put(ownerID string, settings Settings) error {
 	if settings.Mode == "" {
 		settings.Mode = "on"
 	}
+	if settings.Mode != "on" && settings.Mode != "off" && settings.Mode != "shadow" {
+		return fmt.Errorf("invalid memory mode")
+	}
+	if settings.RetrievalTopK < 0 || settings.RetrievalTopK > 100 || settings.CoreBudgetTokens < 0 || settings.CoreBudgetTokens > 16000 || settings.RetrievedBudgetTokens < 0 || settings.RetrievedBudgetTokens > 16000 || settings.RetentionDays < 0 || settings.RetentionDays > 36500 {
+		return fmt.Errorf("memory settings out of range")
+	}
 	if settings.RetrievalTopK <= 0 {
 		settings.RetrievalTopK = 8
 	}
@@ -69,8 +75,20 @@ func (s *SettingsStore) Put(ownerID string, settings Settings) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	previous, existed := s.data[ownerID]
 	s.data[ownerID] = settings
+	committed := false
+	defer func() {
+		if !committed {
+			if existed {
+				s.data[ownerID] = previous
+			} else {
+				delete(s.data, ownerID)
+			}
+		}
+	}()
 	if strings.TrimSpace(s.path) == "" {
+		committed = true
 		return nil
 	}
 	raw, err := json.MarshalIndent(s.data, "", "  ")
@@ -78,8 +96,12 @@ func (s *SettingsStore) Put(ownerID string, settings Settings) error {
 		return fmt.Errorf("encode memory settings: %w", err)
 	}
 	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+	if err := writeFileSynced(tmp, raw); err != nil {
 		return fmt.Errorf("write memory settings: %w", err)
 	}
-	return os.Rename(tmp, s.path)
+	if err := os.Rename(tmp, s.path); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
