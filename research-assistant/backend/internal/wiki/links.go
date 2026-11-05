@@ -89,6 +89,38 @@ func attributeFloat(attributes map[string]any, key string) float64 {
 	return 0
 }
 
+// linkIndex caches every link record for one owner during a build. Loading it
+// once turns linksForKey from an O(L) scan per candidate into O(1).
+type linkIndex struct {
+	byKey map[string][]existingLink
+}
+
+func (b *Builder) loadLinkIndex(ctx context.Context, ownerID string) (*linkIndex, error) {
+	records, _, err := b.Memory.List(ctx, memory.Query{
+		OwnerID: ownerID, Tags: []string{TagWikiLink},
+		Statuses:  []memory.Status{memory.StatusActive, memory.StatusPending, memory.StatusSuperseded, memory.StatusArchived},
+		AllScopes: true, Limit: 100000,
+	})
+	if err != nil {
+		return nil, err
+	}
+	index := &linkIndex{byKey: map[string][]existingLink{}}
+	for _, record := range records {
+		link, ok := LinkFromRecord(record)
+		if !ok {
+			continue
+		}
+		key := attributeString(record.Attributes, "link_key")
+		if key == "" {
+			continue
+		}
+		index.byKey[key] = append(index.byKey[key], existingLink{
+			Link: link, Record: record, Revision: record.Version, Signature: linkSignatureFromRecord(record),
+		})
+	}
+	return index, nil
+}
+
 // BuildLinksForPaper generates deterministic links for one paper: cites from
 // the citation provider, uses_same_dataset/method/repo from entity overlap.
 func (b *Builder) BuildLinksForPaper(ctx context.Context, ownerID, paperID string) ([]Link, error) {
@@ -99,12 +131,25 @@ func (b *Builder) BuildLinksForPaper(ctx context.Context, ownerID, paperID strin
 	if err != nil {
 		return nil, err
 	}
-	allPages, _, err := b.Store.List(ctx, PaperQuery{OwnerID: ownerID, Status: "active", Limit: 200})
+	allPages, err := b.Store.ListAll(ctx, ownerID)
 	if err != nil {
 		return nil, err
 	}
+	entityIndex := buildEntityIndex(allPages)
+	index, err := b.loadLinkIndex(ctx, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	return b.buildLinksForPaperWithIndex(ctx, ownerID, page, allPages, entityIndex, index, nil, true)
+}
+
+func (b *Builder) buildLinksForPaperWithIndex(ctx context.Context, ownerID string, page PaperPage, allPages []PaperPage, entityIndex map[string][]PaperPage, index *linkIndex, batch *linkWriteBatch, refresh bool) ([]Link, error) {
 	candidates := make([]LinkCandidate, 0, 32)
-	candidates = append(candidates, b.entityCandidates(page, allPages)...)
+	if entityIndex != nil {
+		candidates = append(candidates, entityCandidatesFromIndex(page, entityIndex)...)
+	} else {
+		candidates = append(candidates, b.entityCandidates(page, allPages)...)
+	}
 	candidates = append(candidates, b.pdfReferenceCandidates(ctx, ownerID, page, allPages)...)
 	if LinkAdjudicationEnabled() && b.LLM != nil {
 		pairs := map[string]bool{}
@@ -141,16 +186,62 @@ func (b *Builder) BuildLinksForPaper(ctx context.Context, ownerID, paperID strin
 			continue
 		}
 		seen[key] = true
-		link, writeErr := b.writeLink(ctx, ownerID, page.ProjectID, candidate)
+		link, writeErr := b.writeLinkWithIndex(ctx, ownerID, page.ProjectID, candidate, index, batch)
 		if writeErr != nil {
 			return nil, writeErr
 		}
 		links = append(links, link)
 	}
-	if err := b.refreshPaperLinks(ctx, ownerID, paperID); err != nil {
-		return nil, err
+	if refresh {
+		if err := b.refreshPaperLinksFromIndex(ctx, ownerID, page.PaperID, index); err != nil {
+			return nil, err
+		}
 	}
 	return links, nil
+}
+
+func buildEntityIndex(pages []PaperPage) map[string][]PaperPage {
+	index := map[string][]PaperPage{}
+	for _, page := range pages {
+		for _, entity := range page.Entities {
+			if strings.TrimSpace(entity.Value) == "" {
+				continue
+			}
+			key := strings.ToLower(strings.TrimSpace(entity.Type)) + "|" + strings.ToLower(strings.TrimSpace(entity.Value))
+			index[key] = append(index[key], page)
+		}
+	}
+	return index
+}
+
+func entityCandidatesFromIndex(page PaperPage, index map[string][]PaperPage) []LinkCandidate {
+	out := make([]LinkCandidate, 0, 16)
+	for _, entity := range page.Entities {
+		if strings.TrimSpace(entity.Value) == "" {
+			continue
+		}
+		linkType, ok := entityLinkType(entity.Type)
+		if !ok {
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(entity.Type)) + "|" + strings.ToLower(strings.TrimSpace(entity.Value))
+		matches := 0
+		for _, other := range index[key] {
+			if other.PaperID == page.PaperID {
+				continue
+			}
+			matches++
+			if matches > 500 {
+				break
+			}
+			out = append(out, LinkCandidate{
+				FromPaper: page.PaperID, ToPaper: other.PaperID, Type: linkType,
+				Evidence: []memory.SourceRef{entityEvidence(page, entity)},
+				Source:   "entity_overlap", Confidence: 0.7,
+			})
+		}
+	}
+	return out
 }
 
 func (b *Builder) entityCandidates(page PaperPage, pages []PaperPage) []LinkCandidate {
@@ -258,18 +349,46 @@ func linkStableKey(ownerID string, candidate LinkCandidate) string {
 }
 
 func (b *Builder) writeLink(ctx context.Context, ownerID, projectID string, candidate LinkCandidate) (Link, error) {
-	key := linkStableKey(ownerID, candidate)
-	existing, err := b.linksForKey(ctx, ownerID, key)
+	index, err := b.loadLinkIndex(ctx, ownerID)
 	if err != nil {
 		return Link{}, err
 	}
+	return b.writeLinkWithIndex(ctx, ownerID, projectID, candidate, index, nil)
+}
+
+// linkWriteBatch accumulates new link records so a large build can flush them
+// with a handful of WAL fsyncs instead of one per link.
+type linkWriteBatch struct {
+	records []memory.Record
+}
+
+func (batch *linkWriteBatch) flush(ctx context.Context, store memory.Store) error {
+	if batch == nil || len(batch.records) == 0 {
+		return nil
+	}
+	const chunkSize = 500
+	for start := 0; start < len(batch.records); start += chunkSize {
+		end := start + chunkSize
+		if end > len(batch.records) {
+			end = len(batch.records)
+		}
+		if _, _, err := store.PutBatch(ctx, batch.records[start:end]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *Builder) writeLinkWithIndex(ctx context.Context, ownerID, projectID string, candidate LinkCandidate, index *linkIndex, batch *linkWriteBatch) (Link, error) {
+	key := linkStableKey(ownerID, candidate)
+	existing := index.byKey[key]
 	revision := 1
 	signature := linkSignature(candidate)
 	for _, record := range existing {
 		if record.Revision >= revision {
 			revision = record.Revision + 1
 		}
-		if record.Link.Status == memory.StatusActive && record.Signature == signature {
+		if (record.Link.Status == memory.StatusActive || record.Link.Status == memory.StatusPending) && record.Signature == signature {
 			return record.Link, nil
 		}
 	}
@@ -298,26 +417,42 @@ func (b *Builder) writeLink(ctx context.Context, ownerID, projectID string, cand
 		},
 		Importance: 7, Confidence: candidate.Confidence, Trust: memory.TrustVerified, Status: status,
 	}
-	saved, err := b.Memory.Put(ctx, record)
-	if err != nil {
-		return Link{}, err
+	var saved memory.Record
+	if batch != nil {
+		saved = record
+		batch.records = append(batch.records, record)
+	} else {
+		var err error
+		saved, err = b.Memory.Put(ctx, record)
+		if err != nil {
+			return Link{}, err
+		}
 	}
-	// Supersede the previous active revision so history is preserved.
+	// Supersede the previous active/pending revision so history is preserved.
 	for _, previous := range existing {
 		if previous.Link.Status != memory.StatusActive && previous.Link.Status != memory.StatusPending {
 			continue
 		}
 		superseded := memory.StatusSuperseded
-		attributes := previous.Record.Attributes
-		if attributes == nil {
-			attributes = map[string]any{}
+		attributes := map[string]any{}
+		for attributeKey, value := range previous.Record.Attributes {
+			attributes[attributeKey] = value
 		}
 		attributes["superseded_by"] = saved.ID
-		if _, updateErr := b.Memory.Update(ctx, ownerID, previous.Record.ID, memory.Patch{Status: &superseded, Attributes: &attributes}); updateErr != nil {
+		updated, updateErr := b.Memory.Update(ctx, ownerID, previous.Record.ID, memory.Patch{Status: &superseded, Attributes: &attributes})
+		if updateErr != nil {
 			return Link{}, updateErr
+		}
+		for entryIndex := range index.byKey[key] {
+			if index.byKey[key][entryIndex].Record.ID == previous.Record.ID {
+				index.byKey[key][entryIndex].Record = updated
+				index.byKey[key][entryIndex].Link.Status = superseded
+				index.byKey[key][entryIndex].Revision = updated.Version
+			}
 		}
 	}
 	link, _ := LinkFromRecord(saved)
+	index.byKey[key] = append(index.byKey[key], existingLink{Link: link, Record: saved, Revision: saved.Version, Signature: signature})
 	return link, nil
 }
 
@@ -329,22 +464,67 @@ type existingLink struct {
 }
 
 func (b *Builder) linksForKey(ctx context.Context, ownerID, key string) ([]existingLink, error) {
-	records, _, err := b.Memory.List(ctx, memory.Query{OwnerID: ownerID, Tags: []string{TagWikiLink}, Statuses: []memory.Status{memory.StatusActive, memory.StatusPending, memory.StatusSuperseded, memory.StatusArchived}, Limit: 5000})
+	index, err := b.loadLinkIndex(ctx, ownerID)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]existingLink, 0, 2)
-	for _, record := range records {
-		if attributeString(record.Attributes, "link_key") != key {
-			continue
+	return index.byKey[key], nil
+}
+
+func linkIDsForPaper(index *linkIndex, paperID string) []string {
+	ids := make([]string, 0)
+	for _, entries := range index.byKey {
+		for _, entry := range entries {
+			if entry.Link.Status == memory.StatusSuperseded || entry.Link.Status == memory.StatusArchived {
+				continue
+			}
+			if entry.Link.FromPaper == paperID || entry.Link.ToPaper == paperID {
+				ids = append(ids, entry.Link.ID)
+			}
 		}
-		link, ok := LinkFromRecord(record)
-		if !ok {
-			continue
-		}
-		out = append(out, existingLink{Link: link, Record: record, Revision: record.Version, Signature: linkSignatureFromRecord(record)})
 	}
-	return out, nil
+	sort.Strings(ids)
+	return ids
+}
+
+func equalStringSlices(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func (b *Builder) refreshPaperLinksFromIndex(ctx context.Context, ownerID, paperID string, index *linkIndex) error {
+	page, err := b.Store.Get(ctx, ownerID, paperID)
+	if err != nil {
+		return err
+	}
+	ids := linkIDsForPaper(index, paperID)
+	if equalStringSlices(page.LinkIDs, ids) {
+		return nil
+	}
+	page.LinkIDs = ids
+	_, err = b.Store.Put(ctx, page)
+	return err
+}
+
+func (b *Builder) refreshAllPaperLinks(ctx context.Context, ownerID string, pages []PaperPage, index *linkIndex) error {
+	for _, page := range pages {
+		ids := linkIDsForPaper(index, page.PaperID)
+		if equalStringSlices(page.LinkIDs, ids) {
+			continue
+		}
+		page.LinkIDs = ids
+		if _, err := b.Store.Put(ctx, page); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func linkSignature(candidate LinkCandidate) string {
@@ -359,25 +539,11 @@ func linkSignatureFromRecord(record memory.Record) string {
 }
 
 func (b *Builder) refreshPaperLinks(ctx context.Context, ownerID, paperID string) error {
-	page, err := b.Store.Get(ctx, ownerID, paperID)
+	index, err := b.loadLinkIndex(ctx, ownerID)
 	if err != nil {
 		return err
 	}
-	links, _, err := b.ListLinks(ctx, ownerID, paperID, "", "", 500, 0)
-	if err != nil {
-		return err
-	}
-	ids := make([]string, 0, len(links))
-	for _, link := range links {
-		if link.Status == memory.StatusSuperseded || link.Status == memory.StatusArchived {
-			continue
-		}
-		ids = append(ids, link.ID)
-	}
-	sort.Strings(ids)
-	page.LinkIDs = ids
-	_, err = b.Store.Put(ctx, page)
-	return err
+	return b.refreshPaperLinksFromIndex(ctx, ownerID, paperID, index)
 }
 
 // ListLinks returns owner-scoped links, optionally filtered by paper/type/status.
@@ -389,7 +555,7 @@ func (b *Builder) ListLinks(ctx context.Context, ownerID, paperID string, linkTy
 	if linkType != "" {
 		tags = append(tags, LinkTag(linkType))
 	}
-	records, _, err := b.Memory.List(ctx, memory.Query{OwnerID: ownerID, Tags: tags, Statuses: []memory.Status{memory.StatusActive, memory.StatusPending, memory.StatusSuperseded, memory.StatusArchived}, Limit: 5000})
+	records, _, err := b.Memory.List(ctx, memory.Query{OwnerID: ownerID, Tags: tags, Statuses: []memory.Status{memory.StatusActive, memory.StatusPending, memory.StatusSuperseded, memory.StatusArchived}, AllScopes: true, Limit: 100000})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -473,19 +639,38 @@ func (b *Builder) RefreshPaperLinks(ctx context.Context, ownerID, paperID string
 	return b.refreshPaperLinks(ctx, ownerID, paperID)
 }
 
-// RebuildLinksForOwner regenerates deterministic links for every paper.
+// RebuildLinksForOwner regenerates deterministic links for every paper with a
+// single link index and one entity inverted index for the whole build.
 func (b *Builder) RebuildLinksForOwner(ctx context.Context, ownerID string) (int, error) {
-	pages, _, err := b.Store.List(ctx, PaperQuery{OwnerID: ownerID, Status: "active", Limit: 200})
+	allPages, err := b.Store.ListAll(ctx, ownerID)
 	if err != nil {
 		return 0, err
 	}
+	pages := make([]PaperPage, 0, len(allPages))
+	for _, page := range allPages {
+		if !page.Archived {
+			pages = append(pages, page)
+		}
+	}
+	entityIndex := buildEntityIndex(pages)
+	index, err := b.loadLinkIndex(ctx, ownerID)
+	if err != nil {
+		return 0, err
+	}
+	batch := &linkWriteBatch{}
 	count := 0
 	for _, page := range pages {
-		links, buildErr := b.BuildLinksForPaper(ctx, ownerID, page.PaperID)
+		links, buildErr := b.buildLinksForPaperWithIndex(ctx, ownerID, page, pages, entityIndex, index, batch, false)
 		if buildErr != nil {
 			return count, buildErr
 		}
 		count += len(links)
+	}
+	if err := batch.flush(ctx, b.Memory); err != nil {
+		return count, err
+	}
+	if err := b.refreshAllPaperLinks(ctx, ownerID, pages, index); err != nil {
+		return count, err
 	}
 	return count, nil
 }

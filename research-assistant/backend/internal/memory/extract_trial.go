@@ -16,7 +16,7 @@ func RecordTrial(ctx context.Context, store Store, plan *models.PlanGraph, ledge
 		return nil
 	}
 	now := time.Now().UTC()
-	scope := Scope{OwnerID: plan.OwnerID, ProjectID: plan.ProjectID, SessionID: plan.SessionID, PlanID: plan.ID, AgentID: "research_coding_agent"}
+	scope := projectExperienceScope(plan)
 	for _, trial := range ledger.Trials {
 		if trial.Number == 0 && trial.Status == "baseline" {
 			continue
@@ -32,6 +32,7 @@ func RecordTrial(ctx context.Context, store Store, plan *models.PlanGraph, ledge
 				Content: truncateRunes(fmt.Sprintf("假设：%s；决策：%s；原因：%s；指标：%s", trial.Hypothesis, trial.Decision, trial.Reason, metric), 700),
 				Tags:    []string{"autoresearch", "negative"}, Entities: []Entity{{Type: "plan", Value: plan.ID}},
 				Source:   Source{Type: "trial", Ref: fmt.Sprintf("%s#%d", plan.ID, trial.Number), CreatedAt: now},
+				Refs:     []SourceRef{{PlanID: plan.ID, SessionID: plan.SessionID}},
 				Evidence: Evidence{Class: "execution_derived", Confidence: 0.9}, Validity: Validity{ValidFrom: &trial.FinishedAt, RecordedAt: now},
 				Importance: 8, Confidence: 0.9, Trust: TrustVerified, Sensitivity: "private", Status: StatusActive,
 			}
@@ -48,6 +49,7 @@ func RecordTrial(ctx context.Context, store Store, plan *models.PlanGraph, ledge
 					Content: truncateRunes(fmt.Sprintf("指标 %s；假设：%s；决策：%s；原因：%s", metric, trial.Hypothesis, trial.Decision, trial.Reason), 700),
 					Tags:    []string{"autoresearch", "procedure"}, Entities: []Entity{{Type: "metric", Value: ledger.MetricKey}},
 					Source:   Source{Type: "trial", Ref: fmt.Sprintf("%s#%d", plan.ID, trial.Number), CreatedAt: now},
+					Refs:     []SourceRef{{PlanID: plan.ID, SessionID: plan.SessionID}},
 					Evidence: Evidence{Class: "execution_derived", Confidence: 0.85}, Validity: Validity{ValidFrom: &trial.FinishedAt, RecordedAt: now},
 					Importance: 7, Confidence: 0.85, Trust: TrustVerified, Sensitivity: "private", Status: StatusActive,
 				}
@@ -63,6 +65,7 @@ func RecordTrial(ctx context.Context, store Store, plan *models.PlanGraph, ledge
 		Content: fmt.Sprintf("metric=%s direction=%s baseline=%.8g best=%.8g accepted=%d/%d stop=%s", ledger.MetricKey, ledger.Direction, ledger.BaselineScore, ledger.BestScore, ledger.AcceptedTrials, ledger.CompletedTrials, ledger.StopReason),
 		Tags:    []string{"autoresearch", "metric"}, Entities: []Entity{{Type: "metric", Value: ledger.MetricKey}},
 		Source:   Source{Type: "trial", Ref: plan.ID, CreatedAt: now},
+		Refs:     []SourceRef{{PlanID: plan.ID, SessionID: plan.SessionID}},
 		Evidence: Evidence{Class: "execution_derived", Confidence: 0.95}, Validity: Validity{ValidFrom: &ledger.FinishedAt, RecordedAt: now},
 		Importance: 8, Confidence: 0.95, Trust: TrustVerified, Sensitivity: "private", Status: StatusActive,
 	}

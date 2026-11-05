@@ -78,6 +78,8 @@ type RoutedTaskExecutor struct {
 	ToolInvoker *tools.Invoker
 	// Memory optionally injects core/retrieved memory and records task episodes.
 	Memory memory.Store
+	// MemorySettings resolves per-owner settings for the memory injection path.
+	MemorySettings *memory.SettingsStore
 	// Wiki optionally injects paper wiki context and records wiki points.
 	Wiki WikiSource
 }
@@ -100,6 +102,11 @@ func (e *RoutedTaskExecutor) SetAgentRuntime(profiles *agentprofile.Registry, pr
 // SetMemory wires the optional memory store used for injection and task episodes.
 func (e *RoutedTaskExecutor) SetMemory(store memory.Store) {
 	e.Memory = store
+}
+
+// SetMemorySettings wires the optional per-owner memory settings store.
+func (e *RoutedTaskExecutor) SetMemorySettings(settings *memory.SettingsStore) {
+	e.MemorySettings = settings
 }
 
 // SetWiki wires the optional Paper Wiki source used for context injection.
@@ -327,26 +334,32 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 			wikiTokens = wikiCtx.Tokens
 		}
 	}
-	if e.Memory != nil && memory.InjectionEnabled() {
+	if e.Memory != nil {
 		settings := memory.DefaultSettings()
-		query := memory.Query{
-			OwnerID: plan.OwnerID, ProjectID: plan.ProjectID, SessionID: plan.SessionID,
-			PlanID: plan.ID, AgentID: task.AssignedTo,
-			Text:  memory.BuildQuery(task.Name+" "+prompts.TruncateRunes(task.Description, 500), nil, 2000),
-			Limit: settings.RetrievalTopK,
+		if e.MemorySettings != nil {
+			settings = e.MemorySettings.Get(plan.OwnerID)
 		}
-		retrievedBudget := 3000 - wikiTokens
-		if retrievedBudget < 0 {
-			retrievedBudget = 0
-		}
-		if memCtx, memErr := e.Memory.Retrieve(ctx, query, settings.CoreBudgetTokens, retrievedBudget); memErr == nil {
-			sharedContext["core_memory"] = memCtx.CoreText
-			sharedContext["retrieved_memory"] = memCtx.RetrievedText
-			refs := make([]string, 0, len(memCtx.Citations))
-			for _, citation := range memCtx.Citations {
-				refs = append(refs, citation.MemoryID)
+		mode := memory.EffectiveMode(settings)
+		if mode != "off" {
+			query := memory.Query{
+				OwnerID: plan.OwnerID, ProjectID: plan.ProjectID, SessionID: plan.SessionID,
+				PlanID: plan.ID, AgentID: task.AssignedTo,
+				Text:  memory.BuildQuery(task.Name+" "+prompts.TruncateRunes(task.Description, 500), nil, 2000),
+				Limit: settings.RetrievalTopK,
 			}
-			sharedContext["memory_refs"] = refs
+			retrievedBudget := 3000 - wikiTokens
+			if retrievedBudget < 0 {
+				retrievedBudget = 0
+			}
+			if memCtx, memErr := e.Memory.Retrieve(ctx, query, settings.CoreBudgetTokens, retrievedBudget); memErr == nil && mode == "on" {
+				sharedContext["core_memory"] = memCtx.CoreText
+				sharedContext["retrieved_memory"] = memCtx.RetrievedText
+				refs := make([]string, 0, len(memCtx.Citations))
+				for _, citation := range memCtx.Citations {
+					refs = append(refs, citation.MemoryID)
+				}
+				sharedContext["memory_refs"] = refs
+			}
 		}
 	}
 

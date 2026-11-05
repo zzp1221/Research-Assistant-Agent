@@ -46,11 +46,13 @@ type RequestPayload struct {
 }
 
 type ChatPayload struct {
-	Message   string        `json:"message"`
-	SessionID string        `json:"session_id,omitempty"`
-	ProjectID string        `json:"project_id,omitempty"`
-	UseMemory *bool         `json:"use_memory,omitempty"`
-	Messages  []ChatMessage `json:"messages,omitempty"`
+	Message    string        `json:"message"`
+	SessionID  string        `json:"session_id,omitempty"`
+	ProjectID  string        `json:"project_id,omitempty"`
+	PaperID    string        `json:"paper_id,omitempty"`
+	DocumentID string        `json:"document_id,omitempty"`
+	UseMemory  *bool         `json:"use_memory,omitempty"`
+	Messages   []ChatMessage `json:"messages,omitempty"`
 }
 
 type ChatMessage struct {
@@ -313,6 +315,8 @@ func buildServiceHealth(ctx context.Context, sandboxURL string, optimizerURLs ..
 			"url":        intentURL,
 			"message":    "intent recognition is optional and not configured",
 		},
+		"memory": MemoryHealth(),
+		"wiki":   WikiHealth(),
 	}
 
 	client := &http.Client{Timeout: 3 * time.Second}

@@ -612,6 +612,11 @@ export interface MemoryCitation {
   date?: string;
   source?: string;
   trust?: string;
+  quote?: string;
+  session_id?: string;
+  message_id?: string;
+  fact_id?: string;
+  revision_id?: string;
 }
 
 export interface ChatResponse {
@@ -620,6 +625,8 @@ export interface ChatResponse {
   anon_user_id?: string;
   user_id?: string;
   citations?: MemoryCitation[];
+  retrieved_sources?: MemoryCitation[];
+  answer_citations?: MemoryCitation[];
   wiki_citations?: MemoryCitation[];
 }
 

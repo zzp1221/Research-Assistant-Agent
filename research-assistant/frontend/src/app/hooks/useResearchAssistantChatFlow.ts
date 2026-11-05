@@ -601,8 +601,8 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
           userId: requestUserId,
           sessionId: requestSessionId,
         }, { sessionId: requestSessionId });
-        const citationText = response.citations && response.citations.length > 0
-          ? `\n\n记忆引用：${response.citations.map((citation) => `[${citation.kind}] ${citation.title}`).join('；')}`
+        const citationText = response.answer_citations && response.answer_citations.length > 0
+          ? `\n\n原文依据：${response.answer_citations.map((citation) => `[${citation.kind}] ${citation.title}${citation.quote ? `：“${citation.quote}”` : ''}`).join('；')}`
           : '';
         appendMessageToSession(requestSessionId, { role: 'system', text: response.response + citationText });
       }

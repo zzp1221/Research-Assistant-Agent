@@ -174,6 +174,13 @@ func (i *Index) Remove(rec Record) {
 
 // SearchBM25 returns the top limit documents by BM25 score.
 func (i *Index) SearchBM25(query string, limit int) []BM25Hit {
+	return i.SearchBM25In(query, limit, nil)
+}
+
+// SearchBM25In ranks within the visible corpus, including its document-frequency
+// statistics. Unrelated owners/projects cannot consume the candidate limit or
+// change the ranking of a caller's own records. A nil set means the full index.
+func (i *Index) SearchBM25In(query string, limit int, allowed map[string]struct{}) []BM25Hit {
 	tokens := Tokenize(query)
 	if len(tokens) == 0 || len(i.docLen) == 0 {
 		return nil
@@ -185,10 +192,23 @@ func (i *Index) SearchBM25(query string, limit int) []BM25Hit {
 	for _, token := range tokens {
 		unique[token] = struct{}{}
 	}
-	n := float64(len(i.docLen))
+	count, total := len(i.docLen), i.totalLen
+	if allowed != nil {
+		count, total = 0, 0
+		for id := range allowed {
+			if length, ok := i.docLen[id]; ok {
+				count++
+				total += length
+			}
+		}
+	}
+	if count == 0 {
+		return nil
+	}
+	n := float64(count)
 	avg := 1.0
-	if len(i.docLen) > 0 {
-		avg = float64(i.totalLen) / float64(len(i.docLen))
+	if count > 0 {
+		avg = float64(total) / float64(count)
 		if avg <= 0 {
 			avg = 1
 		}
@@ -202,8 +222,21 @@ func (i *Index) SearchBM25(query string, limit int) []BM25Hit {
 			continue
 		}
 		df := float64(len(posting))
+		if allowed != nil {
+			df = 0
+			for id := range posting {
+				if _, ok := allowed[id]; ok {
+					df++
+				}
+			}
+		}
 		idf := math.Log(1 + (n-df+0.5)/(df+0.5))
 		for id, tf := range posting {
+			if allowed != nil {
+				if _, ok := allowed[id]; !ok {
+					continue
+				}
+			}
 			length := float64(i.docLen[id])
 			score := idf * (float64(tf) * (k1 + 1)) / (float64(tf) + k1*(1-b+b*length/avg))
 			scores[id] += score

@@ -11,6 +11,7 @@ import (
 	"research-assistant-backend/internal/literature"
 	"research-assistant-backend/internal/memory"
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/paperid"
 )
 
 // Builder materializes PaperPage projections from memory, documents and the
@@ -131,6 +132,7 @@ func (b *Builder) RefreshPaper(ctx context.Context, ownerID, paperID string) (Pa
 		OwnerID:        ownerID,
 		Tags:           []string{TagWikiPoint, PaperTag(paperID)},
 		IncludePending: true,
+		AllScopes:      true,
 		Limit:          2000,
 	})
 	if err != nil {
@@ -195,7 +197,7 @@ func (b *Builder) RefreshForPlan(ctx context.Context, plan *models.PlanGraph) er
 func (b *Builder) papersForPlan(ctx context.Context, ownerID string, plan *models.PlanGraph) []string {
 	out := make([]string, 0, 2)
 	if b.Memory != nil {
-		records, _, err := b.Memory.List(ctx, memory.Query{OwnerID: ownerID, Tags: []string{TagWikiPoint}, IncludePending: true, Limit: 2000})
+		records, _, err := b.Memory.List(ctx, memory.Query{OwnerID: ownerID, Tags: []string{TagWikiPoint}, IncludePending: true, AllScopes: true, Limit: 2000})
 		if err == nil {
 			for _, record := range records {
 				if record.Scope.PlanID != "" && record.Scope.PlanID != plan.ID {
@@ -260,7 +262,11 @@ func (b *Builder) RebuildOwner(ctx context.Context, ownerID string) (int, error)
 			return 0, err
 		}
 	}
-	pages, _, err := b.Store.List(ctx, PaperQuery{OwnerID: ownerID, Status: "all", Limit: 200})
+	pages, err := b.Store.ListAll(ctx, ownerID)
+	if err != nil {
+		return 0, err
+	}
+	index, err := b.loadLinkIndex(ctx, ownerID)
 	if err != nil {
 		return 0, err
 	}
@@ -268,7 +274,7 @@ func (b *Builder) RebuildOwner(ctx context.Context, ownerID string) (int, error)
 		if _, err := b.RefreshPaper(ctx, ownerID, page.PaperID); err != nil {
 			return 0, err
 		}
-		if err := b.refreshPaperLinks(ctx, ownerID, page.PaperID); err != nil {
+		if err := b.refreshPaperLinksFromIndex(ctx, ownerID, page.PaperID, index); err != nil {
 			return 0, err
 		}
 	}
@@ -279,12 +285,12 @@ func (b *Builder) RebuildOwner(ctx context.Context, ownerID string) (int, error)
 // paper metadata facts that memory.RecordPlan writes. No PDF parsing and no LLM
 // call is involved.
 func (b *Builder) rebuildPagesFromMemory(ctx context.Context, ownerID string) error {
-	records, _, err := b.Memory.List(ctx, memory.Query{OwnerID: ownerID, Tags: []string{"paper", "metadata"}, IncludePending: true, Limit: 5000})
+	records, _, err := b.Memory.List(ctx, memory.Query{OwnerID: ownerID, Tags: []string{"paper", "metadata"}, IncludePending: true, AllScopes: true, Limit: 5000})
 	if err != nil {
 		return err
 	}
 	documentsByTitle := map[string]string{}
-	docRecords, _, docErr := b.Memory.List(ctx, memory.Query{OwnerID: ownerID, Tags: []string{"document", "sections"}, IncludePending: true, Limit: 5000})
+	docRecords, _, docErr := b.Memory.List(ctx, memory.Query{OwnerID: ownerID, Tags: []string{"document", "sections"}, IncludePending: true, AllScopes: true, Limit: 5000})
 	if docErr == nil {
 		for _, record := range docRecords {
 			for _, entity := range record.Entities {
@@ -367,7 +373,7 @@ func (b *Builder) findLibraryRecord(ownerID string, meta models.PaperMetadata) *
 		if literature.NormalizeTitle(records[index].Title) != title {
 			continue
 		}
-		if meta.Year == 0 || records[index].Year == 0 || absInt(meta.Year-records[index].Year) <= 1 {
+		if meta.Year == 0 || records[index].Year == 0 || meta.Year == records[index].Year {
 			return &records[index]
 		}
 	}
@@ -427,7 +433,7 @@ func dedupeEntities(entities []memory.Entity) []memory.Entity {
 }
 
 func paperidStrip(raw string) string {
-	return strings.TrimSpace(raw)
+	return paperid.StripVersion(strings.TrimSpace(raw))
 }
 
 func recordAuthors(record *literature.Record) []string {

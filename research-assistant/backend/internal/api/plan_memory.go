@@ -83,14 +83,15 @@ func summarizePlanForContext(plan *models.PlanGraph) string {
 
 func collectPlanMemoryContext(ownerID, projectID, sessionID, intent string) ([]string, string) {
 	store := MemoryStore()
-	if store == nil || !memory.InjectionEnabled() {
+	if store == nil {
 		return nil, ""
 	}
 	settings := memory.DefaultSettings()
 	if MemorySettings() != nil {
 		settings = MemorySettings().Get(ownerID)
 	}
-	if !settings.Enabled || settings.Mode == "shadow" || settings.Mode == "off" {
+	mode := memory.EffectiveMode(settings)
+	if mode == "off" {
 		return nil, ""
 	}
 	q := memory.Query{
@@ -98,7 +99,7 @@ func collectPlanMemoryContext(ownerID, projectID, sessionID, intent string) ([]s
 		Text: memory.BuildQuery(intent, nil, 2000), Limit: settings.RetrievalTopK,
 	}
 	got, err := store.Retrieve(context.Background(), q, settings.CoreBudgetTokens, 800)
-	if err != nil {
+	if err != nil || mode == "shadow" {
 		return nil, ""
 	}
 	refs := make([]string, 0, len(got.Citations))

@@ -3,7 +3,9 @@ package memory
 import (
 	"context"
 	"math"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -77,17 +79,19 @@ func matchQuery(rec Record, q Query) bool {
 	} else if rec.Status != StatusActive {
 		return false
 	}
-	if rec.Scope.ProjectID != "" && q.ProjectID != "" && rec.Scope.ProjectID != q.ProjectID {
-		return false
-	}
-	if rec.Scope.SessionID != "" && q.SessionID != "" && rec.Scope.SessionID != q.SessionID {
-		return false
-	}
-	if rec.Scope.PlanID != "" && q.PlanID != "" && rec.Scope.PlanID != q.PlanID {
-		return false
-	}
-	if rec.Scope.AgentID != "" && q.AgentID != "" && rec.Scope.AgentID != q.AgentID {
-		return false
+	if !q.AllScopes {
+		if !scopeMatches(rec.Scope.ProjectID, q.ProjectID) {
+			return false
+		}
+		if !scopeMatches(rec.Scope.SessionID, q.SessionID) {
+			return false
+		}
+		if !scopeMatches(rec.Scope.PlanID, q.PlanID) {
+			return false
+		}
+		if !scopeMatches(rec.Scope.AgentID, q.AgentID) {
+			return false
+		}
 	}
 	if len(q.Tags) > 0 {
 		for _, wanted := range q.Tags {
@@ -103,8 +107,11 @@ func matchQuery(rec Record, q Query) bool {
 			}
 		}
 	}
-	if q.AsOf != nil {
-		asOf := *q.AsOf
+	if q.AsOf != nil || (!q.AllScopes && !q.IncludeSuperseded) {
+		asOf := time.Now().UTC()
+		if q.AsOf != nil {
+			asOf = *q.AsOf
+		}
 		if rec.Validity.ValidFrom != nil && rec.Validity.ValidFrom.After(asOf) {
 			return false
 		}
@@ -113,6 +120,22 @@ func matchQuery(rec Record, q Query) bool {
 		}
 	}
 	return true
+}
+
+// scopeMatches implements strict scope semantics: a record that carries a
+// scope is visible only to a query that carries exactly the same value. A
+// record without that scope is visible to every query in the parent scope.
+func scopeMatches(recordScope, queryScope string) bool {
+	return ScopeMatches(recordScope, queryScope)
+}
+
+// ScopeMatches is shared by memory and paper/document retrieval. An omitted
+// query scope never grants access to records in a child scope.
+func ScopeMatches(recordScope, queryScope string) bool {
+	if recordScope == "" {
+		return true
+	}
+	return queryScope != "" && recordScope == queryScope
 }
 
 func trustWeight(trust Trust) float64 {
@@ -210,7 +233,7 @@ func (s *FileStore) searchLocked(q Query) []ScoredRecord {
 				if !ok {
 					continue
 				}
-				entry = &ScoredRecord{Record: rec}
+				entry = &ScoredRecord{Record: cloneRecord(rec)}
 				meta[id] = entry
 			}
 			switch kind {
@@ -224,7 +247,13 @@ func (s *FileStore) searchLocked(q Query) []ScoredRecord {
 		}
 	}
 
-	bm25Hits := s.idx.SearchBM25(q.Text, 50)
+	visible := make(map[string]struct{}, len(s.byOwner[q.OwnerID]))
+	for id := range s.byOwner[q.OwnerID] {
+		if rec, ok := s.records[id]; ok && matchQuery(rec, q) {
+			visible[id] = struct{}{}
+		}
+	}
+	bm25Hits := s.idx.SearchBM25In(q.Text, 50, visible)
 	bm25IDs := make([]string, 0, len(bm25Hits))
 	for _, hit := range bm25Hits {
 		bm25IDs = append(bm25IDs, hit.ID)
@@ -232,7 +261,12 @@ func (s *FileStore) searchLocked(q Query) []ScoredRecord {
 	addRanked(bm25IDs, 1.0, "bm25")
 
 	if len(q.Entities) > 0 {
-		entityIDs := s.idx.EntityIDs(q.Entities)
+		entityIDs := make([]string, 0)
+		for _, id := range s.idx.EntityIDs(q.Entities) {
+			if _, ok := visible[id]; ok {
+				entityIDs = append(entityIDs, id)
+			}
+		}
 		if len(entityIDs) > 20 {
 			entityIDs = entityIDs[:20]
 		}
@@ -241,8 +275,9 @@ func (s *FileStore) searchLocked(q Query) []ScoredRecord {
 
 	if hasTimeWords(q.Text) {
 		recent := make([]string, 0)
-		for id, rec := range s.records {
-			if !matchQuery(rec, q) {
+		for id := range s.byOwner[q.OwnerID] {
+			rec, ok := s.records[id]
+			if !ok || !matchQuery(rec, q) {
 				continue
 			}
 			recent = append(recent, id)
@@ -284,12 +319,43 @@ func (s *FileStore) searchLocked(q Query) []ScoredRecord {
 		return candidates[i].Score > candidates[j].Score
 	})
 
-	return mmrSelect(candidates, limit, 0.7, 3)
+	return mmrSelect(candidates, limit, 0.7, perKindMaxForQuery())
+}
+
+// perKindMaxForQuery returns the MMR per-kind cap. Profiles are deliberately
+// generous because pinned user facts live there; episodic records stay capped
+// so near-duplicate episodes cannot crowd out facts. MEMORY_MMR_PER_KIND_MAX
+// accepts "profile=10,episode=3" overrides.
+func perKindMaxForQuery() map[Kind]int {
+	caps := map[Kind]int{
+		KindProfile:    10,
+		KindFact:       6,
+		KindEpisode:    3,
+		KindProcedure:  4,
+		KindConstraint: 3,
+		KindNegative:   3,
+		KindDocument:   3,
+		KindWorking:    3,
+		KindReflection: 3,
+	}
+	raw := strings.TrimSpace(os.Getenv("MEMORY_MMR_PER_KIND_MAX"))
+	for _, pair := range strings.Split(raw, ",") {
+		key, value, ok := strings.Cut(pair, "=")
+		if !ok {
+			continue
+		}
+		parsed, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || parsed <= 0 {
+			continue
+		}
+		caps[Kind(strings.TrimSpace(key))] = parsed
+	}
+	return caps
 }
 
 // mmrSelect applies maximal marginal relevance so near-duplicate episodes do
 // not occupy the whole budget.
-func mmrSelect(candidates []ScoredRecord, limit int, lambda float64, perKindMax int) []ScoredRecord {
+func mmrSelect(candidates []ScoredRecord, limit int, lambda float64, perKindMax map[Kind]int) []ScoredRecord {
 	if limit <= 0 || len(candidates) == 0 {
 		return nil
 	}
@@ -300,7 +366,11 @@ func mmrSelect(candidates []ScoredRecord, limit int, lambda float64, perKindMax 
 		best := -1
 		bestScore := math.Inf(-1)
 		for i, candidate := range candidates {
-			if used[i] || kindCount[candidate.Record.Kind] >= perKindMax {
+			cap := perKindMax[candidate.Record.Kind]
+			if cap <= 0 {
+				cap = 3
+			}
+			if used[i] || kindCount[candidate.Record.Kind] >= cap {
 				continue
 			}
 			maxSim := 0.0
@@ -322,6 +392,12 @@ func mmrSelect(candidates []ScoredRecord, limit int, lambda float64, perKindMax 
 		selected = append(selected, candidates[best])
 		kindCount[candidates[best].Record.Kind]++
 	}
+	sort.SliceStable(selected, func(i, j int) bool {
+		if selected[i].Score == selected[j].Score {
+			return selected[i].Record.ID < selected[j].Record.ID
+		}
+		return selected[i].Score > selected[j].Score
+	})
 	return selected
 }
 
@@ -351,25 +427,54 @@ func tokenJaccard(a, b string) float64 {
 	return float64(inter) / float64(union)
 }
 
+// SearchResult is the single-pass response used by /api/memories/search:
+// ranked results plus the rendered injection context produced from the same
+// candidate scan.
+type SearchResult struct {
+	Results []ScoredRecord `json:"results"`
+	Context Context        `json:"context"`
+}
+
+// SearchWithContext runs searchLocked once and builds the context from those
+// candidates. It is the replacement for calling Search and Retrieve separately.
+func (s *FileStore) SearchWithContext(ctx context.Context, q Query, coreBudget, retrievedBudget int) (SearchResult, error) {
+	_ = ctx
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	results := s.searchLocked(q)
+	return SearchResult{Results: results, Context: s.buildContextLocked(q, coreBudget, retrievedBudget, results)}, nil
+}
+
 // Retrieve builds the injected memory context: a stable core block plus a
 // query-relevant retrieved block, each capped by its token budget.
 func (s *FileStore) Retrieve(ctx context.Context, q Query, coreBudget, retrievedBudget int) (Context, error) {
-	if coreBudget <= 0 {
-		coreBudget = 512
-	}
-	if retrievedBudget <= 0 {
-		retrievedBudget = 2000
-	}
+	_ = ctx
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.buildContextLocked(q, coreBudget, retrievedBudget, nil), nil
+}
+
+func (s *FileStore) buildContextLocked(q Query, coreBudget, retrievedBudget int, precomputed []ScoredRecord) Context {
+	if coreBudget < 0 {
+		coreBudget = 512
+	}
+	if retrievedBudget < 0 {
+		retrievedBudget = 2000
+	}
 
 	var result Context
+	result.Report.OwnerRecords = len(s.byOwner[q.OwnerID])
 	coreCandidates := make([]Record, 0)
-	for _, rec := range s.records {
-		if !rec.Pinned || !matchQuery(rec, q) {
+	for id := range s.byOwner[q.OwnerID] {
+		rec, ok := s.records[id]
+		if !ok || !matchQuery(rec, q) {
 			continue
 		}
-		coreCandidates = append(coreCandidates, rec)
+		result.Report.VisibleRecords++
+		if !rec.Pinned {
+			continue
+		}
+		coreCandidates = append(coreCandidates, cloneRecord(rec))
 	}
 	sort.Slice(coreCandidates, func(i, j int) bool {
 		if coreCandidates[i].Importance == coreCandidates[j].Importance {
@@ -383,7 +488,10 @@ func (s *FileStore) Retrieve(ctx context.Context, q Query, coreBudget, retrieved
 	result.Report.CoreTokens = coreTokens
 	result.Report.Truncated += coreTruncated
 
-	retrievedCandidates := s.searchLocked(q)
+	retrievedCandidates := precomputed
+	if retrievedCandidates == nil {
+		retrievedCandidates = s.searchLocked(q)
+	}
 	filtered := make([]Record, 0, len(retrievedCandidates))
 	coreIDs := map[string]struct{}{}
 	for _, rec := range core {
@@ -411,9 +519,11 @@ func (s *FileStore) Retrieve(ctx context.Context, q Query, coreBudget, retrieved
 			Date:     rec.UpdatedAt.Format("2006-01-02"),
 			Source:   rec.Source.Type + ":" + rec.Source.Ref,
 			Trust:    rec.Trust,
+			Quote:    rec.Content,
+			FactID:   rec.FactID, RevisionID: rec.RevisionID,
 		})
 	}
-	return result, nil
+	return result
 }
 
 func renderWithBudget(records []Record, budget int) ([]Record, string, int, int) {

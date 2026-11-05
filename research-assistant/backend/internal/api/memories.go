@@ -2,10 +2,12 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"research-assistant-backend/internal/memory"
 
@@ -25,7 +27,7 @@ func RegisterMemoryRoutes(apiGroup *gin.RouterGroup, store memory.Store, setting
 	apiGroup.POST("/memories/import", func(c *gin.Context) { importMemories(c, store) })
 	apiGroup.POST("/memories/search", func(c *gin.Context) { searchMemories(c, store, settings) })
 	apiGroup.POST("/memories/consolidate", func(c *gin.Context) {
-		report, err := memory.NewConsolidator(store).RunOnce(c.Request.Context(), resolveUserID(c))
+		report, err := memory.NewConsolidator(store, settings).RunOnce(c.Request.Context(), resolveUserID(c))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -41,7 +43,7 @@ func RegisterMemoryRoutes(apiGroup *gin.RouterGroup, store memory.Store, setting
 }
 
 func listMemories(c *gin.Context, store memory.Store) {
-	q := memory.Query{OwnerID: resolveUserID(c)}
+	q := memory.Query{OwnerID: resolveUserID(c), AllScopes: true}
 	if raw := strings.TrimSpace(c.Query("kind")); raw != "" {
 		q.Kinds = []memory.Kind{memory.Kind(raw)}
 	}
@@ -86,7 +88,7 @@ func createMemory(c *gin.Context, store memory.Store) {
 	rec.Source.Type = "user"
 	created, err := store.Put(c.Request.Context(), rec)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writeMemoryError(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"memory": created})
@@ -109,7 +111,7 @@ func patchMemory(c *gin.Context, store memory.Store) {
 	}
 	rec, err := store.Update(c.Request.Context(), resolveUserID(c), c.Param("id"), patch)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "memory not found"})
+		writeMemoryError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"memory": rec})
@@ -125,13 +127,14 @@ func deleteMemory(c *gin.Context, store memory.Store) {
 		}
 	}
 	if err := store.Delete(c.Request.Context(), resolveUserID(c), c.Param("id"), hard); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "memory not found"})
+		writeMemoryError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"deleted": true, "hard": hard})
 }
 
 type memorySearchRequest struct {
+	AsOf                  string   `json:"as_of,omitempty"`
 	Query                 string   `json:"query"`
 	Kinds                 []string `json:"kinds,omitempty"`
 	ProjectID             string   `json:"project_id,omitempty"`
@@ -156,6 +159,15 @@ func searchMemories(c *gin.Context, store memory.Store, settings *memory.Setting
 		PlanID: req.PlanID, AgentID: req.AgentID, Text: memory.BuildQuery(req.Query, nil, 2000),
 		IncludeSuperseded: req.IncludeSuperseded,
 	}
+	if req.AsOf != "" {
+		asOf, err := time.Parse(time.RFC3339Nano, req.AsOf)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "as_of must be an RFC3339 timestamp"})
+			return
+		}
+		q.AsOf = &asOf
+		q.IncludeSuperseded = true
+	}
 	for _, kind := range req.Kinds {
 		q.Kinds = append(q.Kinds, memory.Kind(kind))
 	}
@@ -163,11 +175,6 @@ func searchMemories(c *gin.Context, store memory.Store, settings *memory.Setting
 		q.Limit = req.Limit
 	} else if settings != nil {
 		q.Limit = settings.Get(ownerID).RetrievalTopK
-	}
-	results, err := store.Search(c.Request.Context(), q)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
 	}
 	coreBudget, retrievedBudget := 0, 0
 	if settings != nil {
@@ -180,12 +187,12 @@ func searchMemories(c *gin.Context, store memory.Store, settings *memory.Setting
 	if req.RetrievedBudgetTokens > 0 {
 		retrievedBudget = req.RetrievedBudgetTokens
 	}
-	contextResult, err := store.Retrieve(c.Request.Context(), q, coreBudget, retrievedBudget)
+	result, err := store.SearchWithContext(c.Request.Context(), q, coreBudget, retrievedBudget)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		writeMemoryError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"results": results, "context": contextResult})
+	c.JSON(http.StatusOK, gin.H{"results": result.Results, "context": result.Context})
 }
 
 func memoryStats(c *gin.Context, store memory.Store) {
@@ -198,7 +205,7 @@ func memoryStats(c *gin.Context, store memory.Store) {
 }
 
 func exportMemories(c *gin.Context, store memory.Store) {
-	q := memory.Query{OwnerID: resolveUserID(c), Statuses: []memory.Status{memory.StatusActive, memory.StatusPending, memory.StatusSuperseded, memory.StatusArchived}, Limit: 10000}
+	q := memory.Query{OwnerID: resolveUserID(c), Statuses: []memory.Status{memory.StatusActive, memory.StatusPending, memory.StatusSuperseded, memory.StatusArchived}, AllScopes: true, Limit: 100000}
 	records, _, err := store.List(c.Request.Context(), q)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -217,19 +224,44 @@ func importMemories(c *gin.Context, store memory.Store) {
 		return
 	}
 	ownerID := resolveUserID(c)
+	for index := range payload.Records {
+		payload.Records[index].Scope.OwnerID = ownerID
+		if payload.Records[index].Trust == "" {
+			payload.Records[index].Trust = memory.TrustUserExplicit
+		}
+	}
+	const batchSize = 500
 	imported, skipped := 0, 0
-	for i := range payload.Records {
-		payload.Records[i].Scope.OwnerID = ownerID
-		if payload.Records[i].Trust == "" {
-			payload.Records[i].Trust = memory.TrustUserExplicit
+	for start := 0; start < len(payload.Records); start += batchSize {
+		end := start + batchSize
+		if end > len(payload.Records) {
+			end = len(payload.Records)
 		}
-		if _, err := store.Put(c.Request.Context(), payload.Records[i]); err != nil {
-			skipped++
-			continue
+		batchImported, batchSkipped, err := store.PutBatch(c.Request.Context(), payload.Records[start:end])
+		if err != nil {
+			writeMemoryError(c, err)
+			return
 		}
-		imported++
+		imported += batchImported
+		skipped += batchSkipped
 	}
 	c.JSON(http.StatusOK, gin.H{"imported": imported, "skipped": skipped})
+}
+
+func writeMemoryError(c *gin.Context, err error) {
+	if err == nil {
+		return
+	}
+	if errors.Is(err, memory.ErrStorageUnavailable) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "memory_store_unavailable", "detail": err.Error()})
+		return
+	}
+	message := err.Error()
+	if strings.Contains(message, "not found") {
+		c.JSON(http.StatusNotFound, gin.H{"error": message})
+		return
+	}
+	c.JSON(http.StatusBadRequest, gin.H{"error": message})
 }
 
 func feedbackMemory(c *gin.Context, store memory.Store) {
@@ -249,7 +281,7 @@ func feedbackMemory(c *gin.Context, store memory.Store) {
 		rec.UseCount++
 	}
 	if _, err := store.Put(c.Request.Context(), rec); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		writeMemoryError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"recorded": true})
