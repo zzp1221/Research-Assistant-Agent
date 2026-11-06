@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   AUTO_RUN_ON_CREATE_STORAGE_KEY,
@@ -96,9 +96,62 @@ describe('isAutoRunPlanEligible', () => {
 describe('auto-run on create switch', () => {
   beforeEach(() => {
     window.localStorage.clear();
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     vi.mocked(api.getMe).mockResolvedValue({ user_id: 'user-1', session_id: 'session-1' });
     vi.mocked(api.listPlans).mockResolvedValue({ plans: [], total: 0, next_cursor: '' });
+  });
+
+  it('reuses the original key and exact parameters after a timeout, then changes the key for edited input', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.createPlan).mockRejectedValueOnce(new Error(api.PLAN_CREATE_TIMEOUT_MESSAGE))
+      .mockRejectedValueOnce({ response: { data: { code: 'idempotency_in_progress' } } })
+      .mockResolvedValue({ message: 'ok', plan_graph: makePlanGraph() });
+    render(<Harness onPlanReady={noop} />);
+    await waitFor(() => expect(api.getMe).toHaveBeenCalled());
+    await user.type(screen.getByRole('textbox'), 'plot');
+    await user.click(screen.getByRole('button', { name: '发送消息' }));
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('plot'));
+    const original = vi.mocked(api.createPlan).mock.calls[0]!;
+    expect(original[5]).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '发送消息' }));
+    await waitFor(() => expect(api.createPlan).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(api.createPlan).mock.calls[1]).toEqual(original);
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('plot'));
+    await user.type(screen.getByRole('textbox'), ' results');
+    await user.click(screen.getByRole('button', { name: '发送消息' }));
+    await waitFor(() => expect(api.createPlan).toHaveBeenCalledTimes(3));
+    expect(vi.mocked(api.createPlan).mock.calls[2]![5]).not.toBe(original[5]);
+    expect(vi.mocked(api.createPlan).mock.calls[2]![0]).toBe('plot results');
+  });
+
+  it('does not recreate a plan whose save outcome is unknown', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.createPlan).mockRejectedValue({ response: { data: { code: 'idempotency_commit_unknown', plan_id: 'original-plan' } } });
+    render(<Harness onPlanReady={noop} />);
+    await waitFor(() => expect(api.getMe).toHaveBeenCalled());
+    await user.type(screen.getByRole('textbox'), 'plot');
+    await user.click(screen.getByRole('button', { name: '发送消息' }));
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('plot'));
+    expect(chatTexts().join('')).toContain('original-plan');
+    await user.click(screen.getByRole('button', { name: '发送消息' }));
+    await waitFor(() => expect(chatTexts().join('')).toContain('确认前不能重新创建'));
+    expect(api.createPlan).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates a different key when the same input is submitted in a new session', async () => {
+    vi.mocked(api.createPlan).mockRejectedValue(new Error(api.PLAN_CREATE_TIMEOUT_MESSAGE));
+    const { result } = renderHook(() => useResearchAssistantChatFlow({ onPlanGraphChanged: noop }));
+    await waitFor(() => expect(result.current.isLoggedIn).toBe(true));
+    act(() => result.current.setPrompt('plot'));
+    await act(() => result.current.handleSendMessage());
+    const first = vi.mocked(api.createPlan).mock.calls[0]!;
+    act(() => result.current.handleCreateSession());
+    act(() => result.current.setPrompt('plot'));
+    await act(() => result.current.handleSendMessage());
+    const next = vi.mocked(api.createPlan).mock.calls[1]!;
+    expect(next[5]).not.toBe(first[5]);
+    expect(next[1].sessionId).not.toBe(first[1].sessionId);
+    expect(next[0]).toBe(first[0]);
   });
 
   it('shows checked answer excerpts without presenting retrieval candidates as evidence', async () => {

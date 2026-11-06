@@ -1,4 +1,5 @@
-import { useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { computePopoverLayout, readVisibleReaderRect, type PopoverLayout } from './translationPopoverLayout';
 import { createPortal } from 'react-dom';
 import { X, Loader2, MessageSquare } from 'lucide-react';
 import type { AssistResponse } from '../contracts/api';
@@ -13,53 +14,8 @@ export interface AITranslationSelectionRegion {
   height: number;
 }
 
-interface PopoverAnchor {
-  left: number;
-  width: number;
-  maxHeight: number;
-  placement: 'above' | 'below';
-  top?: number;
-  bottom?: number;
-}
-
-const VIEWPORT_MARGIN = 12;
-const POPOVER_GAP = 8;
-const MIN_POPOVER_HEIGHT = 160;
-
-const computeAnchor = (region: AITranslationSelectionRegion): PopoverAnchor | null => {
-  if (typeof window === 'undefined') return null;
-  const pageLayer = document.querySelector<HTMLElement>(
-    `[data-testid="core__page-layer-${region.pageIndex}"]`,
-  );
-  if (!pageLayer) return null;
-
-  const pageRect = pageLayer.getBoundingClientRect();
-  const anchorX = pageRect.left + (region.left / 100) * pageRect.width;
-  const anchorTop = pageRect.top + ((region.top + region.height) / 100) * pageRect.height;
-  const anchorBottom = pageRect.top + (region.top / 100) * pageRect.height;
-  const width = Math.max(160, Math.min(360, window.innerWidth - VIEWPORT_MARGIN * 2));
-  const availableBelow = window.innerHeight - anchorTop - VIEWPORT_MARGIN - POPOVER_GAP;
-  const availableAbove = anchorBottom - VIEWPORT_MARGIN - POPOVER_GAP;
-  const placement: PopoverAnchor['placement'] =
-    availableBelow >= MIN_POPOVER_HEIGHT || availableBelow >= availableAbove ? 'below' : 'above';
-  const maxHeight = Math.max(120, placement === 'below' ? availableBelow : availableAbove);
-  const left = Math.min(
-    Math.max(anchorX, VIEWPORT_MARGIN),
-    Math.max(VIEWPORT_MARGIN, window.innerWidth - width - VIEWPORT_MARGIN),
-  );
-
-  return {
-    left,
-    width,
-    maxHeight,
-    placement,
-    ...(placement === 'below'
-      ? { top: Math.max(VIEWPORT_MARGIN, anchorTop + POPOVER_GAP) }
-      : { bottom: Math.max(VIEWPORT_MARGIN, window.innerHeight - anchorBottom + POPOVER_GAP) }),
-  };
-};
-
 interface AITranslationPopoverProps {
+  readerRef: RefObject<HTMLDivElement | null>;
   selectionRegion: AITranslationSelectionRegion;
   selectedText: string;
   mode: AssistMode;
@@ -71,55 +27,116 @@ interface AITranslationPopoverProps {
 }
 
 export function AITranslationPopover(props: AITranslationPopoverProps) {
-  const { selectionRegion, selectedText, mode, isLoading, error, answer, onClose, onAskAI } = props;
+  const { readerRef, selectionRegion, selectedText, mode, isLoading, error, answer, onClose, onAskAI } = props;
   const { pageIndex, left: selectionLeft, top: selectionTop, width: selectionWidth, height: selectionHeight } = selectionRegion;
-  const [anchor, setAnchor] = useState<PopoverAnchor | null>(() => computeAnchor(selectionRegion));
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLButtonElement>(null);
+  const [anchor, setAnchor] = useState<PopoverLayout | null>(null);
+  const [measuredWidth, setMeasuredWidth] = useState(360);
 
   useLayoutEffect(() => {
-    const update = () => setAnchor(computeAnchor({ pageIndex, left: selectionLeft, top: selectionTop, width: selectionWidth, height: selectionHeight }));
-    update();
-
-    const pageLayer = document.querySelector<HTMLElement>(`[data-testid="core__page-layer-${pageIndex}"]`);
-    const resizeObserver =
-      pageLayer && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
-    resizeObserver?.observe(pageLayer as HTMLElement);
-    window.addEventListener('resize', update);
-    window.addEventListener('scroll', update, true);
-    return () => {
-      resizeObserver?.disconnect();
-      window.removeEventListener('resize', update);
-      window.removeEventListener('scroll', update, true);
+    const root = readerRef.current;
+    if (!root) return;
+    const visualViewport = window.visualViewport;
+    let frame = 0;
+    let disposed = false;
+    const observed = new Set<Element>();
+    const observe = (element: Element | null) => {
+      if (element && !observed.has(element)) { observed.add(element); resizeObserver?.observe(element); }
     };
-  }, [pageIndex, selectionLeft, selectionTop, selectionWidth, selectionHeight]);
-
-  if (!anchor) return null;
+    const update = () => {
+      frame = 0;
+      if (disposed) return;
+      const body = root.querySelector<HTMLElement>('.rpv-default-layout__body');
+      const pageLayer = root.querySelector<HTMLElement>(`[data-testid="core__page-layer-${pageIndex}"]`);
+      observe(body); observe(pageLayer);
+      let next: PopoverLayout | null = null;
+      if (root.isConnected && body && pageLayer) {
+        const visible = readVisibleReaderRect(root, body);
+        if (visible) {
+          const availableWidth = visible.right - visible.left;
+          const width = Math.min(360, availableWidth - 2 * Math.min(8, availableWidth / 10));
+          setMeasuredWidth((previous) => previous === width ? previous : width);
+        }
+        const page = pageLayer.getBoundingClientRect();
+        const selection = {
+          left: page.left + selectionLeft / 100 * page.width,
+          top: page.top + selectionTop / 100 * page.height,
+          right: page.left + (selectionLeft + selectionWidth) / 100 * page.width,
+          bottom: page.top + (selectionTop + selectionHeight) / 100 * page.height,
+        };
+        const chromeHeight = (headerRef.current?.getBoundingClientRect().height ?? 32) + (footerRef.current?.getBoundingClientRect().height ?? 0) + 2;
+        const desiredHeight = chromeHeight + (contentRef.current?.scrollHeight ?? 160);
+        if (visible) next = computePopoverLayout(visible, selection, desiredHeight, chromeHeight);
+      }
+      setAnchor((previous) => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
+    };
+    const schedule = () => { if (!disposed && !frame) frame = requestAnimationFrame(update); };
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
+    // Ancestor sizes also detect splitter movement when the reader itself keeps
+    // its width but shifts in viewport coordinates.
+    for (let element: HTMLElement | null = root; element; element = element.parentElement) observe(element);
+    observe(popoverRef.current);
+    observe(headerRef.current);
+    observe(footerRef.current);
+    const mutationObserver = new MutationObserver(schedule);
+    mutationObserver.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+    // Switching the mobile pane can hide an ancestor without resizing it.
+    // Also detect removal of the reader while the portal is still mounted.
+    for (let element = root.parentElement; element; element = element.parentElement) {
+      mutationObserver.observe(element, { childList: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'data-mobile-pane'] });
+    }
+    window.addEventListener('resize', schedule);
+    window.addEventListener('scroll', schedule, true);
+    visualViewport?.addEventListener('resize', schedule);
+    visualViewport?.addEventListener('scroll', schedule);
+    update();
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(frame);
+      resizeObserver?.disconnect(); mutationObserver.disconnect();
+      window.removeEventListener('resize', schedule);
+      window.removeEventListener('scroll', schedule, true);
+      visualViewport?.removeEventListener('resize', schedule);
+      visualViewport?.removeEventListener('scroll', schedule);
+    };
+  }, [readerRef, pageIndex, selectionLeft, selectionTop, selectionWidth, selectionHeight, selectedText, mode, answer, error, isLoading, onAskAI]);
 
   return createPortal(
     <div
+      ref={popoverRef}
       data-testid="ai-translation-popover"
       role="dialog"
       aria-label={mode === 'translate' ? 'AI 翻译' : 'AI 解释'}
       style={{
         position: 'fixed',
-        left: anchor.left,
-        width: anchor.width,
-        maxHeight: anchor.maxHeight,
+        boxSizing: 'border-box',
+        left: anchor?.left ?? 0,
+        top: anchor?.top ?? 0,
+        // Keep measuring at the reader width even while hidden. Resetting to
+        // 360px would change wrapped controls and could alternate show/hide.
+        width: anchor?.width ?? measuredWidth,
+        height: anchor?.height,
+        maxHeight: anchor?.height,
+        visibility: anchor ? 'visible' : 'hidden',
+        pointerEvents: anchor ? 'auto' : 'none',
         zIndex: 1000,
-        ...(anchor.placement === 'below' ? { top: anchor.top } : { bottom: anchor.bottom }),
       }}
-      className="ra-fade-up flex flex-col overflow-hidden border border-line-strong bg-surface shadow-float"
+      className="flex min-w-0 flex-col overflow-hidden border border-line-strong bg-surface shadow-float"
     >
-      <div className="flex items-center justify-between border-b border-line bg-surface-muted px-2.5 py-1.5">
-        <span className="flex items-center gap-1.5">
+      <div ref={headerRef} className="flex min-w-0 shrink-0 items-center justify-between gap-1 border-b border-line bg-surface-muted px-2.5 py-1.5">
+        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
           <span className="instrument-kicker">{mode === 'translate' ? '段落翻译' : '段落解释'}</span>
           <span className="instrument-num text-[11px] text-faint">第 {pageIndex + 1} 页</span>
         </span>
-        <button onClick={onClose} className="flex h-5 w-5 items-center justify-center text-muted transition-colors hover:bg-surface-strong hover:text-ink" aria-label="关闭">
+        <button onClick={onClose} className="flex h-5 w-5 shrink-0 items-center justify-center text-muted transition-colors hover:bg-surface-strong hover:text-ink" aria-label="关闭">
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-surface p-3 text-[12.5px] leading-6 text-ink-soft">
+      <div ref={contentRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto [overflow-wrap:anywhere] bg-surface p-3 text-[12.5px] leading-6 text-ink-soft">
         <div className="mb-2 border border-line bg-surface-muted p-2 font-serif text-[11.5px] italic leading-5 text-muted">
           “{selectedText.substring(0, 120)}{selectedText.length > 120 ? '…' : ''}”
         </div>
@@ -157,11 +174,12 @@ export function AITranslationPopover(props: AITranslationPopoverProps) {
 
       {onAskAI && (
         <button
+          ref={footerRef}
           onClick={() => {
             onAskAI(selectedText);
             onClose();
           }}
-          className="flex items-center justify-center gap-2 border-t border-line bg-accent-soft py-2 text-[11.5px] font-semibold text-accent-ink transition-colors hover:bg-accent-soft/70"
+          className="flex min-w-0 shrink-0 items-center justify-center gap-2 border-t border-line bg-accent-soft py-2 text-[11.5px] font-semibold text-accent-ink transition-colors hover:bg-accent-soft/70"
         >
           <MessageSquare className="h-3 w-3" />
           针对此段落向 Research Assistant Agent 追问

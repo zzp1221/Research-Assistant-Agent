@@ -72,7 +72,7 @@ export const PLAN_CREATE_TIMEOUT_MESSAGE = '计划创建超时；请稍后刷新
 // agent planner, so allow a wider budget than a plain chat request.
 const PLAN_CREATE_TIMEOUT_MS = 240_000;
 
-const createIdempotencyKey = (): string => {
+export const createIdempotencyKey = (): string => {
   const cryptoApi = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
   if (cryptoApi && typeof cryptoApi.randomUUID === 'function') {
     return cryptoApi.randomUUID();
@@ -86,6 +86,7 @@ export const createPlan = async (
   attachments: string[] = [],
   runtimePermissionMode: 'confirm_important' | 'full_access' = 'confirm_important',
   runtimePermissionAcknowledged = false,
+  idempotencyKey = createIdempotencyKey(),
 ): Promise<PlanResponse> => {
   try {
     const response = await httpClient.post<PlanResponse>('/api/plan', {
@@ -97,7 +98,7 @@ export const createPlan = async (
     }, {
       headers: {
         ...buildIdentityHeaders(identity),
-        'Idempotency-Key': createIdempotencyKey(),
+        'Idempotency-Key': idempotencyKey,
       },
       timeout: PLAN_CREATE_TIMEOUT_MS,
     });

@@ -44,8 +44,12 @@ type sandboxCapabilityProbe interface {
 	Capabilities(ctx context.Context) (*sandbox.SandboxCapabilities, error)
 }
 
+type planBuilder interface {
+	BuildPlanWithRoute(context.Context, models.IntentContext, planner.RouteDecision) (*models.PlanGraph, error)
+}
+
 type planRuntime struct {
-	planner          *planner.Planner
+	planner          planBuilder
 	store            store.PlanStore
 	projects         project.Store
 	scheduler        *scheduler.Scheduler
@@ -316,16 +320,85 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		return
 	}
 
+	// Execute exactly the same normalized input used for the fingerprint.
+	payload.Intent = trimmedIntent
+	payload.SessionID = strings.TrimSpace(payload.SessionID)
+	payload.ProjectID = strings.TrimSpace(payload.ProjectID)
+	payload.RuntimePermissionMode = strings.TrimSpace(payload.RuntimePermissionMode)
+	if payload.RuntimePermissionMode == "" {
+		payload.RuntimePermissionMode = string(models.RuntimePermissionConfirmImportant)
+	}
 	userID := resolveUserID(c)
-	sessionID := strings.TrimSpace(payload.SessionID)
-	if sessionID == "" {
-		sessionID = resolveSessionID(c)
-	} else if sessionStore := SessionStore(); sessionStore != nil {
-		if _, err := sessionStore.Ensure(c.Request.Context(), sessionID, userID, strings.TrimSpace(payload.ProjectID), "plan"); err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "session not found", "code": "session_not_found"})
+	runtimePolicy, policyErr := buildRuntimePolicy(payload, userID)
+	if policyErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": policyErr.Error()})
+		return
+	}
+	idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+	if len(idempotencyKey) > 128 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Idempotency-Key is too long", "code": "invalid_idempotency_key"})
+		return
+	}
+	var handle *idempotencyEntry
+	var saveStarted, published bool
+	var savedPlanID string
+	if idempotencyKey != "" {
+		entry, execute, beginErr := r.idempotency.Begin(userID, idempotencyKey, planRequestFingerprint(payload))
+		if beginErr != nil {
+			status := http.StatusServiceUnavailable
+			if beginErr == errIdempotencyConflict {
+				status = http.StatusConflict
+			}
+			log.Printf("idempotency outcome=%s owner=%s", beginErr, userID)
+			writeIdempotentResponse(c, idempotencyError(status, beginErr.Error(), beginErr.Error(), ""), false)
 			return
 		}
+		if !execute {
+			response, state, waitErr := r.idempotency.Wait(c.Request.Context(), entry)
+			if waitErr != nil {
+				if c.Request.Context().Err() != nil {
+					return
+				}
+				logIdempotency("wait_timeout", userID, entry)
+				response = idempotencyError(http.StatusServiceUnavailable, "idempotency_in_progress", "Plan creation is still running; retry with the same key", "")
+				response.retryAfter = "1"
+				writeIdempotentResponse(c, response, false)
+				return
+			}
+			logIdempotency(state, userID, entry)
+			writeIdempotentResponse(c, response, state == "succeeded")
+			return
+		}
+		handle = entry
 	}
+	capture := &planResponseCapture{ResponseWriter: c.Writer}
+	if handle != nil {
+		c.Writer = capture
+	}
+	defer func() {
+		panicValue := recover()
+		if handle != nil && !published {
+			if saveStarted {
+				response := r.idempotency.MarkCommitUnknown(handle, savedPlanID)
+				logIdempotency("commit_unknown", userID, handle)
+				if !c.Writer.Written() {
+					writeIdempotentResponse(c, response, false)
+				}
+			} else {
+				response := idempotentResponse{status: c.Writer.Status(), body: capture.body.Bytes(), contentType: c.Writer.Header().Get("Content-Type"), retryAfter: c.Writer.Header().Get("Retry-After")}
+				if panicValue != nil || len(response.body) == 0 {
+					response = idempotencyError(http.StatusInternalServerError, "plan_creation_failed", "Plan creation stopped before saving; retry with the same key", "")
+					if !c.Writer.Written() {
+						writeIdempotentResponse(c, response, false)
+					}
+				}
+				r.idempotency.Fail(handle, response)
+			}
+		}
+		if panicValue != nil {
+			panic(panicValue)
+		}
+	}()
 
 	if allowed, retryAfter := r.planLimiter.Allow(userID); !allowed {
 		seconds := int(retryAfter.Seconds())
@@ -342,22 +415,6 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		return
 	}
 
-	idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
-	if len(idempotencyKey) > 128 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Idempotency-Key is too long", "code": "invalid_idempotency_key"})
-		return
-	}
-	if idempotencyKey != "" {
-		if entry, ok := r.idempotency.Lookup(userID, idempotencyKey); ok {
-			c.Header("Idempotency-Replayed", "true")
-			contentType := entry.contentType
-			if contentType == "" {
-				contentType = "application/json; charset=utf-8"
-			}
-			c.Data(entry.status, contentType, entry.body)
-			return
-		}
-	}
 	activePlans, activeErr := r.countActivePlans(userID)
 	if activeErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot inspect active plans", "code": "store_unavailable"})
@@ -374,11 +431,16 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		return
 	}
 
-	runtimePolicy, policyErr := buildRuntimePolicy(payload, userID)
-	if policyErr != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": policyErr.Error()})
-		return
+	sessionID := strings.TrimSpace(payload.SessionID)
+	if sessionID == "" {
+		sessionID = resolveSessionID(c)
+	} else if sessionStore := SessionStore(); sessionStore != nil {
+		if _, err := sessionStore.Ensure(c.Request.Context(), sessionID, userID, strings.TrimSpace(payload.ProjectID), "plan"); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "session not found", "code": "session_not_found"})
+			return
+		}
 	}
+
 	ruleContext := buildRuleIntentContext(payload.Intent)
 	intentContext := r.intentResolver.Resolve(c.Request.Context(), payload.Intent, ruleContext)
 	attachments, err := resolvePlanUploads(userID, payload.Attachments)
@@ -549,10 +611,41 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 	} else if initialRevision != nil {
 		plan.CurrentRevision = initialRevision.Revision
 	}
-	if err := r.store.SavePlan(plan); err != nil {
-		log.Printf("Error saving plan graph: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save plan"})
+	response := gin.H{
+		"message":        "Plan generated successfully",
+		"plan_graph":     plan,
+		"intent_context": publicIntentContext(intentContext),
+		"session_id":     sessionID,
+		"anon_user_id":   userID,
+		"user_id":        userID,
+	}
+	if clarification, ok := buildPlanClarification(intentContext.IntentType, payload.Intent); ok {
+		response["clarification"] = clarification
+	}
+	encoded, encodeErr := json.Marshal(response)
+	if encodeErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encode plan response"})
 		return
+	}
+	if c.Request.Context().Err() != nil {
+		c.JSON(http.StatusRequestTimeout, gin.H{"error": "plan creation canceled before saving", "code": "plan_creation_canceled"})
+		return
+	}
+	saveStarted, savedPlanID = true, plan.ID
+	if err := r.store.SavePlan(plan); err != nil {
+		log.Printf("Error saving plan graph plan=%s: %v", plan.ID, err)
+		if handle != nil {
+			writeIdempotentResponse(c, r.idempotency.MarkCommitUnknown(handle, plan.ID), false)
+			published = true
+			logIdempotency("commit_unknown", userID, handle)
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save plan"})
+		}
+		return
+	}
+	if handle != nil {
+		r.idempotency.Complete(handle, idempotentResponse{status: http.StatusOK, body: encoded, contentType: "application/json; charset=utf-8"})
+		published = true
 	}
 	if memStore := MemoryStore(); memStore != nil {
 		_ = memory.RecordPlan(c.Request.Context(), memStore, plan)
@@ -574,28 +667,11 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		Timestamp: time.Now(),
 	})
 
-	response := gin.H{
-		"message":        "Plan generated successfully",
-		"plan_graph":     plan,
-		"intent_context": publicIntentContext(intentContext),
-		"session_id":     sessionID,
-		"anon_user_id":   userID,
-		"user_id":        userID,
-	}
-	if clarification, ok := buildPlanClarification(intentContext.IntentType, payload.Intent); ok {
-		response["clarification"] = clarification
-	}
 	metrics.RecordPlanCreated(plan.IntentType)
 	recordAuditEvent("plan_created", userID, plan.ID, map[string]any{
 		"intent_type": plan.IntentType,
 		"session_id":  sessionID,
 	})
-	encoded, encodeErr := json.Marshal(response)
-	if encodeErr != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encode plan response"})
-		return
-	}
-	r.idempotency.Store(userID, idempotencyKey, http.StatusOK, encoded, "application/json; charset=utf-8")
 	c.Data(http.StatusOK, "application/json; charset=utf-8", encoded)
 }
 

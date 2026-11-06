@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import {
   highlightPlugin,
   type RenderHighlightTargetProps,
@@ -12,6 +12,8 @@ import '@react-pdf-viewer/highlight/lib/styles/index.css';
 export type { AssistMode } from './AITranslationPopover';
 
 export interface UseAITranslationPluginOptions {
+  readerRef: RefObject<HTMLDivElement | null>;
+  documentKey: string;
   onAskAI?: (text: string) => void;
   onAssist: (mode: AssistMode, text: string, page: number) => Promise<AssistResponse>;
 }
@@ -21,7 +23,9 @@ export interface UseAITranslationPluginOptions {
  * 不经过 ChatAgent，因此文档内容不会触发代码执行。
  */
 export const useAITranslationPlugin = (options: UseAITranslationPluginOptions) => {
-  const { onAskAI, onAssist } = options;
+  const { onAskAI, onAssist, readerRef, documentKey } = options;
+  const generation = useRef(0);
+  useEffect(() => () => { generation.current += 1; }, [documentKey]);
   const [mode, setMode] = useState<AssistMode>('translate');
   const [answer, setAnswer] = useState<AssistResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -29,21 +33,23 @@ export const useAITranslationPlugin = (options: UseAITranslationPluginOptions) =
 
   const run = async (nextMode: AssistMode, text: string, page: number) => {
     if (!text.trim()) return;
+    const requestGeneration = ++generation.current;
     setMode(nextMode);
     setIsLoading(true);
     setAnswer(null);
     setError('');
     try {
       const response = await onAssist(nextMode, text.trim(), page);
-      setAnswer(response);
+      if (generation.current === requestGeneration) setAnswer(response);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : '划词请求失败，请稍后重试。');
+      if (generation.current === requestGeneration) setError(requestError instanceof Error ? requestError.message : '划词请求失败，请稍后重试。');
     } finally {
-      setIsLoading(false);
+      if (generation.current === requestGeneration) setIsLoading(false);
     }
   };
 
   const reset = () => {
+    generation.current += 1;
     setAnswer(null);
     setError('');
     setIsLoading(false);
@@ -86,6 +92,8 @@ export const useAITranslationPlugin = (options: UseAITranslationPluginOptions) =
 
     renderHighlightContent: (props: RenderHighlightContentProps) => (
       <AITranslationPopover
+        key={documentKey}
+        readerRef={readerRef}
         selectionRegion={props.selectionRegion}
         selectedText={props.selectedText}
         mode={mode}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type RefObject } from 'react';
 import { HelpCircle, Highlighter, Languages, X } from 'lucide-react';
 import { Viewer, Worker } from '@react-pdf-viewer/core';
 import type { PdfJs } from '@react-pdf-viewer/core';
@@ -8,6 +8,7 @@ import type { DocumentInfoResponse, TranslationJob } from '../../contracts/api';
 import { TranslationPanel } from './TranslationPanel';
 
 interface PdfPanelProps {
+  readerRef?: RefObject<HTMLDivElement | null>;
   pdfUrl: string;
   documentInfo: DocumentInfoResponse | null;
   defaultLayoutPluginInstance: ReturnType<typeof defaultLayoutPlugin>;
@@ -48,6 +49,7 @@ const transformGetDocumentParams = (options: PdfJs.GetDocumentParams): PdfJs.Get
 export function PdfPanel(props: PdfPanelProps) {
   const {
     pdfUrl,
+    readerRef,
     documentInfo,
     defaultLayoutPluginInstance,
     aiTranslationPluginInstance,
@@ -247,7 +249,7 @@ export function PdfPanel(props: PdfPanelProps) {
       ) : null}
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
-        <div className={`overflow-y-auto bg-surface-muted ${showTranslation ? 'h-[55%]' : 'h-full'}`}>
+        <div ref={readerRef} data-testid="pdf-reader-container" className={`overflow-y-auto bg-surface-muted ${showTranslation ? 'h-[55%]' : 'h-full'}`}>
           <Worker workerUrl={PDF_WORKER_URL}>
             <div style={{ height: '100%', width: '100%' }}>
               <Viewer

@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import { useAITranslationPlugin, type AssistMode } from '../../hooks/useAITranslationPlugin';
 import type { AssistResponse, DocumentInfoResponse, TranslationJob } from '../../contracts/api';
@@ -53,10 +54,12 @@ export default function PdfViewerSurface(props: PdfViewerSurfaceProps) {
       </Toolbar>
     ),
   });
-  const aiTranslationPluginInstance = useAITranslationPlugin({ onAskAI, onAssist });
+  const readerRef = useRef<HTMLDivElement>(null);
+  const aiTranslationPluginInstance = useAITranslationPlugin({ onAskAI, onAssist, readerRef, documentKey: pdfUrl });
 
   return (
     <PdfPanel
+      readerRef={readerRef}
       pdfUrl={pdfUrl}
       documentInfo={documentInfo}
       onPageChange={onPageChange}

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, IntentContext, PlanClarification, PlanGraph, UploadedFile } from '../../contracts/api';
 import { PLAN_CREATE_TIMEOUT_MESSAGE, chat, createPlan, getMe, getPlan, listPlans, uploadFile } from '../../services/api/researchAssistantApi';
 import type { PlanSummary } from '../../services/api/researchAssistantApi';
@@ -225,6 +225,15 @@ const updateSessionRecord = (
 export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFlowOptions) {
   const { onPlanGraphChanged, onPlanReady } = options;
   const [persistedState, setPersistedState] = useState<PersistedChatState>(() => loadPersistedChatState());
+  const pendingSubmissions = useRef(new Map<string, {
+    signature: string;
+    key: string;
+    args: Parameters<typeof createPlan>;
+    commitUnknown: boolean;
+  }>());
+  const sending = useRef(false);
+  const activeSessionRef = useRef(persistedState.activeSessionId);
+  useEffect(() => { activeSessionRef.current = persistedState.activeSessionId; }, [persistedState.activeSessionId]);
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
 	const [pendingAttachments, setPendingAttachments] = useState<UploadedFile[]>([]);
@@ -535,13 +544,14 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
   }, [activeSession?.activePlanId, refreshActivePlan]);
 
   const handleSendMessage = useCallback(async () => {
-	if (loading || (!prompt.trim() && pendingAttachments.length === 0) || !persistedState.activeSessionId || uploadingAttachments) return;
+	if (sending.current || loading || (!prompt.trim() && pendingAttachments.length === 0) || !persistedState.activeSessionId || uploadingAttachments) return;
 
 	const userPrompt = prompt.trim() || '请分析上传的材料，并设计预算受限的轻量消融实验。';
 	const attachmentNames = pendingAttachments.map((attachment) => attachment.name);
 	const attachmentIDs = pendingAttachments.map((attachment) => attachment.id);
     const requestUserId = serverIdentity?.userId ?? '';
     const requestSessionId = persistedState.activeSessionId;
+    sending.current = true;
     setLoading(true);
 	appendMessageToSession(requestSessionId, {
 		role: 'user',
@@ -553,16 +563,28 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
 
     try {
       if (isTaskRequest) {
-		const response = await createPlan(
+        const args: Parameters<typeof createPlan> = [
           userPrompt,
           { userId: requestUserId, sessionId: requestSessionId },
           attachmentIDs,
           runtimePermissionMode,
           runtimePermissionMode === 'full_access' && fullAccessAcknowledged,
-        );
+        ];
+        const signature = JSON.stringify(args);
+        let submission = pendingSubmissions.current.get(requestSessionId);
+        if (!submission || submission.signature !== signature) {
+          submission = { signature, key: createId('plan'), args, commitUnknown: false };
+          pendingSubmissions.current.set(requestSessionId, submission);
+        }
+        if (submission.commitUnknown) {
+          throw new Error('原计划保存结果尚未确认，请先从计划库核对原计划；确认前不能重新创建。');
+        }
+        // A retry uses both the original key and its original request values.
+        const response = await createPlan(submission.args[0], submission.args[1], submission.args[2], submission.args[3], submission.args[4], submission.key);
         const generatedPlanGraph = response.plan_graph;
         const returnedIntentContext = response.intent_context;
         if (!generatedPlanGraph) throw new Error('Backend did not return plan_graph');
+        pendingSubmissions.current.delete(requestSessionId);
 
         // 计划数据跟随 session 保存，切回历史 session 时可以还原右侧图谱。
         updateSessionPlanState(requestSessionId, {
@@ -619,8 +641,21 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
           ? `${formatted.title}：${formatted.detail}\n修复建议：${formatted.remediation}`
           : `${formatted.title}：${formatted.detail}`;
       }
+      if (isTaskRequest) {
+        const data = (error as { response?: { data?: { code?: string; plan_id?: string } } })?.response?.data;
+        const submission = pendingSubmissions.current.get(requestSessionId);
+        if (data?.code === 'idempotency_commit_unknown' && submission) {
+          submission.commitUnknown = true;
+          message = `计划保存结果尚未确认${data.plan_id ? `（${data.plan_id}）` : ''}，请先从计划库查询原计划。服务重启或切换后端后，请先核对，避免重复创建。`;
+        } else if (submission && !submission.commitUnknown) {
+          message += '\n可再次发送相同输入重试；当前服务进程内会复用原提交。若服务已重启，请先核对计划库。';
+        }
+        if (activeSessionRef.current === requestSessionId) setPrompt((current) => current || userPrompt);
+        void refreshServerPlans();
+      }
       appendMessageToSession(requestSessionId, { role: 'system', text: message });
     } finally {
+      sending.current = false;
       setLoading(false);
     }
 	}, [appendMessageToSession, autoRunOnCreate, fullAccessAcknowledged, serverIdentity?.userId, loading, onPlanReady, pendingAttachments, persistedState.activeSessionId, prompt, refreshServerPlans, runtimePermissionMode, updateSessionPlanState, uploadingAttachments]);

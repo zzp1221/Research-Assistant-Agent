@@ -72,6 +72,14 @@ describe('createPlan', () => {
     expect(String(headers['Idempotency-Key'])).not.toHaveLength(0);
   });
 
+  it('sends the caller-provided key unchanged across retries', async () => {
+    const post = vi.spyOn(httpClient, 'post').mockResolvedValue({ data: { message: 'ok' } } as never);
+    await createPlan('分析', identity, ['upload-1'], 'confirm_important', false, 'original-key');
+    await createPlan('分析', identity, ['upload-1'], 'confirm_important', false, 'original-key');
+    expect(post.mock.calls[0]![2]?.headers?.['Idempotency-Key']).toBe('original-key');
+    expect(post.mock.calls[1]).toEqual(post.mock.calls[0]);
+  });
+
   it('falls back to a timestamp key when crypto.randomUUID is unavailable', async () => {
     vi.stubGlobal('crypto', {});
     const post = vi.spyOn(httpClient, 'post').mockResolvedValue({ data: { message: 'ok' } } as never);

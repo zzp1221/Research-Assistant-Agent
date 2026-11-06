@@ -925,7 +925,8 @@
         "schema": {
           "type": "string",
           "maxLength": 128
-        }
+        },
+        "description": "Optional owner-scoped key (at most 128 bytes). Within this backend process, equal requests share one execution and replay the original successful snapshot for 24 hours after completion. Different requests with the same key conflict. This is not durable across restarts or multiple replicas; inspect the plan library before retrying after a restart."
       }
     }
   },
@@ -1020,6 +1021,42 @@
                   },
                   "runtime_permission_acknowledged": {
                     "type": "boolean"
+                  },
+                  "max_cost_usd": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "max_sandbox_seconds": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "max_tokens": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "max_download_bytes": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "budget_policy": {
+                    "type": "string",
+                    "enum": [
+                      "soft",
+                      "hard"
+                    ]
+                  },
+                  "cost_policy": {
+                    "type": "string",
+                    "enum": [
+                      "quality_first",
+                      "balanced",
+                      "budget_first"
+                    ]
+                  },
+                  "require_review": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Require review before execution; included in the idempotency fingerprint."
                   }
                 }
               }
@@ -1040,6 +1077,17 @@
                   }
                 }
               }
+            },
+            "headers": {
+              "Idempotency-Replayed": {
+                "description": "true when returning the original successful snapshot without consuming creation quota",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "true"
+                  ]
+                }
+              }
             }
           },
           "400": {
@@ -1058,6 +1106,49 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "idempotency_key_conflict: same owner/key with a different request fingerprint",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "idempotency_in_progress: 30-second wait expired; retry the same key (Retry-After: 1). idempotency_capacity_exceeded: no new key admitted; existing keys remain available. idempotency_commit_unknown: save outcome uncertain; plan_id identifies the original plan for inspection. Do not automatically create a new plan. These guarantees apply to one process only.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "1 for idempotency_in_progress"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "idempotency_in_progress",
+                        "idempotency_capacity_exceeded",
+                        "idempotency_commit_unknown"
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "plan_id": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }

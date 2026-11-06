@@ -200,6 +200,7 @@ export function LeftWorkspacePdf(props: LeftWorkspacePdfProps) {
     >
       <Suspense fallback={<PdfViewerSkeleton />}>
         <PdfViewerSurface
+          key={pdfUrl}
           pdfUrl={pdfUrl}
           documentInfo={documentInfo}
           onPageChange={onPageChange}
