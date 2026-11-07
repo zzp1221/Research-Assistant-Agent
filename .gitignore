@@ -8,6 +8,7 @@
 /.archify/
 /reports/*
 !/reports/README.md
+!/reports/README.en.md
 /reports/fixtures/
 *.drawio.bkp
 *.drawio.dtmp

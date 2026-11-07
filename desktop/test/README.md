@@ -1,6 +1,8 @@
 # Windows 真机回归
 
-当前 Linux 容器只能验证纯逻辑与交叉编译。以下脚本需要在干净的 Windows 11 上执行：
+简体中文 | [English](README.en.md)
+
+当前 Linux 容器只能验证纯逻辑与交叉编译。以下脚本需要在干净的 Windows 11 上执行。
 
 ## 1. AppContainer 兼容性探针
 
@@ -26,7 +28,7 @@ powershell -ExecutionPolicy Bypass -File windows-runner-probe.ps1 -PythonExe "C:
 powershell -ExecutionPolicy Bypass -File windows-launch.ps1 -InstallDir "$env:LOCALAPPDATA\Programs\ResearchAssistant"
 ```
 
-验证：窗口启动后 `backend.exe`/`sandbox.exe` 存在；退出后没有残留进程。
+验证：窗口启动后 `backend.exe` / `sandbox.exe` 存在；退出后没有残留进程。
 
 ## 3. 其他真机项
 

@@ -4980,17 +4980,17 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <div class="pulse-dot"></div>
         <h1>多角色 Agent 执行工作流</h1>
       </div>
-      <p class="subtitle">任务按 assigned_to 路由到 7 类 Agent：检索、分析、编码、复现、基准、通用与回答</p>
+      <p class="subtitle">从计划审阅到工具、沙箱与证据：12 类 Agent 的 assigned_to 路由</p>
     </div>
 
-    <script id="archify-source-evidence-data" type="application/json">{"schemaVersion":1,"verified":true,"repository":{"url":"git@github.com:zzp1221/Research-Assistant-Agent","revision":"9d288567c46e2f49faa1755c0e35501cedfaa0b9","shortRevision":"9d28856","label":"zzp1221/Research-Assistant-Agent","linkMode":"local-only"},"referenceCount":21,"nodes":{"workbench":[{"path":"research-assistant/frontend/src/app/ResearchAssistantApp.tsx","line":406,"endLine":412}],"result":[{"path":"research-assistant/backend/internal/api/plan_runtime.go","line":937,"endLine":950}],"api":[{"path":"research-assistant/backend/internal/api/routes.go","line":84,"endLine":112}],"intent":[{"path":"research-assistant/backend/internal/intent/resolver.go","line":32,"endLine":62}],"planner":[{"path":"research-assistant/backend/internal/planner/planner.go","line":42,"endLine":60}],"scheduler":[{"path":"research-assistant/backend/internal/scheduler/scheduler.go","line":86,"endLine":104}],"gate":[{"path":"research-assistant/backend/internal/scheduler/runtime_gate.go","line":139,"endLine":150}],"blocked":[{"path":"research-assistant/backend/internal/models/outcome.go","line":9,"endLine":15}],"router":[{"path":"research-assistant/backend/internal/scheduler/executor.go","line":300,"endLine":330}],"librarian":[{"path":"research-assistant/backend/internal/agent/librarian.go","line":115,"endLine":125}],"data":[{"path":"research-assistant/backend/internal/agent/data.go","line":127,"endLine":140}],"coder":[{"path":"research-assistant/backend/internal/agent/coder.go","line":326,"endLine":340}],"research":[{"path":"research-assistant/backend/internal/agent/research_coding_agent.go","line":27,"endLine":45}],"benchmark":[{"path":"research-assistant/backend/internal/agent/benchmark_agent.go","line":21,"endLine":40}],"general":[{"path":"research-assistant/backend/internal/agent/chat.go","line":1,"endLine":40}],"answer":[{"path":"research-assistant/backend/internal/agent/answer.go","line":1,"endLine":40}],"gateway":[{"path":"research-assistant/docker-sandbox/gateway.go","line":14,"endLine":31}],"engine":[{"path":"research-assistant/docker-sandbox/main.go","line":239,"endLine":258}],"container":[{"path":"research-assistant/docker-sandbox/internal/engine/docker_security.go","line":13,"endLine":40}],"artifacts":[{"path":"research-assistant/backend/internal/models/artifact.go","line":1,"endLine":32}],"finalizer":[{"path":"research-assistant/backend/internal/planner/semantic_validation.go","line":118,"endLine":130}]}}</script>
+    <script id="archify-source-evidence-data" type="application/json">{"schemaVersion":1,"verified":true,"repository":{"url":"https://github.com/zzp1221/Research-Assistant-Agent","revision":"c84097a91ec702571f77c292fb84859e88905aa8","shortRevision":"c84097a","label":"zzp1221/Research-Assistant-Agent","linkMode":"local-only"},"referenceCount":13,"nodes":{"workbench":[{"path":"research-assistant/frontend/src/app/ResearchAssistantApp.tsx","line":1,"endLine":80}],"api":[{"path":"research-assistant/backend/internal/api/routes.go","line":106,"endLine":166}],"intent":[{"path":"research-assistant/backend/internal/intent/resolver.go","line":26,"endLine":70}],"planner":[{"path":"research-assistant/backend/internal/planner/planner.go","line":19,"endLine":60}],"scheduler":[{"path":"research-assistant/backend/internal/scheduler/scheduler.go","line":39,"endLine":110}],"router":[{"path":"research-assistant/backend/internal/scheduler/executor.go","line":64,"endLine":120}],"agents":[{"path":"research-assistant/backend/internal/agent/librarian.go","line":119,"endLine":140},{"path":"research-assistant/backend/internal/agent/autoresearch.go","line":1,"endLine":40}],"tool":[{"path":"research-assistant/backend/internal/tools/invoker.go","line":42,"endLine":64}],"gateway":[{"path":"research-assistant/docker-sandbox/gateway.go","line":14,"endLine":31}],"engine":[{"path":"research-assistant/docker-sandbox/main.go","line":69,"endLine":127}],"provider":[{"path":"research-assistant/docker-sandbox/internal/engine/provider.go","line":8,"endLine":22}],"artifacts":[{"path":"research-assistant/backend/internal/models/artifact.go","line":11,"endLine":32}]}}</script>
     <script id="archify-i18n-data" type="application/json">{"locale":"zh-CN","messages":{"viewer.kind.frontend":"前端","viewer.kind.backend":"后端","viewer.kind.database":"数据库","viewer.kind.cloud":"云服务","viewer.kind.security":"安全","viewer.kind.messagebus":"消息总线","viewer.kind.external":"外部系统","viewer.kind.neutral":"中性","viewer.kind.node":"节点","viewer.kind.start":"开始","viewer.kind.active":"活动","viewer.kind.waiting":"等待","viewer.kind.decision":"决策","viewer.kind.success":"成功","viewer.kind.failure":"失败","viewer.toolbar.actions":"图表操作","viewer.theme.toggle.title":"切换主题（T）","viewer.theme.toggle":"切换颜色主题","viewer.theme.dark":"深色","viewer.theme.light":"浅色","viewer.preset.choose.title":"选择视觉风格（S 循环切换）","viewer.preset.choose":"选择视觉风格","viewer.preset.style":"风格","viewer.preset.menu":"视觉风格","viewer.preset.identity":"视觉表达","viewer.preset.cycles":"循环切换","viewer.preset.classic":"经典","viewer.preset.classic.short":"经典","viewer.preset.classic.hint":"稳定的技术默认风格","viewer.preset.flow":"信号流","viewer.preset.flow.short":"流动","viewer.preset.flow.hint":"突出动态流向","viewer.preset.blueprint":"蓝图","viewer.preset.blueprint.hint":"工程评审","viewer.preset.editorial":"编辑风格","viewer.preset.editorial.hint":"适合发布与上线说明","viewer.preset.badge.signalFlow":"信号流","viewer.preset.badge.blueprint":"蓝图 / 修订 01","viewer.preset.badge.editorial":"编辑风格 / 现场笔记","viewer.preset.badge.editorialPlate":"ARCHIFY / 图版 04","viewer.preset.current":"当前视觉风格：{style}。选择视觉风格","viewer.motion.live":"动态","viewer.motion.still":"静态","viewer.motion.pause":"暂停动效","viewer.motion.resume":"恢复动效","viewer.motion.reduced":"已根据减少动态效果偏好暂停动效","viewer.motion.hidden":"页面不可见时已暂停动效","viewer.motion.yielding":"暂停动效；当前让位于{owner}","viewer.motion.yielding.title":"动态预览已启用 · 正在让位于{owner}","viewer.owner.route":"路径探测","viewer.owner.lens":"语义透镜","viewer.owner.relationship":"关系预览","viewer.owner.intent":"意图追踪","viewer.owner.focus":"语义聚焦","viewer.owner.legend":"图例预览","viewer.owner.reader":"读者交互","viewer.present.enter":"进入演示模式","viewer.present.enter.title":"演示模式（F）","viewer.present.exit":"退出演示模式","viewer.present.exit.title":"退出演示模式（F 或 Escape）","viewer.present.present":"演示","viewer.present.exit.label":"退出","viewer.export.button":"导出","viewer.export.button.title":"导出图表（E）","viewer.export.diagram":"导出图表","viewer.export.menu":"导出","viewer.export.subtitle":"便携、整洁的输出","viewer.export.share":"分享","viewer.export.shareCard":"分享卡片","viewer.export.routeShareCard":"路径分享卡片","viewer.export.reachShareCard":"可达范围分享卡片","viewer.export.copyDiagram":"复制图表","viewer.export.clipboardPng":"复制 PNG 到剪贴板","viewer.export.raster":"位图","viewer.export.image":"图像","viewer.export.lossless":"无损图像","viewer.export.compact":"紧凑图像","viewer.export.modern":"现代图像格式","viewer.export.vectorMotion":"矢量与动效","viewer.export.vectorMotion.heading":"矢量与动效","viewer.export.editable":"可编辑矢量图","viewer.export.svg.auto":"SVG · 自动","viewer.export.svg.auto.hint":"匹配宿主主题","viewer.export.svg.light":"SVG · 浅色","viewer.export.svg.light.hint":"始终浅色","viewer.export.svg.dark":"SVG · 深色","viewer.export.svg.dark.hint":"始终深色","viewer.export.motion6s":"6 秒动效","viewer.export.unsupported":"当前浏览器不支持","viewer.export.clipboardUnsupported":"当前浏览器不支持写入图片剪贴板","viewer.export.clipboardUnsupported.short":"此浏览器不支持写入图片剪贴板。","viewer.export.motionUnavailable":"当前浏览器无法录制动效","viewer.export.webmUnavailable":"当前浏览器不支持 WebM","viewer.export.failed":"导出失败：{message}","viewer.export.unknownVariant":"未知的分享卡片类型：{variant}","viewer.export.routeRequired":"请先追踪路径，再导出路径分享卡片","viewer.export.reachRequired":"请先追踪编写可达范围，再导出可达范围分享卡片","viewer.export.unknown":"未知错误","viewer.export.routeFailed":"路径分享卡片导出失败：{message}","viewer.export.reachFailed":"可达范围分享卡片导出失败：{message}","viewer.export.copyFailed":"复制失败：{message}","viewer.export.copiedPng":"已将 PNG 复制到剪贴板","viewer.export.downloadedRoute":"已下载路径分享卡片","viewer.export.downloadedReach":"已下载可达范围分享卡片","viewer.export.downloadedWebm":"已下载 WebM","viewer.export.recording":"正在录制 6 秒动效…","viewer.export.card.routeSummary.one":"路径：{source} → {target} · {count} 步","viewer.export.card.routeSummary.other":"路径：{source} → {target} · {count} 步","viewer.export.card.reachSummary":"从{origin}开始的编写{direction} · {nodes} · {links} · 最深 {hops}","viewer.export.card.node.one":"{count} 个节点","viewer.export.card.node.other":"{count} 个节点","viewer.export.card.link.one":"{count} 条连接","viewer.export.card.link.other":"{count} 条连接","viewer.export.card.hop.one":"{count} 跳","viewer.export.card.hop.other":"{count} 跳","viewer.export.card.routeBadge":"ARCHIFY · 路径 · {hops}","viewer.export.card.reachBadge":"ARCHIFY · {direction}可达范围","viewer.export.direction.upstream":"上游","viewer.export.direction.downstream":"下游","viewer.export.error.canvasUnavailable":"无法为{label}使用画布","viewer.export.error.contextUnavailable":"无法为{label}创建二维画布上下文","viewer.export.error.toBlobUnavailable":"{label}无法使用 canvas.toBlob","viewer.export.error.toBlobNull":"{label}的 canvas.toBlob 未返回数据","viewer.export.error.variantsCombined":"无法同时组合多种分享卡片类型","viewer.export.error.viewerState":"分享卡片导出无法移除临时 Viewer 状态","viewer.export.error.routeState":"路径卡片导出无法安全保留已解析路径","viewer.export.error.reachState":"可达范围卡片导出无法安全保留编写的可达范围","viewer.export.error.webmRequirements":"WebM 动效导出需要追踪动画及浏览器 MediaRecorder 支持","viewer.export.error.mediaRecorder":"MediaRecorder 录制失败","viewer.export.error.emptyWebm":"MediaRecorder 生成了空的 WebM","viewer.export.error.webmBackground":"无法为 WebM 导出加载 SVG 背景","viewer.guide.title":"探索此系统","viewer.focus.selectedNodes":"已选择 {count} 个节点","viewer.guide.eyebrow":"图表指南","viewer.guide.close":"关闭图表指南","viewer.guide.inspecting":"正在检查已编译语义","viewer.guide.actions":"图表探索操作","viewer.guide.find":"查找任意节点","viewer.guide.find.hint":"搜索标签、职责、类型和稳定 ID。","viewer.guide.route":"追踪路径","viewer.guide.route.aria":"追踪有向路径","viewer.guide.route.hint":"查看两个语义节点如何按编写方向连接。","viewer.guide.map":"查看完整系统","viewer.guide.map.hint":"打开带实时视口和稳定节点的语义雷达。","viewer.guide.lens":"比较语义类型","viewer.guide.lens.hint":"统计角色、显示流量并比较直接编写的连接。","viewer.guide.present":"进入演示模式","viewer.guide.present.hint":"让实时图表占满视口，同时不改变导出。","viewer.guide.shortcuts":"其他键盘快捷键","viewer.guide.shortcut.export":"导出","viewer.guide.shortcut.theme":"主题","viewer.guide.shortcut.style":"风格","viewer.guide.shortcut.reset":"重置","viewer.guide.shortcut.zoomIn":"放大","viewer.guide.shortcut.zoomOut":"缩小","viewer.guide.shortcut.close":"关闭","viewer.guide.facts":"{nodes} · {relationships}","viewer.guide.fact.node.one":"{count} 个语义节点","viewer.guide.fact.node.other":"{count} 个语义节点","viewer.guide.fact.relationship.one":"{count} 条关系","viewer.guide.fact.relationship.other":"{count} 条关系","viewer.guide.open":"打开图表指南","viewer.finder.title":"查找节点","viewer.finder.close":"关闭节点查找器","viewer.finder.placeholder":"搜索标签或 ID","viewer.finder.search":"搜索图表节点","viewer.finder.results":"图表节点","viewer.finder.empty":"没有匹配的节点","viewer.finder.result.focus":"聚焦{label}","viewer.finder.result.routeStart":"选择{label}作为路径起点","viewer.finder.result.routeTarget":"选择{label}作为路径终点，{links}","viewer.finder.status.empty":"没有匹配的节点","viewer.finder.status.count.one":"{count} 个匹配节点","viewer.finder.status.count.other":"{count} 个匹配节点","viewer.finder.noun.nodes":"个节点","viewer.finder.link.one":"{count} 条连接","viewer.finder.link.other":"{count} 条连接","viewer.finder.result.focus.one":"聚焦{label}，{count} 条相关连接","viewer.finder.result.focus.other":"聚焦{label}，{count} 条相关连接","viewer.finder.status.filtered":"{visible}/{available} {noun}","viewer.finder.status.all":"{available} {noun}","viewer.passport.eyebrow":"语义护照","viewer.passport.metadata":"节点元数据","viewer.passport.evidence":"已验证的源代码证据","viewer.passport.verified":"已验证来源","viewer.passport.verificationScope":"已按固定修订版本验证本地 Git 证据，未检查远程访问权限。","viewer.passport.reach":"编写可达范围","viewer.passport.reach.trace":"追踪编写的可达性","viewer.passport.upstream":"上游","viewer.passport.downstream":"下游","viewer.passport.upstream.trace":"追踪上游编写可达性","viewer.passport.downstream.trace":"追踪下游编写可达性","viewer.passport.close":"关闭语义护照","viewer.passport.move":"移动语义护照。可拖动、使用方向键移动，或按 Home 恢复自动位置。","viewer.passport.copy":"复制链接","viewer.passport.copy.focus":"复制聚焦节点的链接","viewer.passport.relations":"关系","viewer.passport.relations.show":"显示关联关系","viewer.passport.relations.hide":"隐藏关联关系","viewer.passport.relations.list":"关联关系","viewer.passport.copyRelation":"复制关系","viewer.passport.copyNode":"复制节点","viewer.passport.copyPinned":"复制固定关系的链接","viewer.passport.copySource":"复制来源节点的链接","viewer.passport.copy.focused.success":"已复制聚焦节点链接","viewer.passport.copy.pinned.success":"已复制固定关系链接","viewer.passport.copy.focused.failed":"无法复制聚焦节点链接","viewer.passport.copy.pinned.failed":"无法复制固定关系链接","viewer.passport.relationship.none":"没有关联关系","viewer.passport.relationship.count.one":"{count} 条关系","viewer.passport.relationship.count.other":"{count} 条关系","viewer.passport.relationship.show.one":"显示 {count} 条关联关系","viewer.passport.relationship.show.other":"显示 {count} 条关联关系","viewer.passport.relationship.summary":"{out} 条出向 · {in} 条入向{loops}","viewer.passport.relationship.loops":" · {count} 条自环","viewer.passport.relationship.explorer":"直接关系浏览器","viewer.passport.relationship.help":"使用方向键浏览关系。按 Enter 或空格键固定详情；按 Escape 清除。","viewer.passport.relationship.loopsBack":"回环","viewer.passport.relationship.connectsTo":"连接到","viewer.passport.relationship.connectsFrom":"连接自","viewer.passport.relationship.pinned":"已固定关系 · {from} → {to} · {label}","viewer.passport.relationship.inspect":"检查第 {index}/{total} 条关系：{from} 到 {to}，{label}。按 Enter 查看详情。","viewer.passport.relationship.group.out":"出向","viewer.passport.relationship.group.in":"入向","viewer.passport.relationship.group.loop":"自环","viewer.passport.relationship.row":"{group}：{relationship}，{neighbor}","viewer.passport.relationship.direction.out":"出 →","viewer.passport.relationship.direction.in":"← 入","viewer.passport.relationship.direction.loop":"自环","viewer.passport.sourceCount.one":"{count} 个已验证来源引用","viewer.passport.sourceCount.other":"{count} 个已验证来源引用","viewer.passport.sourceMarker":"来源","viewer.passport.beacon.one":"{count} 个已验证来源；聚焦此节点以检查","viewer.passport.beacon.other":"{count} 个已验证来源；聚焦此节点以检查","viewer.passport.repository.open":"打开已验证的仓库修订版本 {revision}","viewer.passport.source.open":"打开修订版本 {revision} 中已验证的来源 {path}","viewer.passport.source.openLink":"打开 ↗","viewer.passport.reach.upstream.one":"追踪 {count} 个上游编写节点","viewer.passport.reach.upstream.other":"追踪 {count} 个上游编写节点","viewer.passport.reach.downstream.one":"追踪 {count} 个下游编写节点","viewer.passport.reach.downstream.other":"追踪 {count} 个下游编写节点","viewer.passport.reach.noUpstream":"没有上游编写节点","viewer.passport.reach.noDownstream":"没有下游编写节点","viewer.passport.reach.status":"{direction} · {nodes} 个节点 · {links} 条连接 · 最深 {hops} 跳","viewer.route.eyebrow":"路径","viewer.route.start":"点击路径的起点","viewer.route.start.find":"查找起点","viewer.route.start.find.aria":"查找路径起点","viewer.route.copy":"复制链接","viewer.route.copy.aria":"复制已追踪路径的链接","viewer.route.clear":"清除","viewer.route.clear.aria":"清除路径探测","viewer.route.traced":"路径","viewer.route.pickTwo":"在图上点两个节点","viewer.route.pickOne":"在图上点一个节点","viewer.route.controls":"路径旅程控制","viewer.route.previous":"上一个路径位置","viewer.route.play":"播放路径旅程","viewer.route.pause":"暂停路径旅程","viewer.route.replay":"重播路径旅程","viewer.route.next":"下一个路径位置","viewer.route.journey":"旅程","viewer.route.pause.label":"暂停","viewer.route.replay.label":"重播","viewer.route.overview":"总览","viewer.route.overview.aria":"显示完整路径总览","viewer.route.instructions":"先点起点，再点终点，沿箭头方向找路。","viewer.route.destination":"从{label}出发，走到哪里？","viewer.route.destination.find":"查找目标","viewer.route.destination.find.aria":"查找可达的路径目标","viewer.route.differentDestination":"选择其他目标","viewer.route.distinct":"请选两个不同的节点。","viewer.route.unreachable":"走不到{label}","viewer.route.unreachable.detail":"沿箭头方向，从{source}走不到{target}。请选一个高亮节点。","viewer.route.start.instructions":"接着选终点，能走到的节点会亮起。","viewer.route.copy.success":"已复制路径链接","viewer.route.copy.failed":"无法复制路径链接","viewer.route.position":"路径位置 {index}/{total}：{label}","viewer.route.step":"第 {index}/{total} 步 · {phase} · {label}","viewer.route.motionRequired":"自动旅程需要动态模式","viewer.route.trigger.clear":"清除已追踪路径","viewer.route.overview.status":"{nodes} · {hops} · 最短路径","viewer.route.overview.node.one":"{count} 个节点","viewer.route.overview.node.other":"{count} 个节点","viewer.route.overview.hop.one":"{count} 步","viewer.route.overview.hop.other":"{count} 步","viewer.route.phase.playing":"播放中","viewer.route.phase.complete":"已完成","viewer.route.phase.inspecting":"检查中","viewer.route.destination.count.one":"有 {count} 个能走到的节点已高亮，点一下。","viewer.route.destination.count.other":"有 {count} 个能走到的节点已高亮，点一个。","viewer.route.noOutgoing":"这个节点没有向外的箭头。清除后换一个起点。","viewer.route.result.title":"{source} 到 {target}","viewer.route.finder.source.title":"选择路径起点","viewer.route.finder.source.placeholder":"搜索路径来源","viewer.route.finder.source.empty":"没有匹配的路径来源","viewer.route.finder.source.results":"可作为路径起点的节点","viewer.route.finder.source.noun":"个路径来源","viewer.route.finder.source.badge":"起点","viewer.route.finder.target.title":"从{label}出发的目标","viewer.route.finder.target.placeholder":"搜索可达目标","viewer.route.finder.target.empty":"没有匹配的可达目标","viewer.route.finder.target.results":"可达路径目标","viewer.route.finder.target.noun":"个可达目标","viewer.route.hop.one":"{count} 跳","viewer.route.hop.other":"{count} 跳","viewer.lens.eyebrow":"语义透镜","viewer.lens.title":"比较系统角色","viewer.lens.close":"关闭语义透镜","viewer.lens.instruction":"最多选择两种语义类型。选择一种可显示其真实流量；选择两种只比较直接编写的关系。","viewer.lens.kinds":"语义类型","viewer.lens.choose":"选择一种类型以检查其节点和相连关系。","viewer.lens.copy":"复制语义透镜链接","viewer.lens.clear":"清除语义透镜","viewer.lens.open":"打开语义透镜","viewer.lens.openActive":"打开当前语义透镜","viewer.lens.legend":"语义图例","viewer.lens.legend.inspect.one":"检查{label}，{count} 个节点","viewer.lens.legend.inspect.other":"检查{label}，{count} 个节点","viewer.lens.kind.count.one":"{label}，{count} 个节点","viewer.lens.kind.count.other":"{label}，{count} 个节点","viewer.lens.compare.one":"{first} → {second}：{forward} · {second} → {first}：{reverse} · 共 {count} 条直接关系","viewer.lens.compare.other":"{first} → {second}：{forward} · {second} → {first}：{reverse} · 共 {count} 条直接关系","viewer.lens.single":"{nodes} · {relationships} · 已连接节点保持可见","viewer.lens.node.one":"{count} 个{label}节点","viewer.lens.node.other":"{count} 个{label}节点","viewer.lens.relationship.one":"{count} 条相连关系","viewer.lens.relationship.other":"{count} 条相连关系","viewer.radar.title":"语义雷达","viewer.radar.building":"正在构建总览","viewer.radar.openFull":"打开完整语义雷达","viewer.radar.open":"打开雷达","viewer.radar.close":"关闭语义雷达","viewer.radar.surface":"图表总览。点击节点进行聚焦，或使用方向键平移。","viewer.radar.click":"点击节点","viewer.radar.drag":"拖动平移","viewer.radar.space":"语义雷达需要更多地图可见空间。","viewer.radar.nodes":"语义图表雷达节点","viewer.radar.focus":"从语义雷达聚焦{label}","viewer.radar.status":"{count} 个节点 · {viewport}","viewer.radar.fullMap":"{count} 个节点 · 完整地图","viewer.radar.compacted":"已收紧雷达，避免遮挡语义护照或地图控件。","viewer.radar.cancelWaiting":"取消等待更多地图空间的语义雷达","viewer.radar.needsSpace":"语义雷达需要更多可见地图空间","viewer.radar.viewport.full":"完整地图","viewer.radar.viewport.width":"宽度 {percent}%","viewer.radar.viewport.scale":"视口 {percent}%","viewer.nav.controls":"图表视图控制","viewer.nav.route":"追踪有向路径","viewer.nav.route.title":"追踪路径（R）","viewer.nav.route.short":"路径","viewer.nav.radar":"打开语义雷达","viewer.nav.radar.title":"语义雷达（M）","viewer.nav.radar.short":"地图","viewer.nav.lens":"打开语义透镜","viewer.nav.lens.title":"语义透镜（L）","viewer.nav.lens.short":"透镜","viewer.nav.find":"查找节点","viewer.nav.find.title":"查找节点（/）","viewer.outline.title":"节点索引","viewer.rail.show":"要点与索引","viewer.rail.controls":"侧栏","viewer.rail.collapse":"收起侧栏","viewer.rail.bottom":"移到图下方","viewer.rail.right":"移到图右侧","viewer.nav.guide":"打开图表指南","viewer.nav.guide.title":"图表指南（?）","viewer.nav.zoomOut":"缩小","viewer.nav.zoomOut.title":"缩小（-）","viewer.nav.reset":"重置图表视图","viewer.nav.reset.title":"重置视图（0）","viewer.nav.read":"阅读","viewer.nav.zoomIn":"放大","viewer.nav.zoomIn.title":"放大（+）","viewer.nav.camera":"{hint}。重置图表视图","viewer.nav.camera.title":"{semantic}{hint} · 重置视图（0）","viewer.nav.camera.semantic":"语义相机已启用 · ","viewer.nav.level.map":"概览","viewer.nav.level.read":"阅读","viewer.nav.level.full":"完整","viewer.nav.level.auto":"自动","viewer.nav.detail.map":"放大以显示关系标签和节点上下文","viewer.nav.detail.read":"再次放大以显示标签和注释","viewer.nav.detail.full":"完整图表详情","viewer.intent.summary":"{label}。{out} 条出向，{in} 条入向{loops}。共 {total} 条连接。按 Enter 查看详情。","viewer.intent.loops":"，{count} 条自环","viewer.common.copied":"已复制","viewer.common.copyFailed":"复制失败","viewer.common.copyLink":"复制链接","viewer.common.clear":"清除","viewer.common.close":"关闭"}}</script>
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read"
          data-preset-badge-editorial-plate="ARCHIFY / 图版 04">
-      <svg viewBox="0 0 1104 1860" data-reader-fit="intrinsic-height" data-layout-contract="readable-v2" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase">
+      <svg viewBox="0 0 1096 2666" data-reader-fit="intrinsic-height" data-layout-contract="readable-v2" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase">
         <title id="archify-diagram-title">多角色 Agent 执行工作流</title>
-        <desc id="archify-diagram-description">任务按 assigned_to 路由到 7 类 Agent：检索、分析、编码、复现、基准、通用与回答</desc>
+        <desc id="archify-diagram-description">从计划审阅到工具、沙箱与证据：12 类 Agent 的 assigned_to 路由</desc>
         <!-- Definitions -->
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -5014,23 +5014,23 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <!-- Swimlanes -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-0" x="40" y="52" width="1048" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-0" x="40" y="52" width="1020" height="690" rx="10" class="c-lane" stroke-width="1"/>
         <text x="54" y="74" class="t-dim" font-size="10" font-weight="600">01 / 用户与工作台</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-1" x="40" y="176" width="1048" height="104" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="198" class="t-dim" font-size="10" font-weight="600">02 / API 与意图</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-1" x="40" y="762" width="1020" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="784" class="t-dim" font-size="10" font-weight="600">02 / API 与规划</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-2" x="40" y="300" width="1048" height="106" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="322" class="t-dim" font-size="10" font-weight="600">03 / 调度与审批</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-2" x="40" y="886" width="1020" height="310" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="908" class="t-dim" font-size="10" font-weight="600">03 / 审阅与调度</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-3" x="40" y="426" width="1048" height="450" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="448" class="t-dim" font-size="10" font-weight="600">04 / 多角色 Agent 执行（7 类角色 · 按 assigned_to 路由）</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-3" x="40" y="1216" width="1020" height="306" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="1238" class="t-dim" font-size="10" font-weight="600">04 / 多角色 Agent 执行</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-4" x="40" y="896" width="1048" height="410" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="918" class="t-dim" font-size="10" font-weight="600">05 / 沙箱执行</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-4" x="40" y="1542" width="1020" height="490" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="1564" class="t-dim" font-size="10" font-weight="600">05 / 工具与沙箱</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-5" x="40" y="1326" width="1048" height="410" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="1348" class="t-dim" font-size="10" font-weight="600">06 / 证据与结果</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-5" x="40" y="2052" width="1020" height="490" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="2074" class="t-dim" font-size="10" font-weight="600">06 / 证据与结果</text>
 
         <!-- Phase headers -->
         <line x1="62" y1="35" x2="312" y2="35" class="a-default" stroke-width="1.1"/>
@@ -5039,375 +5039,368 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <line x1="396.3999999999999" y1="35" x2="688.8" y2="35" class="a-emphasis" stroke-width="1.1"/>
         <rect x="396.3999999999999" y="27" width="292.4" height="16" rx="4" class="c-mask"/>
         <text x="542.5999999999999" y="39" class="t-backend" font-size="8" font-weight="600" text-anchor="middle">理解与规划</text>
-        <line x1="782.8" y1="35" x2="874.8" y2="35" class="a-default" stroke-width="1.1"/>
-        <rect x="782.8" y="27" width="92" height="16" rx="4" class="c-mask"/>
-        <text x="828.8" y="39" class="t-muted" font-size="8" font-weight="600" text-anchor="middle">调度与审批</text>
-        <line x1="973.5999999999999" y1="35" x2="1065.6" y2="35" class="a-dashed" stroke-width="1.1"/>
-        <rect x="973.5999999999999" y="27" width="92" height="16" rx="4" class="c-mask"/>
-        <text x="1019.5999999999999" y="39" class="t-messagebus" font-size="8" font-weight="600" text-anchor="middle">多角色执行</text>
+        <line x1="754.8" y1="35" x2="846.8" y2="35" class="a-default" stroke-width="1.1"/>
+        <rect x="754.8" y="27" width="92" height="16" rx="4" class="c-mask"/>
+        <text x="800.8" y="39" class="t-muted" font-size="8" font-weight="600" text-anchor="middle">审阅与调度</text>
+        <line x1="945.5999999999999" y1="35" x2="1037.6" y2="35" class="a-dashed" stroke-width="1.1"/>
+        <rect x="945.5999999999999" y="27" width="92" height="16" rx="4" class="c-mask"/>
+        <text x="991.5999999999999" y="39" class="t-messagebus" font-size="8" font-weight="600" text-anchor="middle">执行与验收</text>
 
         <!-- Workflow groups -->
 
 
         <!-- Edge paths -->
-        <path data-edge-from="api" data-edge-to="intent" data-edge-label="解析意图" data-edge-key="0" data-edge-id="api-intent" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="326,243;382.4,243" d="M 326 243 L 382.4 243" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="artifacts" data-edge-to="finalizer" data-edge-label="证据校验" data-edge-key="1" data-edge-id="artifacts-finalizer" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="1019.5999999999999,1572;1019.5999999999999,1600" d="M 1019.5999999999999 1572 L 1019.5999999999999 1600" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="container" data-edge-to="artifacts" data-edge-label="stdout · 产物" data-edge-key="2" data-edge-id="container-artifacts" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="1019.5999999999999,1302;1019.5999999999999,1520" d="M 1019.5999999999999 1302 L 1019.5999999999999 1520" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="engine" data-edge-to="container" data-edge-label="docker run" data-edge-key="3" data-edge-id="engine-container" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="1019.5999999999999,1222;1019.5999999999999,1250" d="M 1019.5999999999999 1222 L 1019.5999999999999 1250" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="finalizer" data-edge-to="result" data-edge-label="PlanOutcome + SSE" data-edge-key="4" data-edge-id="finalizer-result" data-composition-routing="workflow-v2-auto" data-edge-role="return" data-composition-points="1019.5999999999999,1652;1019.5999999999999,1680" d="M 1019.5999999999999 1652 L 1019.5999999999999 1680" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="gate" data-edge-to="blocked" data-edge-label="拒绝 / 超时" data-edge-key="5" data-edge-id="gate-blocked" data-composition-routing="workflow-v2-auto" data-edge-role="error" data-composition-points="888.8,368;959.5999999999999,368" d="M 888.8 368 L 959.5999999999999 368" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <path data-edge-from="gate" data-edge-to="router" data-edge-label="批准 / 自动" data-edge-key="6" data-edge-id="gate-router" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="828.8,402;828.8,640" d="M 828.8 402 L 828.8 640" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="gateway" data-edge-to="engine" data-edge-label="反向代理" data-edge-key="7" data-edge-id="gateway-engine" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="1019.5999999999999,1142;1019.5999999999999,1170" d="M 1019.5999999999999 1142 L 1019.5999999999999 1170" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="goal" data-edge-to="workbench" data-edge-label="提交" data-edge-key="8" data-edge-id="goal-workbench" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="168,119;206,119" d="M 168 119 L 206 119" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="intent" data-edge-to="planner" data-edge-label="IntentContext" data-edge-key="9" data-edge-id="intent-planner" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="502.4,243;582.8,243" d="M 502.4 243 L 582.8 243" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="planner" data-edge-to="scheduler" data-edge-label="PlanGraph" data-edge-key="10" data-edge-id="planner-scheduler" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="642.8,269;642.8,342" d="M 642.8 269 L 642.8 342" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="research" data-edge-to="gateway" data-edge-label="SandboxClient" data-edge-key="11" data-edge-id="research-gateway" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="1019.5999999999999,872;1019.5999999999999,1090" d="M 1019.5999999999999 872 L 1019.5999999999999 1090" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="router" data-edge-to="research" data-edge-key="12" data-edge-id="router-research" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="828.8,692;828.8,846;959.5999999999999,846" d="M 828.8 692 L 828.8 846 L 959.5999999999999 846" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="scheduler" data-edge-to="gate" data-edge-label="重要操作？" data-edge-key="13" data-edge-id="scheduler-gate" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="702.8,368;768.8,368" d="M 702.8 368 L 768.8 368" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <path data-edge-from="workbench" data-edge-to="api" data-edge-label="POST /api/plan" data-edge-key="14" data-edge-id="workbench-api" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="266,145;266,217" d="M 266 145 L 266 217" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="agents" data-edge-to="tool" data-edge-label="tool call" data-edge-key="0" data-edge-id="agents-tool" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="991.5999999999999,1410;991.5999999999999,1450" d="M 991.5999999999999 1410 L 991.5999999999999 1450" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="api" data-edge-to="intent" data-edge-label="解析意图" data-edge-key="1" data-edge-id="api-intent" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="326,829;382.4,829" d="M 326 829 L 382.4 829" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="artifacts" data-edge-to="finalizer" data-edge-label="证据校验" data-edge-key="2" data-edge-id="artifacts-finalizer" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="991.5999999999999,2338;991.5999999999999,2386" d="M 991.5999999999999 2338 L 991.5999999999999 2386" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="engine" data-edge-to="provider" data-edge-label="provider" data-edge-key="3" data-edge-id="engine-provider" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="991.5999999999999,1928;991.5999999999999,1976" d="M 991.5999999999999 1928 L 991.5999999999999 1976" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="eventbus" data-edge-to="result" data-edge-label="SSE" data-edge-key="4" data-edge-id="eventbus-result" data-composition-routing="workflow-v2-auto" data-edge-role="return" data-composition-points="1051.6,2512;1077.6,2512;1077.6,712;1051.6,712" d="M 1051.6 2512 L 1077.6 2512 L 1077.6 712 L 1051.6 712" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="finalizer" data-edge-to="eventbus" data-edge-label="终态事件" data-edge-key="5" data-edge-id="finalizer-eventbus" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="931.5999999999999,2412;20,2412;20,2512;931.5999999999999,2512" d="M 931.5999999999999 2412 L 20 2412 L 20 2512 L 931.5999999999999 2512" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="gateway" data-edge-to="engine" data-edge-label="proxy" data-edge-key="6" data-edge-id="gateway-engine" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="991.5999999999999,1828;991.5999999999999,1876" d="M 991.5999999999999 1828 L 991.5999999999999 1876" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="goal" data-edge-to="workbench" data-edge-label="提交" data-edge-key="7" data-edge-id="goal-workbench" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="168,412;206,412" d="M 168 412 L 206 412" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="intent" data-edge-to="planner" data-edge-label="IntentContext" data-edge-key="8" data-edge-id="intent-planner" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="502.4,829;582.8,829" d="M 502.4 829 L 582.8 829" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="planner" data-edge-to="revision" data-edge-label="PlanGraph" data-edge-key="9" data-edge-id="planner-revision" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="642.8,855;642.8,1030" d="M 642.8 855 L 642.8 1030" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="provider" data-edge-to="artifacts" data-edge-label="stdout / metrics / files" data-edge-key="10" data-edge-id="provider-artifacts" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="991.5999999999999,2028;991.5999999999999,2286" d="M 991.5999999999999 2028 L 991.5999999999999 2286" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="review" data-edge-to="blocked" data-edge-label="拒绝" data-edge-key="11" data-edge-id="review-blocked" data-composition-routing="workflow-v2-auto" data-edge-role="error" data-composition-points="860.8,1056;991.5999999999999,1056;991.5999999999999,1140" d="M 860.8 1056 L 991.5999999999999 1056 L 991.5999999999999 1140" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="review" data-edge-to="scheduler" data-edge-label="批准 / 自动" data-edge-key="12" data-edge-id="review-scheduler" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="800.8,1090;800.8,1140" d="M 800.8 1090 L 800.8 1140" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="revision" data-edge-to="review" data-edge-label="待审" data-edge-key="13" data-edge-id="revision-review" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="702.8,1056;740.8,1056" d="M 702.8 1056 L 740.8 1056" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="router" data-edge-to="agents" data-edge-label="assigned_to" data-edge-key="14" data-edge-id="router-agents" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="860.8,1384;931.5999999999999,1384" d="M 860.8 1384 L 931.5999999999999 1384" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="scheduler" data-edge-to="router" data-edge-label="就绪节点" data-edge-key="15" data-edge-id="scheduler-router" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="800.8,1192;800.8,1350" d="M 800.8 1192 L 800.8 1350" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="tool" data-edge-to="gateway" data-edge-label="SandboxClient" data-edge-key="16" data-edge-id="tool-gateway" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="991.5999999999999,1518;991.5999999999999,1776" d="M 991.5999999999999 1518 L 991.5999999999999 1776" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="workbench" data-edge-to="api" data-edge-label="POST /api/plan" data-edge-key="17" data-edge-id="workbench-api" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="266,438;266,803" d="M 266 438 L 266 803" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
 
         <!-- Nodes -->
-        <g id="node-goal" data-node-id="goal" data-node-label="研究目标" tabindex="0" role="button" aria-label="聚焦研究目标，论文 / 仓库, 用户与工作台 › 提交" aria-pressed="false" data-node-kind="external" data-node-sublabel="论文 / 仓库" data-node-context="用户与工作台 › 提交">
-          <title>研究目标 · 论文 / 仓库 · 用户与工作台 › 提交</title>
-          <rect x="48" y="93" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="48" y="93" width="120" height="52" rx="6" class="c-external" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(54 99) scale(0.6875)">
+        <g id="node-goal" data-node-id="goal" data-node-label="研究目标" tabindex="0" role="button" aria-label="聚焦研究目标，论文 / 仓库 / 数据, 用户与工作台 › 提交" aria-pressed="false" data-node-kind="external" data-node-sublabel="论文 / 仓库 / 数据" data-node-context="用户与工作台 › 提交">
+          <title>研究目标 · 论文 / 仓库 / 数据 · 用户与工作台 › 提交</title>
+          <rect x="48" y="386" width="120" height="52" rx="6" class="c-mask"/>
+          <rect x="48" y="386" width="120" height="52" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(54 392) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="108" y="114" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">研究目标</text>
-          <text data-detail="context" x="108" y="131" class="t-muted" font-size="8" text-anchor="middle">论文 / 仓库</text>
+          <text data-node-label="" data-detail-anchor="" x="108" y="407" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">研究目标</text>
+          <text data-detail="context" x="108" y="424" class="t-muted" font-size="8" text-anchor="middle">论文 / 仓库 / 数据</text>
         </g>
 
-        <g id="node-workbench" data-node-id="workbench" data-node-label="React 工作台" tabindex="0" role="button" aria-label="聚焦React 工作台，对话 · DAG, 用户与工作台 › 提交" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="对话 · DAG" data-node-context="用户与工作台 › 提交">
-          <title>React 工作台 · 对话 · DAG · 用户与工作台 › 提交</title>
-          <rect x="206" y="93" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="206" y="93" width="120" height="52" rx="6" class="c-frontend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(212 99) scale(0.6875)">
+        <g id="node-workbench" data-node-id="workbench" data-node-label="React 工作台" tabindex="0" role="button" aria-label="聚焦React 工作台，对话 · DAG · 审阅, 用户与工作台 › 提交" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="对话 · DAG · 审阅" data-node-context="用户与工作台 › 提交">
+          <title>React 工作台 · 对话 · DAG · 审阅 · 用户与工作台 › 提交</title>
+          <rect x="206" y="386" width="120" height="52" rx="6" class="c-mask"/>
+          <rect x="206" y="386" width="120" height="52" rx="6" class="c-frontend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(212 392) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="266" y="125" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">React 工作台</text>
-          <text data-detail="context" x="266" y="137.3" class="t-muted" font-size="8" text-anchor="middle">对话 · DAG</text>
+          <text data-node-label="" data-detail-anchor="" x="266" y="418" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">React 工作台</text>
+          <text data-detail="context" x="266" y="430.3" class="t-muted" font-size="8" text-anchor="middle">对话 · DAG · 审阅</text>
         </g>
 
-        <g id="node-api" data-node-id="api" data-node-label="API 入口" tabindex="0" role="button" aria-label="聚焦API 入口，鉴权 · 配额, API 与意图 › 提交" aria-pressed="false" data-node-kind="backend" data-node-sublabel="鉴权 · 配额" data-node-context="API 与意图 › 提交">
-          <title>API 入口 · 鉴权 · 配额 · API 与意图 › 提交</title>
-          <rect x="206" y="217" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="206" y="217" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(212 223) scale(0.6875)">
+        <g id="node-result" data-node-id="result" data-node-label="结果面板" tabindex="0" role="button" aria-label="聚焦结果面板，报告 · 产物 · SSE, 用户与工作台 › 执行与验收" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="报告 · 产物 · SSE" data-node-context="用户与工作台 › 执行与验收">
+          <title>结果面板 · 报告 · 产物 · SSE · 用户与工作台 › 执行与验收</title>
+          <rect x="931.5999999999999" y="686" width="120" height="52" rx="6" class="c-mask"/>
+          <rect x="931.5999999999999" y="686" width="120" height="52" rx="6" class="c-frontend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(937.5999999999999 692) scale(0.6875)">
+            <rect x="2" y="3" width="12" height="10" rx="2"/>
+            <path d="M2 6.5h12"/>
+            <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
+            <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="991.5999999999999" y="707" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">结果面板</text>
+          <text data-detail="context" x="991.5999999999999" y="724" class="t-muted" font-size="8" text-anchor="middle">报告 · 产物 · SSE</text>
+        </g>
+
+        <g id="node-api" data-node-id="api" data-node-label="API 入口" tabindex="0" role="button" aria-label="聚焦API 入口，鉴权 · 配额, API 与规划 › 提交" aria-pressed="false" data-node-kind="backend" data-node-sublabel="鉴权 · 配额" data-node-context="API 与规划 › 提交">
+          <title>API 入口 · 鉴权 · 配额 · API 与规划 › 提交</title>
+          <rect x="206" y="803" width="120" height="52" rx="6" class="c-mask"/>
+          <rect x="206" y="803" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(212 809) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="257.6" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">API 入口</text>
-          <text data-detail="context" x="266" y="255" class="t-muted" font-size="8" text-anchor="middle">鉴权 · 配额</text>
+          <text data-node-label="" data-detail-anchor="" x="257.6" y="824" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">API 入口</text>
+          <text data-detail="context" x="266" y="841" class="t-muted" font-size="8" text-anchor="middle">鉴权 · 配额</text>
         </g>
 
-        <g id="node-intent" data-node-id="intent" data-node-label="Intent Router" tabindex="0" role="button" aria-label="聚焦Intent Router，rule / LLM, API 与意图 › 理解与规划" aria-pressed="false" data-node-kind="backend" data-node-sublabel="rule / LLM" data-node-context="API 与意图 › 理解与规划">
-          <title>Intent Router · rule / LLM · API 与意图 › 理解与规划</title>
-          <rect x="382.4" y="217" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="382.4" y="217" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(388.4 223) scale(0.6875)">
+        <g id="node-intent" data-node-id="intent" data-node-label="Intent Router" tabindex="0" role="button" aria-label="聚焦Intent Router，rule / LLM / hybrid, API 与规划 › 理解与规划" aria-pressed="false" data-node-kind="backend" data-node-sublabel="rule / LLM / hybrid" data-node-context="API 与规划 › 理解与规划">
+          <title>Intent Router · rule / LLM / hybrid · API 与规划 › 理解与规划</title>
+          <rect x="382.4" y="803" width="120" height="52" rx="6" class="c-mask"/>
+          <rect x="382.4" y="803" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(388.4 809) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="442.4" y="249" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Intent Router</text>
-          <text data-detail="context" x="442.4" y="261.3" class="t-muted" font-size="8" text-anchor="middle">rule / LLM</text>
+          <text data-node-label="" data-detail-anchor="" x="442.4" y="835" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Intent Router</text>
+          <text data-detail="context" x="442.4" y="847.3" class="t-muted" font-size="8" text-anchor="middle">rule / LLM / hybrid</text>
         </g>
 
-        <g id="node-planner" data-node-id="planner" data-node-label="Planner" tabindex="0" role="button" aria-label="聚焦Planner，模板 + DAG, API 与意图 › 理解与规划" aria-pressed="false" data-node-kind="backend" data-node-sublabel="模板 + DAG" data-node-context="API 与意图 › 理解与规划">
-          <title>Planner · 模板 + DAG · API 与意图 › 理解与规划</title>
-          <rect x="582.8" y="217" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="582.8" y="217" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(588.8 223) scale(0.6875)">
+        <g id="node-planner" data-node-id="planner" data-node-label="Planner" tabindex="0" role="button" aria-label="聚焦Planner，模板 + DAG, API 与规划 › 理解与规划" aria-pressed="false" data-node-kind="backend" data-node-sublabel="模板 + DAG" data-node-context="API 与规划 › 理解与规划">
+          <title>Planner · 模板 + DAG · API 与规划 › 理解与规划</title>
+          <rect x="582.8" y="803" width="120" height="52" rx="6" class="c-mask"/>
+          <rect x="582.8" y="803" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(588.8 809) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="637.6999999999999" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Planner</text>
-          <text data-detail="context" x="642.8" y="255" class="t-muted" font-size="8" text-anchor="middle">模板 + DAG</text>
+          <text data-node-label="" data-detail-anchor="" x="637.6999999999999" y="824" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Planner</text>
+          <text data-detail="context" x="642.8" y="841" class="t-muted" font-size="8" text-anchor="middle">模板 + DAG</text>
         </g>
 
-        <g id="node-scheduler" data-node-id="scheduler" data-node-label="Scheduler" tabindex="0" role="button" aria-label="聚焦Scheduler，租约 · 重试, 调度与审批 › 理解与规划" aria-pressed="false" data-node-kind="backend" data-node-sublabel="租约 · 重试" data-node-context="调度与审批 › 理解与规划">
-          <title>Scheduler · 租约 · 重试 · 调度与审批 › 理解与规划</title>
-          <rect x="582.8" y="342" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="582.8" y="342" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(588.8 348) scale(0.6875)">
+        <g id="node-revision" data-node-id="revision" data-node-label="Revision Store" tabindex="0" role="button" aria-label="聚焦Revision Store，r1 / r2…, 审阅与调度 › 理解与规划" aria-pressed="false" data-node-kind="backend" data-node-sublabel="r1 / r2…" data-node-context="审阅与调度 › 理解与规划">
+          <title>Revision Store · r1 / r2… · 审阅与调度 › 理解与规划</title>
+          <rect x="582.8" y="1030" width="120" height="52" rx="6" class="c-mask"/>
+          <rect x="582.8" y="1030" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(588.8 1036) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="642.8" y="374" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Scheduler</text>
-          <text data-detail="context" x="642.8" y="386.3" class="t-muted" font-size="8" text-anchor="middle">租约 · 重试</text>
+          <text data-node-label="" data-detail-anchor="" x="648" y="1051" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Revision Store</text>
+          <text data-detail="context" x="642.8" y="1068" class="t-muted" font-size="8" text-anchor="middle">r1 / r2…</text>
         </g>
 
-        <g id="node-gate" data-node-id="gate" data-node-label="运行时审批" tabindex="0" role="button" aria-label="聚焦运行时审批，confirm_important, 调度与审批 › 调度与审批" aria-pressed="false" data-node-kind="security" data-node-sublabel="confirm_important" data-node-tag="approve / reject" data-node-context="调度与审批 › 调度与审批">
-          <title>运行时审批 · confirm_important · 调度与审批 › 调度与审批 · approve / reject</title>
-          <rect x="768.8" y="334" width="120" height="68" rx="6" class="c-mask"/>
-          <rect x="768.8" y="334" width="120" height="68" rx="6" class="c-security" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(774.8 340) scale(0.6875)">
+        <g id="node-review" data-node-id="review" data-node-label="Review Gate" tabindex="0" role="button" aria-label="聚焦Review Gate，审阅 / diff / 批准, 审阅与调度 › 审阅与调度" aria-pressed="false" data-node-kind="security" data-node-sublabel="审阅 / diff / 批准" data-node-tag="awaiting_review" data-node-context="审阅与调度 › 审阅与调度">
+          <title>Review Gate · 审阅 / diff / 批准 · 审阅与调度 › 审阅与调度 · awaiting_review</title>
+          <rect x="740.8" y="1022" width="120" height="68" rx="6" class="c-mask"/>
+          <rect x="740.8" y="1022" width="120" height="68" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(746.8 1028) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="828.8" y="368.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">运行时审批</text>
-          <text data-detail="context" x="828.8" y="383.1" class="t-muted" font-size="8" text-anchor="middle">confirm_important</text>
-        <text data-detail="fine" x="828.8" y="395.9" class="t-security" font-size="7" text-anchor="middle">approve / reject</text>
+          <text data-node-label="" data-detail-anchor="" x="800.8" y="1043" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Review Gate</text>
+          <text data-detail="context" x="800.8" y="1060" class="t-muted" font-size="8" text-anchor="middle">审阅 / diff / 批准</text>
+        <text data-detail="fine" x="800.8" y="1078" class="t-security" font-size="7" text-anchor="middle">awaiting_review</text>
         </g>
 
-        <g id="node-blocked" data-node-id="blocked" data-node-label="拒绝 / 超时" tabindex="0" role="button" aria-label="聚焦拒绝 / 超时，blocked, 调度与审批 › 多角色执行" aria-pressed="false" data-node-kind="security" data-node-sublabel="blocked" data-node-context="调度与审批 › 多角色执行">
-          <title>拒绝 / 超时 · blocked · 调度与审批 › 多角色执行</title>
-          <rect x="959.5999999999999" y="342" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="959.5999999999999" y="342" width="120" height="52" rx="6" class="c-security" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(965.5999999999999 348) scale(0.6875)">
+        <g id="node-scheduler" data-node-id="scheduler" data-node-label="Scheduler" tabindex="0" role="button" aria-label="聚焦Scheduler，租约 · 预算 · 审批, 审阅与调度 › 审阅与调度" aria-pressed="false" data-node-kind="backend" data-node-sublabel="租约 · 预算 · 审批" data-node-context="审阅与调度 › 审阅与调度">
+          <title>Scheduler · 租约 · 预算 · 审批 · 审阅与调度 › 审阅与调度</title>
+          <rect x="740.8" y="1140" width="120" height="52" rx="6" class="c-mask"/>
+          <rect x="740.8" y="1140" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(746.8 1146) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="800.8" y="1172" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Scheduler</text>
+          <text data-detail="context" x="800.8" y="1184.3" class="t-muted" font-size="8" text-anchor="middle">租约 · 预算 · 审批</text>
+        </g>
+
+        <g id="node-blocked" data-node-id="blocked" data-node-label="拒绝 / 超时" tabindex="0" role="button" aria-label="聚焦拒绝 / 超时，blocked, 审阅与调度 › 执行与验收" aria-pressed="false" data-node-kind="security" data-node-sublabel="blocked" data-node-context="审阅与调度 › 执行与验收">
+          <title>拒绝 / 超时 · blocked · 审阅与调度 › 执行与验收</title>
+          <rect x="931.5999999999999" y="1140" width="120" height="52" rx="6" class="c-mask"/>
+          <rect x="931.5999999999999" y="1140" width="120" height="52" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(937.5999999999999 1146) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1019.5999999999999" y="374" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">拒绝 / 超时</text>
-          <text data-detail="context" x="1019.5999999999999" y="386.3" class="t-muted" font-size="8" text-anchor="middle">blocked</text>
+          <text data-node-label="" data-detail-anchor="" x="991.5999999999999" y="1161" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">拒绝 / 超时</text>
+          <text data-detail="context" x="991.5999999999999" y="1178" class="t-muted" font-size="8" text-anchor="middle">blocked</text>
         </g>
 
-        <g id="node-router" data-node-id="router" data-node-label="RoutedTaskExecutor" tabindex="0" role="button" aria-label="聚焦RoutedTaskExecutor，按 assigned_to 路由, 多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 调度与审批" aria-pressed="false" data-node-kind="backend" data-node-sublabel="按 assigned_to 路由" data-node-tag="7 类 Agent" data-node-context="多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 调度与审批">
-          <title>RoutedTaskExecutor · 按 assigned_to 路由 · 多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 调度与审批 · 7 类 Agent</title>
-          <rect x="768.8" y="640" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="768.8" y="640" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(774.8 641) scale(0.3125)">
+        <g id="node-router" data-node-id="router" data-node-label="RoutedTaskExecutor" tabindex="0" role="button" aria-label="聚焦RoutedTaskExecutor，按 assigned_to 路由, 多角色 Agent 执行 › 审阅与调度" aria-pressed="false" data-node-kind="backend" data-node-sublabel="按 assigned_to 路由" data-node-tag="12 类 Agent" data-node-context="多角色 Agent 执行 › 审阅与调度">
+          <title>RoutedTaskExecutor · 按 assigned_to 路由 · 多角色 Agent 执行 › 审阅与调度 · 12 类 Agent</title>
+          <rect x="740.8" y="1350" width="120" height="68" rx="6" class="c-mask"/>
+          <rect x="740.8" y="1350" width="120" height="68" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(746.8 1356) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="828.8" y="661" class="t-primary" font-size="10.3" font-weight="600" text-anchor="middle">RoutedTaskExecutor</text>
-          <text data-detail="context" x="828.8" y="678" class="t-muted" font-size="8" text-anchor="middle">按 assigned_to 路由</text>
-        <text data-detail="fine" x="828.8" y="680" class="t-backend" font-size="7" text-anchor="middle">7 类 Agent</text>
+          <text data-node-label="" data-detail-anchor="" x="800.8" y="1383.4" class="t-primary" font-size="10.3" font-weight="600" text-anchor="middle">RoutedTaskExecutor</text>
+          <text data-detail="context" x="800.8" y="1398.1" class="t-muted" font-size="8" text-anchor="middle">按 assigned_to 路由</text>
+        <text data-detail="fine" x="800.8" y="1410.9" class="t-backend" font-size="7" text-anchor="middle">12 类 Agent</text>
         </g>
 
-        <g id="node-answer" data-node-id="answer" data-node-label="Answer" tabindex="0" role="button" aria-label="聚焦Answer，最终回答, 多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行" aria-pressed="false" data-node-kind="backend" data-node-sublabel="最终回答" data-node-context="多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行">
-          <title>Answer · 最终回答 · 多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行</title>
-          <rect x="959.5999999999999" y="700" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="959.5999999999999" y="700" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(965.5999999999999 706) scale(0.6875)">
+        <g id="node-agents" data-node-id="agents" data-node-label="专业 Agent" tabindex="0" role="button" aria-label="聚焦专业 Agent，Librarian · Coder · Data…, 多角色 Agent 执行 › 执行与验收" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Librarian · Coder · Data…" data-node-context="多角色 Agent 执行 › 执行与验收">
+          <title>专业 Agent · Librarian · Coder · Data… · 多角色 Agent 执行 › 执行与验收</title>
+          <rect x="931.5999999999999" y="1358" width="120" height="52" rx="6" class="c-mask"/>
+          <rect x="931.5999999999999" y="1358" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(937.5999999999999 1364) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1017.8" y="721" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Answer</text>
-          <text data-detail="context" x="1019.5999999999999" y="738" class="t-muted" font-size="8" text-anchor="middle">最终回答</text>
+          <text data-node-label="" data-detail-anchor="" x="991.5999999999999" y="1390" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">专业 Agent</text>
+          <text data-detail="context" x="991.5999999999999" y="1401.7" class="t-muted" font-size="7.4" text-anchor="middle">Librarian · Coder · Data…</text>
         </g>
 
-        <g id="node-benchmark" data-node-id="benchmark" data-node-label="Benchmark" tabindex="0" role="button" aria-label="聚焦Benchmark，数据集 · 指标, 多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行" aria-pressed="false" data-node-kind="backend" data-node-sublabel="数据集 · 指标" data-node-context="多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行">
-          <title>Benchmark · 数据集 · 指标 · 多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行</title>
-          <rect x="959.5999999999999" y="580" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="959.5999999999999" y="580" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(965.5999999999999 586) scale(0.6875)">
+        <g id="node-tool" data-node-id="tool" data-node-label="ToolInvoker" tabindex="0" role="button" aria-label="聚焦ToolInvoker，native / HTTP / MCP, 多角色 Agent 执行 › 执行与验收" aria-pressed="false" data-node-kind="backend" data-node-sublabel="native / HTTP / MCP" data-node-tag="grant + approval" data-node-context="多角色 Agent 执行 › 执行与验收">
+          <title>ToolInvoker · native / HTTP / MCP · 多角色 Agent 执行 › 执行与验收 · grant + approval</title>
+          <rect x="931.5999999999999" y="1450" width="120" height="68" rx="6" class="c-mask"/>
+          <rect x="931.5999999999999" y="1450" width="120" height="68" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(937.5999999999999 1456) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1019.5999999999999" y="612" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Benchmark</text>
-          <text data-detail="context" x="1019.5999999999999" y="624.3" class="t-muted" font-size="8" text-anchor="middle">数据集 · 指标</text>
+          <text data-node-label="" data-detail-anchor="" x="991.5999999999999" y="1484.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">ToolInvoker</text>
+          <text data-detail="context" x="991.5999999999999" y="1499.1" class="t-muted" font-size="8" text-anchor="middle">native / HTTP / MCP</text>
+        <text data-detail="fine" x="991.5999999999999" y="1511.9" class="t-backend" font-size="7" text-anchor="middle">grant + approval</text>
         </g>
 
-        <g id="node-coder" data-node-id="coder" data-node-label="Coder" tabindex="0" role="button" aria-label="聚焦Coder，代码 · 绘图, 多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行" aria-pressed="false" data-node-kind="backend" data-node-sublabel="代码 · 绘图" data-node-context="多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行">
-          <title>Coder · 代码 · 绘图 · 多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行</title>
-          <rect x="959.5999999999999" y="760" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="959.5999999999999" y="760" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(965.5999999999999 766) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+        <g id="node-engine" data-node-id="engine" data-node-label="Sandbox Executor" tabindex="0" role="button" aria-label="聚焦Sandbox Executor，Provider 选择, 工具与沙箱 › 执行与验收" aria-pressed="false" data-node-kind="security" data-node-sublabel="Provider 选择" data-node-context="工具与沙箱 › 执行与验收">
+          <title>Sandbox Executor · Provider 选择 · 工具与沙箱 › 执行与验收</title>
+          <rect x="931.5999999999999" y="1876" width="120" height="52" rx="6" class="c-mask"/>
+          <rect x="931.5999999999999" y="1876" width="120" height="52" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(937.5999999999999 1882) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1019.5999999999999" y="781" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Coder</text>
-          <text data-detail="context" x="1019.5999999999999" y="798" class="t-muted" font-size="8" text-anchor="middle">代码 · 绘图</text>
+          <text data-node-label="" data-detail-anchor="" x="991.5999999999999" y="1908" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Sandbox Executor</text>
+          <text data-detail="context" x="991.5999999999999" y="1920.3" class="t-muted" font-size="8" text-anchor="middle">Provider 选择</text>
         </g>
 
-        <g id="node-data" data-node-id="data" data-node-label="Data" tabindex="0" role="button" aria-label="聚焦Data，分析 · 证据图, 多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行" aria-pressed="false" data-node-kind="backend" data-node-sublabel="分析 · 证据图" data-node-context="多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行">
-          <title>Data · 分析 · 证据图 · 多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行</title>
-          <rect x="959.5999999999999" y="520" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="959.5999999999999" y="520" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(965.5999999999999 526) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+        <g id="node-gateway" data-node-id="gateway" data-node-label="Sandbox Gateway" tabindex="0" role="button" aria-label="聚焦Sandbox Gateway，鉴权转发, 工具与沙箱 › 执行与验收" aria-pressed="false" data-node-kind="security" data-node-sublabel="鉴权转发" data-node-context="工具与沙箱 › 执行与验收">
+          <title>Sandbox Gateway · 鉴权转发 · 工具与沙箱 › 执行与验收</title>
+          <rect x="931.5999999999999" y="1776" width="120" height="52" rx="6" class="c-mask"/>
+          <rect x="931.5999999999999" y="1776" width="120" height="52" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(937.5999999999999 1782) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1019.5999999999999" y="541" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Data</text>
-          <text data-detail="context" x="1019.5999999999999" y="558" class="t-muted" font-size="8" text-anchor="middle">分析 · 证据图</text>
+          <text data-node-label="" data-detail-anchor="" x="991.5999999999999" y="1808" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Sandbox Gateway</text>
+          <text data-detail="context" x="991.5999999999999" y="1820.3" class="t-muted" font-size="8" text-anchor="middle">鉴权转发</text>
         </g>
 
-        <g id="node-general" data-node-id="general" data-node-label="General" tabindex="0" role="button" aria-label="聚焦General，通用任务, 多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行" aria-pressed="false" data-node-kind="backend" data-node-sublabel="通用任务" data-node-context="多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行">
-          <title>General · 通用任务 · 多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行</title>
-          <rect x="959.5999999999999" y="640" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="959.5999999999999" y="640" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(965.5999999999999 646) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="1014.4999999999999" y="661" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">General</text>
-          <text data-detail="context" x="1019.5999999999999" y="678" class="t-muted" font-size="8" text-anchor="middle">通用任务</text>
-        </g>
-
-        <g id="node-librarian" data-node-id="librarian" data-node-label="Librarian" tabindex="0" role="button" aria-label="聚焦Librarian，检索 · 解析, 多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行" aria-pressed="false" data-node-kind="backend" data-node-sublabel="检索 · 解析" data-node-context="多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行">
-          <title>Librarian · 检索 · 解析 · 多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行</title>
-          <rect x="959.5999999999999" y="460" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="959.5999999999999" y="460" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(965.5999999999999 466) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="1019.5999999999999" y="492" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Librarian</text>
-          <text data-detail="context" x="1019.5999999999999" y="504.3" class="t-muted" font-size="8" text-anchor="middle">检索 · 解析</text>
-        </g>
-
-        <g id="node-research" data-node-id="research" data-node-label="Research Coding" tabindex="0" role="button" aria-label="聚焦Research Coding，复现 · 实验, 多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行" aria-pressed="false" data-node-kind="backend" data-node-sublabel="复现 · 实验" data-node-context="多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行">
-          <title>Research Coding · 复现 · 实验 · 多角色 Agent 执行（7 类角色 · 按 assigned_to 路由） › 多角色执行</title>
-          <rect x="959.5999999999999" y="820" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="959.5999999999999" y="820" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(965.5999999999999 826) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="1019.5999999999999" y="852" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Research Coding</text>
-          <text data-detail="context" x="1019.5999999999999" y="864.3" class="t-muted" font-size="8" text-anchor="middle">复现 · 实验</text>
-        </g>
-
-        <g id="node-container" data-node-id="container" data-node-label="任务容器" tabindex="0" role="button" aria-label="聚焦任务容器，python 容器, 沙箱执行 › 多角色执行" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="python 容器" data-node-context="沙箱执行 › 多角色执行">
-          <title>任务容器 · python 容器 · 沙箱执行 › 多角色执行</title>
-          <rect x="959.5999999999999" y="1250" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="959.5999999999999" y="1250" width="120" height="52" rx="6" class="c-cloud" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(965.5999999999999 1256) scale(0.6875)">
+        <g id="node-provider" data-node-id="provider" data-node-label="Provider" tabindex="0" role="button" aria-label="聚焦Provider，4 类 Provider, 工具与沙箱 › 执行与验收" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="4 类 Provider" data-node-context="工具与沙箱 › 执行与验收">
+          <title>Provider · 4 类 Provider · 工具与沙箱 › 执行与验收</title>
+          <rect x="931.5999999999999" y="1976" width="120" height="52" rx="6" class="c-mask"/>
+          <rect x="931.5999999999999" y="1976" width="120" height="52" rx="6" class="c-cloud" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(937.5999999999999 1982) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1011.1999999999999" y="1271" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">任务容器</text>
-          <text data-detail="context" x="1019.5999999999999" y="1288" class="t-muted" font-size="8" text-anchor="middle">python 容器</text>
+          <text data-node-label="" data-detail-anchor="" x="983.1999999999999" y="1997" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Provider</text>
+          <text data-detail="context" x="991.5999999999999" y="2014" class="t-muted" font-size="8" text-anchor="middle">4 类 Provider</text>
         </g>
 
-        <g id="node-engine" data-node-id="engine" data-node-label="Sandbox Executor" tabindex="0" role="button" aria-label="聚焦Sandbox Executor，docker.sock, 沙箱执行 › 多角色执行" aria-pressed="false" data-node-kind="security" data-node-sublabel="docker.sock" data-node-context="沙箱执行 › 多角色执行">
-          <title>Sandbox Executor · docker.sock · 沙箱执行 › 多角色执行</title>
-          <rect x="959.5999999999999" y="1170" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="959.5999999999999" y="1170" width="120" height="52" rx="6" class="c-security" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(965.5999999999999 1176) scale(0.6875)">
-            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
-            <path d="m5.8 8 1.5 1.5 3-3"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="1019.5999999999999" y="1202" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Sandbox Executor</text>
-          <text data-detail="context" x="1019.5999999999999" y="1214.3" class="t-muted" font-size="8" text-anchor="middle">docker.sock</text>
-        </g>
-
-        <g id="node-gateway" data-node-id="gateway" data-node-label="Sandbox Gateway" tabindex="0" role="button" aria-label="聚焦Sandbox Gateway，鉴权转发, 沙箱执行 › 多角色执行" aria-pressed="false" data-node-kind="security" data-node-sublabel="鉴权转发" data-node-context="沙箱执行 › 多角色执行">
-          <title>Sandbox Gateway · 鉴权转发 · 沙箱执行 › 多角色执行</title>
-          <rect x="959.5999999999999" y="1090" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="959.5999999999999" y="1090" width="120" height="52" rx="6" class="c-security" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(965.5999999999999 1096) scale(0.6875)">
-            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
-            <path d="m5.8 8 1.5 1.5 3-3"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="1019.5999999999999" y="1122" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Sandbox Gateway</text>
-          <text data-detail="context" x="1019.5999999999999" y="1134.3" class="t-muted" font-size="8" text-anchor="middle">鉴权转发</text>
-        </g>
-
-        <g id="node-artifacts" data-node-id="artifacts" data-node-label="Artifacts" tabindex="0" role="button" aria-label="聚焦Artifacts，产物 + 证据, 证据与结果 › 多角色执行" aria-pressed="false" data-node-kind="database" data-node-sublabel="产物 + 证据" data-node-context="证据与结果 › 多角色执行">
-          <title>Artifacts · 产物 + 证据 · 证据与结果 › 多角色执行</title>
-          <rect x="959.5999999999999" y="1520" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="959.5999999999999" y="1520" width="120" height="52" rx="6" class="c-database" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(965.5999999999999 1526) scale(0.6875)">
+        <g id="node-artifacts" data-node-id="artifacts" data-node-label="Artifacts" tabindex="0" role="button" aria-label="聚焦Artifacts，产物 · 指标 · 证据, 证据与结果 › 执行与验收" aria-pressed="false" data-node-kind="database" data-node-sublabel="产物 · 指标 · 证据" data-node-context="证据与结果 › 执行与验收">
+          <title>Artifacts · 产物 · 指标 · 证据 · 证据与结果 › 执行与验收</title>
+          <rect x="931.5999999999999" y="2286" width="120" height="52" rx="6" class="c-mask"/>
+          <rect x="931.5999999999999" y="2286" width="120" height="52" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(937.5999999999999 2292) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1019.5999999999999" y="1552" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Artifacts</text>
-          <text data-detail="context" x="1019.5999999999999" y="1564.3" class="t-muted" font-size="8" text-anchor="middle">产物 + 证据</text>
+          <text data-node-label="" data-detail-anchor="" x="991.5999999999999" y="2318" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Artifacts</text>
+          <text data-detail="context" x="991.5999999999999" y="2330.3" class="t-muted" font-size="8" text-anchor="middle">产物 · 指标 · 证据</text>
         </g>
 
-        <g id="node-finalizer" data-node-id="finalizer" data-node-label="PlanFinalizer" tabindex="0" role="button" aria-label="聚焦PlanFinalizer，PlanOutcome, 证据与结果 › 多角色执行" aria-pressed="false" data-node-kind="backend" data-node-sublabel="PlanOutcome" data-node-context="证据与结果 › 多角色执行">
-          <title>PlanFinalizer · PlanOutcome · 证据与结果 › 多角色执行</title>
-          <rect x="959.5999999999999" y="1600" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="959.5999999999999" y="1600" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(965.5999999999999 1606) scale(0.6875)">
+        <g id="node-eventbus" data-node-id="eventbus" data-node-label="Event Bus" tabindex="0" role="button" aria-label="聚焦Event Bus，SSE · 事件历史, 证据与结果 › 执行与验收" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="SSE · 事件历史" data-node-context="证据与结果 › 执行与验收">
+          <title>Event Bus · SSE · 事件历史 · 证据与结果 › 执行与验收</title>
+          <rect x="931.5999999999999" y="2486" width="120" height="52" rx="6" class="c-mask"/>
+          <rect x="931.5999999999999" y="2486" width="120" height="52" rx="6" class="c-messagebus" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(937.5999999999999 2492) scale(0.6875)">
+            <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
+            <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
+            <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
+            <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="991.5999999999999" y="2507" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Event Bus</text>
+          <text data-detail="context" x="991.5999999999999" y="2524" class="t-muted" font-size="8" text-anchor="middle">SSE · 事件历史</text>
+        </g>
+
+        <g id="node-finalizer" data-node-id="finalizer" data-node-label="PlanFinalizer" tabindex="0" role="button" aria-label="聚焦PlanFinalizer，PlanOutcome, 证据与结果 › 执行与验收" aria-pressed="false" data-node-kind="backend" data-node-sublabel="PlanOutcome" data-node-context="证据与结果 › 执行与验收">
+          <title>PlanFinalizer · PlanOutcome · 证据与结果 › 执行与验收</title>
+          <rect x="931.5999999999999" y="2386" width="120" height="52" rx="6" class="c-mask"/>
+          <rect x="931.5999999999999" y="2386" width="120" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(937.5999999999999 2392) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1019.5999999999999" y="1632" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">PlanFinalizer</text>
-          <text data-detail="context" x="1019.5999999999999" y="1644.3" class="t-muted" font-size="8" text-anchor="middle">PlanOutcome</text>
-        </g>
-
-        <g id="node-result" data-node-id="result" data-node-label="结果面板" tabindex="0" role="button" aria-label="聚焦结果面板，报告 · 产物, 证据与结果 › 多角色执行" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="报告 · 产物" data-node-context="证据与结果 › 多角色执行">
-          <title>结果面板 · 报告 · 产物 · 证据与结果 › 多角色执行</title>
-          <rect x="959.5999999999999" y="1680" width="120" height="52" rx="6" class="c-mask"/>
-          <rect x="959.5999999999999" y="1680" width="120" height="52" rx="6" class="c-frontend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(965.5999999999999 1686) scale(0.6875)">
-            <rect x="2" y="3" width="12" height="10" rx="2"/>
-            <path d="M2 6.5h12"/>
-            <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
-            <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="1011.1999999999999" y="1701" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">结果面板</text>
-          <text data-detail="context" x="1019.5999999999999" y="1718" class="t-muted" font-size="8" text-anchor="middle">报告 · 产物</text>
+          <text data-node-label="" data-detail-anchor="" x="993.4999999999999" y="2407" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">PlanFinalizer</text>
+          <text data-detail="context" x="991.5999999999999" y="2424" class="t-muted" font-size="8" text-anchor="middle">PlanOutcome</text>
         </g>
 
         <!-- Edge labels -->
-        <g data-detail="context" data-edge-from="api" data-edge-to="intent" data-edge-label="解析意图" data-edge-key="0" data-edge-id="api-intent">
-          <rect x="330" y="223" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="354.2" y="233" class="t-edge-default" font-size="8" text-anchor="middle">解析意图</text>
+        <g data-detail="context" data-edge-from="agents" data-edge-to="tool" data-edge-label="tool call" data-edge-key="0" data-edge-id="agents-tool">
+          <rect x="964.9999999999999" y="1420" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
+          <text x="991.5999999999999" y="1430" class="t-edge-default" font-size="8" text-anchor="middle">tool call</text>
         </g>
-        <g data-detail="context" data-edge-from="artifacts" data-edge-to="finalizer" data-edge-label="证据校验" data-edge-key="1" data-edge-id="artifacts-finalizer">
-          <rect x="995.3999999999999" y="1576" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="1019.5999999999999" y="1586" class="t-edge-default" font-size="8" text-anchor="middle">证据校验</text>
+        <g data-detail="context" data-edge-from="api" data-edge-to="intent" data-edge-label="解析意图" data-edge-key="1" data-edge-id="api-intent">
+          <rect x="330" y="809" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="354.2" y="819" class="t-edge-default" font-size="8" text-anchor="middle">解析意图</text>
         </g>
-        <g data-detail="context" data-edge-from="container" data-edge-to="artifacts" data-edge-label="stdout · 产物" data-edge-key="2" data-edge-id="container-artifacts">
-          <rect x="983.3999999999999" y="1401" width="72.4" height="14" rx="3" class="c-mask"/>
-          <text x="1019.5999999999999" y="1411" class="t-edge-default" font-size="8" text-anchor="middle">stdout · 产物</text>
+        <g data-detail="context" data-edge-from="artifacts" data-edge-to="finalizer" data-edge-label="证据校验" data-edge-key="2" data-edge-id="artifacts-finalizer">
+          <rect x="967.3999999999999" y="2352" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="991.5999999999999" y="2362" class="t-edge-default" font-size="8" text-anchor="middle">证据校验</text>
         </g>
-        <g data-detail="context" data-edge-from="engine" data-edge-to="container" data-edge-label="docker run" data-edge-key="3" data-edge-id="engine-container">
-          <rect x="990.5999999999999" y="1226" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="1019.5999999999999" y="1236" class="t-edge-default" font-size="8" text-anchor="middle">docker run</text>
+        <g data-detail="context" data-edge-from="engine" data-edge-to="provider" data-edge-label="provider" data-edge-key="3" data-edge-id="engine-provider">
+          <rect x="967.3999999999999" y="1942" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="991.5999999999999" y="1952" class="t-edge-default" font-size="8" text-anchor="middle">provider</text>
         </g>
-        <g data-detail="context" data-edge-from="finalizer" data-edge-to="result" data-edge-label="PlanOutcome + SSE" data-edge-key="4" data-edge-id="finalizer-result">
-          <rect x="973.8" y="1656" width="91.6" height="14" rx="3" class="c-mask"/>
-          <text x="1019.5999999999999" y="1666" class="t-edge-emphasis" font-size="8" text-anchor="middle">PlanOutcome + SSE</text>
+        <g data-detail="context" data-edge-from="eventbus" data-edge-to="result" data-edge-label="SSE" data-edge-key="4" data-edge-id="eventbus-result">
+          <rect x="1049.6" y="2492" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="1064.6" y="2502" class="t-edge-emphasis" font-size="8" text-anchor="middle">SSE</text>
         </g>
-        <g data-detail="context" data-edge-from="gate" data-edge-to="blocked" data-edge-label="拒绝 / 超时" data-edge-key="5" data-edge-id="gate-blocked">
-          <rect x="892.8" y="348" width="62.8" height="14" rx="3" class="c-mask"/>
-          <text x="924.1999999999999" y="358" class="t-edge-security" font-size="8" text-anchor="middle">拒绝 / 超时</text>
+        <g data-detail="context" data-edge-from="finalizer" data-edge-to="eventbus" data-edge-label="终态事件" data-edge-key="5" data-edge-id="finalizer-eventbus">
+          <rect x="451.59999999999997" y="2392" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="475.79999999999995" y="2402" class="t-edge-dashed" font-size="8" text-anchor="middle">终态事件</text>
         </g>
-        <g data-detail="context" data-edge-from="gate" data-edge-to="router" data-edge-label="批准 / 自动" data-edge-key="6" data-edge-id="gate-router">
-          <rect x="797.4" y="511" width="62.8" height="14" rx="3" class="c-mask"/>
-          <text x="828.8" y="521" class="t-edge-emphasis" font-size="8" text-anchor="middle">批准 / 自动</text>
+        <g data-detail="context" data-edge-from="gateway" data-edge-to="engine" data-edge-label="proxy" data-edge-key="6" data-edge-id="gateway-engine">
+          <rect x="974.5999999999999" y="1842" width="34" height="14" rx="3" class="c-mask"/>
+          <text x="991.5999999999999" y="1852" class="t-edge-default" font-size="8" text-anchor="middle">proxy</text>
         </g>
-        <g data-detail="context" data-edge-from="gateway" data-edge-to="engine" data-edge-label="反向代理" data-edge-key="7" data-edge-id="gateway-engine">
-          <rect x="995.3999999999999" y="1146" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="1019.5999999999999" y="1156" class="t-edge-default" font-size="8" text-anchor="middle">反向代理</text>
+        <g data-detail="context" data-edge-from="goal" data-edge-to="workbench" data-edge-label="提交" data-edge-key="7" data-edge-id="goal-workbench">
+          <rect x="172" y="392" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="187" y="402" class="t-edge-emphasis" font-size="8" text-anchor="middle">提交</text>
         </g>
-        <g data-detail="context" data-edge-from="goal" data-edge-to="workbench" data-edge-label="提交" data-edge-key="8" data-edge-id="goal-workbench">
-          <rect x="172" y="99" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="187" y="109" class="t-edge-emphasis" font-size="8" text-anchor="middle">提交</text>
+        <g data-detail="context" data-edge-from="intent" data-edge-to="planner" data-edge-label="IntentContext" data-edge-key="8" data-edge-id="intent-planner">
+          <rect x="506.3999999999999" y="809" width="72.4" height="14" rx="3" class="c-mask"/>
+          <text x="542.5999999999999" y="819" class="t-edge-default" font-size="8" text-anchor="middle">IntentContext</text>
         </g>
-        <g data-detail="context" data-edge-from="intent" data-edge-to="planner" data-edge-label="IntentContext" data-edge-key="9" data-edge-id="intent-planner">
-          <rect x="506.3999999999999" y="223" width="72.4" height="14" rx="3" class="c-mask"/>
-          <text x="542.5999999999999" y="233" class="t-edge-default" font-size="8" text-anchor="middle">IntentContext</text>
+        <g data-detail="context" data-edge-from="planner" data-edge-to="revision" data-edge-label="PlanGraph" data-edge-key="9" data-edge-id="planner-revision">
+          <rect x="616.1999999999999" y="932.5" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
+          <text x="642.8" y="942.5" class="t-edge-default" font-size="8" text-anchor="middle">PlanGraph</text>
         </g>
-        <g data-detail="context" data-edge-from="planner" data-edge-to="scheduler" data-edge-label="PlanGraph" data-edge-key="10" data-edge-id="planner-scheduler">
-          <rect x="616.1999999999999" y="295.5" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
-          <text x="642.8" y="305.5" class="t-edge-default" font-size="8" text-anchor="middle">PlanGraph</text>
+        <g data-detail="context" data-edge-from="provider" data-edge-to="artifacts" data-edge-label="stdout / metrics / files" data-edge-key="10" data-edge-id="provider-artifacts">
+          <rect x="928.9999999999999" y="2147" width="125.19999999999999" height="14" rx="3" class="c-mask"/>
+          <text x="991.5999999999999" y="2157" class="t-edge-dashed" font-size="8" text-anchor="middle">stdout / metrics / files</text>
         </g>
-        <g data-detail="context" data-edge-from="research" data-edge-to="gateway" data-edge-label="SandboxClient" data-edge-key="11" data-edge-id="research-gateway">
-          <rect x="983.3999999999999" y="971" width="72.4" height="14" rx="3" class="c-mask"/>
-          <text x="1019.5999999999999" y="981" class="t-edge-emphasis" font-size="8" text-anchor="middle">SandboxClient</text>
+        <g data-detail="context" data-edge-from="review" data-edge-to="blocked" data-edge-label="拒绝" data-edge-key="11" data-edge-id="review-blocked">
+          <rect x="911.1999999999999" y="1036" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="926.1999999999999" y="1046" class="t-edge-security" font-size="8" text-anchor="middle">拒绝</text>
         </g>
-
-        <g data-detail="context" data-edge-from="scheduler" data-edge-to="gate" data-edge-label="重要操作？" data-edge-key="13" data-edge-id="scheduler-gate">
-          <rect x="706.8" y="348" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="735.8" y="358" class="t-edge-security" font-size="8" text-anchor="middle">重要操作？</text>
+        <g data-detail="context" data-edge-from="review" data-edge-to="scheduler" data-edge-label="批准 / 自动" data-edge-key="12" data-edge-id="review-scheduler">
+          <rect x="769.4" y="1105" width="62.8" height="14" rx="3" class="c-mask"/>
+          <text x="800.8" y="1115" class="t-edge-emphasis" font-size="8" text-anchor="middle">批准 / 自动</text>
         </g>
-        <g data-detail="context" data-edge-from="workbench" data-edge-to="api" data-edge-label="POST /api/plan" data-edge-key="14" data-edge-id="workbench-api">
-          <rect x="227.4" y="171" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="266" y="181" class="t-edge-emphasis" font-size="8" text-anchor="middle">POST /api/plan</text>
+        <g data-detail="context" data-edge-from="revision" data-edge-to="review" data-edge-label="待审" data-edge-key="13" data-edge-id="revision-review">
+          <rect x="706.8" y="1036" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="721.8" y="1046" class="t-edge-default" font-size="8" text-anchor="middle">待审</text>
+        </g>
+        <g data-detail="context" data-edge-from="router" data-edge-to="agents" data-edge-label="assigned_to" data-edge-key="14" data-edge-id="router-agents">
+          <rect x="864.8" y="1364" width="62.8" height="14" rx="3" class="c-mask"/>
+          <text x="896.1999999999999" y="1374" class="t-edge-emphasis" font-size="8" text-anchor="middle">assigned_to</text>
+        </g>
+        <g data-detail="context" data-edge-from="scheduler" data-edge-to="router" data-edge-label="就绪节点" data-edge-key="15" data-edge-id="scheduler-router">
+          <rect x="776.5999999999999" y="1261" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="800.8" y="1271" class="t-edge-emphasis" font-size="8" text-anchor="middle">就绪节点</text>
+        </g>
+        <g data-detail="context" data-edge-from="tool" data-edge-to="gateway" data-edge-label="SandboxClient" data-edge-key="16" data-edge-id="tool-gateway">
+          <rect x="955.3999999999999" y="1637" width="72.4" height="14" rx="3" class="c-mask"/>
+          <text x="991.5999999999999" y="1647" class="t-edge-emphasis" font-size="8" text-anchor="middle">SandboxClient</text>
+        </g>
+        <g data-detail="context" data-edge-from="workbench" data-edge-to="api" data-edge-label="POST /api/plan" data-edge-key="17" data-edge-id="workbench-api">
+          <rect x="227.4" y="610.5" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="266" y="620.5" class="t-edge-emphasis" font-size="8" text-anchor="middle">POST /api/plan</text>
         </g>
 
         <!-- Legend -->
         <g data-legend="" data-legend-bridge="">
-          <text x="20" y="1760" class="t-primary" font-size="12" font-weight="650">图例</text>
-          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="用户界面" data-legend-x="20" data-legend-baseline="1780" data-legend-width="78">
-            <rect x="20" y="1772" width="14" height="9" rx="2" class="c-frontend" stroke-width="1"/>
-            <text x="42" y="1780" class="t-muted" font-size="7.5" font-weight="500">用户界面</text>
+          <text x="20" y="2566" class="t-primary" font-size="12" font-weight="650">图例</text>
+          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="用户界面" data-legend-x="20" data-legend-baseline="2586" data-legend-width="78">
+            <rect x="20" y="2578" width="14" height="9" rx="2" class="c-frontend" stroke-width="1"/>
+            <text x="42" y="2586" class="t-muted" font-size="7.5" font-weight="500">用户界面</text>
           </g>
-          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Agent 逻辑" data-legend-x="105" data-legend-baseline="1780" data-legend-width="87">
-            <rect x="105" y="1772" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
-            <text x="127" y="1780" class="t-muted" font-size="7.5" font-weight="500">Agent 逻辑</text>
+          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Agent 逻辑" data-legend-x="105" data-legend-baseline="2586" data-legend-width="87">
+            <rect x="105" y="2578" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
+            <text x="127" y="2586" class="t-muted" font-size="7.5" font-weight="500">Agent 逻辑</text>
           </g>
-          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="策略" data-legend-x="199" data-legend-baseline="1780" data-legend-width="61">
-            <rect x="199" y="1772" width="14" height="9" rx="2" class="c-security" stroke-width="1"/>
-            <text x="221" y="1780" class="t-muted" font-size="7.5" font-weight="500">策略</text>
+          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="策略" data-legend-x="199" data-legend-baseline="2586" data-legend-width="61">
+            <rect x="199" y="2578" width="14" height="9" rx="2" class="c-security" stroke-width="1"/>
+            <text x="221" y="2586" class="t-muted" font-size="7.5" font-weight="500">策略</text>
           </g>
-          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="上下文 / 追踪" data-legend-x="267" data-legend-baseline="1780" data-legend-width="100">
-            <rect x="267" y="1772" width="14" height="9" rx="2" class="c-database" stroke-width="1"/>
-            <text x="289" y="1780" class="t-muted" font-size="7.5" font-weight="500">上下文 / 追踪</text>
+          <g data-legend-semantic-kind="messagebus" data-legend-kind="messagebus" data-legend-label="工具操作" data-legend-x="267" data-legend-baseline="2586" data-legend-width="78">
+            <rect x="267" y="2578" width="14" height="9" rx="2" class="c-messagebus" stroke-width="1"/>
+            <text x="289" y="2586" class="t-muted" font-size="7.5" font-weight="500">工具操作</text>
           </g>
-          <g data-legend-semantic-kind="cloud" data-legend-kind="cloud" data-legend-label="云服务" data-legend-x="374" data-legend-baseline="1780" data-legend-width="70">
-            <rect x="374" y="1772" width="14" height="9" rx="2" class="c-cloud" stroke-width="1"/>
-            <text x="396" y="1780" class="t-muted" font-size="7.5" font-weight="500">云服务</text>
+          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="上下文 / 追踪" data-legend-x="352" data-legend-baseline="2586" data-legend-width="100">
+            <rect x="352" y="2578" width="14" height="9" rx="2" class="c-database" stroke-width="1"/>
+            <text x="374" y="2586" class="t-muted" font-size="7.5" font-weight="500">上下文 / 追踪</text>
           </g>
-          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="外部系统" data-legend-x="451" data-legend-baseline="1780" data-legend-width="78">
-            <rect x="451" y="1772" width="14" height="9" rx="2" class="c-external" stroke-width="1"/>
-            <text x="473" y="1780" class="t-muted" font-size="7.5" font-weight="500">外部系统</text>
+          <g data-legend-semantic-kind="cloud" data-legend-kind="cloud" data-legend-label="云服务" data-legend-x="459" data-legend-baseline="2586" data-legend-width="70">
+            <rect x="459" y="2578" width="14" height="9" rx="2" class="c-cloud" stroke-width="1"/>
+            <text x="481" y="2586" class="t-muted" font-size="7.5" font-weight="500">云服务</text>
+          </g>
+          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="外部系统" data-legend-x="536" data-legend-baseline="2586" data-legend-width="78">
+            <rect x="536" y="2578" width="14" height="9" rx="2" class="c-external" stroke-width="1"/>
+            <text x="558" y="2586" class="t-muted" font-size="7.5" font-weight="500">外部系统</text>
           </g>
         </g>
       </svg>
@@ -5592,24 +5585,21 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>多角色路由</h3>
         </div>
         <ul>
-          <li>每个 DAG 节点带 assigned_to，RoutedTaskExecutor 据此选择 runner</li>
-          <li>planner 只允许注册表内的 Agent，越权分配会被拒绝</li>
-          <li>同一角色可并行处理多个互不依赖的节点</li>
+          <li>每个 DAG 节点带 assigned_to</li>
+          <li>Planner 只允许注册表内的 Agent</li>
+          <li>同一角色可并行处理互不依赖的节点</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot emerald"></div>
-          <h3>Agent 能力映射</h3>
+          <h3>记忆与工具</h3>
         </div>
         <ul>
-          <li>Librarian：paper_parse / literature_search / claim_rubric_extract</li>
-          <li>Data：ablation_design / claim_evidence_build / paper_compare</li>
-          <li>Coder：generate_code / repo_prepare / render_plot</li>
-          <li>Research Coding：autoresearch_run / paper_code_execute / benchmark_execute</li>
-          <li>Benchmark：dataset_audit / split_materialize / contract_freeze</li>
-          <li>General / Answer：general_process / general_synthesis</li>
+          <li>AgentProfile 绑定 PromptVersion、模型与工具白名单</li>
+          <li>ToolInvoker 强制 schema / grant / approval</li>
+          <li>每次调用记录 ToolCallRecord 并可回放</li>
         </ul>
       </div>
 
@@ -5619,9 +5609,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>执行与证据</h3>
         </div>
         <ul>
-          <li>Coder / Research Coding / Benchmark 通过 SandboxClient 进入隔离容器</li>
-          <li>每个节点产出带 Kind / EvidenceClass 的 Artifact</li>
-          <li>PlanFinalizer 依据证据完整性给出 completed / needs_review / blocked</li>
+          <li>执行型 Agent 只通过 SandboxClient 进入隔离沙箱</li>
+          <li>Artifact 非空、类型合法且 producer 唯一</li>
+          <li>PlanFinalizer 依据证据给出 completed / blocked / needs_review</li>
         </ul>
       </div>
     </div>

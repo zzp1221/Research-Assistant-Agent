@@ -1,23 +1,25 @@
 # 项目文档
 
-本目录集中放置跨模块的架构图、设计文档与项目级说明；模块内部文档仍在各自目录的 `README.md`。
+简体中文 | [English](README.en.md)
+
+本目录集中放置跨模块的架构图、设计文档、审计与项目级说明；模块内部文档仍在各自目录的 `README.md`。
 
 ## 架构与流程图
 
 | 图 | draw.io 源文件 | SVG 预览 | 说明 |
 |---|---|---|---|
-| 系统架构图 | [architecture.drawio](diagrams/architecture.drawio) | [architecture.svg](diagrams/architecture.svg) | 前端、后端、Agent、沙箱、优化器、LLM 与持久化状态的分层关系 |
-| 运行流程图 | [runtime-flow.drawio](diagrams/runtime-flow.drawio) | [runtime-flow.svg](diagrams/runtime-flow.svg) | 从用户目标到 PlanGraph、调度、沙箱执行、Artifact 与 SSE 的完整时序 |
-| Agent 执行流程图 | [agent-execution-flow.drawio](diagrams/agent-execution-flow.drawio) | [agent-execution-flow.svg](diagrams/agent-execution-flow.svg) | RoutedTaskExecutor 的 Agent 路由、沙箱调用、Artifact 校验，以及 Claim Evidence / AutoResearch 子循环 |
+| 系统架构图 | [architecture.drawio](diagrams/architecture.drawio) | [architecture.svg](diagrams/architecture.svg) | 客户端、桌面外壳、React 工作台、Go 后端、Agent、沙箱 Provider、记忆与持久化、外部依赖 |
+| 运行流程图 | [runtime-flow.drawio](diagrams/runtime-flow.drawio) | [runtime-flow.svg](diagrams/runtime-flow.svg) | 从研究目标到计划、审阅、调度、沙箱执行、Artifact、记忆与 SSE 的完整时序 |
+| Agent 执行流程图 | [agent-execution-flow.drawio](diagrams/agent-execution-flow.drawio) | [agent-execution-flow.svg](diagrams/agent-execution-flow.svg) | RoutedTaskExecutor 的 Agent 路由、记忆注入、工具调用、沙箱执行与证据/搜索子循环 |
 
 ### Archify 交互式图
 
 | 图 | 文件 | 说明 |
 |---|---|---|
-| 系统架构图 | [system-architecture.html](diagrams/system-architecture.html) | 17 个组件、持久化数据卷边界、沙箱控制面/执行面与外部依赖 |
-| 多角色 Agent 执行工作流 | [multi-agent-workflow.html](diagrams/multi-agent-workflow.html) | 7 类 Agent 的 assigned_to 路由、调度审批、沙箱执行与证据链 |
+| 系统架构图 | [system-architecture.html](diagrams/system-architecture.html) | 组件、持久化边界、桌面外壳、沙箱 Provider 与外部依赖 |
+| 多角色 Agent 执行工作流 | [multi-agent-workflow.html](diagrams/multi-agent-workflow.html) | Agent 路由、调度审批、工具调用、沙箱执行与证据链 |
 
-两图为自包含 HTML（内联 SVG/样式/脚本），浏览器直接打开，支持明暗主题、缩放平移与 PNG/SVG 导出。
+两图为自包含 HTML（内联 SVG/样式/脚本），浏览器直接打开，支持明暗主题、缩放平移与 PNG/SVG 导出。图形文件与编辑方式见 [diagrams/README.md](diagrams/README.md)。
 
 ### 预览
 
@@ -27,11 +29,6 @@
 
 ![Agent 执行流程图](diagrams/agent-execution-flow.svg)
 
-打开方式：
-
-- 使用 [diagrams.net](https://app.diagrams.net/) 或 VS Code 的 Draw.io Integration 插件打开 `.drawio` 文件；
-- 修改后可从 draw.io 导出新的 SVG/PNG，或运行 `python3 docs/diagrams/generate_diagrams.py` 重新生成当前版本的 SVG 预览。
-
 ## 项目状态
 
 - [CHANGELOG.md](CHANGELOG.md)：按提交整理的变更记录（2026-10-22 起）。
@@ -40,17 +37,55 @@
 
 ## 设计文档
 
-- [运行期模型配置与通用视觉校验设计](design/runtime-model-config-and-visual-verification.md)：per-user + 全局默认模型配置、视觉能力探测与路由、verify_result 通用图像校验（inconclusive/fail 语义）
-- [意图复杂度路由与计划生成选择设计](design/intent-complexity-routing.md)：方案 C，把复杂度判断合并进 intent 分类；L0-L4 路由、模板变体、skeleton + agent 增强、验收与风险
-- [Agent 链路优化设计（General / Prompt / Repair / Token 预算）](design/2026-10-27-agent-chain-optimization.md)：四个具体优化点的“问题在哪、为什么、怎么做”、代码位置与验收清单
-- [N-04 真实文献与网页检索 + N-07 文档智能：改进设计与实施方案](design/n04-n07-literature-and-document-intelligence.md)：基于现有 literature/documents 能力的增量设计，含现状、问题、方案、阶段与验收
-- [N-01/N-02/N-03：计划库、可复现导出与成本预算控制台](design/n01-n03-plan-library-reproducibility-cost.md)：基于现有计划列表/导出/usage 的增量设计，含索引、manifest/checksum、预算闸门与验收
-- [N-05 计划审阅与人在回路](design/n05-plan-review-hitl.md)：revision、执行前审阅、结构化提问、审批收件箱与 diff 的设计
-- [N-13 Agent/工具生态（MCP）](design/n13-agent-tool-ecosystem-mcp.md)：工具注册/权限/审计、MCP 接入、自定义 Agent 与 Prompt 版本的设计
-- [文献库与 PDF 阅读体验改版](design/2026-10-27-literature-ui-redesign.md)：文献库与 PDF 阅读的方向探索、关键改动与交互动效
-- [UI 升级设计说明](ui-research-console.md)：科研仪器风格的视觉与交互规范、三个方向的取舍与实现记录
-- [缺陷修复文档（2026-10-25）](defect-remediation-2026-10-25.md)：D1–D10 的「为什么修 / 哪里有问题 / 怎么修」，含落地顺序与验收清单
-- [ADR 模板](adr/000-template.md)：新增架构决策记录时复制该模板
+### 架构与运行机制
+
+| 文档 | 内容 |
+|---|---|
+| [运行期模型配置与通用视觉校验](design/runtime-model-config-and-visual-verification.md) | per-user + 全局默认模型配置、视觉能力探测与路由、verify_result 通用图像校验（inconclusive/fail 语义） |
+| [意图复杂度路由与计划生成选择](design/intent-complexity-routing.md) | 方案 C：把复杂度判断合并进 intent 分类；L0-L4 路由、模板变体、skeleton + agent 增强、验收与风险 |
+| [Agent 链路优化（General / Prompt / Repair / Token 预算）](design/2026-10-27-agent-chain-optimization.md) | 四个具体优化点的“问题在哪、为什么、怎么做”、代码位置与验收清单 |
+| [按模型配置计算上下文窗口与 Compaction](design/2026-11-06-model-aware-context-compaction.md) | **待实施设计 v2.0**：动态预算、独立/服务端原生压缩、兼容摘要、活动窗口持久化、分阶段接入与验收 |
+| [Agent 能力改进方案](design/2026-11-07-agent-capability-improvement.md) | **待实施设计 v1.0**：工具执行循环、分类恢复与重规划、数值证据验收、上下文恢复、任务质量评测与修复记忆；含优先级、实施顺序及验收用例 |
+| [N-01/N-02/N-03：计划库、可复现导出与成本预算控制台](design/n01-n03-plan-library-reproducibility-cost.md) | 基于现有计划列表/导出/usage 的增量设计，含索引、manifest/checksum、预算闸门与验收 |
+| [N-05 计划审阅与人在回路](design/n05-plan-review-hitl.md) | revision、执行前审阅、结构化提问、审批收件箱与 diff 的设计 |
+| [N-13 Agent/工具生态（MCP）](design/n13-agent-tool-ecosystem-mcp.md) | 工具注册/权限/审计、MCP 接入、自定义 Agent 与 Prompt 版本的设计 |
+| [N-14 文献工作流与 Skill 模板化 MCP（草案）](design/n14-literature-mcp-skill-ecosystem.md) | **设计稿，未实现**：literature/zotero/science MCP 与 SkillManifest 的规划 |
+
+### 记忆与知识
+
+| 文档 | 内容 |
+|---|---|
+| [Agent 记忆系统（M0–M3）](design/2026-11-01-agent-memory-system.md) | 分层记忆、存储、检索、注入、抽取、consolidation、安全边界与验收 |
+| [记忆系统实现对照](improvement-2026-11-01/MEMORY-IMPLEMENTATION.md) | 设计 vs 实际实现、已实现范围、回滚开关与安全边界 |
+| [记忆系统测试报告](improvement-2026-11-01/MEMORY-TEST-REPORT.md) | 容器内测试、长对话/长任务 E2E 与真实 LLM 验证 |
+| [上下文系统审计](audit/context-system-audit-2026-11-01.md) | 现有上下文/记忆能力的逐项审计与差距 |
+| [论文知识 Wiki（Paper Wiki）](design/2026-11-02-paper-wiki-memory.md) | 设计稿 v1.1（W0–W3/W2.5 已实现，见 [实现对照](improvement-2026-11-02/IMPLEMENTATION.md) 与 [测试报告](improvement-2026-11-02/TEST-REPORT.md)）：PaperPage / Point / Link 的科研记忆视图与交叉索引 |
+| [Paper Wiki 评审](review/2026-11-02-paper-wiki-memory-review.md) | 对 Paper Wiki v1.0 的评审与修订建议 |
+| [记忆系统压力测试方案](test/2026-11-03-memory-stress-test-plan.md) | **已执行**：长任务 / 长论文 / 交叉论文三条战线的 166 条压力用例、四套剧本、指标与验收门槛，以及代码级风险登记（附 [CSV 用例表](test/2026-11-03-memory-stress-test-cases.csv)；实测见 [压力测试报告](../../reports/memory-stress-2026-11-03-stress-2026-11-03-r1/REPORT.md)） |
+| [记忆系统压测缺陷修复方案](test/2026-11-03-memory-stress-fix-plan.md) | v1.0：19 条缺陷、13 类根因、A~D 四批修复、数据迁移与回归验收映射 |
+
+### 桌面与交付
+
+| 文档 | 内容 |
+|---|---|
+| [桌面端打包与「去 Docker」方案](design/2026-10-30-desktop-without-docker.md) | 打包形态、docker/native/vm/remote Provider、保真度与诚实降级 |
+| [Windows 桌面客户端实施方案](design/2026-10-30-windows-desktop-client.md) | 桌面外壳、supervisor、proxy、settings、更新、安装包与真机验收 |
+| [用 MyGo 替换 Wails 桌面外壳](design/2026-11-02-mygo-desktop-shell.md) | 已实施：MyGo 0.7.4 默认入口、bridge 迁移、打包与回退方案 |
+
+### 界面与体验
+
+| 文档 | 内容 |
+|---|---|
+| [文献库与 PDF 阅读体验改版](design/2026-10-27-literature-ui-redesign.md) | 文献库与 PDF 阅读的方向探索、关键改动与交互动效 |
+| [预算 / HITL 工作台](design/2026-10-29-budget-hitl-workbench.md) | 成本、预算、审批与人在回路的工作台设计 |
+| [Aperture 工作台](design/2026-10-30-aperture-workbench.md) | 工作台空间与信息层级的方向与取舍 |
+| [UI 升级设计说明](ui-research-console.md) | 科研仪器风格的视觉与交互规范、三个方向的取舍与实现记录 |
+
+### 缺陷与整改
+
+- [并发幂等、锁恢复与 PDF 翻译浮层修复方案（2026-11-06）](defect-remediation-2026-11-06.md)：三项已复现问题的根因、实施步骤、失败边界与回归验收，状态为待实施。
+- [缺陷修复文档（2026-10-25）](defect-remediation-2026-10-25.md)：D1–D10 的“为什么修 / 哪里有问题 / 怎么修”，含落地顺序与验收清单。
+- [ADR 模板](adr/000-template.md)：新增架构决策记录时复制该模板。
 
 ## 轮次报告（2026-10-26 改进审计及后续）
 
@@ -65,6 +100,11 @@
 | [第四轮修复报告（N-04 文献 + N-07 文档智能）](improvement-2026-10-26/FIX-REPORT-ROUND4.md) | 文献 provider/文献库/引用图、PDF OCR/版面/表格/图注/质量报告 |
 | [第五轮修复报告（Agent 链路优化 + 复杂度路由）](improvement-2026-10-26/FIX-REPORT-ROUND5.md) | A/B/C/D 四个优化点与 L0-L4 路由的落地、差异、验证证据与回滚开关 |
 | [第六轮大规模测试报告](improvement-2026-10-26/TEST-REPORT-ROUND6.md) | 全量回归、专项测试、缺陷与清理记录 |
+| [第八轮修复报告（N-01/N-02/N-03）](improvement-2026-10-26/FIX-REPORT-ROUND8.md) | 计划库、可复现导出包 v2、成本与预算控制台 |
+| [第九轮修复报告（N-05）](improvement-2026-10-26/FIX-REPORT-ROUND9.md) | 计划 revision、审阅门、结构化提问、审批收件箱 |
+| [第十轮复核报告](improvement-2026-10-26/FIX-REPORT-ROUND10.md) | N-01/N-02/N-03/N-05 独立复核与 12 类问题修复 |
+| [第十一轮修复报告（N-13）](improvement-2026-10-26/FIX-REPORT-ROUND11.md) | 工具注册表、MCP、ToolGrant、ToolCallRecord、AgentProfile/PromptVersion |
+| [第二十六轮最终收口](improvement-2026-10-26/FIX-REPORT-ROUND26.md) | 13 套 E2E + 四模块全量回归与环境边界 |
 | [文献检索相关性修复报告](improvement-2026-10-26/FIX-REPORT-LITERATURE-RELEVANCE.md) | relevance 跨 provider 排序、候选池与 provider 超时的修复与验证 |
 | [ROUND4 规格](improvement-2026-10-26/ROUND4-SPEC.md) / [计划](improvement-2026-10-26/ROUND4-PLAN.md) / [任务](improvement-2026-10-26/ROUND4-TASKS.md) | 第四轮的需求、实施计划与任务拆分 |
 

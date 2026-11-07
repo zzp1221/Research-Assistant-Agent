@@ -1,5 +1,7 @@
 # docker-core
 
+简体中文 | [English](README.en.md)
+
 `docker-core` 是一个独立的 Go 模块，用于验证和演示 Docker / gVisor 环境下的持久化沙箱、DAG 调度、状态快照与安全护栏。它不依赖 `research-assistant` 主应用，可单独构建和测试，也可以作为沙箱执行层的参考实现。
 
 ## 与主项目的关系
@@ -7,7 +9,7 @@
 - [系统架构图](../docs/diagrams/architecture.drawio)（[SVG 预览](../docs/diagrams/architecture.svg)）
 - [Agent 执行流程图](../docs/diagrams/agent-execution-flow.drawio)（[SVG 预览](../docs/diagrams/agent-execution-flow.svg)）
 
-`docker-core` 是沙箱/调度内核的研究与参考实现；产品运行链使用 `research-assistant/docker-sandbox` 的 gateway/executor 组合。两者共享“隔离执行 + 快照/回滚 + 资源护栏”的设计目标，但模块独立、可分别构建和测试。
+`docker-core` 是沙箱/调度内核的研究与参考实现；产品运行链使用 `research-assistant/docker-sandbox` 的 gateway/executor 与 docker/native/vm/remote Provider 组合。两者共享“隔离执行 + 快照/回滚 + 资源护栏”的设计目标，但模块独立、可分别构建和测试。
 
 ## 模块定位
 
@@ -157,7 +159,7 @@ go test ./checkpoint/...   # 快照与回滚
 
 真实 Docker 集成测试位于 `sandbox/test/` 与 `tests/`，需要设置 `SANDBOX_INTEGRATION_TEST=1` 或 `REAL_INTEGRATION_TEST=1`（后者还需要有效 LLM Key 与 `config/config.toml`）。测试前请确认 Docker 正常运行，并检查容器、网络端口和临时镜像是否被正确清理。
 
-构建与单元测试可在 `golang:1.26.1-bookworm` 容器内复跑；最近一次结果见 [docs/verification.md](../docs/verification.md)。
+构建与单元测试可在 `golang:1.27.3-bookworm` 容器内复跑；最近一次结果见 [docs/verification.md](../docs/verification.md)。
 
 ## 子模块说明
 

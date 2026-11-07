@@ -1,5 +1,7 @@
 # checkpoint
 
+简体中文 | [English](README.en.md)
+
 `checkpoint` 为环境配置过程提供物理快照与认知反馈两层容错：
 
 1. **物理快照**：在 DAG 节点成功后执行 `Docker Commit`，保存完整文件系统与环境变量。

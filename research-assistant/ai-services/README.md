@@ -1,5 +1,7 @@
 # ai-services
 
+简体中文 | [English](README.en.md)
+
 可选的 Python AI 服务集合。包含真实 LLM 驱动的意图识别服务，以及 BERT/Qwen 训练脚本。
 
 ## 服务

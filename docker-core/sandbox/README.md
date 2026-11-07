@@ -1,5 +1,7 @@
 # sandbox
 
+简体中文 | [English](README.en.md)
+
 `sandbox` 是对 Docker API 的轻量封装，面向需要多轮交互的 AI Agent 环境配置场景。它维护一个持续运行的容器会话，而不是每次命令都创建新容器。
 
 ## 核心能力

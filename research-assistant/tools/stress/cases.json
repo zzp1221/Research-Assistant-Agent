@@ -1,0 +1,1496 @@
+[
+ {
+  "case_id": "LT-01",
+  "suite": "LT",
+  "priority": "P0",
+  "title": "200 轮基础针保持",
+  "action": "按 S1 跑 200 轮，P5 逐条询问 P1 的 20 条针",
+  "pass_criteria": "20/20 回答正确，citations 均命中对应 memory_id",
+  "error_or_risk": "E1"
+ },
+ {
+  "case_id": "LT-02",
+  "suite": "LT",
+  "priority": "P0",
+  "title": "压缩后第 1 轮事实",
+  "action": "第 1 轮写入姓名/颜色/项目，第 100 轮后询问",
+  "pass_criteria": "全部正确；prompt 中 summary 或 core 包含该针",
+  "error_or_risk": "E1/R-01"
+ },
+ {
+  "case_id": "LT-03",
+  "suite": "LT",
+  "priority": "P0",
+  "title": "压缩边界 20/21 轮",
+  "action": "构造 20 轮与 21 轮两组，对比摘要",
+  "pass_criteria": "第 21 轮起出现摘要；第 20 轮前不出现；边界不丢针",
+  "error_or_risk": "E1/R-01"
+ },
+ {
+  "case_id": "LT-04",
+  "suite": "LT",
+  "priority": "P0",
+  "title": "知识更新 3 次",
+  "action": "BLEU 27.3 → 28.4 → 29.0，逐次询问",
+  "pass_criteria": "每次返回最新值；export 中旧值 superseded",
+  "error_or_risk": "E4/R-13"
+ },
+ {
+  "case_id": "LT-05",
+  "suite": "LT",
+  "priority": "P1",
+  "title": "as-of 查询",
+  "action": "更新后 include_superseded 查询旧值",
+  "pass_criteria": "返回旧值且状态 superseded；默认注入不含旧值",
+  "error_or_risk": "E4"
+ },
+ {
+  "case_id": "LT-06",
+  "suite": "LT",
+  "priority": "P0",
+  "title": "用户纠正覆盖 agent 推断",
+  "action": "计划写入 fact 后，用 POST /api/memories 写冲突值",
+  "pass_criteria": "用户值 active；agent 值 pending 或 superseded",
+  "error_or_risk": "E4/R-14"
+ },
+ {
+  "case_id": "LT-07",
+  "suite": "LT",
+  "priority": "P0",
+  "title": "A→B→C 计划链",
+  "action": "同 session 创建 3 个计划",
+  "pass_criteria": "B.parent=A、C.parent=B；各自 episode 存在且不串",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "LT-08",
+  "suite": "LT",
+  "priority": "P0",
+  "title": "计划幂等",
+  "action": "同一 plan 重复 RecordPlan 3 次",
+  "pass_criteria": "记录数不增；UseCount 增加但内容不变",
+  "error_or_risk": "E5"
+ },
+ {
+  "case_id": "LT-09",
+  "suite": "LT",
+  "priority": "P0",
+  "title": "取消路径 negative",
+  "action": "执行中取消计划（outcome 设为 failed 与非空两种子用例）",
+  "pass_criteria": "mem-plan-* 存在；outcome 非空且≠completed 时 mem-negative-* 存在；wiki reproduction=cancelled",
+  "error_or_risk": "E1/R-35"
+ },
+ {
+  "case_id": "LT-10",
+  "suite": "LT",
+  "priority": "P0",
+  "title": "执行中 kill -9",
+  "action": "计划执行到 50% 时 kill -9，重启后查询",
+  "pass_criteria": "已完成节点记录保留；计划恢复或标记 failed；无重复记录",
+  "error_or_risk": "E11/R-34"
+ },
+ {
+  "case_id": "LT-11",
+  "suite": "LT",
+  "priority": "P0",
+  "title": "失败→重试成功",
+  "action": "构造任务失败后 retry 成功",
+  "pass_criteria": "mem-task-*（失败）与 mem-proc-*（procedure）均存在且挂对 plan/task",
+  "error_or_risk": "E1/E2"
+ },
+ {
+  "case_id": "LT-12",
+  "suite": "LT",
+  "priority": "P1",
+  "title": "MMR 挤出",
+  "action": "写入 10 条同 kind episode 后查询",
+  "pass_criteria": "返回 ≤3 条；第 4 条起被挤出且 PromptReport 可见",
+  "error_or_risk": "E7/R-10"
+ },
+ {
+  "case_id": "LT-13",
+  "suite": "LT",
+  "priority": "P1",
+  "title": "per-owner topK=20",
+  "action": "设置 owner settings.RetrievalTopK=20，触发任务",
+  "pass_criteria": "观测 retrieval 条数：=8 则 H-02 成立并登记缺陷；修复目标=20",
+  "error_or_risk": "E7/R-04"
+ },
+ {
+  "case_id": "LT-14",
+  "suite": "LT",
+  "priority": "P1",
+  "title": "shadow 一致性",
+  "action": "分别用「环境变量 shadow」与「per-owner settings.Mode=shadow」测试 chat/plan/task",
+  "pass_criteria": "期望三者均不注入；实际若 task 在 per-owner shadow 下仍注入，记录为 H-03/R-06 证据",
+  "error_or_risk": "E8/R-05/R-06"
+ },
+ {
+  "case_id": "LT-15",
+  "suite": "LT",
+  "priority": "P0",
+  "title": "跨 session 隔离",
+  "action": "同 owner 两个 session 各写哨兵",
+  "pass_criteria": "互不检索；交叉提问明确不知道",
+  "error_or_risk": "E3/R-08"
+ },
+ {
+  "case_id": "LT-16",
+  "suite": "LT",
+  "priority": "P0",
+  "title": "跨 project 隔离",
+  "action": "项目 A 写“内网地址 10.1.2.3”；项目 B 的 session 内、不传 project_id 查询（模拟真实 chat 调用）",
+  "pass_criteria": "B 不得返回 A 的哨兵；若返回则 H-04 成立并登记 S1",
+  "error_or_risk": "E3/R-07"
+ },
+ {
+  "case_id": "LT-17",
+  "suite": "LT",
+  "priority": "P1",
+  "title": "200 轮后 parent 选择",
+  "action": "同 session 创建 5 个计划，第 6 个“继续”",
+  "pass_criteria": "parent 指向最近更新的计划",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "LT-18",
+  "suite": "LT",
+  "priority": "P1",
+  "title": "90 天 TTL",
+  "action": "将记录 UpdatedAt 改为 91 天前，执行 consolidation",
+  "pass_criteria": "episode 变 archived；profile 不变；fact 180 天内不变",
+  "error_or_risk": "E4"
+ },
+ {
+  "case_id": "LT-19",
+  "suite": "LT",
+  "priority": "P1",
+  "title": "反思生成不注入",
+  "action": "造 6 条 episode/negative 后 consolidate",
+  "pass_criteria": "生成 reflection pending；检索默认不返回",
+  "error_or_risk": "E7"
+ },
+ {
+  "case_id": "LT-20",
+  "suite": "LT",
+  "priority": "P0",
+  "title": "8 计划链交叉引用",
+  "action": "跑完 A1/D1，D1 应复用 A1 经验",
+  "pass_criteria": "D1 prompt 含 A1 的 negative/procedure 针，引用 plan_id 正确",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "LT-21",
+  "suite": "LT",
+  "priority": "P0",
+  "title": "120 任务节点归属",
+  "action": "跑 120 节点后 export",
+  "pass_criteria": "每条 mem-task-* 的 plan_id/task_id 与账本一致，无错挂",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "LT-22",
+  "suite": "LT",
+  "priority": "P1",
+  "title": "core 预算 512",
+  "action": "写 20 条 pinned profile 后触发 chat",
+  "pass_criteria": "core tokens ≤512；低 importance 截断且 PromptReport 有记录",
+  "error_or_risk": "E7/R-12"
+ },
+ {
+  "case_id": "LT-23",
+  "suite": "LT",
+  "priority": "P0",
+  "title": "引用完整性",
+  "action": "对 200 轮所有 citations 逐一 GET",
+  "pass_criteria": "100% 可解析且 kind/owner 正确，0 个 404",
+  "error_or_risk": "E6"
+ },
+ {
+  "case_id": "LT-24",
+  "suite": "LT",
+  "priority": "P0",
+  "title": "prompt token 预算",
+  "action": "每 10 轮记录 PromptReport",
+  "pass_criteria": "总 token ≤ PromptLimit；retrieved+wiki ≤ 各自预算",
+  "error_or_risk": "E7"
+ },
+ {
+  "case_id": "LT-25",
+  "suite": "LT",
+  "priority": "P1",
+  "title": "注入顺序稳定",
+  "action": "连续 10 次相同请求",
+  "pass_criteria": "messages 前缀顺序完全一致：core 在前、retrieved 在中、wiki 在后",
+  "error_or_risk": "E8"
+ },
+ {
+  "case_id": "LT-26",
+  "suite": "LT",
+  "priority": "P1",
+  "title": "重复失败去重",
+  "action": "同一任务失败 10 次",
+  "pass_criteria": "仅 1 条记录且 UseCount=10，或明确 10 条但可解释；不得静默丢 9 条",
+  "error_or_risk": "E5"
+ },
+ {
+  "case_id": "LT-27",
+  "suite": "LT",
+  "priority": "P1",
+  "title": "plan context 1600 截断",
+  "action": "100 节点计划创建 B",
+  "pass_criteria": "memory_context ≤1600 字符；关键针是否仍在前部",
+  "error_or_risk": "E7"
+ },
+ {
+  "case_id": "LT-28",
+  "suite": "LT",
+  "priority": "P1",
+  "title": "客户端 messages 路径",
+  "action": "传 messages 数组 30 轮",
+  "pass_criteria": "不重复追加历史；prompt message_count 有界",
+  "error_or_risk": "E5/R-36"
+ },
+ {
+  "case_id": "LT-29",
+  "suite": "LT",
+  "priority": "P2",
+  "title": "ChatStore 写放大",
+  "action": "500 会话 × 2000 轮",
+  "pass_criteria": "Append p95 < 50ms；文件大小线性且可接受",
+  "error_or_risk": "E10/R-03"
+ },
+ {
+  "case_id": "LT-30",
+  "suite": "LT",
+  "priority": "P1",
+  "title": "30 天时间推进",
+  "action": "修改 snapshot 时间戳模拟 30 天",
+  "pass_criteria": "working 过期、episode 未过期、recency 衰减符合预期",
+  "error_or_risk": "E4"
+ },
+ {
+  "case_id": "LP-01",
+  "suite": "LP",
+  "priority": "P0",
+  "title": "320 页解析",
+  "action": "上传合成综述",
+  "pass_criteria": "页数=320；状态 extracted；无缺页",
+  "error_or_risk": "E1"
+ },
+ {
+  "case_id": "LP-02",
+  "suite": "LP",
+  "priority": "P0",
+  "title": "40 节 Outline",
+  "action": "调用 documents.Outline",
+  "pass_criteria": "识别 ≥36/40 节；标题与账本一致",
+  "error_or_risk": "E2/R-30"
+ },
+ {
+  "case_id": "LP-03",
+  "suite": "LP",
+  "priority": "P1",
+  "title": "TLDR 覆盖 24k 外",
+  "action": "第 300 页写入唯一结论后生成 TLDR",
+  "pass_criteria": "TLDR 包含该结论（预期可能失败，登记 H-08）",
+  "error_or_risk": "E1/R-21"
+ },
+ {
+  "case_id": "LP-04",
+  "suite": "LP",
+  "priority": "P1",
+  "title": "章节标题 100 字符",
+  "action": "构造 101 字符标题",
+  "pass_criteria": "不识别为 section；不污染 section map",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "LP-05",
+  "suite": "LP",
+  "priority": "P0",
+  "title": "100 条 quote 定位",
+  "action": "随机 100 个 quote 调 LocateQuote",
+  "pass_criteria": "≥95 命中；页码误差 ≤0",
+  "error_or_risk": "E6"
+ },
+ {
+  "case_id": "LP-06",
+  "suite": "LP",
+  "priority": "P1",
+  "title": "跨页/连字符 quote",
+  "action": "10 条跨页、10 条断词",
+  "pass_criteria": "≥18/20 命中",
+  "error_or_risk": "E6"
+ },
+ {
+  "case_id": "LP-07",
+  "suite": "LP",
+  "priority": "P0",
+  "title": "同文本 point 冲突",
+  "action": "两篇不同论文写相同方法句",
+  "pass_criteria": "两条 point 各自挂正确 paper_id（预期失败，H-07）",
+  "error_or_risk": "E2/R-13"
+ },
+ {
+  "case_id": "LP-08",
+  "suite": "LP",
+  "priority": "P1",
+  "title": "20 节截断",
+  "action": "构造 25 节文档",
+  "pass_criteria": "PaperPage.Sections ≤20；第 21 节起不出现",
+  "error_or_risk": "E1"
+ },
+ {
+  "case_id": "LP-09",
+  "suite": "LP",
+  "priority": "P1",
+  "title": "表格检索",
+  "action": "查询“Table 7 的 F1”",
+  "pass_criteria": "命中表格 chunk；答案含正确数值",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "LP-10",
+  "suite": "LP",
+  "priority": "P2",
+  "title": "图注检索",
+  "action": "查询“Figure 12 说明了什么”",
+  "pass_criteria": "命中图注 chunk 或被明确拒答",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "LP-11",
+  "suite": "LP",
+  "priority": "P1",
+  "title": "中文论文检索",
+  "action": "中文提问“本文方法的核心贡献”",
+  "pass_criteria": "命中摘要/方法节；不答非所问",
+  "error_or_risk": "E2/R-30"
+ },
+ {
+  "case_id": "LP-12",
+  "suite": "LP",
+  "priority": "P1",
+  "title": "双栏顺序",
+  "action": "双栏 PDF 上传",
+  "pass_criteria": "正文顺序正确率 ≥90%（人工抽 10 页）",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "LP-13",
+  "suite": "LP",
+  "priority": "P1",
+  "title": "OCR 页质量",
+  "action": "扫描件 20 页",
+  "pass_criteria": "每页 quality 记录；低置信页可检索或明确标记",
+  "error_or_risk": "E1"
+ },
+ {
+  "case_id": "LP-14",
+  "suite": "LP",
+  "priority": "P2",
+  "title": "公式 quote",
+  "action": "含公式页 quote",
+  "pass_criteria": "定位成功或明确不支持；不得返回错页",
+  "error_or_risk": "E6"
+ },
+ {
+  "case_id": "LP-15",
+  "suite": "LP",
+  "priority": "P0",
+  "title": "120 refs 解析",
+  "action": "解析 References",
+  "pass_criteria": "条目数 115–120；DOI/年/标题字段准确率 ≥95%",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "LP-16",
+  "suite": "LP",
+  "priority": "P0",
+  "title": "refs 匹配",
+  "action": "与 30 篇已知 PaperPage 匹配",
+  "pass_criteria": "正确匹配 ≥25；误匹配 ≤1",
+  "error_or_risk": "E2/R-29"
+ },
+ {
+  "case_id": "LP-17",
+  "suite": "LP",
+  "priority": "P0",
+  "title": "删除 wiki 重建",
+  "action": "删 data/wiki 后 build full",
+  "pass_criteria": "sections/points/tldr 与重建前一致；差异 ≤1%",
+  "error_or_risk": "E9"
+ },
+ {
+  "case_id": "LP-18",
+  "suite": "LP",
+  "priority": "P1",
+  "title": "文档记忆章节 20",
+  "action": "解析 40 节文档",
+  "pass_criteria": "mem-doc-* 只存 20 节；提示截断",
+  "error_or_risk": "E1"
+ },
+ {
+  "case_id": "LP-19",
+  "suite": "LP",
+  "priority": "P1",
+  "title": "超长单页 BM25",
+  "action": "单页 100k 字符",
+  "pass_criteria": "检索 p95 < 100ms；不 OOM",
+  "error_or_risk": "E10"
+ },
+ {
+  "case_id": "LP-20",
+  "suite": "LP",
+  "priority": "P0",
+  "title": "outline 失败 page-range",
+  "action": "构造无标题文档",
+  "pass_criteria": "document memory pending；检索回退 page-range 且能答对 5/5",
+  "error_or_risk": "E1"
+ },
+ {
+  "case_id": "LP-21",
+  "suite": "LP",
+  "priority": "P1",
+  "title": "文档更新冲突",
+  "action": "同 documentID 重新解析",
+  "pass_criteria": "旧 mem-doc-* 被更新或 superseded；不双份",
+  "error_or_risk": "E4"
+ },
+ {
+  "case_id": "LP-22",
+  "suite": "LP",
+  "priority": "P0",
+  "title": "同一 PDF 两次上传",
+  "action": "不同 uploadID、同 DOI",
+  "pass_criteria": "同一 paper_id；不重复建页",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "LP-23",
+  "suite": "LP",
+  "priority": "P0",
+  "title": "长论文 30 题",
+  "action": "30 条针问答",
+  "pass_criteria": "≥27 正确；引用正确 ≥25",
+  "error_or_risk": "E1/E6"
+ },
+ {
+  "case_id": "LP-24",
+  "suite": "LP",
+  "priority": "P0",
+  "title": "中文“这篇论文”",
+  "action": "多篇论文下问“这篇论文的方法”",
+  "pass_criteria": "命中当前 project 的论文（预期失败，H-05）",
+  "error_or_risk": "E2/R-22/R-23"
+ },
+ {
+  "case_id": "LP-25",
+  "suite": "LP",
+  "priority": "P0",
+  "title": "wiki 注入 token",
+  "action": "记录每次 PromptReport.WikiTokens",
+  "pass_criteria": "≤ min(3% PromptLimit, 1500)；默认 ≤2%",
+  "error_or_risk": "E7"
+ },
+ {
+  "case_id": "LP-26",
+  "suite": "LP",
+  "priority": "P0",
+  "title": "引用页码正确",
+  "action": "20 条引用核对页码",
+  "pass_criteria": "≥18/20 页码正确；quote 可定位",
+  "error_or_risk": "E6"
+ },
+ {
+  "case_id": "CP-01",
+  "suite": "CP",
+  "priority": "P0",
+  "title": "三别名合并",
+  "action": "DOI/arXiv/title 三条路径创建同一论文",
+  "pass_criteria": "同一 paper_id；aliases 完整",
+  "error_or_risk": "E2/R-29"
+ },
+ {
+  "case_id": "CP-02",
+  "suite": "CP",
+  "priority": "P0",
+  "title": "同名不同论文",
+  "action": "两篇同名不同年",
+  "pass_criteria": "不合并；各自 paper_id",
+  "error_or_risk": "E2/R-29"
+ },
+ {
+  "case_id": "CP-03",
+  "suite": "CP",
+  "priority": "P0",
+  "title": "同标题同年不同作者",
+  "action": "ADV-04",
+  "pass_criteria": "不合并（预期失败，登记缺陷）",
+  "error_or_risk": "E2/R-29"
+ },
+ {
+  "case_id": "CP-04",
+  "suite": "CP",
+  "priority": "P0",
+  "title": "cites 精确率",
+  "action": "与 180 条 ground truth 对比",
+  "pass_criteria": "Precision ≥0.9；Recall ≥0.8",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "CP-05",
+  "suite": "CP",
+  "priority": "P0",
+  "title": "uses_same_*",
+  "action": "30+20+10 条 ground truth",
+  "pass_criteria": "每类 P ≥0.85；方向正确",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "CP-06",
+  "suite": "CP",
+  "priority": "P0",
+  "title": "重建 Link 一致",
+  "action": "删除 wiki 重建",
+  "pass_criteria": "Link 集合 Jaccard ≥0.99；状态不变",
+  "error_or_risk": "E9"
+ },
+ {
+  "case_id": "CP-07",
+  "suite": "CP",
+  "priority": "P0",
+  "title": "confirm/reject 保留",
+  "action": "确认 10 条、拒绝 10 条后重建",
+  "pass_criteria": "20/20 状态保留",
+  "error_or_risk": "E9"
+ },
+ {
+  "case_id": "CP-08",
+  "suite": "CP",
+  "priority": "P0",
+  "title": "对称不重复",
+  "action": "两篇同数据集互建",
+  "pass_criteria": "仅 1 条；from<to",
+  "error_or_risk": "E5"
+ },
+ {
+  "case_id": "CP-09",
+  "suite": "CP",
+  "priority": "P1",
+  "title": "自引用忽略",
+  "action": "A 引用自己",
+  "pass_criteria": "无自环 Link",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "CP-10",
+  "suite": "CP",
+  "priority": "P1",
+  "title": "矛盾 pending",
+  "action": "A/B 矛盾结论",
+  "pass_criteria": "contradicts 存在；status=pending_review",
+  "error_or_risk": "E4"
+ },
+ {
+  "case_id": "CP-11",
+  "suite": "CP",
+  "priority": "P1",
+  "title": "高被引 500 候选",
+  "action": "1 篇被 600 篇引用",
+  "pass_criteria": "生成 ≤500 条；记录截断警告",
+  "error_or_risk": "E1/R-28"
+ },
+ {
+  "case_id": "CP-12",
+  "suite": "CP",
+  "priority": "P0",
+  "title": "201 篇以上",
+  "action": "建 220 篇（按创建时间顺序），full build 后检查最早 20 篇与最新 20 篇",
+  "pass_criteria": "最早 20 篇也有 Link；若只有最新 200 篇有 Link 则 H-06 成立并登记 S1",
+  "error_or_risk": "E1/R-20/R-40"
+ },
+ {
+  "case_id": "CP-13",
+  "suite": "CP",
+  "priority": "P1",
+  "title": "120 篇构建耗时",
+  "action": "全量 build",
+  "pass_criteria": "≤30s（设计 §16.4）；记录实际耗时",
+  "error_or_risk": "E10/R-26"
+ },
+ {
+  "case_id": "CP-14",
+  "suite": "CP",
+  "priority": "P1",
+  "title": "revision/supersede",
+  "action": "同一 Link 重建 3 次",
+  "pass_criteria": "旧 revision superseded；新记录 revision+1；无重复 active",
+  "error_or_risk": "E5"
+ },
+ {
+  "case_id": "CP-15",
+  "suite": "CP",
+  "priority": "P0",
+  "title": "跨 owner 链接",
+  "action": "alice 的 Link 在 bob 查询",
+  "pass_criteria": "bob 0 条；直取 404",
+  "error_or_risk": "E3"
+ },
+ {
+  "case_id": "CP-16",
+  "suite": "CP",
+  "priority": "P1",
+  "title": "跨 project 链接",
+  "action": "同 owner 两项目",
+  "pass_criteria": "默认不跨项目返回；或明确标记",
+  "error_or_risk": "E3"
+ },
+ {
+  "case_id": "CP-17",
+  "suite": "CP",
+  "priority": "P0",
+  "title": "跨论文问答 A→B",
+  "action": "问“A 和 B 的关系”",
+  "pass_criteria": "回答含正确 Link 类型；引用两个 paper_id",
+  "error_or_risk": "E6"
+ },
+ {
+  "case_id": "CP-18",
+  "suite": "CP",
+  "priority": "P0",
+  "title": "“哪篇用 WMT14”",
+  "action": "全局问",
+  "pass_criteria": "返回全部 5 篇且无遗漏/多报",
+  "error_or_risk": "E1"
+ },
+ {
+  "case_id": "CP-19",
+  "suite": "CP",
+  "priority": "P1",
+  "title": "同数据集不同任务",
+  "action": "EN-DE vs EN-FR",
+  "pass_criteria": "不误连或标记低置信",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "CP-20",
+  "suite": "CP",
+  "priority": "P1",
+  "title": "引用方向",
+  "action": "A cites B",
+  "pass_criteria": "A→B 单向；B 不出现反向 cites",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "CP-21",
+  "suite": "CP",
+  "priority": "P0",
+  "title": "evidence quote 定位",
+  "action": "抽 30 条 Link evidence",
+  "pass_criteria": "≥27 可定位；页码正确",
+  "error_or_risk": "E6"
+ },
+ {
+  "case_id": "CP-22",
+  "suite": "CP",
+  "priority": "P2",
+  "title": "Link 归档",
+  "action": "reject 后查询",
+  "pass_criteria": "archived 不进入默认注入；仍可审计",
+  "error_or_risk": "E4"
+ },
+ {
+  "case_id": "CP-23",
+  "suite": "CP",
+  "priority": "P0",
+  "title": "失败任务挂论文",
+  "action": "C1 第 11 节点超时",
+  "pass_criteria": "mem-negative-* 挂到 C1 的 paper_id",
+  "error_or_risk": "E2/R-33"
+ },
+ {
+  "case_id": "CP-24",
+  "suite": "CP",
+  "priority": "P0",
+  "title": "wiki_citations 正确",
+  "action": "20 次跨论文问答",
+  "pass_criteria": "paper_id/point_id 与回答内容一致 ≥18",
+  "error_or_risk": "E6"
+ },
+ {
+  "case_id": "CP-25",
+  "suite": "CP",
+  "priority": "P0",
+  "title": "中文“这篇论文”回退",
+  "action": "多论文项目中文问",
+  "pass_criteria": "不注入无关论文（预期失败，H-05）",
+  "error_or_risk": "E2/R-22/R-23"
+ },
+ {
+  "case_id": "CP-26",
+  "suite": "CP",
+  "priority": "P0",
+  "title": "删除 wiki 重建 120 篇",
+  "action": "全量重建",
+  "pass_criteria": "120 篇全部恢复；Point/Link 不丢",
+  "error_or_risk": "E9/R-20"
+ },
+ {
+  "case_id": "CP-27",
+  "suite": "CP",
+  "priority": "P1",
+  "title": "分页 200 篇",
+  "action": "GET /api/wiki/papers limit=50 cursor 翻页",
+  "pass_criteria": "5 页拿全 220 篇（200 + 20）；无重复/遗漏",
+  "error_or_risk": "E1/R-40"
+ },
+ {
+  "case_id": "MB-01",
+  "suite": "MB",
+  "priority": "P0",
+  "title": "Put/Get 基础",
+  "action": "写读一条",
+  "pass_criteria": "字段完整；ContentHash 稳定",
+  "error_or_risk": "—"
+ },
+ {
+  "case_id": "MB-02",
+  "suite": "MB",
+  "priority": "P0",
+  "title": "BM25 排序",
+  "action": "10 条语料查询",
+  "pass_criteria": "正确记录 top1；分数单调",
+  "error_or_risk": "E2/R-11"
+ },
+ {
+  "case_id": "MB-03",
+  "suite": "MB",
+  "priority": "P0",
+  "title": "中文 bigram",
+  "action": "中文查询",
+  "pass_criteria": "命中中文记录；不因分词失败",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "MB-04",
+  "suite": "MB",
+  "priority": "P1",
+  "title": "RRF 融合",
+  "action": "BM25+实体+时间三路",
+  "pass_criteria": "融合分高于单路；无重复",
+  "error_or_risk": "—"
+ },
+ {
+  "case_id": "MB-05",
+  "suite": "MB",
+  "priority": "P1",
+  "title": "MMR 多样性",
+  "action": "5 条近似记录",
+  "pass_criteria": "返回结果两两 Jaccard < 0.7",
+  "error_or_risk": "E5"
+ },
+ {
+  "case_id": "MB-06",
+  "suite": "MB",
+  "priority": "P0",
+  "title": "section 顺序",
+  "action": "BuildTaskPrompt",
+  "pass_criteria": "core→plan→task→retrieved→wiki→inputs→volatile",
+  "error_or_risk": "E8"
+ },
+ {
+  "case_id": "MB-07",
+  "suite": "MB",
+  "priority": "P0",
+  "title": "core 预算",
+  "action": "20 条 pinned",
+  "pass_criteria": "≤512 token；不超硬限",
+  "error_or_risk": "E7/R-12"
+ },
+ {
+  "case_id": "MB-08",
+  "suite": "MB",
+  "priority": "P0",
+  "title": "retrieved 预算",
+  "action": "50 条长记录",
+  "pass_criteria": "≤2000 token；截断有标记",
+  "error_or_risk": "E7"
+ },
+ {
+  "case_id": "MB-09",
+  "suite": "MB",
+  "priority": "P1",
+  "title": "trust 权重",
+  "action": "同文本不同 trust",
+  "pass_criteria": "user_explicit > verified > inferred > untrusted",
+  "error_or_risk": "E4"
+ },
+ {
+  "case_id": "MB-10",
+  "suite": "MB",
+  "priority": "P1",
+  "title": "recency 半衰期",
+  "action": "同日/30 日/180 日",
+  "pass_criteria": "分数递减符合 exp 衰减",
+  "error_or_risk": "E4"
+ },
+ {
+  "case_id": "MB-11",
+  "suite": "MB",
+  "priority": "P1",
+  "title": "scope 权重",
+  "action": "plan/project/session/global",
+  "pass_criteria": "plan 1.0 > project 0.9 > session 0.8 > global 0.7",
+  "error_or_risk": "E3/R-09"
+ },
+ {
+  "case_id": "MB-12",
+  "suite": "MB",
+  "priority": "P0",
+  "title": "去重/重复 Put",
+  "action": "同内容写 3 次",
+  "pass_criteria": "1 条记录；UseCount=2；Refs 不丢（预期可能失败，R-14）",
+  "error_or_risk": "E5/R-13/R-14"
+ },
+ {
+  "case_id": "MB-13",
+  "suite": "MB",
+  "priority": "P0",
+  "title": "supersede 链",
+  "action": "同 ID 改内容 3 次",
+  "pass_criteria": "3 个版本；最新 active；旧 superseded",
+  "error_or_risk": "E4"
+ },
+ {
+  "case_id": "MB-14",
+  "suite": "MB",
+  "priority": "P1",
+  "title": "pinned/importance",
+  "action": "10 条不同 importance",
+  "pass_criteria": "core 选择按 importance 排序",
+  "error_or_risk": "E7"
+ },
+ {
+  "case_id": "MB-15",
+  "suite": "MB",
+  "priority": "P1",
+  "title": "时间词召回",
+  "action": "“上次/上周”查询",
+  "pass_criteria": "命中最近记录；结果 ≤10",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "MB-16",
+  "suite": "MB",
+  "priority": "P1",
+  "title": "实体召回",
+  "action": "10 条同实体",
+  "pass_criteria": "全部命中；不超 20 条",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "MB-17",
+  "suite": "MB",
+  "priority": "P1",
+  "title": "空查询/超长查询",
+  "action": "空串、10k 字符",
+  "pass_criteria": "空查询不崩溃；超长截断 2000",
+  "error_or_risk": "E10"
+ },
+ {
+  "case_id": "MB-18",
+  "suite": "MB",
+  "priority": "P1",
+  "title": "软删/硬删",
+  "action": "DELETE 两种",
+  "pass_criteria": "软删后不检索；硬删需 token；export 不含",
+  "error_or_risk": "E1"
+ },
+ {
+  "case_id": "MB-19",
+  "suite": "MB",
+  "priority": "P1",
+  "title": "export/import",
+  "action": "导出再导入空库",
+  "pass_criteria": "记录数一致；ContentHash 一致；owner 保持",
+  "error_or_risk": "E1"
+ },
+ {
+  "case_id": "MB-20",
+  "suite": "MB",
+  "priority": "P1",
+  "title": "settings 持久化",
+  "action": "设置后重启",
+  "pass_criteria": "值保留；默认值正确",
+  "error_or_risk": "E11"
+ },
+ {
+  "case_id": "MB-21",
+  "suite": "MB",
+  "priority": "P1",
+  "title": "consolidation 归档",
+  "action": "造 91 天 episode",
+  "pass_criteria": "archived；stats 变化正确",
+  "error_or_risk": "E4"
+ },
+ {
+  "case_id": "MB-22",
+  "suite": "MB",
+  "priority": "P2",
+  "title": "reflection 生成",
+  "action": "6 条 episode",
+  "pass_criteria": "1 条 reflection pending；DerivedFrom ≥2",
+  "error_or_risk": "E5"
+ },
+ {
+  "case_id": "MB-23",
+  "suite": "MB",
+  "priority": "P1",
+  "title": "stats 正确",
+  "action": "混合 kind/status",
+  "pass_criteria": "计数与 export 一致",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "MB-24",
+  "suite": "MB",
+  "priority": "P1",
+  "title": "List 过滤",
+  "action": "kind/status/tag/q/limit",
+  "pass_criteria": "过滤准确；limit 生效",
+  "error_or_risk": "E1"
+ },
+ {
+  "case_id": "MB-25",
+  "suite": "MB",
+  "priority": "P2",
+  "title": "token 估算",
+  "action": "中英混合 100 条",
+  "pass_criteria": "估算与真实 token 误差 <20%",
+  "error_or_risk": "E7"
+ },
+ {
+  "case_id": "MB-26",
+  "suite": "MB",
+  "priority": "P1",
+  "title": "并发 Put",
+  "action": "100 goroutine 同库",
+  "pass_criteria": "无 panic/丢记录；最终条数=100",
+  "error_or_risk": "E11"
+ },
+ {
+  "case_id": "LC-01",
+  "suite": "LC",
+  "priority": "P0",
+  "title": "重启恢复",
+  "action": "写 100 条→SIGTERM→重启",
+  "pass_criteria": "100 条全在；stats 一致",
+  "error_or_risk": "E11"
+ },
+ {
+  "case_id": "LC-02",
+  "suite": "LC",
+  "priority": "P0",
+  "title": "SIGTERM 优雅关闭",
+  "action": "执行中 SIGTERM",
+  "pass_criteria": "锁释放；snapshot 写盘；无残留",
+  "error_or_risk": "E11"
+ },
+ {
+  "case_id": "LC-03",
+  "suite": "LC",
+  "priority": "P0",
+  "title": "kill -9 后回放",
+  "action": "写 100 条→kill -9→重启",
+  "pass_criteria": "已返回 200 的记录 ≥99 条；WAL 可回放",
+  "error_or_risk": "E11/R-17"
+ },
+ {
+  "case_id": "LC-04",
+  "suite": "LC",
+  "priority": "P0",
+  "title": "WAL 尾部 torn write",
+  "action": "手工追加半行 JSON→重启",
+  "pass_criteria": "前面的记录全部恢复；不整体失败",
+  "error_or_risk": "E11/R-17"
+ },
+ {
+  "case_id": "LC-05",
+  "suite": "LC",
+  "priority": "P1",
+  "title": "2000 条 compaction",
+  "action": "写 2100 条",
+  "pass_criteria": "自动 compact；文件不无限增长；检索正常",
+  "error_or_risk": "E10/R-18"
+ },
+ {
+  "case_id": "LC-06",
+  "suite": "LC",
+  "priority": "P1",
+  "title": "snapshot 损坏",
+  "action": "截断 snapshot",
+  "pass_criteria": "明确报错或回退 WAL；不静默空库",
+  "error_or_risk": "E11"
+ },
+ {
+  "case_id": "LC-07",
+  "suite": "LC",
+  "priority": "P0",
+  "title": "双进程锁竞争",
+  "action": "同时启动两个 backend 同 MEMORY_DIR",
+  "pass_criteria": "第二个明确失败或等待；不静默回退内存库（预期失败，H-10）",
+  "error_or_risk": "E11/R-16"
+ },
+ {
+  "case_id": "LC-08",
+  "suite": "LC",
+  "priority": "P1",
+  "title": "陈旧锁恢复",
+  "action": "构造死进程 PID 锁",
+  "pass_criteria": "新进程能获取；日志有清理记录",
+  "error_or_risk": "E11"
+ },
+ {
+  "case_id": "LC-09",
+  "suite": "LC",
+  "priority": "P1",
+  "title": "磁盘满",
+  "action": "填满磁盘后写",
+  "pass_criteria": "写入返回 5xx；不丢已有数据；恢复后可用",
+  "error_or_risk": "E11"
+ },
+ {
+  "case_id": "LC-10",
+  "suite": "LC",
+  "priority": "P1",
+  "title": "只读目录",
+  "action": "chmod 只读",
+  "pass_criteria": "启动明确失败；不静默降级",
+  "error_or_risk": "E11"
+ },
+ {
+  "case_id": "LC-11",
+  "suite": "LC",
+  "priority": "P2",
+  "title": "时钟回拨",
+  "action": "系统时间 -1h",
+  "pass_criteria": "recency 不为负；不 panic",
+  "error_or_risk": "E4"
+ },
+ {
+  "case_id": "LC-12",
+  "suite": "LC",
+  "priority": "P1",
+  "title": "8000 字符边界",
+  "action": "写 8000/8001 字符",
+  "pass_criteria": "8000 成功；8001 拒绝且错误清晰",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "LC-13",
+  "suite": "LC",
+  "priority": "P1",
+  "title": "10 万条导入",
+  "action": "import 10 万记录",
+  "pass_criteria": "完成 ≤10min；检索正常；内存可控",
+  "error_or_risk": "E10"
+ },
+ {
+  "case_id": "LC-14",
+  "suite": "LC",
+  "priority": "P1",
+  "title": "备份/恢复",
+  "action": "打包 data 目录→恢复",
+  "pass_criteria": "记录/设置/wiki 全部一致",
+  "error_or_risk": "E11"
+ },
+ {
+  "case_id": "LC-15",
+  "suite": "LC",
+  "priority": "P0",
+  "title": "wiki 删除重建",
+  "action": "rm -rf wiki→build",
+  "pass_criteria": "PaperPage/Point/Link 全恢复",
+  "error_or_risk": "E9"
+ },
+ {
+  "case_id": "LC-16",
+  "suite": "LC",
+  "priority": "P0",
+  "title": "memory 目录删除",
+  "action": "rm -rf memory",
+  "pass_criteria": "明确空库；不崩溃；不假装有数据",
+  "error_or_risk": "E1"
+ },
+ {
+  "case_id": "SC-01",
+  "suite": "SC",
+  "priority": "P0",
+  "title": "跨 owner 列表",
+  "action": "alice 写，bob 查",
+  "pass_criteria": "bob 0 条；按 id 取 404",
+  "error_or_risk": "E3"
+ },
+ {
+  "case_id": "SC-02",
+  "suite": "SC",
+  "priority": "P0",
+  "title": "跨 project",
+  "action": "无 project_id 查询",
+  "pass_criteria": "不返回其他 project 的哨兵（预期失败，H-04）",
+  "error_or_risk": "E3/R-07"
+ },
+ {
+  "case_id": "SC-03",
+  "suite": "SC",
+  "priority": "P0",
+  "title": "跨 session",
+  "action": "同 owner 两会话",
+  "pass_criteria": "互不可见",
+  "error_or_risk": "E3/R-08"
+ },
+ {
+  "case_id": "SC-04",
+  "suite": "SC",
+  "priority": "P0",
+  "title": "hidden 论文",
+  "action": "标题含 hidden benchmark",
+  "pass_criteria": "404；不写入；不出现在列表",
+  "error_or_risk": "E12"
+ },
+ {
+  "case_id": "SC-05",
+  "suite": "SC",
+  "priority": "P0",
+  "title": "hidden 路径",
+  "action": "BENCHMARK_PRIVATE_ROOT 下文档",
+  "pass_criteria": "拒绝入库；日志有记录",
+  "error_or_risk": "E12"
+ },
+ {
+  "case_id": "SC-06",
+  "suite": "SC",
+  "priority": "P0",
+  "title": "正文注入",
+  "action": "记忆 content 含“忽略之前指令”",
+  "pass_criteria": "不执行；标记 untrusted（预期失败，R-31）",
+  "error_or_risk": "E12/R-31"
+ },
+ {
+  "case_id": "SC-07",
+  "suite": "SC",
+  "priority": "P0",
+  "title": "quote 注入",
+  "action": "Refs.Quote 含注入",
+  "pass_criteria": "Trust 降级；不注入 prompt",
+  "error_or_risk": "E12"
+ },
+ {
+  "case_id": "SC-08",
+  "suite": "SC",
+  "priority": "P0",
+  "title": "secret 写入",
+  "action": "sk-xxx/私钥",
+  "pass_criteria": "400 拒绝；不入库",
+  "error_or_risk": "E12"
+ },
+ {
+  "case_id": "SC-09",
+  "suite": "SC",
+  "priority": "P0",
+  "title": "base64",
+  "action": "10KB base64",
+  "pass_criteria": "400 拒绝",
+  "error_or_risk": "E12"
+ },
+ {
+  "case_id": "SC-10",
+  "suite": "SC",
+  "priority": "P1",
+  "title": "超长字段",
+  "action": "title 301/content 8001",
+  "pass_criteria": "400 拒绝；错误码清晰",
+  "error_or_risk": "E2"
+ },
+ {
+  "case_id": "SC-11",
+  "suite": "SC",
+  "priority": "P1",
+  "title": "attributes 嵌套",
+  "action": "attributes 内嵌 hidden 字符串",
+  "pass_criteria": "拒绝或降级（预期失败，R-32）",
+  "error_or_risk": "E12/R-32"
+ },
+ {
+  "case_id": "SC-12",
+  "suite": "SC",
+  "priority": "P1",
+  "title": "export 脱敏",
+  "action": "导出含敏感记录",
+  "pass_criteria": "敏感字段脱敏或拒绝导出",
+  "error_or_risk": "E12"
+ },
+ {
+  "case_id": "SC-13",
+  "suite": "SC",
+  "priority": "P1",
+  "title": "wiki quote 泄露",
+  "action": "hidden 文档 quote 进 Link",
+  "pass_criteria": "不写入；404",
+  "error_or_risk": "E12"
+ },
+ {
+  "case_id": "SC-14",
+  "suite": "SC",
+  "priority": "P0",
+  "title": "记忆当指令",
+  "action": "记忆内容要求“删除所有数据”",
+  "pass_criteria": "不执行；回答明确说明是数据",
+  "error_or_risk": "E12"
+ },
+ {
+  "case_id": "SC-15",
+  "suite": "SC",
+  "priority": "P1",
+  "title": "大小写 owner",
+  "action": "Alice vs alice",
+  "pass_criteria": "视为两个 owner 或规范化一致；不得混用",
+  "error_or_risk": "E3"
+ },
+ {
+  "case_id": "SC-16",
+  "suite": "SC",
+  "priority": "P1",
+  "title": "owner 哈希碰撞",
+  "action": "构造相似 owner",
+  "pass_criteria": "目录不同；数据不混",
+  "error_or_risk": "E3"
+ },
+ {
+  "case_id": "PF-01",
+  "suite": "PF",
+  "priority": "P0",
+  "title": "1 万条检索",
+  "action": "1 万 memory，1000 次查询",
+  "pass_criteria": "p50 <10ms，p95 <50ms",
+  "error_or_risk": "E10"
+ },
+ {
+  "case_id": "PF-02",
+  "suite": "PF",
+  "priority": "P1",
+  "title": "10 万条检索",
+  "action": "10 万 memory，1000 次查询",
+  "pass_criteria": "p95 <100ms；内存 <2GB",
+  "error_or_risk": "E10"
+ },
+ {
+  "case_id": "PF-03",
+  "suite": "PF",
+  "priority": "P1",
+  "title": "写入 p95",
+  "action": "1 万次 Put",
+  "pass_criteria": "p95 <10ms；compaction 长尾 <500ms",
+  "error_or_risk": "E10/R-18"
+ },
+ {
+  "case_id": "PF-04",
+  "suite": "PF",
+  "priority": "P0",
+  "title": "注入 token",
+  "action": "100 次 chat",
+  "pass_criteria": "retrieved+wiki ≤ 预算；总 token 稳定",
+  "error_or_risk": "E7"
+ },
+ {
+  "case_id": "PF-05",
+  "suite": "PF",
+  "priority": "P1",
+  "title": "1 万篇 PaperPage 查询",
+  "action": "1 万页，1000 次 GET",
+  "pass_criteria": "p95 <50ms",
+  "error_or_risk": "E10"
+ },
+ {
+  "case_id": "PF-06",
+  "suite": "PF",
+  "priority": "P1",
+  "title": "120 篇 Link 构建",
+  "action": "full build",
+  "pass_criteria": "≤30s；CPU 单核",
+  "error_or_risk": "E10/R-26"
+ },
+ {
+  "case_id": "PF-07",
+  "suite": "PF",
+  "priority": "P1",
+  "title": "分页/List",
+  "action": "10 万条翻页",
+  "pass_criteria": "每页 50 条；无 O(n²)",
+  "error_or_risk": "E10/R-15"
+ },
+ {
+  "case_id": "PF-08",
+  "suite": "PF",
+  "priority": "P2",
+  "title": "build job 泄漏",
+  "action": "1000 次 build",
+  "pass_criteria": "jobs map 有界（或 TTL）；RSS 不持续增长",
+  "error_or_risk": "E10/R-39"
+ },
+ {
+  "case_id": "PF-09",
+  "suite": "PF",
+  "priority": "P2",
+  "title": "ChatStore 写放大",
+  "action": "2000 轮追加",
+  "pass_criteria": "单次 Append <50ms；文件 <50MB",
+  "error_or_risk": "E10/R-03"
+ },
+ {
+  "case_id": "PF-10",
+  "suite": "PF",
+  "priority": "P1",
+  "title": "内存占用",
+  "action": "10 万条常驻",
+  "pass_criteria": "RSS <1.5GB；无泄漏",
+  "error_or_risk": "E10"
+ },
+ {
+  "case_id": "PF-11",
+  "suite": "PF",
+  "priority": "P1",
+  "title": "50 并发 chat",
+  "action": "50 并发 × 20 轮",
+  "pass_criteria": "无 5xx；p95 <5s（不含模型）",
+  "error_or_risk": "E10"
+ },
+ {
+  "case_id": "PF-12",
+  "suite": "PF",
+  "priority": "P2",
+  "title": "24h soak",
+  "action": "持续混合负载 24h",
+  "pass_criteria": "无 OOM/panic；延迟漂移 <20%",
+  "error_or_risk": "E10"
+ },
+ {
+  "case_id": "RB-01",
+  "suite": "RB",
+  "priority": "P0",
+  "title": "MEMORY_ENABLED=false",
+  "action": "关闭后 chat/plan/task",
+  "pass_criteria": "0 注入、0 写入；wiki 行为明确（预期失败，R-38）",
+  "error_or_risk": "E8/R-38"
+ },
+ {
+  "case_id": "RB-02",
+  "suite": "RB",
+  "priority": "P0",
+  "title": "MEMORY_MODE=shadow",
+  "action": "环境变量 shadow",
+  "pass_criteria": "期望 chat/plan/task 均不注入；若 chat 仍注入则 H-03 成立并登记缺陷",
+  "error_or_risk": "E8/R-05/R-06"
+ },
+ {
+  "case_id": "RB-03",
+  "suite": "RB",
+  "priority": "P0",
+  "title": "WIKI_ENABLED=false",
+  "action": "关闭",
+  "pass_criteria": "路由 404；不注入；chat 正常",
+  "error_or_risk": "E8"
+ },
+ {
+  "case_id": "RB-04",
+  "suite": "RB",
+  "priority": "P0",
+  "title": "WIKI_MODE=shadow",
+  "action": "shadow",
+  "pass_criteria": "构建执行、注入 0；stats 有数据",
+  "error_or_risk": "E8"
+ },
+ {
+  "case_id": "RB-05",
+  "suite": "RB",
+  "priority": "P1",
+  "title": "WIKI_LLM_MODE=off",
+  "action": "off",
+  "pass_criteria": "0 次 LLM 调用；无 TLDR",
+  "error_or_risk": "E7"
+ },
+ {
+  "case_id": "RB-06",
+  "suite": "RB",
+  "priority": "P1",
+  "title": "WIKI_LINK_MODE",
+  "action": "explicit/hybrid/llm 三档",
+  "pass_criteria": "观测三档是否产生行为差异；若完全相同则 R-25 成立并登记缺陷",
+  "error_or_risk": "E8/R-25"
+ },
+ {
+  "case_id": "RB-07",
+  "suite": "RB",
+  "priority": "P1",
+  "title": "WIKI_BUDGET_TOKENS",
+  "action": "设 300/900/5000",
+  "pass_criteria": "观测注入 token 是否随设置变化；不变则 R-24 成立并登记缺陷",
+  "error_or_risk": "E7/R-24"
+ },
+ {
+  "case_id": "RB-08",
+  "suite": "RB",
+  "priority": "P1",
+  "title": "文档化但未接线的变量",
+  "action": "设 MEMORY_RETRIEVAL_TOPK=20",
+  "pass_criteria": "无效果（登记缺陷）",
+  "error_or_risk": "E7"
+ },
+ {
+  "case_id": "RB-09",
+  "suite": "RB",
+  "priority": "P0",
+  "title": "per-owner settings 生效范围",
+  "action": "只给 alice 设 topK=20 且 settings.Enabled=false，分别测 chat/task",
+  "pass_criteria": "chat 按 20 且不注入记忆；task 若仍 8 且仍注入则 H-02 成立并登记 S2；同时检查 wiki 是否仍注入（R-37）",
+  "error_or_risk": "E7/R-04"
+ },
+ {
+  "case_id": "RB-10",
+  "suite": "RB",
+  "priority": "P1",
+  "title": "删除 wiki 重建",
+  "action": "见 LC-15",
+  "pass_criteria": "同 LC-15",
+  "error_or_risk": "E9"
+ },
+ {
+  "case_id": "RB-11",
+  "suite": "RB",
+  "priority": "P1",
+  "title": "schema 升级",
+  "action": "旧版本 snapshot 导入",
+  "pass_criteria": "兼容读取；缺失字段零值",
+  "error_or_risk": "E11"
+ },
+ {
+  "case_id": "RB-12",
+  "suite": "RB",
+  "priority": "P1",
+  "title": "双开回退",
+  "action": "见 LC-07",
+  "pass_criteria": "同 LC-07",
+  "error_or_risk": "E11/R-16"
+ },
+ {
+  "case_id": "RB-13",
+  "suite": "RB",
+  "priority": "P2",
+  "title": "配置热更新",
+  "action": "修改 settings 不重启",
+  "pass_criteria": "下一次请求生效；无需重启",
+  "error_or_risk": "E7"
+ }
+]

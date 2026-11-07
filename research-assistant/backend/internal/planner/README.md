@@ -1,5 +1,7 @@
 # planner
 
+简体中文 | [English](README.en.md)
+
 `planner` 把用户意图转换为可执行的 `PlanGraph`。它是模型输出与确定性调度之间的边界：模型可以提出计划，但只有通过结构校验的 DAG 才会进入 Scheduler。
 
 ## 相关架构图
@@ -33,9 +35,9 @@
 
 1. 接收 `IntentContext`、附件和用户约束。
 2. 根据意图与复杂度选择任务模板（论文复现、代码执行、Benchmark、AutoResearch、通用问答等）。
-3. 生成节点、依赖边、Agent 分配和输入输出契约。
-4. 校验 DAG：无环、依赖存在、必填输入完整、节点类型合法。
-5. 返回 `models.PlanGraph`，由 API 写入 Plan Store。
+3. 生成节点、依赖边、Agent 分配、`InputBindings` 与输入输出契约。
+4. 校验 DAG：无环、依赖存在、必填输入完整、节点类型合法、Artifact producer 唯一。
+5. 返回 `models.PlanGraph`，由 API 写入 Plan Store 并生成 revision。
 
 ### 复杂度路由与模板变体
 

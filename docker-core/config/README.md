@@ -1,5 +1,7 @@
 # config
 
+简体中文 | [English](README.en.md)
+
 `config` 提供 `docker-core` 的 TOML 配置结构、默认模板和环境变量覆盖。
 
 ## 配置结构
