@@ -1,6 +1,8 @@
 # scheduler
 
-`scheduler` 负责执行 `PlanGraph`：按依赖调度节点、维护任务租约、处理重试/取消、执行仓库准备，并把 Artifact 路由给下游 Agent。
+简体中文 | [English](README.en.md)
+
+`scheduler` 负责执行 `PlanGraph`：按依赖调度节点、维护任务租约、处理重试/取消、执行仓库准备、注入记忆，并把 Artifact 路由给下游 Agent。
 
 ## 相关架构图
 
@@ -11,17 +13,17 @@
 
 | 文件 | 职责 |
 |---|---|
-| `scheduler.go` | 调度器核心、并发槽、停滞检测、结果外置与计划级清理 |
+| `scheduler.go` | 调度器核心、并发槽、停滞检测、结果外置与计划级清理、MemorySink 接口 |
 | `scheduler_control.go` | pause / resume / cancel / retry / reassign / 从节点重跑 |
-| `scheduler_execute.go` | 计划与单节点执行入口、就绪节点提升 |
+| `scheduler_execute.go` | 计划与单节点执行入口、就绪节点提升、终态记忆写入 |
 | `scheduler_dispatch.go` | 就绪节点选择、并发派发、任务用量与日志转发 |
 | `scheduler_state.go` | 任务开始/完成状态迁移、Artifact 校验标注 |
 | `scheduler_lease_approval.go` | 失败处理、租约过期、审批超时、预算与阻塞 |
 | `scheduler_events.go` | 事件发布与终态汇总辅助 |
-| `executor.go` | 单节点执行、Agent 调用、Prompt 组装、Artifact 写入 |
+| `executor.go` | 单节点执行、Agent 调用、Prompt 组装、记忆注入、Artifact 写入 |
 | `graph.go` | DAG 入度、就绪队列与依赖管理 |
 | `policy.go` | 调度策略与预算判断 |
-| `runtime_gate.go` | 运行时审批门禁（镜像/依赖/数据/GPU/网络） |
+| `runtime_gate.go` | 运行时审批门禁（镜像/依赖/数据/GPU/网络）与 tool_call 审批门 |
 | `repo_discovery.go` | GitHub 仓库发现、元数据与 revision 解析 |
 | `repo_prepare.go` | 克隆、工作区准备、依赖分析与运行时准备 |
 | `reproduction_mode.go` | 论文复现模式与 smoke 约束 |
@@ -32,7 +34,7 @@
 2. 入度为 0 的节点进入 ReadyQueue，由 Worker 并发执行。
 3. 节点执行前获取租约，防止重复执行；完成后写入 Artifact 并发布事件。
 4. 节点失败时按策略重试、标记阻塞或取消后继节点。
-5. 计划达到终态后汇总状态和事件。
+5. 计划达到终态后汇总状态和事件，并调用 `MemorySink.RecordPlan` 写入计划级记忆。
 
 ## 任务控制与运行时审批
 
@@ -40,11 +42,23 @@
 - 任务级：`retry` 重置失败/阻塞/取消节点及其阻塞后继；`reassign` 修改 `assigned_to` 并重置任务；`run`（从节点重跑）重置指定节点及下游后重新执行。
 - `RuntimeActionRequest`：镜像拉取、依赖安装、数据/模型下载、GPU、网络访问等操作在 `confirm_important` 模式下暂停计划，等待计划所有者 `approve/reject`；`full_access` 在安全边界内自动执行并记录审计。
 - 运行时动作有超时窗口（`APPROVAL_TIMEOUT_SECONDS`）；拒绝或超时会终止计划并标记 `outcome=blocked`，不会把等待审批当作终态。
+- `SetToolGate` 把 `tool_call` 节点的 `AllowedTools` / `ToolGrant` 判断接入同一审批门：必然被拒绝的调用不会弹审批。
+
+## 记忆注入
+
+`RoutedTaskExecutor` 在调用 Agent 前从 `sharedContext` 读取：
+
+- `core_memory`：稳定前缀，放在 prompt 前部。
+- `retrieved_memory`：按任务检索的 episode/procedure/negative。
+- `memory_refs`：写入计划与 Artifact 元数据。
+
+任务结束调用 `MemorySink.RecordTask`；计划终态调用 `RecordPlan`。记忆失败只记录日志，不影响任务结果。
 
 ## 结果校验
 
 - `PlanFinalizer` 根据节点状态、Artifact、EnvironmentManifest、TrialLedger 与 Claim-Evidence 生成 `PlanOutcome`（completed/partial/smoke/mock/blocked/failed/needs_review）。
 - 视觉校验结果写入 `plan.verification`、`node.verification`、`artifact.metadata.verification` 与 `verification_*` 指标；视觉 fail 是 advisory，不伪造 completed。
+- Artifact 必须非空、类型合法且 producer 唯一；不满足时任务失败而不是伪造成功。
 
 ## 租约与恢复
 

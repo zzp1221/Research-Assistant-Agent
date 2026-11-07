@@ -1,5 +1,7 @@
 # intent_recognition
 
+简体中文 | [English](README.en.md)
+
 真实 LLM 驱动的意图识别服务 + 双路由训练工程。
 
 ## 服务

@@ -1,5 +1,7 @@
 # research-optimizer
 
+简体中文 | [English](README.en.md)
+
 Python 研究优化器，为 Go Harness 提供数据特征、候选排序和跨任务经验。它不执行实验，也不决定科学验收。
 
 ## 在系统中的位置

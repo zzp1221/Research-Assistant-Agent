@@ -1,5 +1,7 @@
 # Benchmark Agent 分类示例
 
+简体中文 | [English](README.en.md)
+
 用小样本验证独立 Benchmark Agent，不用于证明任何模型效果。
 
 输入是 24 条带 `review` 和 `label` 的分类记录。系统会执行：

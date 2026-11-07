@@ -1,5 +1,7 @@
 # Attention 论文复现示例
 
+简体中文 | [English](README.en.md)
+
 把 `Attention Is All You Need` 的轻量复现整理为一条可复用验收路径。示例固定使用 `harvardnlp/annotated-transformer`，以 smoke 模式运行注意力结构消融，重点验证从计划生成到沙箱产物回传的完整链路。
 
 ## 验证内容

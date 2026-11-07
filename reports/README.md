@@ -1,10 +1,12 @@
 # Reports
 
+简体中文 | [English](README.en.md)
+
 本目录用于**本地/容器内**生成验收报告与 E2E 产物，默认不进入版本库。
 
 `.gitignore` 的约定：
 
-- 仅保留本 `README.md`；
+- 仅保留本 `README.md`（及英文版）；
 - `reports/**` 下的 JSON、Markdown、PNG、PDF fixture 与评估报告均为本地生成物；
 - 需要长期保留的结论请先脱敏，再整理到 `docs/` 或模块 README，而不是直接提交原始运行日志。
 

@@ -1,5 +1,7 @@
 # watchdog
 
+简体中文 | [English](README.en.md)
+
 `watchdog` 是执行层的安全护栏，负责识别无效重试、交互式阻塞和超时命令，并向 Planner 返回可操作的修复建议。
 
 ## 核心能力

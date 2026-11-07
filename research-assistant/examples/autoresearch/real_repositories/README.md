@@ -1,5 +1,7 @@
 # 真实仓库 AutoResearch 任务包
 
+简体中文 | [English](README.en.md)
+
 该目录包含六个真实开源仓库的有界 AutoResearch 任务包。每个任务包记录上游 commit、公开搜索评测器与（多数包）模型不可见的 Holdout，用于验证“真实仓库 + 真实执行 + 隐藏验收”的完整链路。
 
 ## 任务包

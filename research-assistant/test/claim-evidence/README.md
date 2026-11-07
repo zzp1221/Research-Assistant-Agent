@@ -1,5 +1,7 @@
 # Claim-to-Evidence 验收样例
 
+简体中文 | [English](README.en.md)
+
 ## 相关流程图
 
 - [Agent 执行流程图](../../../docs/diagrams/agent-execution-flow.drawio)（[SVG 预览](../../../docs/diagrams/agent-execution-flow.svg)）

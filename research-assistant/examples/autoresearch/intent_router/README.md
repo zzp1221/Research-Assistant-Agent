@@ -1,5 +1,7 @@
 # Intent Router AutoResearch 示例
 
+简体中文 | [English](README.en.md)
+
 用于验证 AutoResearch harness 本身，不依赖 GPU、网络或第三方 Python 包。
 
 ## 文件角色

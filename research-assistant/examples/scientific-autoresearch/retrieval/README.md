@@ -1,5 +1,7 @@
 # Retrieval Adapter 示例
 
+简体中文 | [English](README.en.md)
+
 用检索任务演示通用 `experiment.spec/v1` 如何工作。通用 Harness 不理解 BM25 或图检索，它只读取 Adapter 声明的方法分支、参数有限域、评测命令、指标、目标和预算。
 
 ## 输入

@@ -1,5 +1,7 @@
 # AutoResearch 示例
 
+简体中文 | [English](README.en.md)
+
 该目录演示预算受限的自动研究：在冻结的评测器、数据和文件范围内，让 Agent 生成候选，真实执行后按指标 Keep/Reject，最后用独立进程或隐藏 Holdout 复验。
 
 ## 示例
