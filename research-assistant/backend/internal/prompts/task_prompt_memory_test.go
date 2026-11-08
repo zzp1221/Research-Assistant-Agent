@@ -14,6 +14,7 @@ func TestBuildTaskPromptIncludesMemorySectionsInOrder(t *testing.T) {
 	}
 	task := &models.TaskNode{Name: "parse", Type: "paper_parse", Description: "解析论文", OutputArtifacts: []string{"paper_summary"}}
 	prompt, err := BuildTaskPrompt(TaskPromptInput{
+		Budget:          PromptBudget{ContextWindow: 32000, MaxOutput: 8192, Safety: 1600},
 		System:          "system",
 		CoreMemory:      "<memory kind=\"profile\">core memory</memory>",
 		RetrievedMemory: "<memory kind=\"fact\">retrieved memory</memory>",

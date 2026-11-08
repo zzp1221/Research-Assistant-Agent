@@ -61,8 +61,9 @@ type Profile struct {
 	TimeoutSeconds     int        `json:"timeout_seconds"`
 	MaxOutputTokens    int        `json:"max_output_tokens,omitempty"`
 	// ContextWindowTokens is the model context window used for prompt budgeting.
-	// Zero means the 128000 default.
-	ContextWindowTokens  int       `json:"context_window_tokens,omitempty"`
+	// Zero means unknown; generation requires an explicit capacity.
+	ContextWindowTokens int `json:"context_window_tokens,omitempty"`
+	ContextPolicy
 	PromptPricePer1K     float64   `json:"prompt_price_per_1k,omitempty"`
 	CompletionPricePer1K float64   `json:"completion_price_per_1k,omitempty"`
 	Revision             int       `json:"revision"`
@@ -91,16 +92,19 @@ func (p Profile) MaskedKey() string {
 // Input is the create/update payload. APIKey empty on update keeps the
 // existing secret unchanged.
 type Input struct {
-	Name                 string
-	Provider             string
-	BaseURL              string
-	Model                string
-	APIKey               string
-	Roles                []string
-	SupportsVision       string
-	TimeoutSeconds       int
-	MaxOutputTokens      int
-	ContextWindowTokens  int
+	Name                   string
+	Provider               string
+	BaseURL                string
+	Model                  string
+	APIKey                 string
+	Roles                  []string
+	SupportsVision         string
+	TimeoutSeconds         int
+	MaxOutputTokens        int
+	ContextWindowTokens    int
+	MaxOutputTokensSet     bool
+	ContextWindowTokensSet bool
+	ContextPolicy
 	PromptPricePer1K     float64
 	CompletionPricePer1K float64
 }
@@ -119,7 +123,7 @@ type Routing struct {
 // in process memory and never logged or serialized.
 type Resolved struct {
 	Profile Profile
-	APIKey  string
+	APIKey  string `json:"-"`
 	Mode    string // main / vision_fallback / text_fallback / bootstrap
 }
 
@@ -163,7 +167,7 @@ func last4(value string) string {
 	return value[len(value)-4:]
 }
 
-func (p Profile) validate() error {
+func (p *Profile) validate() error {
 	if strings.TrimSpace(p.Name) == "" {
 		return fmt.Errorf("%w: name is required", ErrInvalid)
 	}
@@ -185,8 +189,5 @@ func (p Profile) validate() error {
 	if p.ContextWindowTokens < 0 {
 		return fmt.Errorf("%w: context_window_tokens must be positive", ErrInvalid)
 	}
-	if p.ContextWindowTokens == 0 {
-		p.ContextWindowTokens = 128000
-	}
-	return nil
+	return p.ValidateContext()
 }

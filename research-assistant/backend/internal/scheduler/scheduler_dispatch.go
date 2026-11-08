@@ -126,6 +126,7 @@ func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*m
 			recorder := usage.NewRecorder()
 			// Bind the plan owner so runtime model profiles resolve per user.
 			execCtx := modelresolver.WithOwner(usage.WithRecorder(agentctx.WithLogChannel(ctx, logChannel), recorder), plan.OwnerID)
+			execCtx = s.compactionBudgetContext(execCtx, plan)
 			taskTimeout := time.Duration(currentTask.TimeoutSeconds) * time.Second
 			if taskTimeout <= 0 {
 				taskTimeout = 10 * time.Minute

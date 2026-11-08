@@ -3,6 +3,7 @@ import { ArrowDown, FileText, Maximize2, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage } from '../../contracts/api';
+import { ContextStatus } from './ContextStatus';
 
 interface PdfActions {
   onOpenPdf: () => void;
@@ -84,6 +85,7 @@ export function ChatMessageList(props: ChatMessageListProps) {
                 >
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
                 </div>
+                <ContextStatus report={msg.contextReport} />
 
                 {msg.actions && msg.actions.length > 0 ? (
                   <div className="message-actions">

@@ -1,32 +1,37 @@
 // Package conversation provides a minimal multi-turn LLM session used by
 // repair loops. It keeps the system prompt and first user message immutable,
-// appends assistant outputs verbatim, and bounds the retained history.
+// appends assistant outputs verbatim, and delegates capacity to ModelRuntime.
 package conversation
 
 import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"strings"
 
+	"research-assistant-backend/internal/contextwindow"
 	"research-assistant-backend/internal/llmclient"
+	"research-assistant-backend/internal/modelresolver"
 	"research-assistant-backend/internal/models"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 )
 
-// Session is one bounded LLM conversation.
+// Session is one LLM conversation with recoverable source history.
 type Session struct {
-	ID       string
-	Messages []*schema.Message
-	MaxTurns int
+	ID            string
+	Messages      []*schema.Message
+	MaxTurns      int // Deprecated: execution limits must not delete history.
+	ContextReport contextwindow.Report
 
 	hashes []string
 }
 
 // NewSession creates a session with a stable system prompt and first user
-// message. MaxTurns defaults to 6.
+// message. History is never trimmed by turn count.
 func NewSession(id, system, firstUser string) *Session {
 	return &Session{
 		ID: id,
@@ -34,7 +39,6 @@ func NewSession(id, system, firstUser string) *Session {
 			{Role: schema.System, Content: system},
 			{Role: schema.User, Content: firstUser},
 		},
-		MaxTurns: 6,
 	}
 }
 
@@ -59,7 +63,9 @@ func (s *Session) Generate(ctx context.Context, chat model.BaseChatModel) (*sche
 	if s == nil {
 		return nil, nil
 	}
-	s.Trim()
+	ctx = modelresolver.WithSubBranch(ctx, s.ID)
+	s.ContextReport.Requests = contextwindow.RequestCounts{}
+	ctx = contextwindow.WithReport(ctx, &s.ContextReport)
 	s.hashes = append(s.hashes, s.PrefixHash())
 	msg, err := llmclient.GenerateWithUsage(ctx, chat, s.Messages)
 	if err != nil {
@@ -69,23 +75,9 @@ func (s *Session) Generate(ctx context.Context, chat model.BaseChatModel) (*sche
 	return msg, nil
 }
 
-// Trim keeps system + first user and the most recent turns. Older middle turns
-// are dropped in assistant/user pairs, never the immutable prefix.
+// Trim is retained for source compatibility. Capacity is managed by tokens at
+// the model boundary, so repair evidence is never dropped by turn count.
 func (s *Session) Trim() {
-	if s == nil || len(s.Messages) <= 2 {
-		return
-	}
-	maxTurns := s.MaxTurns
-	if maxTurns <= 0 {
-		maxTurns = 6
-	}
-	keep := 2 + 2*(maxTurns-1)
-	if len(s.Messages) <= keep {
-		return
-	}
-	head := append([]*schema.Message(nil), s.Messages[:2]...)
-	tail := append([]*schema.Message(nil), s.Messages[len(s.Messages)-(keep-2):]...)
-	s.Messages = append(head, tail...)
 }
 
 // PrefixHash returns a stable hash of the current messages.
@@ -129,9 +121,40 @@ func (s *Session) Snapshot() map[string]any {
 	hashes := append([]string(nil), s.hashes...)
 	return map[string]any{
 		"session_id":    s.ID,
+		"context_state": s.ContextReport,
 		"turns":         s.Turns(),
 		"prompt_hashes": hashes,
+		"messages":      cloneMessages(s.Messages),
 	}
+}
+
+func cloneMessages(messages []*schema.Message) []*schema.Message {
+	raw, _ := json.Marshal(messages)
+	var cloned []*schema.Message
+	_ = json.Unmarshal(raw, &cloned)
+	return cloned
+}
+
+// Restore recovers the visible source conversation. The same stable branch ID
+// lets ModelRuntime restore its committed native generation independently.
+func Restore(snapshot map[string]any) (*Session, error) {
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		return nil, err
+	}
+	var saved struct {
+		ID            string               `json:"session_id"`
+		Messages      []*schema.Message    `json:"messages"`
+		Hashes        []string             `json:"prompt_hashes"`
+		ContextReport contextwindow.Report `json:"context_state"`
+	}
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		return nil, err
+	}
+	if saved.ID == "" || len(saved.Messages) < 2 {
+		return nil, fmt.Errorf("repair_session_unrecoverable")
+	}
+	return &Session{ID: saved.ID, Messages: saved.Messages, hashes: saved.Hashes, ContextReport: saved.ContextReport}, nil
 }
 
 // Record stores the session summary on task metadata.

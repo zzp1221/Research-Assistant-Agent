@@ -36,6 +36,7 @@ type Snapshot struct {
 	CostSource       string                `json:"cost_source,omitempty"`
 	SandboxSeconds   float64               `json:"sandbox_seconds,omitempty"`
 	ByModel          map[string]ModelUsage `json:"by_model,omitempty"`
+	Compaction       ModelUsage            `json:"context_compaction"`
 }
 
 // Empty reports whether the recorder observed nothing.
@@ -55,6 +56,7 @@ type Recorder struct {
 	costSource     string
 	sandboxSeconds float64
 	byModel        map[string]ModelUsage
+	compaction     ModelUsage
 }
 
 func NewRecorder() *Recorder {
@@ -95,6 +97,19 @@ type Price struct {
 // RecordLLMWithPrice records one model invocation, preferring the runtime
 // profile price over the env fallback. CostSource reports which was used.
 func (r *Recorder) RecordLLMWithPrice(model string, promptTokens, completionTokens int, estimated bool, price Price) {
+	promptTokens = max(0, promptTokens)
+	completionTokens = max(0, completionTokens)
+	cost, source := EstimateCostWithPrice(promptTokens, completionTokens, price)
+	r.recordLLM(model, promptTokens, completionTokens, estimated, cost, source)
+}
+
+// RecordLLMUnknownCost records combined generation/native-compaction usage
+// whose billing cannot be inferred from ordinary generation rates.
+func (r *Recorder) RecordLLMUnknownCost(model string, promptTokens, completionTokens int, estimated bool) {
+	r.recordLLM(model, promptTokens, completionTokens, estimated, 0, "unknown")
+}
+
+func (r *Recorder) recordLLM(model string, promptTokens, completionTokens int, estimated bool, cost float64, source string) {
 	if r == nil {
 		return
 	}
@@ -108,7 +123,6 @@ func (r *Recorder) RecordLLMWithPrice(model string, promptTokens, completionToke
 	if model == "" {
 		model = "unknown"
 	}
-	cost, source := EstimateCostWithPrice(promptTokens, completionTokens, price)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.llmCalls++
@@ -125,6 +139,54 @@ func (r *Recorder) RecordLLMWithPrice(model string, promptTokens, completionToke
 	entry.Estimated = entry.Estimated || estimated
 	entry.CostSource = weakerCostSource(entry.CostSource, source)
 	r.byModel[model] = entry
+}
+
+// MarkServerCompaction records an observed server operation without inventing
+// a separate HTTP call, token breakdown or price.
+func (r *Recorder) MarkServerCompaction() {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.compaction.CostSource = "unknown"
+	r.compaction.Estimated = true
+	r.costSource = weakerCostSource(r.costSource, "unknown")
+}
+
+// RecordCompaction includes the additional HTTP attempt in total usage while
+// keeping its purpose separate. Native compaction prices are not inferred from
+// ordinary generation rates; absent billing data remains explicitly unknown.
+func (r *Recorder) RecordCompaction(model string, in, out int, estimated bool, price Price, textSummary bool) {
+	if r == nil {
+		return
+	}
+	cost, source := 0.0, "unknown"
+	if textSummary {
+		cost, source = EstimateCostWithPrice(in, out, price)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.llmCalls++
+	r.promptTokens += in
+	r.completion += out
+	r.costUSD += cost
+	r.estimated = r.estimated || estimated
+	r.costSource = weakerCostSource(r.costSource, source)
+	entry := r.byModel[model]
+	entry.Calls++
+	entry.PromptTokens += in
+	entry.CompletionTokens += out
+	entry.CostUSD += cost
+	entry.Estimated = entry.Estimated || estimated
+	entry.CostSource = weakerCostSource(entry.CostSource, source)
+	r.byModel[model] = entry
+	r.compaction.Calls++
+	r.compaction.PromptTokens += in
+	r.compaction.CompletionTokens += out
+	r.compaction.CostUSD += cost
+	r.compaction.Estimated = r.compaction.Estimated || estimated
+	r.compaction.CostSource = weakerCostSource(r.compaction.CostSource, source)
 }
 
 func weakerCostSource(left, right string) string {
@@ -197,6 +259,7 @@ func (r *Recorder) Snapshot() Snapshot {
 		CostSource:       r.costSource,
 		SandboxSeconds:   r.sandboxSeconds,
 		ByModel:          byModel,
+		Compaction:       r.compaction,
 	}
 }
 
@@ -215,6 +278,12 @@ func (r *Recorder) Merge(snapshot Snapshot) {
 	r.estimated = r.estimated || snapshot.Estimated
 	r.costSource = weakerCostSource(r.costSource, snapshot.CostSource)
 	r.sandboxSeconds += snapshot.SandboxSeconds
+	r.compaction.Calls += snapshot.Compaction.Calls
+	r.compaction.PromptTokens += snapshot.Compaction.PromptTokens
+	r.compaction.CompletionTokens += snapshot.Compaction.CompletionTokens
+	r.compaction.CostUSD += snapshot.Compaction.CostUSD
+	r.compaction.Estimated = r.compaction.Estimated || snapshot.Compaction.Estimated
+	r.compaction.CostSource = weakerCostSource(r.compaction.CostSource, snapshot.Compaction.CostSource)
 	for key, value := range snapshot.ByModel {
 		entry := r.byModel[key]
 		entry.Calls += value.Calls

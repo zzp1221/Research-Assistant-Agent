@@ -71,6 +71,9 @@ func (m *runtimePlannerModel) pick(ctx context.Context) (model.BaseChatModel, er
 }
 
 func (m *runtimePlannerModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	if resolver := modelresolver.Default(); resolver != nil {
+		return resolver.GenerateSchema(ctx, input)
+	}
 	picked, err := m.pick(ctx)
 	if err != nil {
 		return nil, err
@@ -79,6 +82,13 @@ func (m *runtimePlannerModel) Generate(ctx context.Context, input []*schema.Mess
 }
 
 func (m *runtimePlannerModel) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	if modelresolver.Default() != nil {
+		message, err := m.Generate(ctx, input, opts...)
+		if err != nil {
+			return nil, err
+		}
+		return schema.StreamReaderFromArray([]*schema.Message{message}), nil
+	}
 	picked, err := m.pick(ctx)
 	if err != nil {
 		return nil, err
@@ -95,4 +105,17 @@ func (m *runtimePlannerModel) available() bool {
 		return true
 	}
 	return modelresolver.Default() != nil
+}
+
+func (m *runtimePlannerModel) PinCall(ctx context.Context) (context.Context, error) {
+	if resolver := modelresolver.Default(); resolver != nil {
+		call, err := resolver.ResolveCall(ctx)
+		if err != nil {
+			return ctx, err
+		}
+		ctx = modelresolver.WithResolvedCall(ctx, call)
+		ctx = llmclient.WithModelName(ctx, call.Profile.Model)
+		return llmclient.WithModelPrice(ctx, call.Profile.PromptPricePer1K, call.Profile.CompletionPricePer1K), nil
+	}
+	return ctx, nil
 }

@@ -64,7 +64,8 @@ func buildAgentPromptTextWithDescription(sharedContext map[string]interface{}, t
 	if task == nil {
 		return "", prompts.PromptReport{}, nil
 	}
-	if !promptContextV2Enabled() {
+	managed, _ := sharedContext["context_managed"].(bool)
+	if !promptContextV2Enabled() && !managed {
 		return prompts.BuildLegacyTaskPrompt(description, task.Inputs, legacyLimit), prompts.PromptReport{}, nil
 	}
 	planContext := ""
@@ -90,19 +91,20 @@ func buildAgentPromptTextWithDescription(sharedContext map[string]interface{}, t
 		}
 	}
 	assembled, err := prompts.BuildTaskPrompt(prompts.TaskPromptInput{
-		System:          systemPrompt,
-		CoreMemory:      coreMemory,
-		RetrievedMemory: retrievedMemory,
-		WikiContext:     wikiContext,
-		Plan:            plan,
-		PlanContextText: planContext,
-		TaskName:        task.Name,
-		TaskType:        task.Type,
-		TaskDescription: description,
-		OutputArtifacts: task.OutputArtifacts,
-		Inputs:          task.Inputs,
-		Volatile:        volatile,
-		Budget:          promptBudgetFromShared(sharedContext),
+		System:            systemPrompt,
+		CoreMemory:        coreMemory,
+		RetrievedMemory:   retrievedMemory,
+		WikiContext:       wikiContext,
+		Plan:              plan,
+		PlanContextText:   planContext,
+		TaskName:          task.Name,
+		TaskType:          task.Type,
+		TaskDescription:   description,
+		OutputArtifacts:   task.OutputArtifacts,
+		Inputs:            task.Inputs,
+		Volatile:          volatile,
+		Budget:            promptBudgetFromShared(sharedContext),
+		PreserveMaterials: managed,
 	})
 	if err != nil {
 		if errors.Is(err, prompts.ErrPromptBudgetExceeded) {

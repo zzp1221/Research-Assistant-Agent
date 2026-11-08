@@ -15,12 +15,13 @@ import (
 
 // ChatTurn is one persisted chat message.
 type ChatTurn struct {
-	ID        string    `json:"id,omitempty"`
-	Role      string    `json:"role"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
-	PlanID    string    `json:"plan_id,omitempty"`
-	Tokens    int       `json:"tokens,omitempty"`
+	ID           string    `json:"id,omitempty"`
+	Role         string    `json:"role"`
+	Content      string    `json:"content"`
+	ModelContent string    `json:"model_content,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	PlanID       string    `json:"plan_id,omitempty"`
+	Tokens       int       `json:"tokens,omitempty"`
 }
 
 // ChatSession is the server-side chat history for one session.

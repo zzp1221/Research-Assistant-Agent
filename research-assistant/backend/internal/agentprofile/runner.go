@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"research-assistant-backend/internal/modelprofile"
+	"research-assistant-backend/internal/modelresolver"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/oaichat"
 	"research-assistant-backend/internal/tools"
@@ -98,9 +99,10 @@ func (r *ProfileRunner) ExecuteTask(ctx context.Context, task *models.Task, _ ma
 		}
 	}
 	messages := []oaichat.Message{{Role: "user", Text: rendered}}
-	opts := oaichat.Options{MaxOutputTokens: 1024}
+	opts := oaichat.Options{}
 	var response *oaichat.Response
 	var resolvedModel string
+	var modelPrice usage.Price
 	if r.Completer == nil {
 		task.Status = models.StatusFailed
 		task.Error = "no model completer configured"
@@ -108,6 +110,10 @@ func (r *ProfileRunner) ExecuteTask(ctx context.Context, task *models.Task, _ ma
 	}
 	if strings.TrimSpace(profile.ModelProfileID) != "" {
 		resolved, resolveErr := r.Completer.ResolveProfile(ownerID, profile.ModelProfileID)
+		if pinned, ok := modelresolver.ResolvedCall(ctx); ok && pinned.Profile.ID == profile.ModelProfileID {
+			resolved = pinned
+			resolveErr = nil
+		}
 		if resolveErr != nil {
 			task.Status = models.StatusFailed
 			task.Error = "model profile unavailable: " + resolveErr.Error()
@@ -115,10 +121,16 @@ func (r *ProfileRunner) ExecuteTask(ctx context.Context, task *models.Task, _ ma
 		}
 		response, err = r.Completer.CompleteWithResolved(ctx, resolved, messages, opts)
 		resolvedModel = resolved.Profile.Model
+		modelPrice = usage.Price{PromptPer1K: resolved.Profile.PromptPricePer1K, CompletionPer1K: resolved.Profile.CompletionPricePer1K}
+		if task.Metadata == nil {
+			task.Metadata = map[string]any{}
+		}
+		task.Metadata["model_profile_revision"] = resolved.Profile.Revision
 	} else {
 		var resolved modelprofile.Resolved
 		response, resolved, err = r.Completer.Complete(ctx, ownerID, messages, opts)
 		resolvedModel = resolved.Profile.Model
+		modelPrice = usage.Price{PromptPer1K: resolved.Profile.PromptPricePer1K, CompletionPer1K: resolved.Profile.CompletionPricePer1K}
 	}
 	if err != nil {
 		task.Status = models.StatusFailed
@@ -130,8 +142,12 @@ func (r *ProfileRunner) ExecuteTask(ctx context.Context, task *models.Task, _ ma
 		task.Error = "model returned no response"
 		return fmt.Errorf("model returned no response")
 	}
-	if recorder := usage.FromContext(ctx); recorder != nil {
-		recorder.RecordLLM(resolvedModel, response.PromptTokens, response.CompletionTokens, response.EstimatedTokens)
+	if recorder := usage.FromContext(ctx); recorder != nil && !response.Reused {
+		if response.CostUnknown {
+			recorder.RecordLLMUnknownCost(resolvedModel, response.PromptTokens, response.CompletionTokens, response.EstimatedTokens)
+		} else {
+			recorder.RecordLLMWithPrice(resolvedModel, response.PromptTokens, response.CompletionTokens, response.EstimatedTokens, modelPrice)
+		}
 	}
 	task.Result = response.Content
 	task.Status = models.StatusCompleted

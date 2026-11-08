@@ -55,7 +55,7 @@ func TestSessionGenerateAppendsAssistant(t *testing.T) {
 	}
 }
 
-func TestSessionTrimKeepsSystemAndFirstUser(t *testing.T) {
+func TestSessionTrimPreservesAllRepairEvidence(t *testing.T) {
 	session := NewSession("test", "system", "first user")
 	session.MaxTurns = 2
 	for i := 0; i < 6; i++ {
@@ -66,8 +66,12 @@ func TestSessionTrimKeepsSystemAndFirstUser(t *testing.T) {
 	if session.Messages[0].Role != schema.System || session.Messages[1].Content != "first user" {
 		t.Fatal("trim removed the immutable prefix")
 	}
-	if len(session.Messages) > 4 {
-		t.Fatalf("trim kept %d messages, want <= 4", len(session.Messages))
+	if len(session.Messages) != 14 {
+		t.Fatalf("trim kept %d messages, want all 14", len(session.Messages))
+	}
+	restored, err := Restore(session.Snapshot())
+	if err != nil || restored.PrefixHash() != session.PrefixHash() {
+		t.Fatalf("snapshot did not restore the full conversation: %v", err)
 	}
 }
 

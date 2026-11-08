@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -43,6 +44,19 @@ func TestEncryptDecryptRoundTripAndAADBinding(t *testing.T) {
 	}
 	if _, err := decryptSecret(ciphertext, "profile-1", "owner-1", 2); err == nil {
 		t.Fatalf("decrypt must fail when AAD revision changes")
+	}
+}
+
+func TestUpdateCanExplicitlyMarkCapacityUnknown(t *testing.T) {
+	withEncryptionKey(t)
+	store, _ := NewStore("")
+	p, err := store.Create("owner", Input{Name: "main", BaseURL: "https://example.com/v1", Model: "model", APIKey: "key", ContextWindowTokens: 32000}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err = store.Update("owner", p.ID, Input{ContextWindowTokensSet: true, ContextWindowTokens: 0})
+	if err != nil || p.ContextWindowTokens != 0 || p.ContextWindowSource != "unknown" {
+		t.Fatalf("explicit zero retained a stale capacity: %#v %v", p, err)
 	}
 }
 
@@ -213,6 +227,88 @@ func TestBootstrapRotatesAPIKey(t *testing.T) {
 	if secret != "second-key" {
 		t.Fatalf("bootstrap secret = %q, want second-key", secret)
 	}
+}
+
+func TestBootstrapRefreshesEnvironmentCapacityAndRevision(t *testing.T) {
+	withEncryptionKey(t)
+	t.Setenv("MODEL_CONTEXT_WINDOW_TOKENS", "")
+	t.Setenv("PROMPT_CONTEXT_WINDOW", "")
+	dir := t.TempDir()
+	store, _ := NewStore(dir)
+	created, err := store.UpsertBootstrap("https://env.example/v1", "env-model", "env-key")
+	if err != nil || created.ContextWindowTokens != 0 || created.ContextWindowSource != "unknown" {
+		t.Fatalf("initial bootstrap: %#v %v", created, err)
+	}
+	revision := created.Revision
+	for _, capacity := range []string{"32000", "128000", ""} {
+		t.Setenv("MODEL_CONTEXT_WINDOW_TOKENS", capacity)
+		if _, err := store.UpsertBootstrap("https://env.example/v1", "env-model", "env-key"); err != nil {
+			t.Fatal(err)
+		}
+		revision++
+		// Reload to check the credential was resealed for the new revision.
+		store, err = NewStore(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resolved, err := store.Resolve("owner", created.ID)
+		if err != nil || resolved.APIKey != "env-key" || resolved.Profile.Revision != revision || resolved.Profile.ContextWindowTokens != EnvironmentContextWindow() {
+			t.Fatalf("capacity=%q: %#v %v", capacity, resolved.Profile.Masked(), err)
+		}
+	}
+	// An endpoint/model change must invalidate native state even with the same key.
+	if _, err := store.UpsertBootstrap("https://other.example/v1", "other-model", "env-key"); err != nil {
+		t.Fatal(err)
+	}
+	current, _ := store.Get("", created.ID)
+	if current.Revision != revision+1 {
+		t.Fatalf("model change did not advance revision: %#v", current)
+	}
+	if _, err := store.Update("", created.ID, Input{ContextWindowTokens: 64000}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MODEL_CONTEXT_WINDOW_TOKENS", "200000")
+	if _, err := store.UpsertBootstrap("https://other.example/v1", "other-model", "env-key"); err != nil {
+		t.Fatal(err)
+	}
+	current, _ = store.Get("", created.ID)
+	if current.ContextWindowTokens != 64000 || current.ContextWindowSource != "manual" {
+		t.Fatalf("manual capacity overwritten: %#v", current)
+	}
+}
+
+func TestResolveKeepsConcurrentProfileAndCredentialRevisionTogether(t *testing.T) {
+	withEncryptionKey(t)
+	store, _ := NewStore("")
+	created, err := store.Create("owner", Input{Name: "main", BaseURL: "https://example.com/v1", Model: "first", APIKey: "first"}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Resolve("other", created.ID); err != ErrNotFound {
+		t.Fatalf("foreign profile resolved: %v", err)
+	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			value := "first"
+			if i%2 == 0 {
+				value = "second"
+			}
+			if _, err := store.Update("owner", created.ID, Input{Model: value, APIKey: value}); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	}()
+	for i := 0; i < 100; i++ {
+		resolved, err := store.Resolve("owner", created.ID)
+		if err != nil || resolved.Profile.Model != resolved.APIKey {
+			t.Errorf("profile and credential came from different revisions: %v", err)
+		}
+	}
+	wg.Wait()
 }
 
 func TestBootstrapIsIdempotentAndDoesNotOverrideUserProfiles(t *testing.T) {

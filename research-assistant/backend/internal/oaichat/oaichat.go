@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"research-assistant-backend/internal/usage"
 	"strings"
 	"time"
 )
@@ -45,12 +46,20 @@ type Response struct {
 	PromptTokens     int
 	CompletionTokens int
 	EstimatedTokens  bool
+	CostUnknown      bool
 	Latency          time.Duration
+	Reused           bool
+	FinishReason     string
 }
 
 // Client performs chat completions with an SSRF-safe transport.
 type Client struct {
 	httpClient *http.Client
+}
+
+// HTTPClient shares the endpoint transport policy with protocol adapters.
+func (c *Client) HTTPClient() *http.Client {
+	return &http.Client{Transport: c.httpClient.Transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
 // NewClient builds a client. When allowPrivate is false the dialer refuses
@@ -174,7 +183,8 @@ type imageURLPart struct {
 
 type chatCompletionResponse struct {
 	Choices []struct {
-		Message struct {
+		FinishReason string `json:"finish_reason"`
+		Message      struct {
 			Content string `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`
@@ -270,7 +280,7 @@ func (c *Client) Complete(ctx context.Context, baseURL, apiKey, model string, me
 	if len(parsed.Choices) == 0 {
 		return nil, fmt.Errorf("model response has no choices")
 	}
-	result := &Response{Content: parsed.Choices[0].Message.Content, Latency: time.Since(started)}
+	result := &Response{Content: parsed.Choices[0].Message.Content, Latency: time.Since(started), FinishReason: parsed.Choices[0].FinishReason}
 	if parsed.Usage != nil {
 		result.PromptTokens = parsed.Usage.PromptTokens
 		result.CompletionTokens = parsed.Usage.CompletionTokens
@@ -294,13 +304,5 @@ func estimateTokens(messages []Message) int {
 }
 
 func estimateTokensText(text string) int {
-	trimmed := strings.TrimSpace(text)
-	if trimmed == "" {
-		return 0
-	}
-	runes := len([]rune(trimmed))
-	if runes <= 4 {
-		return 1
-	}
-	return runes / 4
+	return usage.EstimateTokens(text)
 }

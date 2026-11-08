@@ -79,6 +79,14 @@ func (s *ChatStore) ContextForQuery(ownerID, projectID, sessionID, text string, 
 	if err != nil || recallBudget <= 0 {
 		return summary, recent, Context{}, err
 	}
+	return summary, recent, s.RecallForQuery(ownerID, projectID, sessionID, text, recallBudget), nil
+}
+
+// RecallForQuery retrieves original sources without changing the active model window.
+func (s *ChatStore) RecallForQuery(ownerID, projectID, sessionID, text string, recallBudget int) Context {
+	if recallBudget <= 0 {
+		return Context{}
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	q := Query{OwnerID: ownerID, ProjectID: projectID, SessionID: sessionID}
@@ -119,7 +127,7 @@ func (s *ChatStore) ContextForQuery(ownerID, projectID, sessionID, text string, 
 		ctx.Citations = append(ctx.Citations, Citation{MemoryID: rec.ID, Title: rec.Title, Kind: rec.Kind,
 			Source: "chat:" + rec.Source.Ref, Trust: rec.Trust, Quote: rec.Content, SessionID: sessionID, MessageID: rec.Source.Ref})
 	}
-	return summary, recent, ctx, nil
+	return ctx
 }
 
 // WorkingState returns the most recent evidence for each research role, keeping

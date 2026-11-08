@@ -85,7 +85,7 @@ func (p *plannerAgent) BuildNodesWithSession(ctx context.Context, intent models.
 	}
 
 	intentPayload, _ := json.MarshalIndent(intent, "", "  ")
-	intentText, _ := prompts.TruncateByTokens(string(intentPayload), 24000, prompts.EstimatedCounter{})
+	intentText := string(intentPayload)
 	userPrompt := prompts.PlannerAgentUserPrompt(intentText)
 	if len(skeleton) > 0 {
 		userPrompt += "\n\n" + prompts.PlannerSkeletonSection(skeleton)
@@ -132,7 +132,7 @@ func (p *plannerAgent) RepairNodesWithSession(ctx context.Context, intent models
 		intentPayload, _ := json.MarshalIndent(intent, "", "  ")
 		session = conversation.NewSession(plannerSessionID(intent), prompts.PlannerAgentSystemPrompt, prompts.PlannerAgentUserPrompt(string(intentPayload)))
 		if nodesPayload, err := json.MarshalIndent(nodes, "", "  "); err == nil {
-			nodesText, _ := prompts.TruncateByTokens(string(nodesPayload), 24000, prompts.EstimatedCounter{})
+			nodesText := string(nodesPayload)
 			session.AddAssistant(nodesText)
 		}
 	}

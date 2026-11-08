@@ -28,27 +28,28 @@ type PromptBudget struct {
 
 // PromptLimit returns the maximum number of prompt tokens allowed.
 func (b PromptBudget) PromptLimit() int {
-	if b.ContextWindow <= 0 {
-		b.ContextWindow = 128000
-	}
-	if b.MaxOutput <= 0 {
-		b.MaxOutput = 8192
-	}
-	if b.Safety <= 0 {
-		b.Safety = 2000
+	if b.Validate() != nil {
+		return 0
 	}
 	limit := b.ContextWindow - b.MaxOutput - b.Safety
-	if limit < 1024 {
-		limit = 1024
-	}
 	return limit
+}
+
+func (b PromptBudget) Validate() error {
+	if b.ContextWindow <= 0 {
+		return fmt.Errorf("model_context_unknown: configure context_window_tokens")
+	}
+	if b.MaxOutput <= 0 || b.Safety < 0 || b.MaxOutput >= b.ContextWindow || b.Safety >= b.ContextWindow-b.MaxOutput {
+		return fmt.Errorf("invalid_context_budget: output and safety must leave positive input capacity")
+	}
+	return nil
 }
 
 // DefaultPromptBudget reads the deployment-wide prompt budget. Per-model
 // profiles can override ContextWindow via modelprofile.ContextWindowTokens.
 func DefaultPromptBudget() PromptBudget {
 	return PromptBudget{
-		ContextWindow: envInt("PROMPT_CONTEXT_WINDOW", 128000),
+		ContextWindow: envInt("MODEL_CONTEXT_WINDOW_TOKENS", envInt("PROMPT_CONTEXT_WINDOW", 0)),
 		MaxOutput:     envInt("PROMPT_MAX_OUTPUT_TOKENS", 8192),
 		Safety:        envInt("PROMPT_SAFETY_TOKENS", 2000),
 	}
@@ -131,7 +132,7 @@ func (r PromptReport) TruncatedSections() []string {
 func BuildSectionsWithLimit(sections []Section, limit int, counter TokenCounter) (string, PromptReport, error) {
 	counter = counterOr(counter)
 	if limit <= 0 {
-		limit = 1024
+		return "", PromptReport{}, fmt.Errorf("invalid_context_budget: input budget must be positive")
 	}
 	report := PromptReport{Budget: limit}
 

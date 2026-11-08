@@ -325,6 +325,7 @@ func (s *Scheduler) ExecuteTask(ctx context.Context, planID, taskID string) (*mo
 	recorder := usage.NewRecorder()
 	startedAt := time.Now()
 	taskCtx, cancel := context.WithTimeout(modelresolver.WithOwner(usage.WithRecorder(ctx, recorder), plan.OwnerID), timeout)
+	taskCtx = s.compactionBudgetContext(taskCtx, plan)
 	defer cancel()
 
 	result, execErr := s.executor.ExecuteTask(taskCtx, plan, task)
