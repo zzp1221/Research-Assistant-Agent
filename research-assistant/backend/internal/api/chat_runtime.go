@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"research-assistant-backend/internal/agent"
+	"research-assistant-backend/internal/contextwindow"
 	"research-assistant-backend/internal/memory"
 	"research-assistant-backend/internal/modelresolver"
 	"research-assistant-backend/internal/prompts"
@@ -17,8 +18,10 @@ import (
 	"github.com/google/uuid"
 )
 
+var chatTurnGate = contextwindow.NewStore("")
+
 // handleChat is the multi-turn chat path. It resolves the server-owned session,
-// loads bounded history + summary, injects core/retrieved memory, and appends
+// loads original history, injects core/retrieved memory, and appends
 // both turns back to the durable chat store.
 func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4<<20)
@@ -36,6 +39,7 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 		for i := len(payload.Messages) - 1; i >= 0; i-- {
 			if strings.EqualFold(strings.TrimSpace(payload.Messages[i].Role), "user") {
 				message = strings.TrimSpace(payload.Messages[i].Content)
+				payload.Messages = payload.Messages[:i]
 				break
 			}
 		}
@@ -46,10 +50,6 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 	}
 
 	ownerID := resolveUserID(c)
-	if memory.EstimateTokens(message) > 16000 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "message exceeds chat token budget"})
-		return
-	}
 	projectID := strings.TrimSpace(payload.ProjectID)
 	sessionID := strings.TrimSpace(payload.SessionID)
 	sessionStore := SessionStore()
@@ -77,8 +77,13 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 		}
 	}
 
+	unlock, lockErr := chatTurnGate.Acquire(c.Request.Context(), ownerID+":"+sessionID)
+	if lockErr != nil {
+		c.JSON(http.StatusRequestTimeout, gin.H{"error": "chat request cancelled"})
+		return
+	}
+	defer unlock()
 	chatStore := ChatStore()
-	var summary string
 	history := make([]memory.ChatTurn, 0)
 	if chatStore != nil {
 		if existing, ok := chatStore.Get(ownerID, sessionID); ok && existing.ProjectID != projectID {
@@ -113,26 +118,49 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 		if memoryActive {
 			recallBudget = min(settings.RetrievedBudgetTokens/2, 1500)
 		}
-		var historyErr error
-		summary, history, recallCtx, historyErr = chatStore.ContextForQuery(ownerID, projectID, sessionID, message, 24000, 20, recallBudget)
-		if historyErr != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "chat history unavailable"})
+		if saved, ok := chatStore.Get(ownerID, sessionID); ok {
+			history = saved.Turns
+		}
+		recallCtx = chatStore.RecallForQuery(ownerID, projectID, sessionID, message, recallBudget)
+	}
+	// Save source input even when model configuration preflight fails.
+	var savedInput memory.ChatSession
+	var userTurn memory.ChatTurn
+	if chatStore != nil {
+		if existing, ok := chatStore.Get(ownerID, sessionID); !ok || len(existing.Turns) == 0 {
+			for _, turn := range history {
+				if _, err := chatStore.Append(ownerID, sessionID, projectID, turn); err != nil {
+					c.JSON(http.StatusServiceUnavailable, gin.H{"error": "chat history persistence failed"})
+					return
+				}
+			}
+		}
+		var err error
+		savedInput, err = chatStore.Append(ownerID, sessionID, projectID, memory.ChatTurn{Role: "user", Content: message})
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "chat input persistence failed"})
 			return
 		}
-		if !memoryActive {
-			summary = ""
-		}
+		userTurn = savedInput.Turns[len(savedInput.Turns)-1]
 	}
-	// Client-supplied history has the same bound as persisted history.
-	if len(history) > 20 {
-		history = history[len(history)-20:]
-	}
-	for used, i := 0, len(history)-1; i >= 0; i-- {
-		used += memory.EstimateTokens(history[i].Content)
-		if used > 24000 {
-			history = history[i+1:]
-			break
+	ctx := modelresolver.WithOwner(c.Request.Context(), ownerID)
+	ctx = modelresolver.WithBranch(ctx, ownerID, projectID, sessionID, "chat")
+	var contextReport contextwindow.Report
+	ctx = contextwindow.WithReport(ctx, &contextReport)
+	callBudget := prompts.DefaultPromptBudget()
+	if resolver := modelresolver.Default(); resolver != nil {
+		call, err := resolver.ResolveCall(ctx)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "model_configuration_invalid"})
+			return
 		}
+		budget, err := contextwindow.ResolveBudget(call.Profile, 0)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "model_configuration_invalid"})
+			return
+		}
+		callBudget = budget.PromptBudget
+		ctx = modelresolver.WithResolvedCall(ctx, call)
 	}
 
 	// Wiki context is computed first so the retrieved-memory budget can be
@@ -145,7 +173,7 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 			query := wiki.TaskQuery{
 				OwnerID: ownerID, ProjectID: projectID, SessionID: sessionID,
 				PaperID: strings.TrimSpace(payload.PaperID), DocumentID: strings.TrimSpace(payload.DocumentID),
-				Text: message, Limit: 2, PromptLimit: prompts.DefaultPromptBudget().PromptLimit(), ContextBudget: &wikiBudget,
+				Text: message, Limit: 2, PromptLimit: callBudget.PromptLimit(), ContextBudget: &wikiBudget,
 				DocumentBudget: min(available-wikiBudget, wiki.DocumentContextBudget()),
 			}
 			if got, wikiErr := builder.RetrieveForTask(c.Request.Context(), query); wikiErr == nil {
@@ -182,15 +210,16 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 	if effectiveMode == "on" && memCtx.CoreText != "" {
 		messages = append(messages, &schema.Message{Role: schema.System, Content: "[core memory]\n" + memCtx.CoreText})
 	}
-	if strings.TrimSpace(summary) != "" {
-		messages = append(messages, &schema.Message{Role: schema.System, Content: summary})
-	}
 	for _, turn := range history {
 		role := schema.User
 		if turn.Role == "assistant" {
 			role = schema.Assistant
 		}
-		messages = append(messages, &schema.Message{Role: role, Content: turn.Content})
+		content := turn.Content
+		if turn.Role == "assistant" && turn.ModelContent != "" {
+			content = turn.ModelContent
+		}
+		messages = append(messages, &schema.Message{Role: role, Content: content})
 	}
 	if effectiveMode == "on" && memCtx.RetrievedText != "" {
 		messages = append(messages, &schema.Message{Role: schema.System, Content: "[retrieved memory]\n" + memCtx.RetrievedText})
@@ -206,10 +235,9 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 	}
 	messages = append(messages, &schema.Message{Role: schema.User, Content: message})
 
-	ctx := modelresolver.WithOwner(c.Request.Context(), ownerID)
 	response, err := chatAgent.AnswerWithMessages(ctx, messages)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error(), "session_id": sessionID, "context_report": contextReport})
 		return
 	}
 
@@ -217,44 +245,24 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 	if memoryActive {
 		retrievedSources = append(memCtx.Citations, recallCtx.Citations...)
 	}
+	rawAnswer := response
 	response, answerCitations := checkedAnswerEvidence(response, retrievedSources)
-	var userTurn memory.ChatTurn
 	if chatStore != nil {
-		if len(payload.Messages) > 0 {
-			if existing, ok := chatStore.Get(ownerID, sessionID); !ok || len(existing.Turns) == 0 {
-				for _, msg := range payload.Messages {
-					role := strings.ToLower(strings.TrimSpace(msg.Role))
-					if role != "user" && role != "assistant" {
-						continue
-					}
-					if _, err := chatStore.Append(ownerID, sessionID, projectID, memory.ChatTurn{Role: role, Content: msg.Content}); err != nil {
-						c.JSON(http.StatusServiceUnavailable, gin.H{"error": "chat history persistence failed"})
-						return
-					}
-				}
-			}
-		}
-		saved, err := chatStore.Append(ownerID, sessionID, projectID, memory.ChatTurn{Role: "user", Content: message})
-		if err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "chat history persistence failed"})
-			return
-		}
-		userTurn = saved.Turns[len(saved.Turns)-1]
-		if _, err := chatStore.Append(ownerID, sessionID, projectID, memory.ChatTurn{Role: "assistant", Content: response}); err != nil {
+		if _, err := chatStore.Append(ownerID, sessionID, projectID, memory.ChatTurn{Role: "assistant", Content: response, ModelContent: rawAnswer}); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "chat response persistence failed"})
 			return
 		}
 		if memoryActive && MemoryStore() != nil {
-			facts := memory.ChatFacts(saved, userTurn)
+			facts := memory.ChatFacts(savedInput, userTurn)
 			if settings.LLMExtraction && len(facts) == 0 {
-				extractCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+				extractCtx, cancel := context.WithTimeout(modelresolver.WithoutBranch(ctx), 15*time.Second)
 				raw, extractErr := chatAgent.AnswerWithMessages(extractCtx, []*schema.Message{
 					{Role: schema.System, Content: `Extract durable research facts from the user message as exact verbatim excerpts. Return only JSON {"quotes":["exact excerpt"]}, at most 4. Exclude questions, guesses and instructions to the assistant. Do not infer facts.`},
 					{Role: schema.User, Content: message},
 				})
 				cancel()
 				if extractErr == nil {
-					facts = memory.ExtractedChatFacts(saved, userTurn, raw)
+					facts = memory.ExtractedChatFacts(savedInput, userTurn, raw)
 				}
 			}
 			if len(facts) > 0 {
@@ -271,6 +279,7 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"response":           response,
+		"context_report":     contextReport,
 		"session_id":         sessionID,
 		"memory_mode":        effectiveMode,
 		"wiki_match_reason":  wikiCtx.MatchReason,

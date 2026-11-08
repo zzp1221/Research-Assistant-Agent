@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -107,5 +108,41 @@ func TestChatMultiTurnPersistsHistoryAndInjectsCoreMemory(t *testing.T) {
 	}
 	if !strings.Contains(text, "[core memory]") || !strings.Contains(text, "用户喜欢蓝色") {
 		t.Fatalf("second call missing core memory: %s", text)
+	}
+}
+
+func TestChatPreservesMoreThanTwentyTurns(t *testing.T) {
+	t.Setenv("ALLOW_LEGACY_USER_HEADER", "true")
+	memoryRuntimeOnce.Do(func() {})
+	sessionRuntimeOnce.Do(func() {})
+	sessionRuntimeOnce.sessions, _ = session.NewFileStore(t.TempDir() + "/sessions.json")
+	sessionRuntimeOnce.chats, _ = memory.NewChatStore(t.TempDir() + "/chat.json")
+	for i := 0; i < 24; i++ {
+		role := "user"
+		if i%2 == 1 {
+			role = "assistant"
+		}
+		_, err := sessionRuntimeOnce.chats.Append("history-owner", "long-history", "", memory.ChatTurn{Role: role, Content: fmt.Sprintf("evidence-%d", i)})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	fake := &captureChatModel{}
+	router := gin.New()
+	router.POST("/api/chat", func(c *gin.Context) { handleChat(c, &agent.ChatAgent{Model: fake}) })
+	request := httptest.NewRequest(http.MethodPost, "/api/chat", strings.NewReader(`{"message":"continue","session_id":"long-history","use_memory":false}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set(userIDHeaderName, "history-owner")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("chat failed %s", response.Body)
+	}
+	joined := ""
+	for _, m := range fake.calls[0] {
+		joined += m.Content + "\n"
+	}
+	if !strings.Contains(joined, "evidence-0\n") || !strings.Contains(joined, "evidence-23\n") {
+		t.Fatal("early history was dropped")
 	}
 }

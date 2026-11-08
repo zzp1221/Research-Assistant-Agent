@@ -39,7 +39,7 @@ func (m *dynamicChatModel) resolvedModel(ctx context.Context) (model.BaseChatMod
 		return m.fallback, "", nil
 	}
 	owner := modelresolver.OwnerFromContext(ctx)
-	resolved, err := resolver.ResolveText(owner)
+	resolved, err := resolver.ResolveCall(modelresolver.WithOwner(ctx, owner))
 	if err != nil {
 		if m.fallback != nil {
 			return m.fallback, "", nil
@@ -81,6 +81,12 @@ func (m *dynamicChatModel) ResolvedModelName(ctx context.Context) string {
 	if m == nil {
 		return ""
 	}
+	if resolver := modelresolver.Default(); resolver != nil {
+		if call, err := resolver.ResolveCall(ctx); err == nil {
+			return call.Profile.Model
+		}
+		return ""
+	}
 	_, name, err := m.resolvedModel(ctx)
 	if err != nil {
 		return ""
@@ -98,7 +104,7 @@ func (m *dynamicChatModel) ResolvedModelPrice(ctx context.Context) (float64, flo
 	if resolver == nil {
 		return 0, 0
 	}
-	resolved, err := resolver.ResolveText(modelresolver.OwnerFromContext(ctx))
+	resolved, err := resolver.ResolveCall(ctx)
 	if err != nil {
 		return 0, 0
 	}
@@ -106,6 +112,9 @@ func (m *dynamicChatModel) ResolvedModelPrice(ctx context.Context) (float64, flo
 }
 
 func (m *dynamicChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	if resolver := modelresolver.Default(); resolver != nil {
+		return resolver.GenerateSchema(ctx, input)
+	}
 	chatModel, modelName, err := m.resolvedModel(ctx)
 	if err != nil {
 		return nil, err
@@ -123,6 +132,13 @@ func (m *dynamicChatModel) Generate(ctx context.Context, input []*schema.Message
 }
 
 func (m *dynamicChatModel) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	if modelresolver.Default() != nil {
+		message, err := m.Generate(ctx, input, opts...)
+		if err != nil {
+			return nil, err
+		}
+		return schema.StreamReaderFromArray([]*schema.Message{message}), nil
+	}
 	chatModel, modelName, err := m.resolvedModel(ctx)
 	if err != nil {
 		return nil, err
@@ -137,6 +153,17 @@ func (m *dynamicChatModel) Stream(ctx context.Context, input []*schema.Message, 
 		ctx = llmclient.WithModelPrice(ctx, promptPrice, completionPrice)
 	}
 	return chatModel.Stream(ctx, input, opts...)
+}
+
+func (m *dynamicChatModel) PinCall(ctx context.Context) (context.Context, error) {
+	if resolver := modelresolver.Default(); resolver != nil {
+		call, err := resolver.ResolveCall(ctx)
+		if err != nil {
+			return ctx, err
+		}
+		return modelresolver.WithResolvedCall(ctx, call), nil
+	}
+	return ctx, nil
 }
 
 // staticChatModel adapts a fixed *openai.ChatModel into model.BaseChatModel for

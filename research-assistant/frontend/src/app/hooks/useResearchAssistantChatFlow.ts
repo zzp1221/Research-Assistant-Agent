@@ -626,7 +626,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
         const citationText = response.answer_citations && response.answer_citations.length > 0
           ? `\n\n原文依据：${response.answer_citations.map((citation) => `[${citation.kind}] ${citation.title}${citation.quote ? `：“${citation.quote}”` : ''}`).join('；')}`
           : '';
-        appendMessageToSession(requestSessionId, { role: 'system', text: response.response + citationText });
+        appendMessageToSession(requestSessionId, { role: 'system', text: response.response + citationText, contextReport: response.context_report });
       }
     } catch (error) {
       console.error(error);
@@ -653,7 +653,9 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
         if (activeSessionRef.current === requestSessionId) setPrompt((current) => current || userPrompt);
         void refreshServerPlans();
       }
-      appendMessageToSession(requestSessionId, { role: 'system', text: message });
+      if (!isTaskRequest && activeSessionRef.current === requestSessionId) setPrompt((current) => current || userPrompt);
+      const contextReport = (error as { response?: { data?: { context_report?: import('../../contracts/api').ContextReport } } })?.response?.data?.context_report;
+      appendMessageToSession(requestSessionId, { role: 'system', text: message, contextReport });
     } finally {
       sending.current = false;
       setLoading(false);

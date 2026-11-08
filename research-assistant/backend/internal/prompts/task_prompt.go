@@ -14,21 +14,22 @@ import (
 // task description alone. PlanContextText lets the scheduler pass an already
 // rendered plan context through sharedContext without re-marshalling the plan.
 type TaskPromptInput struct {
-	System          string
-	CoreMemory      string
-	RetrievedMemory string
-	WikiContext     string
-	Plan            *models.PlanGraph
-	PlanContextText string
-	Task            *models.TaskNode
-	TaskName        string
-	TaskType        string
-	TaskDescription string
-	OutputArtifacts []string
-	Inputs          map[string]any
-	Volatile        string
-	Budget          PromptBudget
-	Counter         TokenCounter
+	System            string
+	CoreMemory        string
+	RetrievedMemory   string
+	WikiContext       string
+	Plan              *models.PlanGraph
+	PlanContextText   string
+	Task              *models.TaskNode
+	TaskName          string
+	TaskType          string
+	TaskDescription   string
+	OutputArtifacts   []string
+	Inputs            map[string]any
+	Volatile          string
+	Budget            PromptBudget
+	Counter           TokenCounter
+	PreserveMaterials bool
 }
 
 // TaskPrompt is the assembled prompt. System is passed through unchanged so
@@ -122,8 +123,11 @@ func TaskInstruction(task *models.TaskNode) string {
 func BuildTaskPrompt(in TaskPromptInput) (TaskPrompt, error) {
 	counter := counterOr(in.Counter)
 	budget := in.Budget
-	if budget.PromptLimit() <= 0 {
+	if budget == (PromptBudget{}) {
 		budget = DefaultPromptBudget()
+	}
+	if err := budget.Validate(); err != nil {
+		return TaskPrompt{}, err
 	}
 	limit := budget.PromptLimit()
 	systemTokens := counter.Count(in.System)
@@ -163,12 +167,37 @@ func BuildTaskPrompt(in TaskPromptInput) (TaskPrompt, error) {
 		sections = append(sections, Section{Name: "wiki_context", Content: wikiContext, Priority: 3})
 	}
 	if len(in.Inputs) > 0 {
-		if inputsText, _ := FormatTaskInputsForPrompt(in.Inputs, limit-systemTokens, counter); strings.TrimSpace(inputsText) != "" {
+		inputLimit := limit - systemTokens
+		if in.PreserveMaterials {
+			raw, _ := json.Marshal(in.Inputs)
+			inputLimit = counter.Count(string(raw))*4 + 1024
+		}
+		policy := DefaultInputPolicy()
+		if in.PreserveMaterials {
+			raw, _ := json.Marshal(in.Inputs)
+			policy.MaxValueRunes = len(raw) + 1
+		}
+		if inputsText, _ := FormatTaskInputsForPromptWithPolicy(in.Inputs, inputLimit, counter, policy); strings.TrimSpace(inputsText) != "" {
 			sections = append(sections, Section{Name: "task_inputs", Content: inputsText, Priority: 4})
 		}
 	}
 	if strings.TrimSpace(in.Volatile) != "" {
 		sections = append(sections, Section{Name: "volatile", Content: in.Volatile, Priority: 5})
+	}
+	if in.PreserveMaterials {
+		var builder strings.Builder
+		report := PromptReport{Budget: limit, TotalTokens: systemTokens}
+		for _, section := range sections {
+			if strings.TrimSpace(section.Content) == "" {
+				continue
+			}
+			writeSection(&builder, section.Name, section.Content, false, 0, 0)
+			n := counter.Count(section.Content)
+			report.Sections = append(report.Sections, SectionReport{Name: section.Name, OriginalTokens: n, IncludedTokens: n})
+		}
+		user := builder.String()
+		report.TotalTokens += counter.Count(user)
+		return TaskPrompt{System: in.System, User: user, Report: report}, nil
 	}
 	user, report, err := BuildSectionsWithLimit(sections, limit-systemTokens, counter)
 	if err != nil {

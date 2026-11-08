@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -8,9 +9,21 @@ import (
 	"time"
 
 	"research-assistant-backend/internal/budget"
+	"research-assistant-backend/internal/contextwindow"
 	"research-assistant-backend/internal/metrics"
 	"research-assistant-backend/internal/models"
 )
+
+func (s *Scheduler) compactionBudgetContext(ctx context.Context, plan *models.PlanGraph) context.Context {
+	if s.budget == nil {
+		return ctx
+	}
+	if configured, ok := s.budget.Budget(plan.OwnerID); ok {
+		remaining := s.budget.Summary(plan.OwnerID, configured.Period).RemainingUSD
+		return contextwindow.WithLimits(ctx, contextwindow.Limits{CostConfigured: true, CostUSD: remaining})
+	}
+	return ctx
+}
 
 // Budget thresholds are evaluated per plan and per task dispatch. The default
 // per-task estimate keeps the gate conservative even before any history exists.

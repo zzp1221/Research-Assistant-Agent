@@ -8,11 +8,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"research-assistant-backend/internal/appconfig"
+	"research-assistant-backend/internal/contextwindow"
 	"research-assistant-backend/internal/modelprofile"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/oaichat"
@@ -60,7 +62,8 @@ func Default() *Resolver {
 // Resolver resolves text/vision profiles for one owner. It is safe for
 // concurrent use.
 type Resolver struct {
-	store *modelprofile.Store
+	store    *modelprofile.Store
+	contexts *contextwindow.Store
 
 	mu    sync.RWMutex
 	cache map[string]*oaichat.Client
@@ -68,7 +71,7 @@ type Resolver struct {
 
 // New builds a resolver over store.
 func New(store *modelprofile.Store) *Resolver {
-	return &Resolver{store: store, cache: map[string]*oaichat.Client{}}
+	return &Resolver{store: store, contexts: contextwindow.NewStore(contextDir()), cache: map[string]*oaichat.Client{}}
 }
 
 // Store exposes the backing profile store.
@@ -191,19 +194,12 @@ func (r *Resolver) ResolveVision(ownerID string) []modelprofile.Resolved {
 }
 
 func (r *Resolver) resolveProfile(id, ownerID, mode string) (modelprofile.Resolved, bool) {
-	profile, ok := r.store.GetRaw(id)
-	if !ok {
+	resolved, err := r.store.Resolve(ownerID, id)
+	if err != nil {
 		return modelprofile.Resolved{}, false
 	}
-	if profile.OwnerID != "" && profile.OwnerID != ownerID {
-		return modelprofile.Resolved{}, false
-	}
-	secret, err := r.store.Secret(id)
-	if err != nil && profile.ID != "env-bootstrap" {
-		return modelprofile.Resolved{}, false
-	}
-	copy := *profile
-	return modelprofile.Resolved{Profile: copy, APIKey: secret, Mode: mode}, true
+	resolved.Mode = mode
+	return resolved, true
 }
 
 func hasRole(roles []string, role string) bool {
@@ -238,15 +234,14 @@ func (r *Resolver) Snapshot(ownerID string) models.ModelSnapshot {
 
 // Complete resolves the text profile and performs one chat completion.
 func (r *Resolver) Complete(ctx context.Context, ownerID string, messages []oaichat.Message, opts oaichat.Options) (*oaichat.Response, modelprofile.Resolved, error) {
-	resolved, err := r.ResolveText(ownerID)
+	resolved, err := r.ResolveCall(WithOwner(ctx, ownerID))
 	if err != nil {
 		return nil, modelprofile.Resolved{}, err
 	}
 	if opts.Timeout <= 0 {
 		opts.Timeout = defaultTimeout(resolved.Profile.TimeoutSeconds)
 	}
-	client := r.clientFor(resolved.Profile)
-	response, err := client.Complete(ctx, resolved.Profile.BaseURL, resolved.APIKey, resolved.Profile.Model, messages, opts)
+	response, err := r.CompleteManaged(ctx, resolved, messages, opts)
 	return response, resolved, err
 }
 
@@ -255,6 +250,8 @@ func (r *Resolver) CompleteVision(ctx context.Context, resolved modelprofile.Res
 	if opts.Timeout <= 0 {
 		opts.Timeout = defaultTimeout(resolved.Profile.TimeoutSeconds)
 	}
+	// Visual verification uses a separate deployment-specific image accounting
+	// path; do not estimate images as ordinary text.
 	client := r.clientFor(resolved.Profile)
 	return client.Complete(ctx, resolved.Profile.BaseURL, resolved.APIKey, resolved.Profile.Model, messages, opts)
 }
@@ -285,8 +282,7 @@ func (r *Resolver) CompleteWithResolved(ctx context.Context, resolved modelprofi
 	if opts.Timeout <= 0 {
 		opts.Timeout = defaultTimeout(resolved.Profile.TimeoutSeconds)
 	}
-	client := r.clientFor(resolved.Profile)
-	return client.Complete(ctx, resolved.Profile.BaseURL, resolved.APIKey, resolved.Profile.Model, messages, opts)
+	return r.CompleteManaged(ctx, resolved, messages, opts)
 }
 
 func defaultTimeout(seconds int) time.Duration {
@@ -297,7 +293,7 @@ func defaultTimeout(seconds int) time.Duration {
 }
 
 // envBootstrap builds an in-memory profile from OPENAI_* / llm config. It keeps
-// deployments without a stored profile working exactly as before.
+// deployments without a stored profile using explicitly configured capacity.
 func envBootstrap() (modelprofile.Resolved, error) {
 	cfg, err := appconfig.LoadLLMConfig()
 	if err != nil {
@@ -312,11 +308,25 @@ func envBootstrap() (modelprofile.Resolved, error) {
 		Roles:               []string{modelprofile.RoleMain, modelprofile.RoleVision},
 		SupportsVision:      modelprofile.VisionUnknown,
 		TimeoutSeconds:      120,
-		ContextWindowTokens: 128000,
+		ContextWindowTokens: configuredCapacity(),
+		MaxOutputTokens:     configuredOutput(),
+		ContextPolicy:       modelprofile.ContextPolicy{APIFormat: modelprofile.APIChat, CompactionMode: modelprofile.CompactionOff, ContextWindowSource: "environment"},
 		Revision:            0,
 		Bootstrap:           true,
 	}
+	profile.NormalizeContext()
 	return modelprofile.Resolved{Profile: profile, APIKey: cfg.APIKey, Mode: "bootstrap"}, nil
+}
+
+func configuredCapacity() int {
+	return modelprofile.EnvironmentContextWindow()
+}
+func configuredOutput() int {
+	if raw := strings.TrimSpace(os.Getenv("PROMPT_MAX_OUTPUT_TOKENS")); raw != "" {
+		n, _ := strconv.Atoi(raw)
+		return n
+	}
+	return 8192
 }
 
 // DefaultStoreDir derives the on-disk profile directory from the environment.

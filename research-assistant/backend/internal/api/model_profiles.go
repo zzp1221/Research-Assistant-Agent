@@ -46,19 +46,20 @@ func (l *probeLimiter) allow(key string) bool {
 }
 
 type modelProfilePayload struct {
-	Name                 string   `json:"name"`
-	Provider             string   `json:"provider"`
-	BaseURL              string   `json:"base_url"`
-	Model                string   `json:"model"`
-	APIKey               string   `json:"api_key"`
-	Roles                []string `json:"roles"`
-	SupportsVision       string   `json:"supports_vision"`
-	TimeoutSeconds       int      `json:"timeout_seconds"`
-	MaxOutputTokens      int      `json:"max_output_tokens"`
-	ContextWindowTokens  int      `json:"context_window_tokens"`
-	PromptPricePer1K     float64  `json:"prompt_price_per_1k"`
-	CompletionPricePer1K float64  `json:"completion_price_per_1k"`
-	Global               bool     `json:"global"`
+	Name                string   `json:"name"`
+	Provider            string   `json:"provider"`
+	BaseURL             string   `json:"base_url"`
+	Model               string   `json:"model"`
+	APIKey              string   `json:"api_key"`
+	Roles               []string `json:"roles"`
+	SupportsVision      string   `json:"supports_vision"`
+	TimeoutSeconds      int      `json:"timeout_seconds"`
+	MaxOutputTokens     *int     `json:"max_output_tokens"`
+	ContextWindowTokens *int     `json:"context_window_tokens"`
+	modelprofile.ContextPolicy
+	PromptPricePer1K     float64 `json:"prompt_price_per_1k"`
+	CompletionPricePer1K float64 `json:"completion_price_per_1k"`
+	Global               bool    `json:"global"`
 }
 
 type modelRoutingPayload struct {
@@ -285,7 +286,7 @@ func registerModelProfileRoutes(apiGroup *gin.RouterGroup) {
 }
 
 func profileInput(payload modelProfilePayload) modelprofile.Input {
-	return modelprofile.Input{
+	input := modelprofile.Input{
 		Name:                 payload.Name,
 		Provider:             payload.Provider,
 		BaseURL:              payload.BaseURL,
@@ -294,11 +295,19 @@ func profileInput(payload modelProfilePayload) modelprofile.Input {
 		Roles:                payload.Roles,
 		SupportsVision:       payload.SupportsVision,
 		TimeoutSeconds:       payload.TimeoutSeconds,
-		MaxOutputTokens:      payload.MaxOutputTokens,
-		ContextWindowTokens:  payload.ContextWindowTokens,
+		ContextPolicy:        payload.ContextPolicy,
 		PromptPricePer1K:     payload.Price(),
 		CompletionPricePer1K: payload.CompletionPrice(),
 	}
+	if payload.MaxOutputTokens != nil {
+		input.MaxOutputTokens = *payload.MaxOutputTokens
+		input.MaxOutputTokensSet = true
+	}
+	if payload.ContextWindowTokens != nil {
+		input.ContextWindowTokens = *payload.ContextWindowTokens
+		input.ContextWindowTokensSet = true
+	}
+	return input
 }
 
 func (p modelProfilePayload) Price() float64 { return p.PromptPricePer1K }
@@ -307,29 +316,35 @@ func (p modelProfilePayload) CompletionPrice() float64 { return p.CompletionPric
 
 func profileResponse(profile modelprofile.Profile) gin.H {
 	payload := gin.H{
-		"id":                      profile.ID,
-		"owner_id":                profile.OwnerID,
-		"global":                  profile.OwnerID == "",
-		"name":                    profile.Name,
-		"provider":                profile.Provider,
-		"base_url":                profile.BaseURL,
-		"model":                   profile.Model,
-		"api_key_masked":          profile.MaskedKey(),
-		"api_key_last4":           profile.APIKeyLast4,
-		"roles":                   profile.Roles,
-		"supports_vision":         profile.SupportsVision,
-		"vision_probe_reason":     profile.VisionProbeReason,
-		"vision_probed_at":        profile.VisionProbedAt,
-		"vision_overridden_at":    profile.VisionOverriddenAt,
-		"timeout_seconds":         profile.TimeoutSeconds,
-		"max_output_tokens":       profile.MaxOutputTokens,
-		"context_window_tokens":   profile.ContextWindowTokens,
-		"prompt_price_per_1k":     profile.PromptPricePer1K,
-		"completion_price_per_1k": profile.CompletionPricePer1K,
-		"revision":                profile.Revision,
-		"bootstrap":               profile.Bootstrap,
-		"created_at":              profile.CreatedAt,
-		"updated_at":              profile.UpdatedAt,
+		"id":                        profile.ID,
+		"owner_id":                  profile.OwnerID,
+		"global":                    profile.OwnerID == "",
+		"name":                      profile.Name,
+		"provider":                  profile.Provider,
+		"base_url":                  profile.BaseURL,
+		"model":                     profile.Model,
+		"api_key_masked":            profile.MaskedKey(),
+		"api_key_last4":             profile.APIKeyLast4,
+		"roles":                     profile.Roles,
+		"supports_vision":           profile.SupportsVision,
+		"vision_probe_reason":       profile.VisionProbeReason,
+		"vision_probed_at":          profile.VisionProbedAt,
+		"vision_overridden_at":      profile.VisionOverriddenAt,
+		"timeout_seconds":           profile.TimeoutSeconds,
+		"max_output_tokens":         profile.MaxOutputTokens,
+		"context_window_tokens":     profile.ContextWindowTokens,
+		"api_format":                profile.APIFormat,
+		"context_window_source":     profile.ContextWindowSource,
+		"compaction_mode":           profile.CompactionMode,
+		"compaction_trigger_ratio":  profile.CompactionTriggerRatio,
+		"text_summary_target_ratio": profile.TextSummaryTargetRatio,
+		"capabilities":              profile.Capabilities,
+		"prompt_price_per_1k":       profile.PromptPricePer1K,
+		"completion_price_per_1k":   profile.CompletionPricePer1K,
+		"revision":                  profile.Revision,
+		"bootstrap":                 profile.Bootstrap,
+		"created_at":                profile.CreatedAt,
+		"updated_at":                profile.UpdatedAt,
 	}
 	return payload
 }

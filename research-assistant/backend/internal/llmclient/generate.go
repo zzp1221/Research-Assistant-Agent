@@ -74,6 +74,11 @@ func ModelName(ctx ...context.Context) string {
 // and cost ledger. The provider usage block is authoritative; when it is missing
 // tokens are estimated from text length and marked estimated.
 func RecordUsage(ctx context.Context, input []*schema.Message, message *schema.Message, latency time.Duration) {
+	if message != nil {
+		if reused, _ := message.Extra["usage_already_recorded"].(bool); reused {
+			return
+		}
+	}
 	promptTokens := 0
 	if message == nil || message.ResponseMeta == nil || message.ResponseMeta.Usage == nil {
 		for _, item := range input {
@@ -89,13 +94,24 @@ func RecordUsage(ctx context.Context, input []*schema.Message, message *schema.M
 			promptTokens = message.ResponseMeta.Usage.PromptTokens
 			completionTokens = message.ResponseMeta.Usage.CompletionTokens
 			estimated = false
+			if isEstimated, _ := message.Extra["usage_estimated"].(bool); isEstimated {
+				estimated = true
+			}
 		} else {
 			completionTokens = usage.EstimateTokens(message.Content)
 		}
 	}
 	modelName := ModelName(ctx)
 	if recorder := usage.FromContext(ctx); recorder != nil {
-		recorder.RecordLLMWithPrice(modelName, promptTokens, completionTokens, estimated, ModelPriceFromContext(ctx))
+		unknownCost := false
+		if message != nil {
+			unknownCost, _ = message.Extra["cost_unknown"].(bool)
+		}
+		if unknownCost {
+			recorder.RecordLLMUnknownCost(modelName, promptTokens, completionTokens, estimated)
+		} else {
+			recorder.RecordLLMWithPrice(modelName, promptTokens, completionTokens, estimated, ModelPriceFromContext(ctx))
+		}
 		recorder.RecordLLMCached(cachedTokensFromUsage(message))
 	}
 	metrics.RecordLLMCall(modelName, promptTokens, completionTokens, latency, estimated)
@@ -132,9 +148,21 @@ func GenerateWithUsage(ctx context.Context, chat model.BaseChatModel, input []*s
 	if chat == nil {
 		return nil, fmt.Errorf("chat model is not configured")
 	}
+	if pinner, ok := chat.(interface {
+		PinCall(context.Context) (context.Context, error)
+	}); ok {
+		var err error
+		ctx, err = pinner.PinCall(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
 	started := time.Now()
 	message, err := chat.Generate(ctx, input, opts...)
 	recordCtx := ctx
+	if provider, ok := chat.(interface{ ResolvedModelName(context.Context) string }); ok {
+		recordCtx = WithModelName(recordCtx, provider.ResolvedModelName(ctx))
+	}
 	if provider, ok := chat.(interface {
 		ResolvedModelPrice(context.Context) (float64, float64)
 	}); ok {

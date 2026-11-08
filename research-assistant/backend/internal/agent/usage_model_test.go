@@ -68,3 +68,30 @@ func TestUsageChatModelRecordsStreamedTokens(t *testing.T) {
 		t.Fatalf("snapshot=%#v", snapshot)
 	}
 }
+
+func TestUsageChatModelPreservesUnknownNativeCostOnStream(t *testing.T) {
+	t.Setenv("LLM_PRICE_PROMPT_PER_1K_USD", "100")
+	recorder := usage.NewRecorder()
+	ctx := usage.WithRecorder(context.Background(), recorder)
+	wrapped := wrapUsageModel(&fakeChatModel{chunks: []*schema.Message{
+		{Content: "answer", ResponseMeta: &schema.ResponseMeta{Usage: &schema.TokenUsage{PromptTokens: 100, CompletionTokens: 30}}, Extra: map[string]any{"cost_unknown": true, "usage_estimated": true}},
+	}})
+	reader, err := wrapped.Stream(ctx, []*schema.Message{{Role: schema.User, Content: "hi"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	for {
+		if _, err := reader.Recv(); err != nil {
+			break
+		}
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && recorder.Snapshot().LLMCalls == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	got := recorder.Snapshot()
+	if got.LLMCalls != 1 || got.CostSource != "unknown" || got.CostUSD != 0 || !got.Estimated || got.PromptTokens != 100 {
+		t.Fatalf("stream lost combined native billing metadata: %#v", got)
+	}
+}

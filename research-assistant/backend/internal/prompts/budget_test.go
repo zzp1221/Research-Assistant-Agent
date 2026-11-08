@@ -65,6 +65,7 @@ func TestBuildTaskPromptDeduplicatesIntentAndArtifact(t *testing.T) {
 	}
 	inputs := map[string]any{"background_context": "FULL ARTIFACT CONTENT"}
 	result, err := BuildTaskPrompt(TaskPromptInput{
+		Budget: PromptBudget{ContextWindow: 32000, MaxOutput: 8192, Safety: 1600},
 		System: "system prompt",
 		Plan:   plan,
 		Task:   task,
@@ -94,7 +95,7 @@ func TestBuildTaskPromptOmitsDuplicatePaperMetadata(t *testing.T) {
 	}
 	task := &models.TaskNode{Name: "Parse Paper", Type: "paper_parse", Description: "任务目标: 解析论文"}
 	inputs := map[string]any{"paper_metadata": map[string]any{"title": "Attention Is All You Need"}}
-	result, err := BuildTaskPrompt(TaskPromptInput{System: "s", Plan: plan, Task: task, Inputs: inputs})
+	result, err := BuildTaskPrompt(TaskPromptInput{System: "s", Plan: plan, Task: task, Inputs: inputs, Budget: PromptBudget{ContextWindow: 32000, MaxOutput: 8192, Safety: 1600}})
 	if err != nil {
 		t.Fatal(err)
 	}

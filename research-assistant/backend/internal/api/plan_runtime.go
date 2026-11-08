@@ -536,7 +536,9 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 	intentContext.RouteHint = route.RouteHint
 	intentContext.ComplexityConfidence = route.Confidence
 	intentContext.ComplexityReason = route.Reason
-	plan, err := r.planner.BuildPlanWithRoute(c.Request.Context(), intentContext, route)
+	plannerCtx := modelresolver.WithOwner(c.Request.Context(), userID)
+	plannerCtx = modelresolver.WithBranch(plannerCtx, userID, projectID, sessionID, "planner")
+	plan, err := r.planner.BuildPlanWithRoute(plannerCtx, intentContext, route)
 	if err != nil {
 		log.Printf("Error generating plan graph: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate plan"})
@@ -585,8 +587,8 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 		}
 		intentContext.Constraints["cost_policy"] = costPolicy
 	}
-	// Freeze the resolved model profiles so this run stays reproducible even if
-	// the user edits profiles while the plan is executing.
+	// Record creation-time routing for audit; each runtime call resolves and
+	// pins its current model configuration separately.
 	if resolver := modelresolver.Default(); resolver != nil {
 		snapshot := resolver.Snapshot(userID)
 		snapshot.CreatedAt = time.Now().UTC()

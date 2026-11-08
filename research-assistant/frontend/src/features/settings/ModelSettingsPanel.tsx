@@ -55,6 +55,10 @@ const emptyDraft = (): ModelProfilePayload => ({
   roles: ['main'],
   supports_vision: 'unknown',
   timeout_seconds: 120,
+  api_format: 'chat_completions',
+  compaction_mode: 'off',
+  compaction_trigger_ratio: 0.8,
+  capabilities: { responses: 'unknown', standalone_compaction: 'unknown', server_compaction: 'unknown', rendered_input_count: 'unknown' },
 });
 
 /** Model profile settings: per-user profiles plus the read-only global list. */
@@ -118,6 +122,12 @@ export function ModelSettingsPanel({ onClose }: ModelSettingsPanelProps) {
       timeout_seconds: profile.timeout_seconds,
       max_output_tokens: profile.max_output_tokens,
       context_window_tokens: profile.context_window_tokens,
+      api_format: profile.api_format ?? 'chat_completions',
+      context_window_source: profile.context_window_source,
+      compaction_mode: profile.compaction_mode ?? 'off',
+      compaction_trigger_ratio: profile.compaction_trigger_ratio ?? 0.8,
+      text_summary_target_ratio: profile.text_summary_target_ratio ?? 0.55,
+      capabilities: profile.capabilities ?? emptyDraft().capabilities,
       prompt_price_per_1k: profile.prompt_price_per_1k,
       completion_price_per_1k: profile.completion_price_per_1k,
     });
@@ -457,8 +467,45 @@ export function ModelSettingsPanel({ onClose }: ModelSettingsPanelProps) {
               </label>
               <label className="block">
                 <span className="journal-caps text-[10px] text-muted">上下文窗口（tokens）</span>
-                <input type="number" min={1024} step={1024} value={draft.context_window_tokens ?? 128000} onChange={(event) => setDraft({ ...draft, context_window_tokens: Number(event.target.value) })} className="mt-1 h-8 w-full border border-line-strong bg-paper px-2 text-[12px] text-ink" />
+                <input type="number" min={1} step={1} value={draft.context_window_tokens || ''} placeholder="待确认：请填写部署容量" onChange={(event) => setDraft({ ...draft, context_window_tokens: Number(event.target.value), context_window_source: 'manual' })} className="mt-1 h-8 w-full border border-line-strong bg-paper px-2 text-[12px] text-ink" />
+                <span className="text-[11px] text-muted">来源：{draft.context_window_source ?? 'unknown'}{editingId ? ` · revision ${profiles.find((profile) => profile.id === editingId)?.revision ?? ''}` : ''}</span>
               </label>
+              <label className="block">
+                <span className="journal-caps text-[10px] text-muted">API 协议</span>
+                <select aria-label="API 协议" value={draft.api_format ?? 'chat_completions'} onChange={(event) => setDraft({ ...draft, api_format: event.target.value as ModelProfilePayload['api_format'], compaction_mode: 'off' })} className="mt-1 h-8 w-full border border-line-strong bg-paper px-2 text-[12px] text-ink">
+                  <option value="chat_completions">Chat Completions</option>
+                  <option value="responses" disabled={draft.capabilities?.responses !== 'yes'}>Responses（需确认支持）</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="journal-caps text-[10px] text-muted">压缩模式</span>
+                <select aria-label="压缩模式" value={draft.compaction_mode ?? 'off'} onChange={(event) => setDraft({ ...draft, compaction_mode: event.target.value as ModelProfilePayload['compaction_mode'] })} className="mt-1 h-8 w-full border border-line-strong bg-paper px-2 text-[12px] text-ink">
+                  <option value="off">关闭（仍检查容量）</option>
+                  {draft.api_format !== 'responses' && <option value="text_summary">结构化工作摘要</option>}
+                  {draft.api_format === 'responses' && <option value="standalone" disabled={draft.capabilities?.standalone_compaction !== 'yes'}>独立原生压缩</option>}
+                  {draft.api_format === 'responses' && <option value="server" disabled={draft.capabilities?.server_compaction !== 'yes'}>服务端压缩</option>}
+                </select>
+              </label>
+              <label className="block">
+                <span className="journal-caps text-[10px] text-muted">请求输出预算（tokens）</span>
+                <input aria-label="请求输出预算" type="number" min={1} value={draft.max_output_tokens || ''} placeholder="部署默认请求预算" onChange={(event) => setDraft({ ...draft, max_output_tokens: Number(event.target.value) })} className="mt-1 h-8 w-full border border-line-strong bg-paper px-2 text-[12px] text-ink" />
+              </label>
+              <label className="block">
+                <span className="journal-caps text-[10px] text-muted">压缩触发比例</span>
+                <input aria-label="压缩触发比例" type="number" min={0.01} max={0.99} step={0.01} value={draft.compaction_trigger_ratio ?? 0.8} onChange={(event) => setDraft({ ...draft, compaction_trigger_ratio: Number(event.target.value) })} className="mt-1 h-8 w-full border border-line-strong bg-paper px-2 text-[12px] text-ink" />
+              </label>
+              <fieldset className="grid gap-2 md:col-span-2 md:grid-cols-2">
+                <legend className="text-[11px] text-muted">部署能力（请依据服务商确认；连通测试不验证这些能力）</legend>
+                {([
+                  ['responses', 'Responses'], ['standalone_compaction', '独立压缩'], ['server_compaction', '服务端压缩'], ['rendered_input_count', '原生输入计数'],
+                ] as const).map(([key, label]) => (
+                  <label key={key} className="text-[11px] text-muted">{label}
+                    <select aria-label={`${label}能力`} value={draft.capabilities?.[key] ?? 'unknown'} onChange={(event) => setDraft({ ...draft, capabilities: { ...emptyDraft().capabilities!, ...draft.capabilities, [key]: event.target.value as 'yes' | 'no' | 'unknown' } })} className="mt-1 h-8 w-full border border-line-strong bg-paper px-2 text-[12px] text-ink">
+                      <option value="unknown">未知</option><option value="yes">已确认支持</option><option value="no">不支持</option>
+                    </select>
+                  </label>
+                ))}
+              </fieldset>
               <label className="block">
                 <span className="journal-caps text-[10px] text-muted">视觉能力（人工覆盖）</span>
                 <select value={draft.supports_vision ?? 'unknown'} onChange={(event) => setDraft({ ...draft, supports_vision: event.target.value })} className="mt-1 h-8 w-full border border-line-strong bg-paper px-2 text-[12px] text-ink">

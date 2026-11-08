@@ -440,7 +440,21 @@
           },
           "context_window_tokens": {
             "type": "integer",
-            "description": "Model context window used for prompt budgeting (default 128000)"
+            "description": "Explicit deployment context capacity; zero or missing means unknown and blocks generation"
+          },
+          "api_format": {"type": "string", "enum": ["chat_completions", "responses"]},
+          "context_window_source": {"type": "string", "enum": ["manual", "existing_config", "environment", "unknown"]},
+          "compaction_mode": {"type": "string", "enum": ["off", "standalone", "server", "text_summary"]},
+          "compaction_trigger_ratio": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
+          "text_summary_target_ratio": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "responses": {"type": "string", "enum": ["yes", "no", "unknown"]},
+              "standalone_compaction": {"type": "string", "enum": ["yes", "no", "unknown"]},
+              "server_compaction": {"type": "string", "enum": ["yes", "no", "unknown"]},
+              "rendered_input_count": {"type": "string", "enum": ["yes", "no", "unknown"]}
+            }
           },
           "prompt_price_per_1k": {
             "type": "number"
@@ -497,7 +511,21 @@
           },
           "context_window_tokens": {
             "type": "integer",
-            "description": "Model context window used for prompt budgeting (default 128000)"
+            "description": "Explicit deployment context capacity; zero or missing means unknown and blocks generation"
+          },
+          "api_format": {"type": "string", "enum": ["chat_completions", "responses"]},
+          "context_window_source": {"type": "string", "enum": ["manual", "existing_config", "environment", "unknown"]},
+          "compaction_mode": {"type": "string", "enum": ["off", "standalone", "server", "text_summary"]},
+          "compaction_trigger_ratio": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
+          "text_summary_target_ratio": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "responses": {"type": "string", "enum": ["yes", "no", "unknown"]},
+              "standalone_compaction": {"type": "string", "enum": ["yes", "no", "unknown"]},
+              "server_compaction": {"type": "string", "enum": ["yes", "no", "unknown"]},
+              "rendered_input_count": {"type": "string", "enum": ["yes", "no", "unknown"]}
+            }
           },
           "prompt_price_per_1k": {
             "type": "number"

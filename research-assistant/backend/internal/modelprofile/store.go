@@ -70,6 +70,7 @@ func (s *Store) load() error {
 			if profile == nil || strings.TrimSpace(profile.ID) == "" {
 				continue
 			}
+			profile.NormalizeContext()
 			s.profiles[profile.ID] = profile
 		}
 	}
@@ -197,6 +198,7 @@ func (s *Store) Create(ownerID string, input Input, maxPerUser int) (Profile, er
 		TimeoutSeconds:       input.TimeoutSeconds,
 		MaxOutputTokens:      input.MaxOutputTokens,
 		ContextWindowTokens:  input.ContextWindowTokens,
+		ContextPolicy:        input.ContextPolicy,
 		PromptPricePer1K:     input.PromptPricePer1K,
 		CompletionPricePer1K: input.CompletionPricePer1K,
 		Revision:             1,
@@ -205,6 +207,9 @@ func (s *Store) Create(ownerID string, input Input, maxPerUser int) (Profile, er
 	}
 	if profile.Provider == "" {
 		profile.Provider = ProviderOpenAICompatible
+	}
+	if input.ContextWindowTokens > 0 && input.ContextWindowSource == "" {
+		profile.ContextWindowSource = "manual"
 	}
 	if profile.TimeoutSeconds <= 0 {
 		profile.TimeoutSeconds = 120
@@ -283,11 +288,48 @@ func (s *Store) Update(ownerID, id string, input Input) (Profile, error) {
 	if input.TimeoutSeconds > 0 {
 		next.TimeoutSeconds = input.TimeoutSeconds
 	}
-	if input.MaxOutputTokens > 0 {
+	if input.MaxOutputTokensSet || input.MaxOutputTokens > 0 {
 		next.MaxOutputTokens = input.MaxOutputTokens
 	}
-	if input.ContextWindowTokens > 0 {
+	if input.ContextWindowTokensSet || input.ContextWindowTokens > 0 {
 		next.ContextWindowTokens = input.ContextWindowTokens
+		next.ContextWindowSource = "manual"
+		if input.ContextWindowTokens == 0 {
+			next.ContextWindowSource = "unknown"
+		}
+	}
+	if input.ContextWindowTokens < 0 || input.MaxOutputTokens < 0 {
+		return Profile{}, fmt.Errorf("%w: negative token budget", ErrInvalid)
+	}
+	if input.APIFormat != "" {
+		next.APIFormat = input.APIFormat
+	}
+	if input.CompactionMode != "" {
+		next.CompactionMode = input.CompactionMode
+	}
+	if input.ContextWindowSource != "" {
+		next.ContextWindowSource = input.ContextWindowSource
+	}
+	if input.CompactionTriggerRatio != 0 {
+		next.CompactionTriggerRatio = input.CompactionTriggerRatio
+	}
+	if input.TextSummaryTargetRatio != 0 {
+		next.TextSummaryTargetRatio = input.TextSummaryTargetRatio
+	}
+	if input.Capabilities.Responses != "" {
+		next.Capabilities.Responses = input.Capabilities.Responses
+	}
+	if input.Capabilities.StandaloneCompaction != "" {
+		next.Capabilities.StandaloneCompaction = input.Capabilities.StandaloneCompaction
+	}
+	if input.Capabilities.ServerCompaction != "" {
+		next.Capabilities.ServerCompaction = input.Capabilities.ServerCompaction
+	}
+	if input.Capabilities.RenderedInputCount != "" {
+		next.Capabilities.RenderedInputCount = input.Capabilities.RenderedInputCount
+	}
+	if err := next.validate(); err != nil {
+		return Profile{}, err
 	}
 	if input.PromptPricePer1K >= 0 {
 		next.PromptPricePer1K = input.PromptPricePer1K
@@ -396,6 +438,29 @@ func (s *Store) Secret(id string) (string, error) {
 	return decryptSecret(ciphertext, id, ownerID, revision)
 }
 
+// Resolve copies the profile and its credential under one revision boundary.
+// Decryption uses the copied AAD after releasing the store metadata lock.
+func (s *Store) Resolve(ownerID, id string) (Resolved, error) {
+	s.mu.RLock()
+	p, ok := s.profiles[id]
+	if !ok || (p.OwnerID != "" && p.OwnerID != ownerID) {
+		s.mu.RUnlock()
+		return Resolved{}, ErrNotFound
+	}
+	profile := *p
+	profile.Roles = append([]string{}, p.Roles...)
+	s.mu.RUnlock()
+	key := profile.apiKey
+	if key == "" && profile.APIKeyCiphertext != "" {
+		var err error
+		key, err = decryptSecret(profile.APIKeyCiphertext, profile.ID, profile.OwnerID, profile.Revision)
+		if err != nil {
+			return Resolved{}, err
+		}
+	}
+	return Resolved{Profile: profile, APIKey: key}, nil
+}
+
 // UpsertBootstrap creates the env-derived global profile when no global main
 // exists. It is idempotent and never overwrites user configuration.
 func (s *Store) UpsertBootstrap(baseURL, model, apiKey string) (Profile, error) {
@@ -408,8 +473,21 @@ func (s *Store) UpsertBootstrap(baseURL, model, apiKey string) (Profile, error) 
 	}
 	for _, profile := range s.profiles {
 		if profile.OwnerID == "" && profile.Bootstrap {
-			profile.BaseURL = baseURL
-			profile.Model = model
+			next := *profile
+			next.BaseURL = strings.TrimSpace(baseURL)
+			next.Model = strings.TrimSpace(model)
+			capacity := EnvironmentContextWindow()
+			if profile.ContextWindowSource == "environment" || (profile.ContextWindowTokens == 0 && capacity > 0) {
+				next.ContextWindowTokens = capacity
+				next.ContextWindowSource = "environment"
+				if capacity == 0 {
+					next.ContextWindowSource = "unknown"
+				}
+			}
+			next.NormalizeContext()
+			if err := next.ValidateContext(); err != nil {
+				return Profile{}, err
+			}
 			// The env file is the source of truth for the bootstrap profile. If
 			// the operator rotates OPENAI_API_KEY, the persisted ciphertext must
 			// follow the new key and the revision must move so resolver caches
@@ -417,41 +495,64 @@ func (s *Store) UpsertBootstrap(baseURL, model, apiKey string) (Profile, error) 
 			// than only the last four characters.
 			currentKey := profile.apiKey
 			if strings.TrimSpace(currentKey) == "" && strings.TrimSpace(profile.APIKeyCiphertext) != "" {
-				if decrypted, err := decryptSecret(profile.APIKeyCiphertext, profile.ID, "", profile.Revision); err == nil {
-					currentKey = decrypted
+				var err error
+				currentKey, err = decryptSecret(profile.APIKeyCiphertext, profile.ID, "", profile.Revision)
+				if err != nil && strings.TrimSpace(apiKey) == "" {
+					return Profile{}, err
 				}
 			}
-			if trimmed := strings.TrimSpace(apiKey); trimmed != "" && trimmed != currentKey {
-				profile.Revision++
-				profile.apiKey = trimmed
-				profile.APIKeyLast4 = last4(trimmed)
+			key := strings.TrimSpace(apiKey)
+			if key == "" {
+				key = currentKey
+			}
+			changed := next.BaseURL != profile.BaseURL || next.Model != profile.Model || key != currentKey ||
+				next.ContextWindowTokens != profile.ContextWindowTokens || next.ContextWindowSource != profile.ContextWindowSource
+			if changed {
+				next.Revision++
+				next.apiKey = key
+				next.APIKeyLast4 = last4(key)
+				next.APIKeyCiphertext = ""
 				if EncryptionAvailable() {
-					ciphertext, err := encryptSecret(trimmed, profile.ID, "", profile.Revision)
+					ciphertext, err := encryptSecret(key, next.ID, "", next.Revision)
 					if err != nil {
 						return Profile{}, err
 					}
-					profile.APIKeyCiphertext = ciphertext
+					next.APIKeyCiphertext = ciphertext
 				}
 			}
-			profile.UpdatedAt = s.now().UTC()
-			return Profile{}, s.persistLocked()
+			next.UpdatedAt = s.now().UTC()
+			s.profiles[next.ID] = &next
+			if err := s.persistLocked(); err != nil {
+				s.profiles[profile.ID] = profile
+				return Profile{}, err
+			}
+			return Profile{}, nil
 		}
 	}
 	now := s.now().UTC()
 	profile := &Profile{
-		ID:             uuid.NewString(),
-		OwnerID:        "",
-		Name:           "环境默认模型",
-		Provider:       ProviderOpenAICompatible,
-		BaseURL:        strings.TrimSpace(baseURL),
-		Model:          strings.TrimSpace(model),
-		Roles:          []string{RoleMain, RoleVision},
-		SupportsVision: VisionUnknown,
-		TimeoutSeconds: 120,
-		Revision:       1,
-		Bootstrap:      true,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		ID:                  uuid.NewString(),
+		OwnerID:             "",
+		Name:                "环境默认模型",
+		Provider:            ProviderOpenAICompatible,
+		BaseURL:             strings.TrimSpace(baseURL),
+		Model:               strings.TrimSpace(model),
+		Roles:               []string{RoleMain, RoleVision},
+		SupportsVision:      VisionUnknown,
+		TimeoutSeconds:      120,
+		ContextWindowTokens: EnvironmentContextWindow(),
+		ContextPolicy:       ContextPolicy{ContextWindowSource: "environment"},
+		Revision:            1,
+		Bootstrap:           true,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}
+	profile.NormalizeContext()
+	if profile.ContextWindowTokens == 0 {
+		profile.ContextWindowSource = "unknown"
+	}
+	if err := profile.ValidateContext(); err != nil {
+		return Profile{}, err
 	}
 	if strings.TrimSpace(apiKey) == "" {
 		return Profile{}, fmt.Errorf("%w: bootstrap model has no api key", ErrInvalid)

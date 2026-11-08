@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"research-assistant-backend/internal/agentprofile"
+	"research-assistant-backend/internal/contextwindow"
 	"research-assistant-backend/internal/memory"
+	"research-assistant-backend/internal/modelresolver"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/planner"
 	"research-assistant-backend/internal/prompts"
@@ -291,29 +293,36 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		"task_type":     task.Type,
 		"artifact_keys": append([]string(nil), task.RequiredArtifacts...),
 	}
+	budget := prompts.DefaultPromptBudget()
+	ctx = contextwindow.WithLimits(ctx, contextwindow.Limits{Tokens: plan.Budget.MaxTokens - plan.Usage.LLMPromptTokens - plan.Usage.LLMCompletionTokens, CostUSD: plan.Budget.MaxCostUSD - plan.Usage.LLMCostUSD, TokensConfigured: plan.Budget.MaxTokens > 0, CostConfigured: plan.Budget.MaxCostUSD > 0})
+	if resolver := modelresolver.Default(); resolver != nil {
+		ctx = modelresolver.WithOwner(ctx, plan.OwnerID)
+		ctx = modelresolver.WithBranch(ctx, plan.OwnerID, plan.ProjectID, plan.SessionID, plan.ID+"/"+task.ID)
+		call, resolveErr := resolver.ResolveText(plan.OwnerID)
+		if resolvedProfile != nil && resolvedProfile.ModelProfileID != "" {
+			call, resolveErr = resolver.ResolveProfile(plan.OwnerID, resolvedProfile.ModelProfileID)
+		}
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+		resolvedBudget, budgetErr := contextwindow.ResolveBudget(call.Profile, 0)
+		if budgetErr != nil {
+			return nil, budgetErr
+		}
+		budget = resolvedBudget.PromptBudget
+		ctx = modelresolver.WithResolvedCall(ctx, call)
+		constraintData, _ := json.Marshal(map[string]any{"user_goal": plan.UserIntent, "task": prompts.TaskInstruction(task), "frozen_contract": runtimeTask.Contract, "network_access_approved": networkAccessApproved(plan, task.ID)})
+		ctx = modelresolver.WithConstraints(ctx, string(constraintData))
+		runtimeTask.Metadata["model_profile_id"] = call.Profile.ID
+		runtimeTask.Metadata["model_profile_revision"] = call.Profile.Revision
+		runtimeTask.Metadata["model"] = call.Profile.Model
+		sharedContext["context_managed"] = true
+	}
+	sharedContext["prompt_budget"] = budget
 	if promptContextV2Enabled() {
 		// Plan-level stable context is injected once here; agents render it as
 		// the plan_context section instead of appending the user intent again.
 		sharedContext["plan_graph"] = plan
-		budget := prompts.DefaultPromptBudget()
-		if plan.ModelSnapshot != nil && plan.ModelSnapshot.Text != nil {
-			if plan.ModelSnapshot.Text.ContextWindowTokens > 0 {
-				budget.ContextWindow = plan.ModelSnapshot.Text.ContextWindowTokens
-			}
-			if plan.ModelSnapshot.Text.MaxOutputTokens > 0 {
-				budget.MaxOutput = plan.ModelSnapshot.Text.MaxOutputTokens
-			}
-		}
-		sharedContext["prompt_budget"] = budget
-	}
-	budget := prompts.DefaultPromptBudget()
-	if plan.ModelSnapshot != nil && plan.ModelSnapshot.Text != nil {
-		if plan.ModelSnapshot.Text.ContextWindowTokens > 0 {
-			budget.ContextWindow = plan.ModelSnapshot.Text.ContextWindowTokens
-		}
-		if plan.ModelSnapshot.Text.MaxOutputTokens > 0 {
-			budget.MaxOutput = plan.ModelSnapshot.Text.MaxOutputTokens
-		}
 	}
 	// Wiki context is computed first so the retrieved-memory budget can be
 	// reduced by the wiki tokens (shared dynamic budget, design §10.3).
@@ -422,7 +431,7 @@ func promptMetadataFromTask(runtimeTask *models.Task) map[string]any {
 	for _, key := range []string{
 		"prompt_budget", "prompt_truncated_sections", "memory_refs",
 		"agent_profile_id", "prompt_version_id", "prompt_version", "prompt_hash",
-		"model_profile_id", "model", "max_steps",
+		"model_profile_id", "model_profile_revision", "model", "max_steps", "repair_session",
 	} {
 		if value, ok := runtimeTask.Metadata[key]; ok {
 			out[key] = value

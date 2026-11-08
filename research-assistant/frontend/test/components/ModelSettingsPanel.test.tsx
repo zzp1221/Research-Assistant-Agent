@@ -85,6 +85,21 @@ describe('ModelSettingsPanel', () => {
     expect(await screen.findByText(/文本连通性正常/)).toBeTruthy();
   });
 
+  it('requires explicit capacity and confirmed native capabilities', async () => {
+    const user = userEvent.setup();
+    render(<ModelSettingsPanel />);
+    await screen.findByText('我的主模型');
+    await user.click(screen.getByRole('button', { name: /添加模型/ }));
+    const capacity = screen.getByPlaceholderText('待确认：请填写部署容量') as HTMLInputElement;
+    expect(capacity.value).toBe('');
+    expect(screen.getByRole('option', { name: 'Responses（需确认支持）' })).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText('Responses能力'), 'yes');
+    await user.selectOptions(screen.getByLabelText('API 协议'), 'responses');
+    expect(screen.getByRole('option', { name: '独立原生压缩' })).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText('独立压缩能力'), 'yes');
+    expect(screen.getByRole('option', { name: '独立原生压缩' })).not.toBeDisabled();
+  });
+
   it('shows the privacy and cost notices', async () => {
     render(<ModelSettingsPanel />);
     await screen.findByText('我的主模型');

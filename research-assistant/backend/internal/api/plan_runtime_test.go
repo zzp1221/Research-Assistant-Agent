@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"research-assistant-backend/internal/events"
+	"research-assistant-backend/internal/modelresolver"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/planner"
 	"research-assistant-backend/internal/scheduler"
@@ -23,6 +24,24 @@ import (
 )
 
 type completingAgentRunner struct{}
+
+func TestPlanCreationPassesOwnerToRuntimeModelResolution(t *testing.T) {
+	t.Setenv("PLANNER_AGENT_ENABLED", "false")
+	runtime, router := newHardeningRuntime(t)
+	actual := runtime.planner
+	seenOwner := ""
+	runtime.planner = &countingPlanBuilder{build: func(ctx context.Context, intent models.IntentContext, route planner.RouteDecision) (*models.PlanGraph, error) {
+		seenOwner = modelresolver.OwnerFromContext(ctx)
+		return actual.BuildPlanWithRoute(ctx, intent, route)
+	}}
+	response := signedPost(router, `{"intent":"hello","require_review":true}`, "owner-model", "model-owner")
+	if response.Code != http.StatusOK {
+		t.Fatalf("create plan: %d %s", response.Code, response.Body.String())
+	}
+	if seenOwner != "model-owner" {
+		t.Fatalf("planner resolved models for owner %q", seenOwner)
+	}
+}
 
 func (r *completingAgentRunner) ExecuteTask(_ context.Context, task *models.Task, _ map[string]interface{}) error {
 	task.Status = models.StatusCompleted

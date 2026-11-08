@@ -9,6 +9,7 @@ export interface ChatMessage {
   text: string;
   actions?: ChatAction[];
   taskId?: string;
+  contextReport?: ContextReport;
 }
 
 export interface OCRStats {
@@ -619,8 +620,25 @@ export interface MemoryCitation {
   revision_id?: string;
 }
 
+export interface ContextReport {
+	  http_requests?: { generation: number; compaction: number; counting: number };
+  profile_id: string;
+  profile_revision: number;
+  model: string;
+  capacity: number;
+  input_budget: number;
+  compaction_mode: string;
+  generation: number;
+  input_observation: { tokens?: number; source: string; confidence: string };
+  last_compaction?: {
+    mode: string; status: string; request_attempts: number; latency_ms: number;
+    cost_usd?: number; at: string;
+  };
+}
+
 export interface ChatResponse {
   response: string;
+  context_report?: ContextReport;
   session_id?: string;
   anon_user_id?: string;
   user_id?: string;
@@ -748,7 +766,21 @@ export interface Verification {
   warnings?: string[];
 }
 
-export interface ModelProfile {
+export interface ModelContextPolicy {
+  api_format?: 'chat_completions' | 'responses';
+  context_window_source?: 'manual' | 'existing_config' | 'environment' | 'unknown';
+  compaction_mode?: 'off' | 'standalone' | 'server' | 'text_summary';
+  compaction_trigger_ratio?: number;
+  text_summary_target_ratio?: number;
+  capabilities?: {
+    responses: 'yes' | 'no' | 'unknown';
+    standalone_compaction: 'yes' | 'no' | 'unknown';
+    server_compaction: 'yes' | 'no' | 'unknown';
+    rendered_input_count: 'yes' | 'no' | 'unknown';
+  };
+}
+
+export interface ModelProfile extends ModelContextPolicy {
   id: string;
   owner_id: string;
   global: boolean;
@@ -890,7 +922,7 @@ export interface WebFetchResult {
   cached: boolean;
 }
 
-export interface ModelProfilePayload {
+export interface ModelProfilePayload extends ModelContextPolicy {
   name?: string;
   provider?: string;
   base_url?: string;

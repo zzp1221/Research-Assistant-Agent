@@ -49,6 +49,15 @@ func modelPriceFor(ctx context.Context, inner model.BaseChatModel) (float64, flo
 }
 
 func (m *usageChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	if pinner, ok := m.inner.(interface {
+		PinCall(context.Context) (context.Context, error)
+	}); ok {
+		var err error
+		ctx, err = pinner.PinCall(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
 	started := time.Now()
 	message, err := m.inner.Generate(ctx, input, opts...)
 	recordCtx := llmclient.WithModelName(ctx, modelNameFor(ctx, m.inner))
@@ -60,6 +69,15 @@ func (m *usageChatModel) Generate(ctx context.Context, input []*schema.Message, 
 }
 
 func (m *usageChatModel) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	if pinner, ok := m.inner.(interface {
+		PinCall(context.Context) (context.Context, error)
+	}); ok {
+		var err error
+		ctx, err = pinner.PinCall(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
 	started := time.Now()
 	reader, err := m.inner.Stream(ctx, input, opts...)
 	if err != nil {
@@ -72,6 +90,7 @@ func (m *usageChatModel) Stream(ctx context.Context, input []*schema.Message, op
 		defer observer.Close()
 		var content strings.Builder
 		var tokenUsage *schema.TokenUsage
+		extra := map[string]any{}
 		for {
 			message, recvErr := observer.Recv()
 			if recvErr != nil {
@@ -81,11 +100,14 @@ func (m *usageChatModel) Stream(ctx context.Context, input []*schema.Message, op
 				continue
 			}
 			content.WriteString(message.Content)
+			for key, value := range message.Extra {
+				extra[key] = value
+			}
 			if message.ResponseMeta != nil && message.ResponseMeta.Usage != nil {
 				tokenUsage = message.ResponseMeta.Usage
 			}
 		}
-		recorded := &schema.Message{Content: content.String()}
+		recorded := &schema.Message{Content: content.String(), Extra: extra}
 		if tokenUsage != nil {
 			recorded.ResponseMeta = &schema.ResponseMeta{Usage: tokenUsage}
 		}
