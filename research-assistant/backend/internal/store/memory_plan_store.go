@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/json"
 	"fmt"
 	"research-assistant-backend/internal/models"
 	"sync"
@@ -178,6 +179,13 @@ func clonePlanGraph(plan *models.PlanGraph) *models.PlanGraph {
 			continue
 		}
 		nodeCopy := *node
+		nodeCopy.Recovery = cloneTyped(node.Recovery)
+		nodeCopy.Failure = cloneTyped(node.Failure)
+		nodeCopy.ReplanProposal = cloneTyped(node.ReplanProposal)
+		if node.NextAttemptAt != nil {
+			next := *node.NextAttemptAt
+			nodeCopy.NextAttemptAt = &next
+		}
 		if node.LeaseExpiresAt != nil {
 			leaseExpiresAt := *node.LeaseExpiresAt
 			nodeCopy.LeaseExpiresAt = &leaseExpiresAt
@@ -192,7 +200,9 @@ func clonePlanGraph(plan *models.PlanGraph) *models.PlanGraph {
 		}
 		nodeCopy.Contract.InputArtifacts = append([]string(nil), node.Contract.InputArtifacts...)
 		nodeCopy.Contract.OutputArtifacts = append([]string(nil), node.Contract.OutputArtifacts...)
-		nodeCopy.Contract.AllowedTools = append([]string(nil), node.Contract.AllowedTools...)
+		if node.Contract.AllowedTools != nil {
+			nodeCopy.Contract.AllowedTools = append([]string{}, node.Contract.AllowedTools...)
+		}
 		if node.Dependencies != nil {
 			nodeCopy.Dependencies = append([]string(nil), node.Dependencies...)
 		}
@@ -233,6 +243,8 @@ func clonePlanGraph(plan *models.PlanGraph) *models.PlanGraph {
 	}
 
 	cloned.Artifacts = make(map[string]models.Artifact, len(plan.Artifacts))
+	cloned.RuntimeActions = cloneTyped(plan.RuntimeActions)
+	cloned.ToolCalls = cloneTyped(plan.ToolCalls)
 	for k, v := range plan.Artifacts {
 		artifactCopy := v
 		if v.Metadata != nil {
@@ -242,6 +254,13 @@ func clonePlanGraph(plan *models.PlanGraph) *models.PlanGraph {
 	}
 
 	return &cloned
+}
+
+func cloneTyped[T any](in T) T {
+	raw, _ := json.Marshal(in)
+	var out T
+	_ = json.Unmarshal(raw, &out)
+	return out
 }
 
 func clonePlanEvent(event models.PlanEvent) models.PlanEvent {

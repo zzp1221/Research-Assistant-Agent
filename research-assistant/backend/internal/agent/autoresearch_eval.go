@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/sandbox"
 )
@@ -81,7 +82,7 @@ func (a *ResearchCodingAgent) evaluateAutoResearchMetricCommand(ctx context.Cont
 }
 
 func (a *ResearchCodingAgent) runAutoResearchCommand(ctx context.Context, runtimeSession string, command []string) (models.ResearchCommandResult, string, error) {
-	result := models.ResearchCommandResult{Command: append([]string(nil), command...), ExitCode: -1}
+	result := models.ResearchCommandResult{ExecutionID: uuid.NewString(), Command: append([]string(nil), command...), ExitCode: -1}
 	if err := validateAutoResearchCommand(command); err != nil {
 		result.Error = err.Error()
 		return result, "", err

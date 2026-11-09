@@ -19,7 +19,7 @@ import type {
   PlanResponse,
   PlanRevision,
   PlanRevisionSummary,
-  PromptEvalCase,
+  PromptEvalRequest,
   PromptEvalResult,
   PromptVersion,
   RuntimeAction,
@@ -787,7 +787,7 @@ export const deleteAgentProfile = async (id: string): Promise<{ disabled: boolea
   return response.data;
 };
 
-export const evaluateAgentProfile = async (id: string, payload: { cases?: PromptEvalCase[]; use_model?: boolean; model_profile_id?: string }): Promise<PromptEvalResult> => {
+export const evaluateAgentProfile = async (id: string, payload: PromptEvalRequest): Promise<PromptEvalResult> => {
   const response = await httpClient.post<{ result: PromptEvalResult }>(`/api/agent-profiles/${encodeURIComponent(id)}/eval`, payload);
   return response.data.result;
 };
@@ -807,7 +807,7 @@ export const activatePromptVersion = async (id: string): Promise<PromptVersion> 
   return response.data.prompt;
 };
 
-export const evaluatePromptVersion = async (id: string, payload: { cases?: PromptEvalCase[]; use_model?: boolean; model_profile_id?: string }): Promise<PromptEvalResult> => {
+export const evaluatePromptVersion = async (id: string, payload: PromptEvalRequest): Promise<PromptEvalResult> => {
   const response = await httpClient.post<{ result: PromptEvalResult }>(`/api/prompt-versions/${encodeURIComponent(id)}/eval`, payload);
   return response.data.result;
 };

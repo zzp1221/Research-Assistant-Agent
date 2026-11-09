@@ -10,6 +10,7 @@ import (
 	"research-assistant-backend/internal/modelresolver"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
+	"research-assistant-backend/internal/recovery"
 	"research-assistant-backend/internal/usage"
 	"sort"
 	"time"
@@ -22,7 +23,7 @@ func (s *Scheduler) findReadyNodes(plan *models.PlanGraph, availableSlots int) [
 
 	ready := []*models.TaskNode{}
 	for _, node := range plan.Nodes {
-		if node != nil && node.Status == models.StatusReady && node.IsEnabled() {
+		if node != nil && node.Status == models.StatusReady && node.IsEnabled() && (node.NextAttemptAt == nil || !time.Now().Before(*node.NextAttemptAt)) {
 			ready = append(ready, node)
 		}
 	}
@@ -132,6 +133,12 @@ func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*m
 				taskTimeout = 10 * time.Minute
 			}
 			taskCtx, cancelTask := context.WithTimeout(execCtx, taskTimeout)
+			taskCtx, recoveryErr := s.recoveryContext(taskCtx, plan, currentTask)
+			if recoveryErr != nil {
+				cancelTask()
+				log.Printf("scheduler: recovery state rejected: %v", recoveryErr)
+				return
+			}
 			forwardDone := make(chan struct{})
 			go s.forwardTaskLogs(planID, taskID, logChannel, forwardDone)
 			startedAt := time.Now()
@@ -147,10 +154,10 @@ func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*m
 			<-forwardDone
 
 			if execErr != nil {
-				result = &models.TaskExecutionResult{
-					Status: models.StatusFailed,
-					Error:  execErr.Error(),
+				if result == nil {
+					result = &models.TaskExecutionResult{}
 				}
+				result.Status, result.Error = models.StatusFailed, execErr.Error()
 			}
 			if result == nil {
 				result = &models.TaskExecutionResult{
@@ -159,6 +166,10 @@ func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*m
 				}
 			}
 			result.Usage = taskUsageFromSnapshot(recorder.Snapshot(), time.Since(startedAt))
+			if controller := recovery.FromContext(taskCtx); controller != nil {
+				snapshot := controller.Snapshot()
+				result.Recovery = &snapshot
+			}
 			metrics.RecordTask(taskType, string(result.Status), time.Since(startedAt))
 			s.settleTaskBudget(planID, taskID, result.Usage)
 

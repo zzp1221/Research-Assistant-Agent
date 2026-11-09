@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"research-assistant-backend/internal/contextwindow"
 	"research-assistant-backend/internal/modelprofile"
 	"research-assistant-backend/internal/modelresolver"
 	"research-assistant-backend/internal/models"
@@ -24,14 +25,13 @@ type ProfileRunner struct {
 	Profiles  *Registry
 	Completer Completer
 	Now       func() time.Time
+	Invoker   *tools.Invoker
+	Runs      *RunStore
 }
 
-func (r *ProfileRunner) ExecuteTask(ctx context.Context, task *models.Task, _ map[string]interface{}) error {
+func (r *ProfileRunner) ExecuteTask(ctx context.Context, task *models.Task, sharedContext map[string]interface{}) error {
 	if task == nil {
 		return nil
-	}
-	if r.Now == nil {
-		r.Now = time.Now
 	}
 	ownerID := ""
 	if task.Metadata != nil {
@@ -82,12 +82,8 @@ func (r *ProfileRunner) ExecuteTask(ctx context.Context, task *models.Task, _ ma
 		promptHash = "sha256:" + hex.EncodeToString(sum[:])
 	}
 	variables := StringVariables(task.Inputs)
-	if task.Metadata != nil {
-		if extra, ok := task.Metadata["prompt_variables"].(map[string]string); ok {
-			for key, value := range extra {
-				variables[key] = value
-			}
-		}
+	for key, value := range promptVariableOverrides(task) {
+		variables[key] = value
 	}
 	rendered := task.Description
 	if strings.TrimSpace(template) != "" {
@@ -98,7 +94,6 @@ func (r *ProfileRunner) ExecuteTask(ctx context.Context, task *models.Task, _ ma
 			return err
 		}
 	}
-	messages := []oaichat.Message{{Role: "user", Text: rendered}}
 	opts := oaichat.Options{}
 	var response *oaichat.Response
 	var resolvedModel string
@@ -108,26 +103,68 @@ func (r *ProfileRunner) ExecuteTask(ctx context.Context, task *models.Task, _ ma
 		task.Error = "no model completer configured"
 		return fmt.Errorf("no model completer configured")
 	}
-	if strings.TrimSpace(profile.ModelProfileID) != "" {
-		resolved, resolveErr := r.Completer.ResolveProfile(ownerID, profile.ModelProfileID)
-		if pinned, ok := modelresolver.ResolvedCall(ctx); ok && pinned.Profile.ID == profile.ModelProfileID {
-			resolved = pinned
-			resolveErr = nil
+	var resolved modelprofile.Resolved
+	var resolveErr error
+	hasResolved := false
+	if pinned, ok := modelresolver.ResolvedCall(ctx); ok && (profile.ModelProfileID == "" || pinned.Profile.ID == profile.ModelProfileID) {
+		resolved, hasResolved = pinned, true
+	} else if strings.TrimSpace(profile.ModelProfileID) != "" {
+		resolved, resolveErr = r.Completer.ResolveProfile(ownerID, profile.ModelProfileID)
+		hasResolved = true
+	} else if resolver, ok := r.Completer.(interface {
+		ResolveCall(context.Context) (modelprofile.Resolved, error)
+	}); ok {
+		resolved, resolveErr = resolver.ResolveCall(modelresolver.WithOwner(ctx, ownerID))
+		hasResolved = true
+	}
+	if resolveErr != nil {
+		task.Status = models.StatusFailed
+		task.Error = "model profile unavailable: " + resolveErr.Error()
+		return resolveErr
+	}
+	budget := profilePromptBudget(sharedContext)
+	if hasResolved {
+		resolvedBudget, budgetErr := contextwindow.ResolveBudget(resolved.Profile, 0)
+		if budgetErr != nil {
+			task.Status, task.Error = models.StatusFailed, budgetErr.Error()
+			return budgetErr
 		}
-		if resolveErr != nil {
-			task.Status = models.StatusFailed
-			task.Error = "model profile unavailable: " + resolveErr.Error()
-			return resolveErr
+		budget = resolvedBudget.PromptBudget
+		opts.MaxOutputTokens = resolvedBudget.MaxOutput
+		ctx = modelresolver.WithResolvedCall(ctx, resolved)
+	}
+	messages, report, err := buildProfileMessages(task, sharedContext, template, rendered, budget, hasResolved)
+	if err != nil {
+		task.Status, task.Error = models.StatusFailed, err.Error()
+		return err
+	}
+	if task.Metadata == nil {
+		task.Metadata = map[string]any{}
+	}
+	task.Metadata["prompt_budget"] = report
+	if truncated := report.TruncatedSections(); len(truncated) > 0 {
+		task.Metadata["prompt_truncated_sections"] = truncated
+	}
+	for _, key := range []string{"memory_refs", "wiki_refs"} {
+		if refs, ok := sharedContext[key]; ok {
+			task.Metadata[key] = refs
 		}
+	}
+	if profile.ExecutionMode == "tool_loop" {
+		if !hasResolved {
+			return fmt.Errorf("model_tools_unsupported: explicit resolved model is required")
+		}
+		r.stamp(task, profile, promptVersionID, promptVersionNumber, promptHash, resolved.Profile.Model)
+		task.Metadata["model_profile_id"] = resolved.Profile.ID
+		task.Metadata["model_profile_revision"] = resolved.Profile.Revision
+		return r.executeLoop(ctx, task, profile, resolved, messages, opts, promptHash)
+	}
+	if hasResolved {
 		response, err = r.Completer.CompleteWithResolved(ctx, resolved, messages, opts)
 		resolvedModel = resolved.Profile.Model
 		modelPrice = usage.Price{PromptPer1K: resolved.Profile.PromptPricePer1K, CompletionPer1K: resolved.Profile.CompletionPricePer1K}
-		if task.Metadata == nil {
-			task.Metadata = map[string]any{}
-		}
 		task.Metadata["model_profile_revision"] = resolved.Profile.Revision
 	} else {
-		var resolved modelprofile.Resolved
 		response, resolved, err = r.Completer.Complete(ctx, ownerID, messages, opts)
 		resolvedModel = resolved.Profile.Model
 		modelPrice = usage.Price{PromptPer1K: resolved.Profile.PromptPricePer1K, CompletionPer1K: resolved.Profile.CompletionPricePer1K}
@@ -152,6 +189,10 @@ func (r *ProfileRunner) ExecuteTask(ctx context.Context, task *models.Task, _ ma
 	task.Result = response.Content
 	task.Status = models.StatusCompleted
 	r.stamp(task, profile, promptVersionID, promptVersionNumber, promptHash, resolvedModel)
+	if resolved.Profile.ID != "" {
+		task.Metadata["model_profile_id"] = resolved.Profile.ID
+		task.Metadata["model_profile_revision"] = resolved.Profile.Revision
+	}
 	return r.validateOutput(task, profile)
 }
 

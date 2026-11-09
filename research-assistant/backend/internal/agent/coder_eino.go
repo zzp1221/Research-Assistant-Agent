@@ -11,6 +11,7 @@ import (
 	"research-assistant-backend/internal/appconfig"
 	"research-assistant-backend/internal/llmclient"
 	"research-assistant-backend/internal/prompts"
+	"research-assistant-backend/internal/recovery"
 	"research-assistant-backend/internal/sandbox"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
@@ -151,6 +152,7 @@ func (a *CoderAgent) initRealEinoChain() {
 		currentCode := code
 		var finalOutput string
 		var correctionSession *conversation.Session
+		var beforeRepairCode, beforeRepairLog string
 
 		for i := 0; i < maxRetries; i++ {
 			logToContext(ctx, "[%s] 开始在持久化容器中执行代码 (第 %d/%d 次)...", a.Name, i+1, maxRetries)
@@ -173,14 +175,20 @@ func (a *CoderAgent) initRealEinoChain() {
 			}
 
 			if err != nil || (res != nil && res.ExitCode != 0) {
+				if correctionSession != nil {
+					if recordErr := recovery.RecordFailedRepair(ctx, beforeRepairCode, currentCode, beforeRepairLog, output); recordErr != nil {
+						return "", recordErr
+					}
+				}
 				if err == nil {
 					err = fmt.Errorf("exit code: %d", res.ExitCode)
 				}
 				logToContext(ctx, "[%s] 代码执行失败，触发 Self-Correction 机制。错误: %v", a.Name, err)
 
 				logToContext(ctx, "[%s] 正在调用大模型进行代码自修复...", a.Name)
+				beforeRepairCode, beforeRepairLog = currentCode, output
 				if correctionSession == nil {
-					correctionSession = conversation.NewSession("coder-self-correction",
+					correctionSession = conversation.NewRepairSession("coder-self-correction",
 						coderSystemPromptFromContext(ctx, a.SystemPrompt),
 						prompts.CoderSelfCorrectionUserPromptWithCode(currentCode, err, output))
 				} else {
@@ -195,12 +203,20 @@ func (a *CoderAgent) initRealEinoChain() {
 				currentCode = strings.TrimPrefix(msg.Content, "```python\n")
 				currentCode = strings.TrimPrefix(currentCode, "```python")
 				currentCode = strings.TrimSuffix(currentCode, "```")
+				if currentCode == beforeRepairCode {
+					return "", fmt.Errorf("recovery_no_progress: repair returned unchanged code")
+				}
 
 				finalOutput = fmt.Sprintf("执行失败，已尝试修复。错误日志:\n%v\n输出:\n%s", err, output)
 				continue // 尝试用新代码再次运行
 			}
 
 			// 成功执行
+			if correctionSession != nil {
+				if recordErr := recovery.RecordVerifiedRepair(ctx, beforeRepairCode, currentCode, beforeRepairLog, output); recordErr != nil {
+					return "", recordErr
+				}
+			}
 			logToContext(ctx, "[%s] 持久化沙箱执行成功！获取到执行结果。", a.Name)
 			return output, nil
 		}

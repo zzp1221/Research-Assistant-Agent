@@ -228,6 +228,53 @@ export interface UsageTimeseriesPoint {
   calls?: number;
 }
 
+export interface AgentRunState {
+  version: string;
+  id: string;
+  checkpoint_ref: string;
+  status: string;
+  stop_reason?: string;
+  steps: number;
+  max_steps: number;
+  tool_calls: number;
+  max_tool_calls: number;
+  execution_id?: string;
+  execution_epoch?: number;
+  pending_call_id?: string;
+  updated_at: string;
+}
+
+export interface AgentFailureInfo {
+  class: string;
+  code: string;
+  stage: string;
+  message: string;
+  fingerprint: string;
+  state_hash: string;
+  recoverable: boolean;
+  evidence_refs?: string[];
+}
+
+export interface AgentRecoveryState {
+  chain_id: string;
+  max_actions: number;
+  used_actions: number;
+  http_attempts: number;
+  max_http_attempts: number;
+  replans: number;
+  decisions?: { action: string; reason: string; consumed: number; remaining: number; at: string }[];
+}
+
+export interface AgentReplanProposal {
+  reason: string;
+  failure_fingerprint: string;
+  base_revision: number;
+  requires_review: boolean;
+  frozen_contract_hash: string;
+  preserve_artifacts?: string[];
+  invalidate_artifacts?: string[];
+}
+
 export interface Task {
   ID: string;
   Name: string;
@@ -246,6 +293,10 @@ export interface Task {
   Error?: string;
   Usage?: TaskUsage;
   Verification?: Verification;
+  AgentRun?: AgentRunState;
+  Recovery?: AgentRecoveryState;
+  Failure?: AgentFailureInfo;
+  ReplanProposal?: AgentReplanProposal;
 }
 
 export interface GraphTask {
@@ -285,6 +336,11 @@ export interface GraphTask {
   error?: string;
   usage?: TaskUsage;
   verification?: Verification;
+  agent_run?: AgentRunState;
+  recovery?: AgentRecoveryState;
+  failure?: AgentFailureInfo;
+  replan_proposal?: AgentReplanProposal;
+  metadata?: { agent_run?: AgentRunState; [key: string]: unknown };
 }
 
 export interface TaskUsageModel {
@@ -777,6 +833,7 @@ export interface ModelContextPolicy {
     standalone_compaction: 'yes' | 'no' | 'unknown';
     server_compaction: 'yes' | 'no' | 'unknown';
     rendered_input_count: 'yes' | 'no' | 'unknown';
+	tool_calling?: 'yes' | 'no' | 'unknown';
   };
 }
 
@@ -1003,6 +1060,8 @@ export interface AgentProfile {
   model_profile_id?: string;
   tool_allowlist?: string[];
   max_steps?: number;
+  execution_mode?: 'single' | 'tool_loop';
+  max_tool_calls?: number;
   output_schema?: string;
   builtin?: boolean;
   enabled: boolean;
@@ -1052,15 +1111,31 @@ export interface PromptEvalCase {
   name?: string;
   variables?: Record<string, string>;
   expected_contains?: string;
+  check_rendering?: boolean;
+  task?: { description: string; inputs?: Record<string, unknown>; contract: { version: string; input_artifacts: string[]; output_artifacts: string[]; allowed_tools?: string[] } };
+  grader?: { output_schema?: string; expected_json?: Record<string, unknown>; required_tools?: string[]; required_artifacts?: Record<string, string>; expected_status?: string; forbidden_tools?: string[]; max_model_steps?: number; max_tool_calls?: number; expected_stop_reason?: string };
 }
+
+export type PromptEvalMode = 'template' | 'model' | 'task';
+export interface PromptEvalRequest { cases: PromptEvalCase[]; mode?: PromptEvalMode; use_model?: boolean; model_profile_id?: string; profile_id?: string }
 
 export interface PromptEvalResult {
   prompt_version_id: string;
   score: number;
   passed: number;
   total: number;
-  cases: { name?: string; passed: boolean; score: number; detail?: string }[];
-  mode: string;
+  scored: number;
+  failed: number;
+  errors: number;
+  skipped: number;
+  attempted: number;
+  score_available: boolean;
+  scored_rate: number | null;
+  planned_rate: number | null;
+  grader_version: string;
+  profile_id?: string;
+  cases: { name?: string; passed: boolean; score: number; detail?: string; status: 'passed' | 'failed' | 'error' | 'skipped'; mode: PromptEvalMode; grader_version: string; attempted: boolean; model_invoked: boolean; evidence_refs?: string[] }[];
+  mode: PromptEvalMode;
   evaluated_at: string;
 }
 

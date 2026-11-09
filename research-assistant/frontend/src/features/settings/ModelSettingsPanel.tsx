@@ -58,7 +58,7 @@ const emptyDraft = (): ModelProfilePayload => ({
   api_format: 'chat_completions',
   compaction_mode: 'off',
   compaction_trigger_ratio: 0.8,
-  capabilities: { responses: 'unknown', standalone_compaction: 'unknown', server_compaction: 'unknown', rendered_input_count: 'unknown' },
+  capabilities: { responses: 'unknown', standalone_compaction: 'unknown', server_compaction: 'unknown', rendered_input_count: 'unknown', tool_calling: 'unknown' },
 });
 
 /** Model profile settings: per-user profiles plus the read-only global list. */
@@ -497,7 +497,7 @@ export function ModelSettingsPanel({ onClose }: ModelSettingsPanelProps) {
               <fieldset className="grid gap-2 md:col-span-2 md:grid-cols-2">
                 <legend className="text-[11px] text-muted">部署能力（请依据服务商确认；连通测试不验证这些能力）</legend>
                 {([
-                  ['responses', 'Responses'], ['standalone_compaction', '独立压缩'], ['server_compaction', '服务端压缩'], ['rendered_input_count', '原生输入计数'],
+                  ['responses', 'Responses'], ['standalone_compaction', '独立压缩'], ['server_compaction', '服务端压缩'], ['rendered_input_count', '原生输入计数'], ['tool_calling', '原生工具调用'],
                 ] as const).map(([key, label]) => (
                   <label key={key} className="text-[11px] text-muted">{label}
                     <select aria-label={`${label}能力`} value={draft.capabilities?.[key] ?? 'unknown'} onChange={(event) => setDraft({ ...draft, capabilities: { ...emptyDraft().capabilities!, ...draft.capabilities, [key]: event.target.value as 'yes' | 'no' | 'unknown' } })} className="mt-1 h-8 w-full border border-line-strong bg-paper px-2 text-[12px] text-ink">

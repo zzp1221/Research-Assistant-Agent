@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -36,6 +37,7 @@ type claimEvidenceExampleScenario struct {
 	Expected                struct {
 		Status                    string  `json:"status"`
 		VerifiedClaims            int     `json:"verified_claims"`
+		UnverifiableClaims        int     `json:"unverifiable_claims"`
 		TotalClaims               int     `json:"total_claims"`
 		TotalCriteria             int     `json:"total_criteria"`
 		CriterionEvidenceCoverage float64 `json:"criterion_evidence_coverage"`
@@ -133,15 +135,23 @@ func TestClaimEvidenceExample(t *testing.T) {
 	}
 	if graph.Status != scenario.Expected.Status ||
 		graph.Summary.Verified != scenario.Expected.VerifiedClaims ||
+		graph.Summary.Unverifiable != scenario.Expected.UnverifiableClaims ||
 		graph.Summary.TotalClaims != scenario.Expected.TotalClaims ||
 		graph.Summary.TotalCriteria != scenario.Expected.TotalCriteria ||
 		graph.Summary.CriterionEvidenceCoverage != scenario.Expected.CriterionEvidenceCoverage {
 		t.Fatalf("unexpected graph summary: %#v", graph.Summary)
 	}
-	if len(graph.Claims) != 1 || graph.Claims[0].Status != models.ClaimStatusVerified {
-		t.Fatalf("paper claim was not verified: %#v", graph.Claims)
+	if len(graph.Claims) != 1 || graph.Claims[0].Status != models.ClaimStatusUnverifiable {
+		t.Fatalf("legacy scalar artifacts must not establish a verified numeric claim: %#v", graph.Claims)
 	}
-	if got := graph.Claims[0].Criteria[0].EvidenceIDs; !reflect.DeepEqual(got, []string{"evidence-run-metrics", "evidence-comparison-report"}) {
+	criterion := graph.Claims[0].Criteria[0]
+	if criterion.ModelProposal == nil || criterion.ModelProposal.Status != models.ClaimStatusVerified || criterion.DeterministicVerdict == nil || criterion.DeterministicVerdict.Status != models.ClaimStatusUnverifiable || criterion.ObservedValue != "" {
+		t.Fatalf("model success was not separated from missing backend protocol evidence: %#v", criterion)
+	}
+	if !strings.Contains(criterion.DeterministicVerdict.Reason, "explicitly frozen") || evidenceResult.Status != models.StatusCompleted {
+		t.Fatalf("the missing-protocol sample should complete a reviewable evidence report: %#v", evidenceResult)
+	}
+	if got := graph.Claims[0].Criteria[0].EvidenceIDs; !reflect.DeepEqual(got, []string{"evidence-comparison-report", "evidence-run-metrics"}) {
 		t.Fatalf("criterion evidence links=%v", got)
 	}
 
@@ -160,7 +170,7 @@ func TestClaimEvidenceExample(t *testing.T) {
 		t.Fatalf("claim evidence graph differs from golden fixture; run UPDATE_CLAIM_EVIDENCE_GOLDEN=1 go test ./tests -run TestClaimEvidenceExample")
 	}
 
-	t.Logf("verified claim=%s criterion=%s evidence=%v", graph.Claims[0].ClaimID, graph.Claims[0].Criteria[0].CriterionID, graph.Claims[0].Criteria[0].EvidenceIDs)
+	t.Logf("review required for legacy claim=%s criterion=%s evidence=%v", graph.Claims[0].ClaimID, graph.Claims[0].Criteria[0].CriterionID, graph.Claims[0].Criteria[0].EvidenceIDs)
 }
 
 func newClaimEvidenceExampleModel(t *testing.T, responses ...json.RawMessage) *openaiModel.ChatModel {

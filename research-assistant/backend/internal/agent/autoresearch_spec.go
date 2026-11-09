@@ -320,7 +320,7 @@ func (a *ResearchCodingAgent) proposeAutoResearchCandidateWithSession(ctx contex
 	} else {
 		session.AddUser("Trial result update:\n" + ledgerSummary + "\nFeedback:\n" + rejectedCandidateFeedback)
 	}
-	message, err := session.Generate(ctx, a.ChatModel)
+	message, err := session.Generate(ctx, wrapRuntimeModel(a.Runtime, a.ChatModel))
 	if err != nil {
 		return response, session, fmt.Errorf("candidate generation failed: %w", err)
 	}

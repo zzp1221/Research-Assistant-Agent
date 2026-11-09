@@ -46,6 +46,7 @@ type ResearchFileHash struct {
 
 // ResearchCommandResult is the bounded, auditable result of one frozen command.
 type ResearchCommandResult struct {
+	ExecutionID   string   `json:"execution_id,omitempty"`
 	Command       []string `json:"command"`
 	ExitCode      int      `json:"exit_code"`
 	DurationMS    int64    `json:"duration_ms"`

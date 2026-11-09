@@ -111,15 +111,18 @@ func (a *ResearchCodingAgent) executeAdapterPreflight(ctx context.Context, task 
 		if strings.Contains(runErr.Error(), "repository files changed outside .research-assistant") {
 			return failResearchCodingTask(task, runErr)
 		}
-		if attempt == maxAttempts || a.ChatModel == nil {
+		if attempt == maxAttempts || wrapRuntimeModel(a.Runtime, a.ChatModel) == nil {
 			break
 		}
 		repaired, repairReason, session, repairErr := a.repairBenchmarkAdapterWithSession(ctx, manifestJSON, string(specJSONBytes), code, runErr.Error(), repairSession)
+		repairSession = session
+		if repairSession != nil {
+			repairSession.Record(task)
+		}
 		if repairErr != nil {
 			attempts[len(attempts)-1].Error += "; repair failed: " + repairErr.Error()
 			break
 		}
-		repairSession = session
 		logToContext(ctx, "[%s] benchmark adapter repair %d: %s", a.Name, attempt, repairReason)
 		code = repaired
 	}
@@ -538,12 +541,12 @@ func readBenchmarkFeatureIDs(path string) (map[string]struct{}, error) {
 // the new failure is appended.
 func (a *ResearchCodingAgent) repairBenchmarkAdapterWithSession(ctx context.Context, manifestJSON, specJSON, code, failure string, session *conversation.Session) (string, string, *conversation.Session, error) {
 	if session == nil {
-		session = conversation.NewSession("benchmark-adapter", prompts.BenchmarkAdapterSystemPrompt,
+		session = conversation.NewRepairSession("benchmark-adapter", prompts.BenchmarkAdapterSystemPrompt,
 			prompts.BenchmarkAdapterRepairUserPrompt(manifestJSON, specJSON, code, truncateBenchmarkText(failure, 12000)))
 	} else {
 		session.AddUser("Preflight still failed:\n" + truncateBenchmarkText(failure, 12000) + "\nReturn a corrected adapter that fixes this failure.")
 	}
-	message, err := session.Generate(ctx, a.ChatModel)
+	message, err := session.Generate(ctx, wrapRuntimeModel(a.Runtime, a.ChatModel))
 	if err != nil {
 		return "", "", session, err
 	}

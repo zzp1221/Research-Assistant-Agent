@@ -490,6 +490,15 @@ func (s *FileStore) Update(ctx context.Context, ownerID, id string, patch Patch)
 	rec = cloneRecord(rec)
 	previous := cloneRecord(rec)
 	oldKey := rec.DedupeKey()
+	if patch.procedureUse != nil {
+		changed, err := applyProcedureUse(&rec, *patch.procedureUse)
+		if err != nil {
+			return Record{}, err
+		}
+		if !changed {
+			return cloneRecord(rec), nil
+		}
+	}
 	if patch.Title != nil {
 		rec.Title = strings.TrimSpace(*patch.Title)
 	}

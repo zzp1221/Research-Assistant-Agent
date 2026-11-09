@@ -10,7 +10,7 @@ import {
   Trash2,
   XCircle,
 } from 'lucide-react';
-import type { AgentProfile, ModelProfile, PromptEvalResult, PromptVersion, ToolDefinition } from '../../contracts/api';
+import type { AgentProfile, ModelProfile, PromptEvalCase, PromptEvalMode, PromptEvalResult, PromptVersion, ToolDefinition } from '../../contracts/api';
 import {
   activatePromptVersion,
   createAgentProfile,
@@ -28,7 +28,7 @@ import {
 type Busy = { kind: 'prompt' | 'profile' | 'eval' | 'toggle'; id?: string } | null;
 
 const emptyPrompt = () => ({ name: 'custom-agent', template: 'You are a careful research assistant.\n\nTask: {{task}}' });
-const emptyProfile = () => ({ name: '', prompt_version_id: '', model_profile_id: 'env-bootstrap', tool_allowlist: [] as string[], max_steps: 8, output_schema: '' });
+const emptyProfile = () => ({ name: '', prompt_version_id: '', model_profile_id: 'env-bootstrap', tool_allowlist: [] as string[], max_steps: 8, execution_mode: 'single' as 'single' | 'tool_loop', max_tool_calls: 12, output_schema: '' });
 
 const statusBadge = (prompt: PromptVersion) => {
   switch (prompt.status) {
@@ -55,6 +55,22 @@ export function AgentSettingsPanel({ onClose }: { onClose?: () => void }) {
   const [promptDraft, setPromptDraft] = useState(emptyPrompt);
   const [profileDraft, setProfileDraft] = useState(emptyProfile);
   const [evalResults, setEvalResults] = useState<Record<string, PromptEvalResult>>({});
+  const [evalMode, setEvalMode] = useState<PromptEvalMode>('template');
+  const [evalCasesText, setEvalCasesText] = useState('');
+  const [evalModelID, setEvalModelID] = useState('');
+
+  const evaluationCases = (prompt: PromptVersion): PromptEvalCase[] => {
+    if (evalCasesText.trim()) {
+      const cases: unknown = JSON.parse(evalCasesText);
+      if (!Array.isArray(cases) || cases.length === 0) throw new Error('评测用例必须是非空 JSON 数组');
+      return cases as PromptEvalCase[];
+    }
+    if (evalMode !== 'template') throw new Error('模型与任务评测需要显式用例和判分条件');
+    const variables = Object.fromEntries((prompt.variables ?? []).map((name) => [name, 'sample']));
+    return [{ name: 'variable-bindings', variables, check_rendering: true }];
+  };
+
+  const evaluationSummary = (result: PromptEvalResult) => `${result.mode} · ${result.passed}/${result.total} 计划用例 · ${result.scored} 已评分 · ${result.errors} error · ${result.skipped} skipped · 得分 ${result.scored_rate === null ? 'N/A' : `${Math.round(result.scored_rate * 100)}%`}`;
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -119,11 +135,10 @@ export function AgentSettingsPanel({ onClose }: { onClose?: () => void }) {
     setBusy({ kind: 'eval', id: prompt.id });
     setError('');
     try {
-      const variables: Record<string, string> = {};
-      (prompt.variables ?? []).forEach((name) => { variables[name] = 'sample'; });
-      const result = await evaluatePromptVersion(prompt.id, { cases: [{ name: 'default', variables }] });
+      if (evalMode === 'task') throw new Error('任务评测请从已绑定的 AgentProfile 发起');
+      const result = await evaluatePromptVersion(prompt.id, { cases: evaluationCases(prompt), mode: evalMode, model_profile_id: evalModelID || undefined });
       setEvalResults((current) => ({ ...current, [prompt.id]: result }));
-      setNotice(`${prompt.name} v${prompt.version} 评测：${result.passed}/${result.total}`);
+      setNotice(`${prompt.name} v${prompt.version} ${evaluationSummary(result)}`);
       await reload();
     } catch (evalError) {
       setError(evalError instanceof Error ? evalError.message : '评测失败');
@@ -143,6 +158,8 @@ export function AgentSettingsPanel({ onClose }: { onClose?: () => void }) {
         model_profile_id: profileDraft.model_profile_id,
         tool_allowlist: profileDraft.tool_allowlist,
         max_steps: profileDraft.max_steps,
+        execution_mode: profileDraft.execution_mode,
+        max_tool_calls: profileDraft.max_tool_calls,
         output_schema: profileDraft.output_schema,
       });
       setNotice(`AgentProfile ${profile.name} 已创建：${profile.id}`);
@@ -160,8 +177,10 @@ export function AgentSettingsPanel({ onClose }: { onClose?: () => void }) {
     setBusy({ kind: 'eval', id: profile.id });
     setError('');
     try {
-      const result = await evaluateAgentProfile(profile.id, { cases: [] });
-      setNotice(`${profile.name} 评测：${result.passed}/${result.total}（${result.mode}）`);
+      const prompt = prompts.find((item) => item.id === profile.prompt_version_id);
+      if (!prompt) throw new Error('AgentProfile 未绑定可用 Prompt');
+      const result = await evaluateAgentProfile(profile.id, { cases: evaluationCases(prompt), mode: evalMode });
+      setNotice(`${profile.name} ${evaluationSummary(result)}`);
       const promptVersionID = profile.prompt_version_id;
       if (promptVersionID) {
         setEvalResults((current) => ({ ...current, [promptVersionID]: result }));
@@ -213,6 +232,7 @@ export function AgentSettingsPanel({ onClose }: { onClose?: () => void }) {
             prompt: {profile.prompt_version_id || '—'} · model: {profile.model_profile_id || '—'} · steps: {profile.max_steps ?? '—'}
           </p>
           <p className="mt-0.5 font-mono text-[10.5px] text-muted">tools: {(profile.tool_allowlist ?? []).join(', ') || '—'}</p>
+          <p className="mt-0.5 font-mono text-[10.5px] text-muted">mode: {profile.execution_mode ?? 'single'} · tool calls: {profile.max_tool_calls ?? '—'}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {!profile.builtin && (
@@ -251,6 +271,16 @@ export function AgentSettingsPanel({ onClose }: { onClose?: () => void }) {
           <div className="flex items-center gap-2 py-8 text-[12px] text-muted"><Loader2 className="h-4 w-4 animate-spin" />正在加载 Agent 配置…</div>
         ) : (
           <>
+            <div className="mb-4 border border-line bg-surface p-3">
+              <label className="mr-2 text-[12px]" htmlFor="agent-eval-mode">评测模式</label>
+              <select id="agent-eval-mode" value={evalMode} onChange={(event) => setEvalMode(event.target.value as PromptEvalMode)} className="border border-line bg-paper px-2 py-1 text-[12px]">
+                <option value="template">模板绑定检查</option><option value="model">模型响应评测</option><option value="task">完整任务评测</option>
+              </select>
+              {evalMode === 'model' && <label className="ml-2 text-[12px]">Prompt 评测模型 <select aria-label="Prompt 评测模型" value={evalModelID} onChange={(event) => setEvalModelID(event.target.value)} className="border border-line bg-paper px-2 py-1 text-[12px]"><option value="">当前默认模型</option>{models.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
+              <p className="mt-2 text-[11px] text-muted">模板检查只验证变量绑定。模型和任务模式会实际执行；AgentProfile 使用其绑定模型与已有权限，判分条件与参考答案不发送给 Agent。</p>
+              <label className="mt-2 block text-[11px] text-muted" htmlFor="agent-eval-cases">评测用例 JSON（模板模式留空时执行显式变量绑定检查）</label>
+              <textarea id="agent-eval-cases" value={evalCasesText} onChange={(event) => setEvalCasesText(event.target.value)} rows={3} className="mt-1 w-full border border-line bg-paper p-2 font-mono text-[11px]" placeholder={'[{"name":"smoke","variables":{"task":"sample"},"expected_contains":"sample"}]'} />
+            </div>
             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
               <h3 className="journal-caps text-[10.5px] font-semibold text-ink">Prompt 版本 · {prompts.length}</h3>
               <button type="button" onClick={() => { setPromptOpen(true); setNotice(''); }} className="inline-flex h-7 items-center gap-1 bg-ink px-2.5 text-[12px] font-semibold text-paper hover:bg-black"><Plus className="h-3.5 w-3.5" />新建 Prompt 版本</button>
@@ -282,7 +312,7 @@ export function AgentSettingsPanel({ onClose }: { onClose?: () => void }) {
                     <p className="mt-1 font-mono text-[10.5px] text-muted">variables: {(prompt.variables ?? []).join(', ') || '—'}{prompt.eval_detail ? ` · ${prompt.eval_detail}` : ''}</p>
                     {evalResults[prompt.id] && (
                       <p className="mt-0.5 font-mono text-[10.5px] text-muted">
-                        eval: {evalResults[prompt.id].passed}/{evalResults[prompt.id].total} · {evalResults[prompt.id].cases.map((item) => `${item.name ?? 'case'}:${item.passed ? 'pass' : 'fail'}`).join(' ')}
+                        {evaluationSummary(evalResults[prompt.id])} · {evalResults[prompt.id].grader_version} · {evalResults[prompt.id].cases.map((item) => `${item.name ?? 'case'}:${item.status}${item.detail ? ` (${item.detail})` : ''}`).join(' ')}
                       </p>
                     )}
                   </article>
@@ -342,6 +372,8 @@ export function AgentSettingsPanel({ onClose }: { onClose?: () => void }) {
               <label className="block"><span className="journal-caps text-[10px] text-muted">Prompt 版本</span><select value={profileDraft.prompt_version_id} onChange={(event) => setProfileDraft({ ...profileDraft, prompt_version_id: event.target.value })} className="mt-1 h-8 w-full border border-line-strong bg-paper px-2 text-[12px] text-ink"><option value="">选择</option>{activePrompts.map((prompt) => <option key={prompt.id} value={prompt.id}>{prompt.name} v{prompt.version} ({prompt.status})</option>)}</select></label>
               <label className="block"><span className="journal-caps text-[10px] text-muted">模型 Profile</span><select value={profileDraft.model_profile_id} onChange={(event) => setProfileDraft({ ...profileDraft, model_profile_id: event.target.value })} className="mt-1 h-8 w-full border border-line-strong bg-paper px-2 text-[12px] text-ink"><option value="env-bootstrap">env-bootstrap（部署默认模型）</option>{models.map((model) => <option key={model.id} value={model.id}>{model.global ? '[全局] ' : ''}{model.name} · {model.model}</option>)}</select></label>
               <label className="block"><span className="journal-caps text-[10px] text-muted">MaxSteps</span><input type="number" min={1} max={64} value={profileDraft.max_steps} onChange={(event) => setProfileDraft({ ...profileDraft, max_steps: Number(event.target.value) })} className="mt-1 h-8 w-full border border-line-strong bg-paper px-2 text-[12px] text-ink" /></label>
+              <label className="block"><span className="journal-caps text-[10px] text-muted">执行方式</span><select value={profileDraft.execution_mode} onChange={(event) => setProfileDraft({ ...profileDraft, execution_mode: event.target.value as 'single' | 'tool_loop', max_steps: event.target.value === 'tool_loop' ? 6 : 8 })} className="mt-1 h-8 w-full border border-line-strong bg-paper px-2 text-[12px] text-ink"><option value="single">单次回答</option><option value="tool_loop">工具执行循环</option></select></label>
+              {profileDraft.execution_mode === 'tool_loop' && <label className="block"><span className="journal-caps text-[10px] text-muted">最多工具调用</span><input type="number" min={1} max={128} value={profileDraft.max_tool_calls} onChange={(event) => setProfileDraft({ ...profileDraft, max_tool_calls: Number(event.target.value) })} className="mt-1 h-8 w-full border border-line-strong bg-paper px-2 text-[12px] text-ink" /></label>}
               <label className="block"><span className="journal-caps text-[10px] text-muted">Output Schema（可选 JSON）</span><input value={profileDraft.output_schema} onChange={(event) => setProfileDraft({ ...profileDraft, output_schema: event.target.value })} className="mt-1 h-8 w-full border border-line-strong bg-paper px-2 font-mono text-[12px] text-ink" /></label>
               <div className="md:col-span-2">
                 <span className="journal-caps text-[10px] text-muted">Tool Allowlist</span>

@@ -3,6 +3,7 @@ package api
 import (
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"research-assistant-backend/internal/agentprofile"
@@ -58,6 +59,10 @@ func buildToolAgentRuntime(planStorePath string) *toolAgentRuntime {
 	if resolver := modelresolver.Default(); resolver != nil {
 		completer = resolver
 	}
-	profileRunner := &agentprofile.ProfileRunner{Profiles: profileRegistry, Completer: completer}
+	runDir := strings.TrimSpace(os.Getenv("AGENT_RUN_STORE_DIR"))
+	if runDir == "" {
+		runDir = filepath.Join(modelresolver.DefaultStoreDir(), "agent-runs")
+	}
+	profileRunner := &agentprofile.ProfileRunner{Profiles: profileRegistry, Completer: completer, Invoker: invoker, Runs: agentprofile.NewRunStore(runDir)}
 	return &toolAgentRuntime{tools: toolRegistry, invoker: invoker, profiles: profileRegistry, profileRunner: profileRunner}
 }

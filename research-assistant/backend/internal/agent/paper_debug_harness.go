@@ -164,7 +164,7 @@ func (a *ResearchCodingAgent) executePaperCodeTask(ctx context.Context, task *mo
 		if repairCount >= paperDebugMaxRepairs {
 			return failPaperCodeDebugTask(task, workspacePath, backups, &report, fmt.Errorf("paper code failed after %d run(s) and %d repair(s): %s", len(report.Runs), repairCount, diagnostic))
 		}
-		if a.ChatModel == nil {
+		if wrapRuntimeModel(a.Runtime, a.ChatModel) == nil {
 			return failPaperCodeDebugTask(task, workspacePath, backups, &report, fmt.Errorf("paper code failed and the research coding model is unavailable: %s", diagnostic))
 		}
 
@@ -252,7 +252,7 @@ func (a *ResearchCodingAgent) runPaperCodeOnce(ctx context.Context, runtimeSessi
 // the failure feedback, so the previous patch remains an assistant message.
 func (a *ResearchCodingAgent) planPaperCodeRepairWithSession(ctx context.Context, task *models.Task, workspacePath, entryPath, diagnostic string, repairNumber int, session *conversation.Session) (paperCodeRepairResponse, map[string]string, *conversation.Session, error) {
 	var response paperCodeRepairResponse
-	if a == nil || a.ChatModel == nil {
+	if a == nil || wrapRuntimeModel(a.Runtime, a.ChatModel) == nil {
 		return response, nil, session, fmt.Errorf("research coding model is not configured")
 	}
 	diagnostic = truncateToTokens(diagnostic, agentEnvInt("PAPER_DEBUG_DIAGNOSTIC_MAX_TOKENS", 8000))
@@ -265,16 +265,16 @@ func (a *ResearchCodingAgent) planPaperCodeRepairWithSession(ctx context.Context
 		contextFiles = files
 		// Section-level token budget: source context is the largest prompt block.
 		contextText = truncateToTokens(contextText, agentEnvInt("PAPER_DEBUG_CONTEXT_MAX_TOKENS", 48000))
-		session = conversation.NewSession("paper-debug-"+task.ID, prompts.ResearchCodingDebugSystemPrompt,
+		session = conversation.NewRepairSession("paper-debug-"+task.ID, prompts.ResearchCodingDebugSystemPrompt,
 			prompts.ResearchCodingDebugUserPrompt(task.Description, diagnostic, contextText, repairNumber))
 	} else {
 		session.AddUser(fmt.Sprintf("Run failed: %s\nRepair round %d. Continue from the previous patch; do not repeat it.", diagnostic, repairNumber))
 	}
-	message, err := session.Generate(ctx, a.ChatModel)
+	message, err := session.Generate(ctx, wrapRuntimeModel(a.Runtime, a.ChatModel))
+	session.Record(task)
 	if err != nil {
 		return response, nil, session, fmt.Errorf("paper code repair planning failed: %w", err)
 	}
-	session.Record(task)
 	if err := json.Unmarshal([]byte(cleanJSONResponse(message.Content)), &response); err != nil {
 		return response, nil, session, fmt.Errorf("decode paper code repair response: %w", err)
 	}

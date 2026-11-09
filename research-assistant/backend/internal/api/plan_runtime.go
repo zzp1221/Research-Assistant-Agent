@@ -235,7 +235,7 @@ func RegisterPlanRuntimeRoutes(
 	runtime.sandbox = sandboxClient
 	runtime.register(apiGroup)
 	RegisterToolRoutes(apiGroup, toolRuntime.tools, toolRuntime.invoker, toolRuntime.profiles)
-	RegisterAgentProfileRoutes(apiGroup, toolRuntime.profiles, toolRuntime.tools)
+	RegisterAgentProfileRoutes(apiGroup, toolRuntime.profiles, toolRuntime.tools, toolRuntime.profileRunner)
 }
 
 func (r *planRuntime) register(apiGroup *gin.RouterGroup) {

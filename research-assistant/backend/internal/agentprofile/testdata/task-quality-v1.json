@@ -1,0 +1,14 @@
+{
+  "version": "task-quality/v1",
+  "environment": "offline deterministic Go grader; simulated task outputs; no live model or sandbox",
+  "cases": [
+    {"id":"mean-correct","task":{"Status":"completed","Result":"{\"mean\":2}"},"grader":{"expected_json":{"/mean":2}},"pass":true},
+    {"id":"success-keyword-wrong-number","task":{"Status":"completed","Result":"{\"status\":\"success\",\"mean\":200}"},"grader":{"expected_json":{"/mean":2}},"pass":false},
+    {"id":"failed-script-says-success","task":{"Status":"failed","Result":"{\"mean\":2,\"status\":\"success\"}","Error":"script exit 1"},"grader":{"expected_json":{"/mean":2}},"pass":false},
+    {"id":"schema-rejects-string-number","task":{"Status":"completed","Result":"{\"mean\":\"2\"}"},"grader":{"output_schema":"{\"type\":\"object\",\"required\":[\"mean\"],\"properties\":{\"mean\":{\"type\":\"number\"}}}"},"pass":false},
+    {"id":"claimed-tool-no-record","task":{"Status":"completed","Result":"tool executed successfully"},"grader":{"required_tools":["native:echo"]},"pass":false},
+    {"id":"artifact-name-without-content","task":{"ID":"task","Status":"completed","Result":"done","Artifacts":[{"key":"report","producer_task_id":"task","value":"wrong"}]},"grader":{"required_artifacts":{"report":"sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}},"pass":false},
+    {"id":"honest-negative-result","task":{"Status":"completed","Result":"{\"verified\":false,\"observed\":0.7}"},"grader":{"expected_json":{"/verified":false,"/observed":0.7}},"pass":true},
+    {"id":"explicit-blocked-outcome","task":{"Status":"blocked","Result":"dataset missing"},"grader":{"expected_status":"blocked","required_artifacts":{"missing":"sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}},"pass":false}
+  ]
+}

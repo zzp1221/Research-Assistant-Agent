@@ -44,8 +44,9 @@
     ]
   },
   "expected": {
-    "status": "assessed",
-    "verified_claims": 1,
+    "status": "degraded",
+    "verified_claims": 0,
+    "unverifiable_claims": 1,
     "total_claims": 1,
     "total_criteria": 1,
     "criterion_evidence_coverage": 1.0

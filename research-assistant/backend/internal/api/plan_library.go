@@ -725,7 +725,9 @@ func duplicateNodes(nodes []*models.TaskNode) []*models.TaskNode {
 		copyNode.OutputArtifacts = append([]string(nil), node.OutputArtifacts...)
 		copyNode.Contract.InputArtifacts = append([]string(nil), node.Contract.InputArtifacts...)
 		copyNode.Contract.OutputArtifacts = append([]string(nil), node.Contract.OutputArtifacts...)
-		copyNode.Contract.AllowedTools = append([]string(nil), node.Contract.AllowedTools...)
+		if node.Contract.AllowedTools != nil {
+			copyNode.Contract.AllowedTools = append([]string{}, node.Contract.AllowedTools...)
+		}
 		out = append(out, &copyNode)
 	}
 	return out

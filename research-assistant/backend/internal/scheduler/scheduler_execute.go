@@ -7,6 +7,7 @@ import (
 	"research-assistant-backend/internal/metrics"
 	"research-assistant-backend/internal/modelresolver"
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/recovery"
 	"research-assistant-backend/internal/usage"
 	"time"
 )
@@ -128,6 +129,17 @@ executionLoop:
 		availableSlots := s.maxConcurrent - countInProgress(plan)
 		ready := s.findReadyNodes(plan, availableSlots)
 		if len(ready) == 0 {
+			deferredRetry := false
+			for _, node := range plan.Nodes {
+				if node != nil && (node.Status == models.StatusPending || node.Status == models.StatusReady) && node.NextAttemptAt != nil && time.Now().Before(*node.NextAttemptAt) {
+					deferredRetry = true
+					break
+				}
+			}
+			if deferredRetry {
+				s.wait(ctx, pollInterval)
+				continue
+			}
 			if hasAwaitingApproval(plan) || hasAwaitingInput(plan) {
 				s.wait(ctx, 500*time.Millisecond)
 				continue
@@ -327,13 +339,22 @@ func (s *Scheduler) ExecuteTask(ctx context.Context, planID, taskID string) (*mo
 	taskCtx, cancel := context.WithTimeout(modelresolver.WithOwner(usage.WithRecorder(ctx, recorder), plan.OwnerID), timeout)
 	taskCtx = s.compactionBudgetContext(taskCtx, plan)
 	defer cancel()
+	plan, err = s.store.GetPlan(planID)
+	if err != nil {
+		return nil, err
+	}
+	task = getNodeByID(plan, taskID)
+	taskCtx, err = s.recoveryContext(taskCtx, plan, task)
+	if err != nil {
+		return nil, err
+	}
 
 	result, execErr := s.executor.ExecuteTask(taskCtx, plan, task)
 	if execErr != nil {
-		result = &models.TaskExecutionResult{
-			Status: models.StatusFailed,
-			Error:  execErr.Error(),
+		if result == nil {
+			result = &models.TaskExecutionResult{}
 		}
+		result.Status, result.Error = models.StatusFailed, execErr.Error()
 	}
 	if result == nil {
 		result = &models.TaskExecutionResult{
@@ -345,6 +366,10 @@ func (s *Scheduler) ExecuteTask(ctx context.Context, planID, taskID string) (*mo
 		result.Status = models.StatusCompleted
 	}
 	result.Usage = taskUsageFromSnapshot(recorder.Snapshot(), time.Since(startedAt))
+	if controller := recovery.FromContext(taskCtx); controller != nil {
+		snapshot := controller.Snapshot()
+		result.Recovery = &snapshot
+	}
 	s.settleTaskBudget(planID, taskID, result.Usage)
 	if result.Question != nil {
 		if err := s.applyQuestionFromTask(planID, taskID, result.Question); err != nil {

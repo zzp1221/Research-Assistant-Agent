@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"research-assistant-backend/internal/oaichat"
+	"research-assistant-backend/internal/recovery"
 	"strings"
 )
 
@@ -26,14 +28,21 @@ type Result struct {
 	Error  json.RawMessage `json:"error,omitempty"`
 }
 type Request struct {
-	Model             string       `json:"model"`
-	Input             []Item       `json:"input"`
-	Instructions      string       `json:"instructions,omitempty"`
-	MaxOutputTokens   int          `json:"max_output_tokens,omitempty"`
-	Store             bool         `json:"store"`
-	Stream            bool         `json:"stream,omitempty"`
-	Include           []string     `json:"include,omitempty"`
-	ContextManagement []Management `json:"context_management,omitempty"`
+	Model             string           `json:"model"`
+	Input             []Item           `json:"input"`
+	Instructions      string           `json:"instructions,omitempty"`
+	MaxOutputTokens   int              `json:"max_output_tokens,omitempty"`
+	Store             bool             `json:"store"`
+	Stream            bool             `json:"stream,omitempty"`
+	Include           []string         `json:"include,omitempty"`
+	ContextManagement []Management     `json:"context_management,omitempty"`
+	Tools             []ToolDefinition `json:"tools,omitempty"`
+}
+type ToolDefinition struct {
+	Type        string          `json:"type"`
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Parameters  json.RawMessage `json:"parameters"`
 }
 type Management struct {
 	Type             string `json:"type"`
@@ -52,13 +61,16 @@ func (c Client) post(ctx context.Context, base, key, path string, payload any) (
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+key)
+	if err := recovery.HTTPAttempt(ctx, false); err != nil {
+		return nil, err
+	}
 	res, err := c.HTTP.Do(req) // Exactly one attempt, including compact and count.
 	if err != nil {
 		return nil, fmt.Errorf("responses_transport_unknown: request outcome unknown")
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		res.Body.Close()
-		return nil, fmt.Errorf("responses_http_%d", res.StatusCode) // Never echo provider input/ciphertext.
+		return nil, &oaichat.HTTPError{Status: res.StatusCode, RetryAfter: res.Header.Get("Retry-After")} // Never echo provider input/ciphertext.
 	}
 	return res, nil
 }
@@ -113,10 +125,11 @@ func (c Client) Compact(ctx context.Context, base, key, model, instructions stri
 func (c Client) Count(ctx context.Context, base, key string, request Request) (int, error) {
 	// Only used when the deployment explicitly confirms this optional endpoint.
 	res, err := c.post(ctx, base, key, "/responses/input_tokens", struct {
-		Model        string `json:"model"`
-		Input        []Item `json:"input"`
-		Instructions string `json:"instructions,omitempty"`
-	}{request.Model, request.Input, request.Instructions})
+		Model        string           `json:"model"`
+		Input        []Item           `json:"input"`
+		Instructions string           `json:"instructions,omitempty"`
+		Tools        []ToolDefinition `json:"tools,omitempty"`
+	}{request.Model, request.Input, request.Instructions, request.Tools})
 	if err != nil {
 		return 0, err
 	}

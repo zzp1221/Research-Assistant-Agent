@@ -5,12 +5,12 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"research-assistant-backend/internal/llmclient"
 	"strings"
 	"time"
 
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
+	"research-assistant-backend/internal/recovery"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -231,6 +231,11 @@ func (a *CoderAgent) installDependencies(ctx context.Context, task *models.Task)
 		}
 
 		// 第一优先级：模型基于 pip 错误做一次结构化 ReAct 决策。
+		if reserveErr := recovery.Reserve(ctx, "dependency_repair", recovery.Classify(fmt.Errorf("%s", errText), "dependencies", recovery.Hash(dependencies))); reserveErr != nil {
+			task.Status = models.StatusFailed
+			task.Error = reserveErr.Error()
+			return reserveErr
+		}
 		if plan, reactErr := a.planDependencyRecovery(ctx, dependencies, errText); reactErr == nil && plan.Action != "" {
 			nextDependencies, nextRuntimeSession, changed, applyErr := a.applyDependencyRecoveryPlan(ctx, task, dependencies, runtimeSession, mountPath, plan)
 			if applyErr == nil && changed {
@@ -291,13 +296,13 @@ type dependencyRecoveryPlan struct {
 }
 
 func (a *CoderAgent) planDependencyRecovery(ctx context.Context, dependencies []string, pipError string) (*dependencyRecoveryPlan, error) {
-	if a == nil || a.ChatModel == nil {
+	if a == nil || wrapRuntimeModel(a.Runtime, a.ChatModel) == nil {
 		return nil, fmt.Errorf("chat model is not configured")
 	}
 
 	pipError = truncateToTokens(pipError, agentEnvInt("DEPENDENCY_ERROR_MAX_TOKENS", 8000))
 	userPrompt := prompts.DependencyRecoveryUserPrompt(mustJSON(dependencies), pipError)
-	msg, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
+	msg, err := generateRuntimeModel(ctx, a.Runtime, a.ChatModel, "dependency-recovery", []*schema.Message{
 		{Role: schema.System, Content: prompts.DependencyRecoverySystemPrompt},
 		{Role: schema.User, Content: userPrompt},
 	})

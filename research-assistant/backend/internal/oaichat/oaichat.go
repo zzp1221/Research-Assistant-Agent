@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"research-assistant-backend/internal/recovery"
 	"research-assistant-backend/internal/usage"
 	"strings"
 	"time"
@@ -27,9 +28,11 @@ type ImagePart struct {
 
 // Message is one chat message. A user message may carry images.
 type Message struct {
-	Role   string
-	Text   string
-	Images []ImagePart
+	Role       string
+	Text       string
+	Images     []ImagePart
+	ToolCalls  []ToolCall `json:",omitempty"`
+	ToolCallID string     `json:",omitempty"`
 }
 
 // Options tune one request.
@@ -38,6 +41,7 @@ type Options struct {
 	MaxOutputTokens    int
 	Timeout            time.Duration
 	ResponseFormatJSON bool
+	Tools              []ToolDefinition
 }
 
 // Response is a normalized chat completion.
@@ -50,6 +54,7 @@ type Response struct {
 	Latency          time.Duration
 	Reused           bool
 	FinishReason     string
+	ToolCalls        []ToolCall
 }
 
 // Client performs chat completions with an SSRF-safe transport.
@@ -163,11 +168,14 @@ type chatCompletionRequest struct {
 	Temperature    *float64            `json:"temperature,omitempty"`
 	MaxTokens      int                 `json:"max_tokens,omitempty"`
 	ResponseFormat map[string]string   `json:"response_format,omitempty"`
+	Tools          []chatTool          `json:"tools,omitempty"`
 }
 
 type completionMessage struct {
-	Role    string `json:"role"`
-	Content any    `json:"content"`
+	Role       string     `json:"role"`
+	Content    any        `json:"content"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
 }
 
 type contentPart struct {
@@ -185,7 +193,8 @@ type chatCompletionResponse struct {
 	Choices []struct {
 		FinishReason string `json:"finish_reason"`
 		Message      struct {
-			Content string `json:"content"`
+			Content   string     `json:"content"`
+			ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 		} `json:"message"`
 	} `json:"choices"`
 	Usage *struct {
@@ -204,6 +213,9 @@ func (c *Client) Complete(ctx context.Context, baseURL, apiKey, model string, me
 	}
 	endpoint := strings.TrimRight(strings.TrimSpace(baseURL), "/") + "/chat/completions"
 	payload := chatCompletionRequest{Model: model}
+	for _, tool := range opts.Tools {
+		payload.Tools = append(payload.Tools, chatTool{Type: "function", Function: tool})
+	}
 	if opts.MaxOutputTokens > 0 {
 		payload.MaxTokens = opts.MaxOutputTokens
 	}
@@ -216,7 +228,7 @@ func (c *Client) Complete(ctx context.Context, baseURL, apiKey, model string, me
 	}
 	for _, message := range messages {
 		if len(message.Images) == 0 {
-			payload.Messages = append(payload.Messages, completionMessage{Role: message.Role, Content: message.Text})
+			payload.Messages = append(payload.Messages, completionMessage{Role: message.Role, Content: message.Text, ToolCalls: message.ToolCalls, ToolCallID: message.ToolCallID})
 			continue
 		}
 		parts := make([]contentPart, 0, len(message.Images)+1)
@@ -254,6 +266,9 @@ func (c *Client) Complete(ctx context.Context, baseURL, apiKey, model string, me
 		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(apiKey))
 	}
 	started := time.Now()
+	if err := recovery.HTTPAttempt(requestCtx, false); err != nil {
+		return nil, err
+	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -268,7 +283,7 @@ func (c *Client) Complete(ctx context.Context, baseURL, apiKey, model string, me
 		if len(trimmed) > 500 {
 			trimmed = trimmed[:500]
 		}
-		return nil, fmt.Errorf("model endpoint returned HTTP %d: %s", resp.StatusCode, trimmed)
+		return nil, &HTTPError{Status: resp.StatusCode, RetryAfter: resp.Header.Get("Retry-After")}
 	}
 	var parsed chatCompletionResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
@@ -281,6 +296,13 @@ func (c *Client) Complete(ctx context.Context, baseURL, apiKey, model string, me
 		return nil, fmt.Errorf("model response has no choices")
 	}
 	result := &Response{Content: parsed.Choices[0].Message.Content, Latency: time.Since(started), FinishReason: parsed.Choices[0].FinishReason}
+	result.ToolCalls = parsed.Choices[0].Message.ToolCalls
+	if err := ValidateToolCalls(result.ToolCalls); err != nil {
+		return nil, err
+	}
+	if len(result.ToolCalls) > 0 && result.FinishReason != "tool_calls" {
+		return nil, fmt.Errorf("model_tool_calls_incomplete")
+	}
 	if parsed.Usage != nil {
 		result.PromptTokens = parsed.Usage.PromptTokens
 		result.CompletionTokens = parsed.Usage.CompletionTokens
@@ -296,6 +318,10 @@ func estimateTokens(messages []Message) int {
 	total := 0
 	for _, message := range messages {
 		total += estimateTokensText(message.Text)
+		raw, _ := json.Marshal(message.ToolCalls)
+		if len(message.ToolCalls) > 0 {
+			total += estimateTokensText(string(raw))
+		}
 		// A downscaled 1280px image costs roughly 1000 tokens; use a fixed
 		// estimate so cost reporting never silently drops image tokens.
 		total += 1000 * len(message.Images)

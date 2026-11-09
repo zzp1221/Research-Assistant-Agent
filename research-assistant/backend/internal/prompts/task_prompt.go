@@ -43,21 +43,37 @@ type TaskPrompt struct {
 // PlanContext renders plan-level stable context. It deliberately contains no
 // artifact bodies: those belong to task_inputs and must appear exactly once.
 func PlanContext(plan *models.PlanGraph) string {
+	return renderPlanContext(plan, "", nil, false)
+}
+
+// renderPlanContext omits duplicate sections while rendering them, so removing one
+// source never removes unrelated material that follows it. Managed callers
+// defer metadata capacity checks to the model runtime.
+func renderPlanContext(plan *models.PlanGraph, taskDescription string, inputs map[string]any, preserveMaterials bool) string {
 	if plan == nil {
 		return ""
 	}
 	var builder strings.Builder
 	builder.WriteString("Plan intent type: ")
 	builder.WriteString(strings.TrimSpace(plan.IntentType))
-	builder.WriteString("\nUser intent:\n")
-	builder.WriteString(strings.TrimSpace(plan.UserIntent))
-	if plan.Context != nil && plan.Context.Paper != nil {
+	intent := strings.TrimSpace(plan.UserIntent)
+	if intent == "" || !strings.Contains(taskDescription, intent) {
+		builder.WriteString("\nUser intent:\n")
+		builder.WriteString(intent)
+	}
+	_, paperBound := inputs["paper_metadata"]
+	if !paperBound && plan.Context != nil && plan.Context.Paper != nil {
 		if payload, err := json.Marshal(plan.Context.Paper); err == nil {
 			builder.WriteString("\n\nPaper metadata:\n")
-			builder.WriteString(TruncateRunes(string(payload), 4000))
+			if preserveMaterials {
+				builder.Write(payload)
+			} else {
+				builder.WriteString(TruncateRunes(string(payload), 4000))
+			}
 		}
 	}
-	if plan.Context != nil && len(plan.Context.Attachments) > 0 {
+	_, attachmentsBound := inputs["uploaded_files"]
+	if !attachmentsBound && plan.Context != nil && len(plan.Context.Attachments) > 0 {
 		builder.WriteString("\n\nAttachments:")
 		for _, attachment := range plan.Context.Attachments {
 			builder.WriteString(fmt.Sprintf("\n- %s (role=%s, id=%s)", attachment.Name, attachment.Role, attachment.ID))
@@ -82,25 +98,7 @@ func PlanContext(plan *models.PlanGraph) string {
 // task description or task inputs already carry. This is what guarantees the
 // "user intent appears once / artifact appears once" contract.
 func PlanContextForTask(plan *models.PlanGraph, taskDescription string, inputs map[string]any) string {
-	text := PlanContext(plan)
-	if plan == nil {
-		return ""
-	}
-	intent := strings.TrimSpace(plan.UserIntent)
-	if intent != "" && strings.Contains(taskDescription, intent) {
-		text = strings.Replace(text, "\nUser intent:\n"+intent, "", 1)
-	}
-	if _, ok := inputs["paper_metadata"]; ok && plan.Context != nil && plan.Context.Paper != nil {
-		if payload, err := json.Marshal(plan.Context.Paper); err == nil {
-			text = strings.Replace(text, "\n\nPaper metadata:\n"+TruncateRunes(string(payload), 4000), "", 1)
-		}
-	}
-	if _, ok := inputs["uploaded_files"]; ok {
-		if index := strings.Index(text, "\n\nAttachments:"); index >= 0 {
-			text = text[:index]
-		}
-	}
-	return strings.TrimSpace(text)
+	return strings.TrimSpace(renderPlanContext(plan, taskDescription, inputs, false))
 }
 
 // TaskInstructionFor renders the node-local instruction from primitives.
@@ -141,9 +139,7 @@ func BuildTaskPrompt(in TaskPromptInput) (TaskPrompt, error) {
 	}
 	planContext := strings.TrimSpace(in.PlanContextText)
 	if in.Plan != nil {
-		planContext = PlanContextForTask(in.Plan, description, in.Inputs)
-	} else if planContext == "" && in.Plan != nil {
-		planContext = PlanContext(in.Plan)
+		planContext = strings.TrimSpace(renderPlanContext(in.Plan, description, in.Inputs, in.PreserveMaterials))
 	}
 	instruction := ""
 	if in.Task != nil {

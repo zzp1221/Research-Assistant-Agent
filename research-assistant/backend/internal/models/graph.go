@@ -19,24 +19,28 @@ type InputBinding struct {
 
 // TaskNode is the graph-oriented task representation returned to the frontend and scheduler.
 type TaskNode struct {
-	ID                string         `json:"id"`
-	Name              string         `json:"name"`
-	Type              string         `json:"type"`
-	Description       string         `json:"description"`
-	AssignedTo        string         `json:"assigned_to"`
-	Status            TaskStatus     `json:"status"`
-	Dependencies      []string       `json:"dependencies"`
-	RequiredArtifacts []string       `json:"required_artifacts"`
-	OutputArtifacts   []string       `json:"output_artifacts"`
-	InputBindings     []InputBinding `json:"input_bindings,omitempty"`
-	RuntimeActionIDs  []string       `json:"runtime_action_ids,omitempty"`
-	Outcome           PlanOutcome    `json:"outcome,omitempty"`
-	Parallelizable    bool           `json:"parallelizable"`
-	Priority          int            `json:"priority"`
-	RetryLimit        int            `json:"retry_limit"`
-	RunCount          int            `json:"run_count"`
-	ExecutionID       string         `json:"execution_id,omitempty"`
-	ExecutionEpoch    int            `json:"execution_epoch"`
+	ID                string          `json:"id"`
+	Name              string          `json:"name"`
+	Type              string          `json:"type"`
+	Description       string          `json:"description"`
+	AssignedTo        string          `json:"assigned_to"`
+	Status            TaskStatus      `json:"status"`
+	Dependencies      []string        `json:"dependencies"`
+	RequiredArtifacts []string        `json:"required_artifacts"`
+	OutputArtifacts   []string        `json:"output_artifacts"`
+	InputBindings     []InputBinding  `json:"input_bindings,omitempty"`
+	RuntimeActionIDs  []string        `json:"runtime_action_ids,omitempty"`
+	Outcome           PlanOutcome     `json:"outcome,omitempty"`
+	Parallelizable    bool            `json:"parallelizable"`
+	Priority          int             `json:"priority"`
+	RetryLimit        int             `json:"retry_limit"`
+	RunCount          int             `json:"run_count"`
+	ExecutionID       string          `json:"execution_id,omitempty"`
+	ExecutionEpoch    int             `json:"execution_epoch"`
+	Recovery          *RecoveryState  `json:"recovery,omitempty"`
+	Failure           *FailureInfo    `json:"failure,omitempty"`
+	ReplanProposal    *ReplanProposal `json:"replan_proposal,omitempty"`
+	NextAttemptAt     *time.Time      `json:"next_attempt_at,omitempty"`
 	// Revision is the plan revision this task belongs to. Legacy tasks are 0.
 	Revision int `json:"revision,omitempty"`
 	// Enabled controls whether the node participates in execution. Nil means
@@ -169,6 +173,10 @@ type PlanGraph struct {
 
 // TaskExecutionResult is the normalized scheduler-facing result of one task execution.
 type TaskExecutionResult struct {
+	ToolCalls           []ToolCallRecord      `json:"tool_calls,omitempty"`
+	AgentRun            *AgentRunState        `json:"agent_run,omitempty"`
+	Recovery            *RecoveryState        `json:"recovery,omitempty"`
+	Failure             *FailureInfo          `json:"failure,omitempty"`
 	Status              TaskStatus            `json:"status"`
 	Result              string                `json:"result,omitempty"`
 	Code                string                `json:"code,omitempty"`

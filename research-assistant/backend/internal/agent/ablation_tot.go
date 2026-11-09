@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"research-assistant-backend/internal/llmclient"
 	"sort"
 	"strings"
 
@@ -50,8 +49,8 @@ func (a *DataAgent) executeAblationDesign(ctx context.Context, task *models.Task
 	}
 	rootCandidates := prepareAblationRootCandidates(nil, defaults)
 
-	if a != nil && a.ChatModel != nil {
-		msg, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
+	if a != nil && wrapRuntimeModel(a.Runtime, a.ChatModel) != nil {
+		msg, err := generateRuntimeModel(ctx, a.Runtime, a.ChatModel, "ablation-root-candidates", []*schema.Message{
 			{Role: schema.System, Content: prompts.AblationCandidateSystemPrompt},
 			{Role: schema.User, Content: prompts.AblationCandidateUserPrompt(contextText, budget)},
 		})
@@ -69,11 +68,11 @@ func (a *DataAgent) executeAblationDesign(ctx context.Context, task *models.Task
 	candidates := append([]models.AblationCandidate(nil), rootCandidates...)
 	expandedParents := []string{}
 	remainingBranches := ablationTreeBranchLimit - len(candidates)
-	if a != nil && a.ChatModel != nil {
+	if a != nil && wrapRuntimeModel(a.Runtime, a.ChatModel) != nil {
 		parents := selectAblationExpansionParents(scoredRoots, budget, minInt(remainingBranches, ablationTreeExpansionBeam))
 		if len(parents) > 0 && remainingBranches > 0 {
 			rawParents, _ := json.Marshal(parents)
-			msg, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
+			msg, err := generateRuntimeModel(ctx, a.Runtime, a.ChatModel, "ablation-child-candidates", []*schema.Message{
 				{Role: schema.System, Content: prompts.AblationExpansionSystemPrompt},
 				{Role: schema.User, Content: prompts.AblationExpansionUserPrompt(contextText, string(rawParents), budget, remainingBranches)},
 			})
@@ -122,11 +121,11 @@ func (a *DataAgent) executeAblationDesign(ctx context.Context, task *models.Task
 
 func evaluateAblationBranches(ctx context.Context, agent *DataAgent, contextText string, candidates []models.AblationCandidate, budget models.AblationBudget, stage string) map[string]ablationEvaluation {
 	evaluations := map[string]ablationEvaluation{}
-	if agent == nil || agent.ChatModel == nil || len(candidates) == 0 {
+	if agent == nil || wrapRuntimeModel(agent.Runtime, agent.ChatModel) == nil || len(candidates) == 0 {
 		return evaluations
 	}
 	rawCandidates, _ := json.Marshal(candidates)
-	msg, err := llmclient.GenerateWithUsage(ctx, agent.ChatModel, []*schema.Message{
+	msg, err := generateRuntimeModel(ctx, agent.Runtime, agent.ChatModel, "ablation-evaluation/"+stage, []*schema.Message{
 		{Role: schema.System, Content: prompts.AblationEvaluationSystemPrompt},
 		{Role: schema.User, Content: prompts.AblationEvaluationUserPrompt(contextText, string(rawCandidates), budget)},
 	})

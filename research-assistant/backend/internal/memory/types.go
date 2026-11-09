@@ -251,18 +251,20 @@ func NormalizeText(text string) string {
 
 // Query describes one retrieval request.
 type Query struct {
-	OwnerID   string
-	ProjectID string
-	SessionID string
-	PlanID    string
-	AgentID   string
-	Text      string
-	Kinds     []Kind
-	Statuses  []Status
-	Tags      []string
-	Entities  []Entity
-	Limit     int
-	TopK      int
+	EnvironmentHash string
+	ProtocolHash    string
+	OwnerID         string
+	ProjectID       string
+	SessionID       string
+	PlanID          string
+	AgentID         string
+	Text            string
+	Kinds           []Kind
+	Statuses        []Status
+	Tags            []string
+	Entities        []Entity
+	Limit           int
+	TopK            int
 	// IncludeSuperseded is used by as-of/history queries. Injection never sets it.
 	IncludeSuperseded bool
 	IncludePending    bool
@@ -398,4 +400,7 @@ type Patch struct {
 	Status     *Status         `json:"status,omitempty"`
 	Refs       *[]SourceRef    `json:"refs,omitempty"`
 	Attributes *map[string]any `json:"attributes,omitempty"`
+
+	// procedureUse is internal execution evidence, never accepted from API JSON.
+	procedureUse *procedureUsePatch
 }

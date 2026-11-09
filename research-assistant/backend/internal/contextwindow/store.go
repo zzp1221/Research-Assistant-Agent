@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"research-assistant-backend/internal/lockfile"
+	"research-assistant-backend/internal/oaichat"
 	"research-assistant-backend/internal/responses"
 )
 
@@ -36,19 +37,22 @@ type CompactionRecord struct {
 	At             time.Time        `json:"at"`
 }
 type State struct {
-	Generation      int                `json:"generation"`
-	Binding         string             `json:"binding"`
-	ProfileID       string             `json:"profile_id"`
-	ProfileRevision int                `json:"profile_revision"`
-	Mode            string             `json:"mode"`
-	Source          []string           `json:"source_hashes"`
-	Window          []responses.Item   `json:"window,omitempty"`
-	Summary         json.RawMessage    `json:"summary,omitempty"`
-	SummaryThrough  int                `json:"summary_through,omitempty"`
-	LastInputHash   string             `json:"last_input_hash,omitempty"`
-	LastText        string             `json:"last_text,omitempty"`
-	Observation     Observation        `json:"token_observation"`
-	Compactions     []CompactionRecord `json:"compactions,omitempty"`
+	Generation       int                `json:"generation"`
+	Binding          string             `json:"binding"`
+	ProfileID        string             `json:"profile_id"`
+	ProfileRevision  int                `json:"profile_revision"`
+	Mode             string             `json:"mode"`
+	Source           []string           `json:"source_hashes"`
+	Window           []responses.Item   `json:"window,omitempty"`
+	Summary          json.RawMessage    `json:"summary,omitempty"`
+	SummaryThrough   int                `json:"summary_through,omitempty"`
+	LastInputHash    string             `json:"last_input_hash,omitempty"`
+	LastText         string             `json:"last_text,omitempty"`
+	LastFinishReason string             `json:"last_finish_reason,omitempty"`
+	LastToolCalls    []oaichat.ToolCall `json:"last_tool_calls,omitempty"`
+	LastOutputItems  int                `json:"last_output_items,omitempty"`
+	Observation      Observation        `json:"token_observation"`
+	Compactions      []CompactionRecord `json:"compactions,omitempty"`
 }
 type entry struct {
 	gate chan struct{}

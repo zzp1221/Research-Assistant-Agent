@@ -60,6 +60,30 @@ func TestUpdateCanExplicitlyMarkCapacityUnknown(t *testing.T) {
 	}
 }
 
+func TestNativeToolCapabilityUpdatePersistsAndCanBeRevoked(t *testing.T) {
+	withEncryptionKey(t)
+	dir := t.TempDir()
+	store, _ := NewStore(dir)
+	p, err := store.Create("owner", Input{Name: "tools", BaseURL: "https://example.com/v1", Model: "model", APIKey: "key"}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, capability := range []string{VisionYes, VisionNo, VisionUnknown} {
+		p, err = store.Update("owner", p.ID, Input{ContextPolicy: ContextPolicy{Capabilities: Capabilities{ToolCalling: capability}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		reloaded, loadErr := NewStore(dir)
+		if loadErr != nil {
+			t.Fatal(loadErr)
+		}
+		got, found := reloaded.Get("owner", p.ID)
+		if !found || got.Capabilities.ToolCalling != capability {
+			t.Fatalf("tool capability lost: %#v found=%v", got, found)
+		}
+	}
+}
+
 func TestEncryptionFailClosedWithoutKey(t *testing.T) {
 	_ = os.Unsetenv(EncryptionKeyEnv)
 	if EncryptionAvailable() {

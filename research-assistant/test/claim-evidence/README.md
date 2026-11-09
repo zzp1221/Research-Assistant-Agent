@@ -15,6 +15,7 @@
 4. `claim_evidence_build` 只引用真实存在的运行产物。
 5. 图 JSON 通过独立 `structured_data` 返回。
 6. 最终准则连接 `run_metrics` 和 `comparison_report`，证据覆盖率为 100%。
+   本样例保留旧式 scalar 运行产物，缺少冻结数值协议和可信执行来源；即使模型声称 verified，后端必须输出 unverifiable，并保留模型提案供审阅。证据覆盖率不代表数值验证通过。
 7. 前端证据图组件通过 lint 和生产构建。
 
 LLM 接口由本地 `httptest` 服务提供固定语义结果，不需要 API Key。

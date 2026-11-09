@@ -22,6 +22,7 @@ import { parseBenchmarkReport } from '../benchmark/benchmarkReport';
 import { VerificationBadge, VerificationDetails } from '../verification/VerificationBadge';
 import { getAgentIcon, getAgentLabel } from '../shared/agentVisuals';
 import { DEFAULT_LOG_TAIL, filterLogs, splitLogLines, windowLogs, type LogLevel } from './logWindow';
+import { AgentRunDetails } from './AgentRunDetails';
 
 const BenchmarkReportView = lazy(() => import('../benchmark/BenchmarkReportView').then((module) => ({ default: module.BenchmarkReportView })));
 const AutoResearchTrialView = lazy(() => import('../autoresearch/AutoResearchTrialView').then((module) => ({ default: module.AutoResearchTrialView })));
@@ -524,6 +525,7 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <AgentRunDetails task={selectedTask} />
         {selectedTask.Verification ? <VerificationDetails verification={selectedTask.Verification} onOpenSettings={onOpenModelSettings} /> : null}
         <table className="w-full border-collapse border-b border-line">
           <caption className="sr-only">节点规格</caption>
@@ -546,7 +548,7 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
               <tr className="border-b border-line">
                 <th scope="row" className="border-r border-line px-4 py-1.5 text-left text-[9.5px] font-normal text-muted">成本</th>
                 <td className="px-3 py-1.5 journal-num text-[11px] text-ink-soft" title={selectedTask.Usage.cost_source ? 'cost source: ' + selectedTask.Usage.cost_source : undefined}>
-                  {selectedTask.Usage.llm_calls ?? 0} 次调用 · {(selectedTask.Usage.llm_prompt_tokens ?? 0) + (selectedTask.Usage.llm_completion_tokens ?? 0)} tokens · ${(selectedTask.Usage.llm_cost_usd ?? 0).toFixed(4)}
+                  {selectedTask.Usage.llm_calls ?? 0} 次调用 · {(selectedTask.Usage.llm_prompt_tokens ?? 0) + (selectedTask.Usage.llm_completion_tokens ?? 0)} tokens · {selectedTask.Usage.cost_source === 'unknown' ? '费用未知' : `$${(selectedTask.Usage.llm_cost_usd ?? 0).toFixed(4)}`}
                   {selectedTask.Usage.llm_estimated ? '（估算）' : ''}
                   {(selectedTask.Usage.duration_seconds ?? 0) > 0 ? ' · ' + Math.round(selectedTask.Usage.duration_seconds ?? 0) + 's' : ''}
                 </td>

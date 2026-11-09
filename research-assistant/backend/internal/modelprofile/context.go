@@ -34,6 +34,7 @@ type Capabilities struct {
 	StandaloneCompaction string `json:"standalone_compaction"`
 	ServerCompaction     string `json:"server_compaction"`
 	RenderedInputCount   string `json:"rendered_input_count"`
+	ToolCalling          string `json:"tool_calling"`
 }
 
 type ContextPolicy struct {
@@ -66,6 +67,9 @@ func (p *Profile) NormalizeContext() {
 		p.TextSummaryTargetRatio = .55
 	}
 	c := &p.Capabilities
+	if c.ToolCalling == "" {
+		c.ToolCalling = VisionUnknown
+	}
 	if c.Responses == "" {
 		c.Responses = VisionUnknown
 	}
@@ -94,7 +98,7 @@ func (p *Profile) ValidateContext() error {
 			return invalid("context ratios must be between 0 and 1")
 		}
 	}
-	for _, value := range []string{p.Capabilities.Responses, p.Capabilities.StandaloneCompaction, p.Capabilities.ServerCompaction, p.Capabilities.RenderedInputCount} {
+	for _, value := range []string{p.Capabilities.Responses, p.Capabilities.StandaloneCompaction, p.Capabilities.ServerCompaction, p.Capabilities.RenderedInputCount, p.Capabilities.ToolCalling} {
 		if value != VisionYes && value != VisionNo && value != VisionUnknown {
 			return invalid("capabilities must be yes, no or unknown")
 		}

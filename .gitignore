@@ -31,6 +31,8 @@ config.toml
 # ---------------------------------------------------------------------------
 *.log
 logs/
+/tmp/
+/research-assistant/data/
 tmp-realtest-logs/
 **/logs/
 **/data/plans.json

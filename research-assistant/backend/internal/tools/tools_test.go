@@ -128,7 +128,7 @@ func TestInvokerSchemaAndApproval(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "a.txt")); !os.IsNotExist(err) {
 		t.Fatal("unapproved call must not write")
 	}
-	approved := invoker.Invoke(context.Background(), InvokeRequest{
+	approved := invoker.Invoke(testApprovalContext("owner-a", "native:write_file", map[string]any{"path": "a.txt", "content": "x"}), InvokeRequest{
 		ToolID: "native:write_file", Arguments: map[string]any{"path": "a.txt", "content": "x"},
 		OwnerID: "owner-a", ApprovalID: "ra-1",
 	})
@@ -192,7 +192,7 @@ func TestNativeWriteFilePathTraversal(t *testing.T) {
 	t.Setenv("TOOL_WORKSPACE_ROOT", root)
 	registry := newTestRegistry(t)
 	invoker := NewInvoker(registry)
-	result := invoker.Invoke(context.Background(), InvokeRequest{
+	result := invoker.Invoke(testApprovalContext("owner-a", "native:write_file", map[string]any{"path": "../escape.txt", "content": "x"}), InvokeRequest{
 		ToolID: "native:write_file", Arguments: map[string]any{"path": "../escape.txt", "content": "x"},
 		OwnerID: "owner-a", ApprovalID: "ra-1",
 	})

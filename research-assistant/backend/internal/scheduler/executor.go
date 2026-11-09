@@ -13,6 +13,7 @@ import (
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/planner"
 	"research-assistant-backend/internal/prompts"
+	"research-assistant-backend/internal/recovery"
 	"research-assistant-backend/internal/tools"
 	"research-assistant-backend/internal/wiki"
 	"research-assistant-backend/internal/workspace"
@@ -137,9 +138,16 @@ func NewRoutedTaskExecutor(librarian, data, coder AgentRunner, specialized ...Ag
 	return executor
 }
 
-func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanGraph, task *models.TaskNode) (*models.TaskExecutionResult, error) {
+func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanGraph, task *models.TaskNode) (executionResult *models.TaskExecutionResult, executionErr error) {
 	if task == nil {
 		return nil, fmt.Errorf("task is nil")
+	}
+	if recovery.FromContext(ctx) == nil {
+		state := models.RecoveryState{ChainID: recovery.Hash([]string{plan.OwnerID, plan.ID, task.ID})}
+		if task.Recovery != nil {
+			state = *task.Recovery
+		}
+		ctx = recovery.WithController(ctx, recovery.New(state, nil))
 	}
 
 	inputs, inputErr := (&planner.ContextBinder{}).BuildInputs(plan, task)
@@ -190,6 +198,8 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		Priority:          task.Priority,
 		RetryLimit:        task.RetryLimit,
 		RunCount:          task.RunCount,
+		ExecutionID:       task.ExecutionID,
+		ExecutionEpoch:    task.ExecutionEpoch,
 		Contract:          contract,
 		Inputs:            inputs,
 		Metadata: map[string]any{
@@ -202,6 +212,46 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		},
 		CreatedAt: task.CreatedAt,
 		UpdatedAt: task.UpdatedAt,
+	}
+	revision := task.Revision
+	if revision == 0 {
+		revision = plan.CurrentRevision
+	}
+	runtimeTask.Metadata["plan_revision"] = revision
+	defer func() {
+		if executionResult == nil {
+			return
+		}
+		state := recovery.FromContext(ctx).Snapshot()
+		executionResult.Recovery = &state
+		executionResult.Artifacts = append(executionResult.Artifacts, state.Evidence...)
+		executionResult.Failure = runtimeTask.Failure
+		executionResult.ToolCalls = append(executionResult.ToolCalls, runtimeTask.ToolCalls...)
+		executionResult.Artifacts = append(executionResult.Artifacts, runtimeTask.Artifacts...)
+		executionResult.AgentRun = runtimeTask.AgentRun
+		if action, ok := runtimeTask.Metadata["runtime_action"].(*models.RuntimeActionRequest); ok {
+			executionResult.RuntimeAction = action
+		}
+		if e.Memory != nil && agentprofile.CheckExecution(ctx) == nil {
+			_ = memory.RecordProcedureActions(ctx, e.Memory, plan.OwnerID, state.Ledger)
+			_ = memory.RecordTask(ctx, e.Memory, plan, task, executionResult)
+		}
+	}()
+	environmentHash := ""
+	if plan.EnvironmentManifest != nil {
+		environmentHash = recovery.Hash(plan.EnvironmentManifest)
+	}
+	ctx = recovery.WithCompatibility(ctx, recovery.Compatibility{EnvironmentHash: environmentHash, ProtocolHash: recovery.Hash(runtimeTask.Contract), ExecutionID: task.ExecutionID})
+	// Carry caller-supplied template variables and saved diagnostics across a
+	// retry, without letting old metadata override program-owned permissions.
+	for _, key := range []string{"prompt_variables", "repair_session"} {
+		if value, ok := task.Metadata[key]; ok {
+			raw, marshalErr := json.Marshal(value)
+			var copied any
+			if marshalErr == nil && json.Unmarshal(raw, &copied) == nil {
+				runtimeTask.Metadata[key] = copied
+			}
+		}
 	}
 	if resolvedProfile != nil {
 		runtimeTask.Metadata["agent_profile_id"] = resolvedProfile.ID
@@ -294,10 +344,12 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		"artifact_keys": append([]string(nil), task.RequiredArtifacts...),
 	}
 	budget := prompts.DefaultPromptBudget()
+	ctx = modelresolver.WithOwner(ctx, plan.OwnerID)
+	ctx = modelresolver.WithBranch(ctx, plan.OwnerID, plan.ProjectID, plan.SessionID, taskContextBranch(plan, task))
+	var contextReport contextwindow.Report
+	ctx = contextwindow.WithReport(ctx, &contextReport)
 	ctx = contextwindow.WithLimits(ctx, contextwindow.Limits{Tokens: plan.Budget.MaxTokens - plan.Usage.LLMPromptTokens - plan.Usage.LLMCompletionTokens, CostUSD: plan.Budget.MaxCostUSD - plan.Usage.LLMCostUSD, TokensConfigured: plan.Budget.MaxTokens > 0, CostConfigured: plan.Budget.MaxCostUSD > 0})
 	if resolver := modelresolver.Default(); resolver != nil {
-		ctx = modelresolver.WithOwner(ctx, plan.OwnerID)
-		ctx = modelresolver.WithBranch(ctx, plan.OwnerID, plan.ProjectID, plan.SessionID, plan.ID+"/"+task.ID)
 		call, resolveErr := resolver.ResolveText(plan.OwnerID)
 		if resolvedProfile != nil && resolvedProfile.ModelProfileID != "" {
 			call, resolveErr = resolver.ResolveProfile(plan.OwnerID, resolvedProfile.ModelProfileID)
@@ -311,7 +363,11 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		}
 		budget = resolvedBudget.PromptBudget
 		ctx = modelresolver.WithResolvedCall(ctx, call)
-		constraintData, _ := json.Marshal(map[string]any{"user_goal": plan.UserIntent, "task": prompts.TaskInstruction(task), "frozen_contract": runtimeTask.Contract, "network_access_approved": networkAccessApproved(plan, task.ID)})
+		var researchConstraints map[string]any
+		if plan.Context != nil {
+			researchConstraints = plan.Context.Constraints
+		}
+		constraintData, _ := json.Marshal(map[string]any{"user_goal": plan.UserIntent, "task": prompts.TaskInstruction(task), "frozen_contract": runtimeTask.Contract, "research_constraints": researchConstraints, "revision": plan.CurrentRevision, "network_access_approved": networkAccessApproved(plan, task.ID)})
 		ctx = modelresolver.WithConstraints(ctx, string(constraintData))
 		runtimeTask.Metadata["model_profile_id"] = call.Profile.ID
 		runtimeTask.Metadata["model_profile_revision"] = call.Profile.Revision
@@ -319,7 +375,7 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		sharedContext["context_managed"] = true
 	}
 	sharedContext["prompt_budget"] = budget
-	if promptContextV2Enabled() {
+	if managed, _ := sharedContext["context_managed"].(bool); managed || promptContextV2Enabled() {
 		// Plan-level stable context is injected once here; agents render it as
 		// the plan_context section instead of appending the user intent again.
 		sharedContext["plan_graph"] = plan
@@ -353,8 +409,9 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 			query := memory.Query{
 				OwnerID: plan.OwnerID, ProjectID: plan.ProjectID, SessionID: plan.SessionID,
 				PlanID: plan.ID, AgentID: task.AssignedTo,
-				Text:  memory.BuildQuery(task.Name+" "+prompts.TruncateRunes(task.Description, 500), nil, 2000),
-				Limit: settings.RetrievalTopK,
+				Text:            memory.BuildQuery(task.Name+" "+prompts.TruncateRunes(task.Description, 500), nil, 2000),
+				Limit:           settings.RetrievalTopK,
+				EnvironmentHash: environmentHash, ProtocolHash: recovery.Hash(runtimeTask.Contract),
 			}
 			retrievedBudget := 3000 - wikiTokens
 			if retrievedBudget < 0 {
@@ -366,17 +423,40 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 				refs := make([]string, 0, len(memCtx.Citations))
 				for _, citation := range memCtx.Citations {
 					refs = append(refs, citation.MemoryID)
+					if citation.Kind == memory.KindProcedure {
+						_ = memory.RecordProcedureUse(ctx, e.Memory, plan.OwnerID, citation.MemoryID, "retrieved", task.ExecutionID, nil)
+					}
 				}
 				sharedContext["memory_refs"] = refs
 			}
 		}
+	}
+	for _, key := range []string{"memory_refs", "wiki_refs"} {
+		if value, ok := sharedContext[key]; ok {
+			runtimeTask.Metadata[key] = value
+		}
+	}
+	if e.Memory != nil {
+		refs, _ := sharedContext["memory_refs"].([]string)
+		adopted := memory.AdoptProcedures(ctx, e.Memory, plan.OwnerID, runtimeTask.Inputs["adopted_procedure_ids"], refs, environmentHash, recovery.Hash(runtimeTask.Contract), task.ExecutionID)
+		compat := recovery.CompatibleContext(ctx)
+		compat.ProcedureIDs = adopted
+		ctx = recovery.WithCompatibility(ctx, compat)
 	}
 
 	runner, err := e.resolveRunner(task.AssignedTo)
 	if err != nil {
 		return nil, err
 	}
-	if err := runner.ExecuteTask(ctx, runtimeTask, sharedContext); err != nil {
+	ctx = tools.WithApprovals(ctx, plan.OwnerID, plan.ID, task.ID, plan.RuntimeActions)
+	runErr := runner.ExecuteTask(ctx, runtimeTask, sharedContext)
+	if runErr != nil && runtimeTask.Failure == nil {
+		runtimeTask.Failure = recovery.Classify(runErr, "agent", recovery.Hash([]any{runtimeTask.Contract, runtimeTask.Inputs, runtimeTask.Code, plan.EnvironmentManifest}))
+	}
+	if contextReport.ProfileID != "" {
+		runtimeTask.Metadata["context_state"] = contextReport
+	}
+	if err := runErr; err != nil {
 		status := runtimeTask.Status
 		if status != models.StatusCanceled {
 			status = models.StatusFailed
@@ -387,9 +467,7 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 			Code:           runtimeTask.Code,
 			StructuredData: runtimeTask.StructuredData,
 			Error:          chooseNonEmpty(runtimeTask.Error, err.Error()),
-		}
-		if e.Memory != nil {
-			_ = memory.RecordTask(ctx, e.Memory, plan, task, result)
+			Metadata:       promptMetadataFromTask(runtimeTask),
 		}
 		return result, nil
 	}
@@ -412,13 +490,21 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		Verification:        verificationFromTask(runtimeTask),
 		Metadata:            promptMetadataFromTask(runtimeTask),
 	}
-	if e.Memory != nil {
-		_ = memory.RecordTask(ctx, e.Memory, plan, task, result)
-	}
 	if e.Wiki != nil {
 		_ = e.Wiki.RefreshForTask(ctx, plan, task, result)
 	}
 	return result, nil
+}
+
+// A retry shares its logical task window. A new revision or parallel task
+// receives a separate window, even when identifiers contain path separators.
+func taskContextBranch(plan *models.PlanGraph, task *models.TaskNode) string {
+	revision := task.Revision
+	if revision == 0 {
+		revision = plan.CurrentRevision
+	}
+	raw, _ := json.Marshal([]any{"task", plan.ID, revision, task.ID})
+	return string(raw)
 }
 
 // promptMetadataFromTask copies prompt-budget diagnostics from the runtime task
@@ -429,7 +515,7 @@ func promptMetadataFromTask(runtimeTask *models.Task) map[string]any {
 	}
 	out := map[string]any{}
 	for _, key := range []string{
-		"prompt_budget", "prompt_truncated_sections", "memory_refs",
+		"prompt_budget", "prompt_truncated_sections", "memory_refs", "wiki_refs", "context_state",
 		"agent_profile_id", "prompt_version_id", "prompt_version", "prompt_hash",
 		"model_profile_id", "model_profile_revision", "model", "max_steps", "repair_session",
 	} {
@@ -947,6 +1033,7 @@ func (e *RoutedTaskExecutor) executeToolCall(ctx context.Context, plan *models.P
 		}
 	}
 	approvalID := approvedToolActionID(plan, task.ID, toolID, callID)
+	ctx = tools.WithApprovals(ctx, plan.OwnerID, plan.ID, task.ID, plan.RuntimeActions)
 	invoke := e.ToolInvoker.Invoke(ctx, tools.InvokeRequest{
 		PlanID:         plan.ID,
 		TaskID:         task.ID,

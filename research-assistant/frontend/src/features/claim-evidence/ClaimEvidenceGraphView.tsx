@@ -27,6 +27,22 @@ interface CriterionVerdict {
   observed_value?: string;
   evidence_ids: string[];
   reason: string;
+  deterministic_verdict?: {
+    status: ClaimStatus;
+    reason: string;
+    expected_value?: number;
+    observed_value?: number;
+    unit?: string;
+    operator?: string;
+    tolerance_mode?: string;
+    absolute_tolerance?: number;
+    relative_tolerance?: number;
+    inclusive?: boolean;
+    split?: string;
+    protocol_sha256?: string;
+    review_required?: boolean;
+  };
+  model_proposal?: { status: ClaimStatus; observed_value?: string };
 }
 
 interface ClaimResult {
@@ -335,6 +351,7 @@ export function ClaimEvidenceGraphView({ rawGraph, expanded = false }: ClaimEvid
   }
 
   const selectedDetail = visualGraph.nodes.find((node) => node.id === selectedNodeID)?.data.detail;
+  const numericCriteria = graph.claims.flatMap((claim) => claim.criteria).filter((criterion) => criterion.deterministic_verdict);
   const summaryItems: Array<{ label: string; value: number; status: ClaimStatus }> = [
     { label: '已验证', value: graph.summary.verified, status: 'verified' },
     { label: '部分复现', value: graph.summary.partially_reproduced, status: 'partially_reproduced' },
@@ -361,6 +378,34 @@ export function ClaimEvidenceGraphView({ rawGraph, expanded = false }: ClaimEvid
         <div className="border-b border-warn/25 bg-warn-soft px-3 py-2 text-[11px] leading-4 text-warn">
           判定降级：{graph.status_reason || '部分准则没有获得完整证据判定。'}
         </div>
+      )}
+      {numericCriteria.length > 0 && (
+        <details className="border-b border-line bg-surface px-3 py-2 text-xs">
+          <summary className="cursor-pointer font-semibold text-ink">数值验收 · {numericCriteria.length} 项</summary>
+          <div className="mt-2 max-h-64 space-y-3 overflow-y-auto">
+            {numericCriteria.map((criterion) => {
+              const verdict = criterion.deterministic_verdict!;
+              const number = (value?: number) => typeof value === 'number' && Number.isFinite(value) ? `${value} ${verdict.unit || ''}`.trim() : '待确认';
+              const tolerance = verdict.tolerance_mode === 'none'
+                ? '无容差'
+                : [verdict.absolute_tolerance === undefined ? '' : `绝对 ${verdict.absolute_tolerance}`, verdict.relative_tolerance === undefined ? '' : `相对 ${verdict.relative_tolerance}`].filter(Boolean).join(' + ') || '待确认';
+              return (
+                <section key={criterion.criterion_id} aria-label={`数值准则 ${criterion.criterion_id}`} className="border-l-2 border-line-strong pl-3">
+                  <p className="font-medium text-ink">{criterion.description}</p>
+                  <dl className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-ink-soft">
+                    <div><dt className="inline text-muted">冻结预期：</dt><dd className="inline">{number(verdict.expected_value)}</dd></div>
+                    <div><dt className="inline text-muted">后端观测：</dt><dd className="inline">{number(verdict.observed_value)}</dd></div>
+                    <div><dt className="inline text-muted">容差：</dt><dd className="inline">{tolerance}</dd></div>
+                    <div><dt className="inline text-muted">数据划分：</dt><dd className="inline">{verdict.split || '待确认'}</dd></div>
+                  </dl>
+                  <p className="mt-1 text-ink-soft">最终判定：{statusConfig[criterion.status]?.label || '不可验证'}。{verdict.review_required ? '运行程序自报指标，待独立验证或审阅。' : ''}</p>
+                  <p className="mt-1 break-words text-muted">{criterion.reason}</p>
+                  {criterion.model_proposal && <p className="mt-1 text-muted">模型建议：{statusConfig[criterion.model_proposal.status]?.label || criterion.model_proposal.status}{criterion.model_proposal.observed_value ? `；${criterion.model_proposal.observed_value}` : ''}</p>}
+                </section>
+              );
+            })}
+          </div>
+        </details>
       )}
       <div className={`relative min-h-0 flex-1 ${expanded ? 'min-h-[520px]' : 'min-h-[320px]'}`}>
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 grid grid-cols-3 border-b border-line bg-surface/90 px-4 py-2 text-center text-[10px] font-semibold text-muted backdrop-blur-sm">

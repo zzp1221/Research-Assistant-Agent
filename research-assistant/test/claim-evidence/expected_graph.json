@@ -3,24 +3,43 @@
     {
       "claim_id": "claim-001",
       "claim_type": "quantitative",
-      "confidence": 0.98,
+      "confidence": 0,
       "criteria": [
         {
-          "confidence": 0.98,
+          "confidence": 0,
           "criterion_id": "claim-001.criterion-01",
           "description": "Evaluate accuracy on the TinyBench test split with 100 examples and accept values within +/-0.01 of 0.80.",
+          "deterministic_verdict": {
+            "expected_value": 0.8,
+            "reason": "numeric contract, metric, expected value and unit must be explicitly frozen",
+            "review_required": false,
+            "status": "unverifiable",
+            "trust_boundary": "untrusted_or_incomplete_observation",
+            "unit": "ratio",
+            "verifier_version": "claim.numeric-verifier/v1"
+          },
           "evidence_ids": [
-            "evidence-run-metrics",
-            "evidence-comparison-report"
+            "evidence-comparison-report",
+            "evidence-run-metrics"
           ],
-          "observed_value": "accuracy=0.80, sample_count=100, seed=7",
-          "reason": "The recorded run uses the named test split and sample count; observed accuracy 0.80 is within the frozen tolerance.",
-          "status": "verified"
+          "model_proposal": {
+            "confidence": 0.98,
+            "evidence_keys": [
+              "run_metrics",
+              "comparison_report"
+            ],
+            "observed_value": "accuracy=0.80, sample_count=100, seed=7",
+            "reason": "The recorded run uses the named test split and sample count; observed accuracy 0.80 is within the frozen tolerance.",
+            "status": "verified"
+          },
+          "reason": "numeric contract, metric, expected value and unit must be explicitly frozen",
+          "status": "unverifiable",
+          "verification_method": "deterministic"
         }
       ],
       "source_locator": "Table 1",
       "statement": "The method reaches accuracy 0.80 on the TinyBench test split.",
-      "status": "verified",
+      "status": "unverifiable",
       "title": "Accuracy claim"
     }
   ],
@@ -121,8 +140,8 @@
     }
   ],
   "rubric_sha256": "05493a9016643d64632b438f10489270a6b25676586eb1263a6c5873640106ce",
-  "status": "assessed",
-  "status_reason": "all criterion verdicts were produced and validated against the bounded evidence inventory",
+  "status": "degraded",
+  "status_reason": "one or more criteria lack complete frozen protocol or evidence; review is required",
   "summary": {
     "blocked_by_missing_asset": 0,
     "contradicted": 0,
@@ -130,8 +149,8 @@
     "partially_reproduced": 0,
     "total_claims": 1,
     "total_criteria": 1,
-    "unverifiable": 0,
-    "verified": 1
+    "unverifiable": 1,
+    "verified": 0
   },
   "version": "claim.evidence/v1"
 }
