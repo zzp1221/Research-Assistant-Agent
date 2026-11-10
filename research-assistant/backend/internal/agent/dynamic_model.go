@@ -183,3 +183,9 @@ func wrapRuntimeModel(dynamic *dynamicChatModel, fixed *openai.ChatModel) model.
 	}
 	return staticChatModel(fixed)
 }
+
+// generateRuntimeModel keeps independent task stages on stable context branches.
+// Repair conversations supply their own stable branch through Session.Generate.
+func generateRuntimeModel(ctx context.Context, dynamic *dynamicChatModel, fixed *openai.ChatModel, branch string, messages []*schema.Message) (*schema.Message, error) {
+	return llmclient.GenerateWithUsage(modelresolver.WithSubBranch(ctx, branch), wrapRuntimeModel(dynamic, fixed), messages)
+}

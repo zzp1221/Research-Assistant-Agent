@@ -33,6 +33,23 @@ func newRevisionRouter(t *testing.T) (*gin.Engine, store.PlanStore, *planRuntime
 	return router, planStore, runtime
 }
 
+func TestRevisionPreservesRuntimeRecoveryAndClearsCompletionProvenance(t *testing.T) {
+	current := &models.PlanGraph{Nodes: []*models.TaskNode{{ID: "same", Recovery: &models.RecoveryState{ChainID: "chain", MaxActions: 2, UsedActions: 2, HTTPAttempts: 10}}}}
+	draft := &models.PlanGraph{Nodes: []*models.TaskNode{{ID: "same", Recovery: &models.RecoveryState{ChainID: "forged", MaxActions: 100}}, {ID: "new", Recovery: &models.RecoveryState{ChainID: "forged"}}}}
+	applyDraftGraph(current, draft)
+	if got := current.Nodes[0].Recovery; got == nil || got.ChainID != "chain" || got.UsedActions != 2 || got.HTTPAttempts != 10 {
+		t.Fatalf("revision replenished recovery: %+v", got)
+	}
+	if current.Nodes[1].Recovery != nil {
+		t.Fatal("new node accepted forged recovery evidence")
+	}
+	metadata := map[string]any{"completed_execution_id": "old", "completed_execution_epoch": 3, "completed_revision": 1, "agent_run": "old", "frozen_contract": "keep"}
+	clean := copyRuntimeMetadata(metadata)
+	if len(clean) != 1 || clean["frozen_contract"] != "keep" || metadata["completed_execution_id"] != "old" {
+		t.Fatalf("provenance reset mutated snapshot: %+v %+v", clean, metadata)
+	}
+}
+
 func revisionRequest(router *gin.Engine, method, path, userID string, body any) *httptest.ResponseRecorder {
 	var reader *bytes.Buffer
 	if body != nil {

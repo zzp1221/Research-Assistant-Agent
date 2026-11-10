@@ -44,8 +44,13 @@
 | [运行期模型配置与通用视觉校验](design/runtime-model-config-and-visual-verification.md) | per-user + 全局默认模型配置、视觉能力探测与路由、verify_result 通用图像校验（inconclusive/fail 语义） |
 | [意图复杂度路由与计划生成选择](design/intent-complexity-routing.md) | 方案 C：把复杂度判断合并进 intent 分类；L0-L4 路由、模板变体、skeleton + agent 增强、验收与风险 |
 | [Agent 链路优化（General / Prompt / Repair / Token 预算）](design/2026-10-27-agent-chain-optimization.md) | 四个具体优化点的“问题在哪、为什么、怎么做”、代码位置与验收清单 |
-| [按模型配置计算上下文窗口与 Compaction](design/2026-11-06-model-aware-context-compaction.md) | **待实施设计 v2.0**：动态预算、独立/服务端原生压缩、兼容摘要、活动窗口持久化、分阶段接入与验收 |
-| [Agent 能力改进方案](design/2026-11-07-agent-capability-improvement.md) | **待实施设计 v1.0**：工具执行循环、分类恢复与重规划、数值证据验收、上下文恢复、任务质量评测与修复记忆；含优先级、实施顺序及验收用例 |
+| [按模型配置计算上下文窗口与 Compaction](design/2026-11-06-model-aware-context-compaction.md) | 设计 v2.0；动态预算、独立/服务端压缩、摘要与活动窗口底座已实施，实际能力与真实网关限制见 [实现说明](design/2026-11-07-context-implementation.md) |
+| [Agent 能力改进方案](design/2026-11-07-agent-capability-improvement.md) | 设计 v1.0；AG-01–AG-06 已有增量实现，保留原验收目标与未交付范围 |
+| [Agent 能力六线实施与验收](design/2026-11-08-agent-capability-implementation.md) | Profile 原生工具循环、共享恢复额度、可信数值、上下文集成、任务评测与修复记忆；配置、验收映射及真实任务未验证边界 |
+| [Agent 上下文集成与恢复实施说明](design/2026-11-08-agent-context-implementation.md) | **AG-04 增量已实施**：共享上下文、科研修复模型路由、revision 隔离、失败诊断持久化、摘要来源恢复与容器回归结果 |
+| [分类恢复与修复记忆](design/2026-11-08-recovery-memory.md) | AG-02/06：typed 失败、跨层恢复预算、受审重规划提案、有证据的 procedure 候选与兼容过滤 |
+| [Claim Evidence 数值验收](design/2026-11-08-claim-verification.md) | AG-03：测量前冻结、真实执行来源与原始预测重算；程序自报指标待审，不以模型提案替代验证 |
+| [Agent 任务质量基线](test/2026-11-08-agent-quality-baseline.md) | AG-05：template/model/task、严格 grader、真实 native 工具执行与 8 例冻结离线反例基线；零分母 N/A |
 | [N-01/N-02/N-03：计划库、可复现导出与成本预算控制台](design/n01-n03-plan-library-reproducibility-cost.md) | 基于现有计划列表/导出/usage 的增量设计，含索引、manifest/checksum、预算闸门与验收 |
 | [N-05 计划审阅与人在回路](design/n05-plan-review-hitl.md) | revision、执行前审阅、结构化提问、审批收件箱与 diff 的设计 |
 | [N-13 Agent/工具生态（MCP）](design/n13-agent-tool-ecosystem-mcp.md) | 工具注册/权限/审计、MCP 接入、自定义 Agent 与 Prompt 版本的设计 |

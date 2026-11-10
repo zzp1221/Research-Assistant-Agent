@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/recovery"
 	"strings"
 	"time"
 
@@ -27,6 +29,19 @@ func (s *Scheduler) markTaskStarted(planID, taskID string) (string, string, int,
 		if plan.Budget.MaxTaskAttempts > 0 && plan.Usage.TaskAttempts >= plan.Budget.MaxTaskAttempts {
 			return fmt.Errorf("task attempt budget exceeded")
 		}
+		if task.Recovery != nil && (task.RunCount > 0 || task.Recovery.HTTPAttempts > 0 || task.Failure != nil) {
+			state := *task.Recovery
+			if !state.PendingRetry && !state.Waiting && task.Status != models.StatusAwaitingApproval && task.Status != models.StatusAwaitingInput {
+				controller := recovery.New(state, nil)
+				if err := controller.Reserve("explicit_task_retry", task.Failure); err != nil {
+					return err
+				}
+				state = controller.Snapshot()
+			}
+			state.PendingRetry = false
+			state.Waiting = false
+			task.Recovery = &state
+		}
 		leaseOwner = task.AssignedTo
 		timeout := time.Duration(task.TimeoutSeconds) * time.Second
 		if timeout <= 0 {
@@ -40,6 +55,7 @@ func (s *Scheduler) markTaskStarted(planID, taskID string) (string, string, int,
 		task.LeaseOwner = leaseOwner
 		task.LeaseExpiresAt = &leaseExpiresAt
 		task.RunCount++
+		task.NextAttemptAt = nil
 		task.StartedAt = &now
 		task.FinishedAt = nil
 		task.UpdatedAt = now
@@ -85,6 +101,13 @@ func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner st
 			task.Metadata["image_blob_ref"] = result.ImageBlobRef
 		}
 		task.Error = ""
+		if task.Metadata == nil {
+			task.Metadata = map[string]any{}
+		}
+		if result.Recovery != nil {
+			task.Recovery = result.Recovery
+		}
+		task.Failure = nil
 		task.ExecutionID = ""
 		task.LeaseOwner = ""
 		task.LeaseExpiresAt = nil
@@ -98,9 +121,27 @@ func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner st
 				task.Metadata[key] = value
 			}
 		}
+		// Server provenance is authoritative even if a runner returns the same
+		// metadata keys. Lease cleanup never removes this completion boundary.
+		task.Metadata["completed_execution_id"] = executionID
+		task.Metadata["completed_execution_epoch"] = executionEpoch
+		revision := task.Revision
+		if revision == 0 {
+			revision = plan.CurrentRevision
+		}
+		task.Metadata["completed_revision"] = revision
 		applyTaskUsage(task, plan, result.Usage)
 		if result.ToolCall != nil {
 			upsertToolCallRecord(plan, result.ToolCall)
+		}
+		for i := range result.ToolCalls {
+			upsertToolCallRecord(plan, &result.ToolCalls[i])
+		}
+		if result.AgentRun != nil {
+			if task.Metadata == nil {
+				task.Metadata = map[string]any{}
+			}
+			task.Metadata["agent_run"] = result.AgentRun
 		}
 		if result.Verification != nil {
 			task.Verification = result.Verification
@@ -272,6 +313,66 @@ func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner strin
 			return ErrStaleExecution
 		}
 		task.Error = result.Error
+		if result.Recovery != nil {
+			task.Recovery = result.Recovery
+		}
+		failure := result.Failure
+		if failure == nil {
+			failure = recovery.Classify(fmt.Errorf("%s", result.Error), "task", recovery.Hash([]any{task.Contract, task.Inputs, result.Code, plan.EnvironmentManifest}))
+		}
+		task.Failure = failure
+		result.Failure = failure
+		stopReason := failure.Code
+		canRetry := allowRetry && task.RunCount <= task.RetryLimit
+		state := models.RecoveryState{ChainID: recovery.Hash([]string{plan.OwnerID, plan.ID, task.ID})}
+		if task.Recovery != nil {
+			state = *task.Recovery
+		}
+		controller := recovery.New(state, nil)
+		classified := !strings.EqualFold(os.Getenv("AGENT_CLASSIFIED_RECOVERY"), "false")
+		if classified && failure.Class != "transient" {
+			canRetry = false
+		}
+		if failure.Class == "canceled" || failure.Class == "budget" || failure.Class == "permission" || failure.Class == "missing_input" {
+			canRetry = false
+		}
+		if canRetry {
+			if err := controller.Reserve("task_retry", failure); err != nil {
+				canRetry = false
+				stopReason = err.Error()
+				task.Error = result.Error + "; " + err.Error()
+			}
+		}
+		next := controller.Snapshot()
+		next.PendingRetry = canRetry
+		if !canRetry {
+			action := "stop"
+			if failure.Class == "missing_input" || failure.Class == "permission" {
+				action = "wait"
+			}
+			if failure.Class == "canceled" {
+				action = "cancel"
+			}
+			next.Decisions = append(next.Decisions, models.RecoveryDecision{Action: action, Reason: stopReason, FailureFingerprint: failure.Fingerprint, Remaining: next.MaxActions - next.UsedActions, At: now})
+		}
+		task.Recovery = &next
+		if classified && !canRetry && (failure.Class == "environment" || failure.Class == "deterministic") && next.Replans == 0 {
+			task.ReplanProposal = &models.ReplanProposal{Reason: "Execution requires a reviewed input, environment or plan change", FailureFingerprint: failure.Fingerprint, BaseRevision: plan.CurrentRevision, RequiresReview: true, FrozenContractHash: recovery.Hash(task.Contract), InvalidateArtifacts: append([]string(nil), task.OutputArtifacts...)}
+			task.ReplanProposal.SuggestedChanges = []string{"Review failed task " + task.ID + " and supply a compatible environment or missing dependency before rerunning affected descendants"}
+			task.ReplanProposal.PermissionChanges = []string{}
+			task.ReplanProposal.AcceptanceContractUnchanged = true
+			next.Replans++
+			next.Decisions = append(next.Decisions, models.RecoveryDecision{Action: "replan_proposal", Reason: failure.Code, FailureFingerprint: failure.Fingerprint, Remaining: next.MaxActions - next.UsedActions, At: now})
+			task.Recovery = &next
+		}
+		if len(result.Metadata) > 0 {
+			if task.Metadata == nil {
+				task.Metadata = map[string]any{}
+			}
+			for key, value := range result.Metadata {
+				task.Metadata[key] = value
+			}
+		}
 		// Keep whatever the agent produced before failing: partial code, metrics
 		// or structured evidence is still useful for debugging and the UI.
 		if strings.TrimSpace(result.Result) != "" {
@@ -313,13 +414,59 @@ func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner strin
 			upsertToolCallRecord(plan, result.ToolCall)
 		}
 		blocked := result.Status == models.StatusBlocked
+		for i := range result.ToolCalls {
+			upsertToolCallRecord(plan, &result.ToolCalls[i])
+		}
+		if result.AgentRun != nil {
+			if task.Metadata == nil {
+				task.Metadata = map[string]any{}
+			}
+			task.Metadata["agent_run"] = result.AgentRun
+		}
+		if result.RuntimeAction != nil {
+			action := *result.RuntimeAction
+			action.PlanID = plan.ID
+			action.TaskID = task.ID
+			found := false
+			for _, old := range plan.RuntimeActions {
+				if old.ID == action.ID {
+					found = true
+				}
+			}
+			if !found {
+				plan.RuntimeActions = append(plan.RuntimeActions, action)
+				task.RuntimeActionIDs = append(task.RuntimeActionIDs, action.ID)
+			}
+			canRetry = false
+			next.PendingRetry = false
+			next.Waiting = true
+			task.Recovery = &next
+			plan.Status = models.StatusAwaitingApproval
+		}
 		if blocked {
 			task.Status = models.StatusBlocked
 			blockedStatus = true
 			task.FinishedAt = &now
-		} else if allowRetry && task.RunCount <= task.RetryLimit {
+		} else if result.Status == models.StatusAwaitingApproval || result.Status == models.StatusAwaitingInput {
+			task.Status = result.Status
+			blockedStatus = true
+			task.FinishedAt = &now
+		} else if failure.Class == "canceled" {
+			task.Status = models.StatusCanceled
+			task.FinishedAt = &now
+		} else if failure.Class == "missing_input" || failure.Class == "permission" {
+			task.Status = models.StatusBlocked
+			blockedStatus = true
+			task.FinishedAt = &now
+		} else if canRetry {
 			task.Status = models.StatusPending
 			task.FinishedAt = nil
+			delay := time.Duration(500*(1<<min(next.UsedActions-1, 5))) * time.Millisecond
+			if suggested := time.Duration(failure.RetryAfterMS) * time.Millisecond; suggested > delay {
+				delay = suggested
+			}
+			nextAttempt := now.Add(delay)
+			task.NextAttemptAt = &nextAttempt
 			retrying = true
 		} else {
 			task.Status = models.StatusFailed
@@ -350,6 +497,10 @@ func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner strin
 		s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "task_retrying", TaskID: taskID, TaskStatus: string(models.StatusPending), ExecutionID: executionID, Payload: map[string]any{"error": result.Error}, Timestamp: now})
 		return true, nil
 	}
+	if result.RuntimeAction != nil {
+		s.publishAndStore(planID, models.PlanEvent{PlanID: planID, TaskID: taskID, EventType: "runtime_action_requested", TaskStatus: string(models.StatusAwaitingApproval), Payload: map[string]any{"action": result.RuntimeAction}, Timestamp: now})
+		return false, nil
+	}
 	eventType := "task_failed"
 	taskStatus := models.StatusFailed
 	if blockedStatus {
@@ -365,6 +516,7 @@ func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner strin
 		Payload: map[string]any{
 			"error":                result.Error,
 			"missing_requirements": result.MissingRequirements,
+			"failure":              result.Failure,
 		},
 		Timestamp: now,
 	})

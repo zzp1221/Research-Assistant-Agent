@@ -267,11 +267,13 @@ func makeToolGate(registry *tools.Registry, profiles *agentprofile.Registry) sch
 			arguments = raw
 		}
 		details := map[string]any{
-			"tool_id":      def.ID,
-			"tool_version": def.Version,
-			"call_id":      callID,
-			"arguments":    tools.PreviewArguments(arguments),
-			"scopes":       def.Scopes,
+			"tool_id":        def.ID,
+			"tool_version":   def.Version,
+			"call_id":        callID,
+			"arguments":      tools.PreviewArguments(arguments),
+			"arguments_hash": models.HashArguments(arguments),
+			"expires_at":     time.Now().UTC().Add(30 * time.Minute).Format(time.RFC3339Nano),
+			"scopes":         def.Scopes,
 		}
 		risk := "medium"
 		for _, scope := range def.Scopes {

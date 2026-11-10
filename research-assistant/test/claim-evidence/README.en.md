@@ -15,6 +15,7 @@ This directory validates the full Claim-to-Evidence Graph chain: the test drives
 4. `claim_evidence_build` references only real run artifacts.
 5. The graph JSON is returned as independent `structured_data`.
 6. Final criteria connect `run_metrics` and `comparison_report` with 100% evidence coverage.
+   This legacy scalar sample lacks a frozen numeric protocol and trusted execution provenance. The backend must return unverifiable even when the model proposes verified, preserving that proposal for review. Evidence coverage does not imply numeric verification.
 7. The frontend evidence-graph component passes lint and production build.
 
 The LLM interface is a local `httptest` server with fixed semantic responses; no API key is needed.

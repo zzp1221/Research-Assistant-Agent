@@ -130,7 +130,7 @@ func (a *DataAgent) ExecuteTask(ctx context.Context, task *models.Task, sharedCo
 		return a.executeAblationDesign(ctx, task)
 	}
 	if task != nil && task.Type == "claim_evidence_build" {
-		return a.executeClaimEvidenceBuild(ctx, task)
+		return a.executeClaimEvidenceBuild(ctx, task, sharedContext)
 	}
 
 	verification := a.runVerification(ctx, task, sharedContext)

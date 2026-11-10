@@ -15,6 +15,7 @@ import (
 	"research-assistant-backend/internal/llmclient"
 	"research-assistant-backend/internal/modelresolver"
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/recovery"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -25,6 +26,7 @@ type Session struct {
 	ID            string
 	Messages      []*schema.Message
 	MaxTurns      int // Deprecated: execution limits must not delete history.
+	Repair        bool
 	ContextReport contextwindow.Report
 
 	hashes []string
@@ -40,6 +42,12 @@ func NewSession(id, system, firstUser string) *Session {
 			{Role: schema.User, Content: firstUser},
 		},
 	}
+}
+
+func NewRepairSession(id, system, firstUser string) *Session {
+	s := NewSession(id, system, firstUser)
+	s.Repair = true
+	return s
 }
 
 // AddAssistant appends an assistant message.
@@ -64,6 +72,24 @@ func (s *Session) Generate(ctx context.Context, chat model.BaseChatModel) (*sche
 		return nil, nil
 	}
 	ctx = modelresolver.WithSubBranch(ctx, s.ID)
+	if s.Repair {
+		lastUser, lastAssistant := "", ""
+		for _, m := range s.Messages {
+			if m == nil {
+				continue
+			}
+			if m.Role == schema.User {
+				lastUser = m.Content
+			}
+			if m.Role == schema.Assistant {
+				lastAssistant = m.Content
+			}
+		}
+		failure := recovery.Classify(fmt.Errorf("%s", lastUser), "local_repair", recovery.Hash(lastAssistant))
+		if err := recovery.Reserve(ctx, "local_repair", failure); err != nil {
+			return nil, err
+		}
+	}
 	s.ContextReport.Requests = contextwindow.RequestCounts{}
 	ctx = contextwindow.WithReport(ctx, &s.ContextReport)
 	s.hashes = append(s.hashes, s.PrefixHash())
@@ -125,6 +151,7 @@ func (s *Session) Snapshot() map[string]any {
 		"turns":         s.Turns(),
 		"prompt_hashes": hashes,
 		"messages":      cloneMessages(s.Messages),
+		"repair":        s.Repair,
 	}
 }
 
@@ -147,6 +174,7 @@ func Restore(snapshot map[string]any) (*Session, error) {
 		Messages      []*schema.Message    `json:"messages"`
 		Hashes        []string             `json:"prompt_hashes"`
 		ContextReport contextwindow.Report `json:"context_state"`
+		Repair        bool                 `json:"repair"`
 	}
 	if err := json.Unmarshal(raw, &saved); err != nil {
 		return nil, err
@@ -154,7 +182,7 @@ func Restore(snapshot map[string]any) (*Session, error) {
 	if saved.ID == "" || len(saved.Messages) < 2 {
 		return nil, fmt.Errorf("repair_session_unrecoverable")
 	}
-	return &Session{ID: saved.ID, Messages: saved.Messages, hashes: saved.Hashes, ContextReport: saved.ContextReport}, nil
+	return &Session{ID: saved.ID, Messages: saved.Messages, hashes: saved.Hashes, ContextReport: saved.ContextReport, Repair: saved.Repair}, nil
 }
 
 // Record stores the session summary on task metadata.

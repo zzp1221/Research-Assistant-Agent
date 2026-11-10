@@ -209,7 +209,7 @@ func missingText(items []models.MissingRequirement) string {
 	return truncateRunes(builder.String(), 500)
 }
 
-// RecordTask writes a task episode and, when a retry succeeded, a procedure.
+// RecordTask writes execution episodes; procedures require verified actions.
 func RecordTask(ctx context.Context, store Store, plan *models.PlanGraph, task *models.TaskNode, result *models.TaskExecutionResult) error {
 	if store == nil || plan == nil || task == nil || strings.TrimSpace(plan.OwnerID) == "" {
 		return nil
@@ -232,7 +232,15 @@ func RecordTask(ctx context.Context, store Store, plan *models.PlanGraph, task *
 		status = result.Status
 	}
 	if status == models.StatusFailed {
-		content := fmt.Sprintf("任务：%s；类型：%s；结果：失败；错误：%s", task.Name, task.Type, truncateRunes(task.Error, 300))
+		failureText := task.Error
+		if result != nil {
+			if result.Failure != nil && result.Failure.Message != "" {
+				failureText = result.Failure.Message
+			} else if result.Error != "" {
+				failureText = result.Error
+			}
+		}
+		content := fmt.Sprintf("任务：%s；类型：%s；结果：失败；错误：%s", task.Name, task.Type, truncateRunes(failureText, 300))
 		rec := Record{
 			ID: "mem-task-" + plan.ID + "-" + task.ID, Kind: KindEpisode, Scope: scope,
 			Title: truncateRunes("任务失败："+task.Name, 120), Content: truncateRunes(content, 700), Tags: []string{"task", "failure"},
@@ -259,17 +267,22 @@ func RecordTask(ctx context.Context, store Store, plan *models.PlanGraph, task *
 				trigger = truncateRunes(value, 120)
 			}
 		}
-		proc := Record{
-			ID: "mem-proc-" + plan.ID + "-" + task.ID, Kind: KindProcedure, Scope: projectExperienceScope(plan),
-			Title:   truncateRunes("修复经验："+task.Name, 120),
-			Content: fmt.Sprintf("触发：%s；动作：重试/修复后成功；任务：%s；证据：task=%s", trigger, task.Name, task.ID),
-			Tags:    []string{"procedure", "repair"}, Entities: []Entity{{Type: "task", Value: task.ID}},
+		episode := Record{
+			ID: "mem-recovery-" + plan.ID + "-" + task.ID, Kind: KindEpisode, Scope: projectExperienceScope(plan),
+			Title:   truncateRunes("恢复记录："+task.Name, 120),
+			Content: fmt.Sprintf("触发：%s；观察：重试后任务完成；未由重试次数推断修复方法；任务：%s；证据：task=%s", trigger, task.Name, task.ID),
+			Tags:    []string{"episode", "transient-recovery"}, Entities: []Entity{{Type: "task", Value: task.ID}},
 			Source:   Source{Type: "task", Ref: task.ID, CreatedAt: now},
 			Refs:     []SourceRef{{PlanID: plan.ID, TaskID: task.ID, SessionID: plan.SessionID}},
 			Evidence: Evidence{Class: "execution_derived", Confidence: 0.8}, Validity: Validity{ValidFrom: taskTime(task), RecordedAt: now},
 			Importance: 7, Confidence: 0.8, Trust: TrustVerified, Sensitivity: "private", Status: StatusActive,
 		}
-		return putIgnoreDuplicate(ctx, store, proc)
+		if err := putIgnoreDuplicate(ctx, store, episode); err != nil {
+			return err
+		}
+	}
+	if status == models.StatusCompleted && result != nil && result.Recovery != nil {
+		return RecordRepairProcedures(ctx, store, plan, task, result.Recovery.Ledger)
 	}
 	return nil
 }

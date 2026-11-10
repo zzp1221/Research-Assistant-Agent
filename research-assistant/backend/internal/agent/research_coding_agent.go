@@ -90,6 +90,8 @@ func isBareShellArg(value string) bool {
 type ResearchCodingAgent struct {
 	Name      string
 	ChatModel *openaiModel.ChatModel
+	// Runtime shares the coder's managed model, budget and context persistence.
+	Runtime   *dynamicChatModel
 	Sandbox   researchCodingSandbox
 	Optimizer researchOptimizer
 	// Memory optionally injects prior trial procedures/negatives into the next
@@ -101,6 +103,7 @@ func NewResearchCodingAgent(coder *CoderAgent) *ResearchCodingAgent {
 	agent := &ResearchCodingAgent{Name: "research_coding_agent", Optimizer: newHTTPResearchOptimizerFromEnv()}
 	if coder != nil {
 		agent.ChatModel = coder.ChatModel
+		agent.Runtime = coder.Runtime
 		agent.Sandbox = coder.Sandbox
 	}
 	return agent

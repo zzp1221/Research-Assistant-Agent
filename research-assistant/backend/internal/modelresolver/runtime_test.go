@@ -163,6 +163,8 @@ func TestServerCompactionIsNotRequestedUnderFiniteCostBudget(t *testing.T) {
 	call.Profile.CompactionMode = modelprofile.CompactionServer
 	call.Profile.Capabilities.ServerCompaction = "yes"
 	ctx = contextwindow.WithLimits(ctx, contextwindow.Limits{CostConfigured: true, CostUSD: .01})
+	call.Profile.PromptPricePer1K = .0001
+	call.Profile.CompletionPricePer1K = .0001
 	var report contextwindow.Report
 	ctx = contextwindow.WithReport(ctx, &report)
 	response, err := r.CompleteManaged(ctx, call, []oaichat.Message{{Role: "user", Text: "continue"}}, oaichat.Options{})
@@ -373,11 +375,112 @@ func TestCompactionCannotSpendUnknownCostUnderFiniteBudget(t *testing.T) {
 		nativeAnswer(w, "answer")
 	})
 	ctx = contextwindow.WithLimits(ctx, contextwindow.Limits{CostConfigured: true, CostUSD: .01})
+	call.Profile.PromptPricePer1K = .0001
+	call.Profile.CompletionPricePer1K = .0001
 	input := []oaichat.Message{{Role: "user", Text: strings.Repeat("研", 2250)}, {Role: "assistant", Text: strings.Repeat("答", 2400)}, {Role: "user", Text: "continue"}}
 	if _, err := r.CompleteManaged(ctx, call, input, oaichat.Options{}); err != nil {
 		t.Fatal(err)
 	}
 	if compacts != 0 || creates != 1 {
 		t.Fatalf("budget gate invoked compact: %d/%d", compacts, creates)
+	}
+}
+
+func TestTextSummaryRecoveryChecksEverySummarizedSource(t *testing.T) {
+	for _, history := range []string{"unchanged", "edited", "shortened"} {
+		t.Run(history, func(t *testing.T) {
+			summaries, generations := 0, 0
+			r, call, ctx := runtimeFixture(t, func(w http.ResponseWriter, req *http.Request) {
+				var request struct {
+					Messages []struct {
+						Content string `json:"content"`
+					} `json:"messages"`
+					ResponseFormat map[string]string `json:"response_format"`
+				}
+				_ = json.NewDecoder(req.Body).Decode(&request)
+				text := "recovered"
+				if request.ResponseFormat != nil {
+					summaries++
+					text = `{"version":"context.summary/v1","goal":"original repair history","constraints":[],"facts":[],"decisions":[],"attempts":[],"hypotheses":[],"open_questions":[],"next_steps":[],"artifact_refs":[]}`
+				} else {
+					generations++
+					if generations == 1 {
+						http.Error(w, "unavailable", http.StatusServiceUnavailable)
+						return
+					}
+					joined := ""
+					for _, message := range request.Messages {
+						joined += message.Content
+					}
+					if got := strings.Contains(joined, "original repair history"); got != (history == "unchanged") {
+						t.Errorf("summary reused across incompatible source history: %s", joined)
+					}
+				}
+				json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": text}}}})
+			})
+			call.Profile.APIFormat = modelprofile.APIChat
+			call.Profile.CompactionMode = modelprofile.CompactionText
+			input := []oaichat.Message{{Role: "user", Text: "FROZEN split=80/20"}, {Role: "assistant", Text: strings.Repeat("研", 2250)}, {Role: "user", Text: strings.Repeat("研", 2250)}, {Role: "assistant", Text: "LATEST patch"}, {Role: "user", Text: "CURRENT request"}}
+			if _, err := r.CompleteManaged(ctx, call, input, oaichat.Options{}); err == nil {
+				t.Fatal("expected generation failure after committed summary")
+			}
+			switch history {
+			case "edited":
+				input[2].Text = "corrected historical feedback"
+			case "shortened":
+				input = []oaichat.Message{{Role: "user", Text: "replacement task"}}
+			}
+			response, err := New(nil).CompleteManaged(ctx, call, input, oaichat.Options{})
+			if err != nil || response.Content != "recovered" || summaries != 1 || generations != 2 {
+				t.Fatalf("recovery failed: response=%#v err=%v requests=%d/%d", response, err, summaries, generations)
+			}
+		})
+	}
+}
+
+func TestCachedTurnCannotBypassChangedCallBudget(t *testing.T) {
+	for _, api := range []string{modelprofile.APIChat, modelprofile.APIResponses} {
+		t.Run(api, func(t *testing.T) {
+			calls := 0
+			r, call, ctx := runtimeFixture(t, func(w http.ResponseWriter, req *http.Request) {
+				calls++
+				if api == modelprofile.APIResponses {
+					nativeAnswer(w, "answer")
+				} else {
+					fmt.Fprint(w, `{"choices":[{"message":{"content":"answer"}}]}`)
+				}
+			})
+			call.Profile.APIFormat = api
+			call.Profile.CompactionMode = modelprofile.CompactionOff
+			input := []oaichat.Message{{Role: "user", Text: strings.Repeat("研", 900)}}
+			if _, err := r.CompleteManaged(ctx, call, input, oaichat.Options{}); err != nil {
+				t.Fatal(err)
+			}
+			call.Profile.ContextWindowTokens = 500
+			call.Profile.Revision++
+			response, err := r.CompleteManaged(ctx, call, input, oaichat.Options{})
+			if err == nil || !strings.Contains(err.Error(), "context_required_items_too_large") || response != nil || calls != 1 {
+				t.Fatalf("cached result bypassed smaller window: response=%#v err=%v calls=%d", response, err, calls)
+			}
+		})
+	}
+}
+
+func TestCachedTurnRespectsRequestedOutputBudget(t *testing.T) {
+	var limits []int
+	r, call, ctx := runtimeFixture(t, func(w http.ResponseWriter, req *http.Request) {
+		var request responses.Request
+		_ = json.NewDecoder(req.Body).Decode(&request)
+		limits = append(limits, request.MaxOutputTokens)
+		nativeAnswer(w, "answer")
+	})
+	call.Profile.CompactionMode = modelprofile.CompactionOff
+	input := []oaichat.Message{{Role: "user", Text: "question"}}
+	if _, err := r.CompleteManaged(ctx, call, input, oaichat.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	response, err := r.CompleteManaged(ctx, call, input, oaichat.Options{MaxOutputTokens: 128})
+	if err != nil || response.Reused || len(limits) != 2 || limits[0] != 256 || limits[1] != 128 {
+		t.Fatalf("changed output limit reused old request: response=%#v err=%v limits=%v", response, err, limits)
 	}
 }

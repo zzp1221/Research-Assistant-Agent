@@ -72,6 +72,10 @@ export const graphTaskToTask = (task: GraphTask): Task => ({
   Error: task.error,
   Usage: task.usage,
   Verification: task.verification,
+  AgentRun: task.agent_run ?? task.metadata?.agent_run,
+  Recovery: task.recovery,
+  Failure: task.failure,
+  ReplanProposal: task.replan_proposal,
 });
 
 // Go marshals a nil slice as JSON null, so a plan created before a dependency

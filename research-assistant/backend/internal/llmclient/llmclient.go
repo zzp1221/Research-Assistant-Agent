@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"research-assistant-backend/internal/recovery"
 	"strconv"
 	"strings"
 	"time"
@@ -95,6 +96,9 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	var lastErr error
 	lastStatus := 0
 	for attempt := 1; attempt <= t.cfg.MaxAttempts; attempt++ {
+		if err := recovery.HTTPAttempt(req.Context(), attempt > 1); err != nil {
+			return nil, err
+		}
 		attemptCtx, cancel := context.WithTimeout(req.Context(), t.cfg.AttemptTimeout)
 		attemptReq := req.Clone(attemptCtx)
 		if body != nil {

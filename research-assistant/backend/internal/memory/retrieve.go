@@ -45,6 +45,13 @@ func matchQuery(rec Record, q Query) bool {
 	if rec.Evidence.Hidden {
 		return false
 	}
+	if rec.Kind == KindProcedure && rec.Attributes != nil && !q.AllScopes {
+		for key, wanted := range map[string]string{"environment_hash": q.EnvironmentHash, "protocol_hash": q.ProtocolHash} {
+			if required, ok := rec.Attributes[key].(string); ok && required != "" && (wanted == "" || wanted != required) {
+				return false
+			}
+		}
+	}
 	if len(q.Kinds) > 0 {
 		found := false
 		for _, kind := range q.Kinds {

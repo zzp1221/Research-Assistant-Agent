@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -280,6 +281,7 @@ func applyDraftGraph(current, draft *models.PlanGraph) {
 	if current == nil || draft == nil {
 		return
 	}
+	preserveRecovery(current.Nodes, draft.Nodes)
 	current.Nodes = draft.Nodes
 	current.Edges = draft.Edges
 	current.Budget = draft.Budget
@@ -309,6 +311,39 @@ func applyDraftGraph(current, draft *models.PlanGraph) {
 			current.Status = models.StatusAwaitingReview
 		}
 	}
+}
+
+// Recovery is runtime-owned and survives edits or execution of an old snapshot.
+// A client-supplied graph cannot replenish (or fabricate) its allowance/ledger.
+func preserveRecovery(current, next []*models.TaskNode) {
+	byID := map[string]*models.RecoveryState{}
+	for _, node := range current {
+		if node != nil {
+			byID[node.ID] = node.Recovery
+		}
+	}
+	for _, node := range next {
+		if node == nil {
+			continue
+		}
+		node.Recovery = nil
+		if previous := byID[node.ID]; previous != nil {
+			raw, _ := json.Marshal(previous)
+			_ = json.Unmarshal(raw, &node.Recovery)
+		}
+	}
+}
+
+func copyRuntimeMetadata(metadata map[string]any) map[string]any {
+	copy := make(map[string]any, len(metadata))
+	for key, value := range metadata {
+		switch key {
+		case "completed_execution_id", "completed_execution_epoch", "completed_revision", "agent_run", "runtime_action":
+			continue
+		}
+		copy[key] = value
+	}
+	return copy
 }
 
 func (r *planRuntime) validateRevision(c *gin.Context) {
@@ -511,6 +546,10 @@ func (r *planRuntime) executeRevision(c *gin.Context) {
 		copyNode.FinishedAt = nil
 		copyNode.RunCount = 0
 		copyNode.Usage = nil
+		copyNode.Metadata = copyRuntimeMetadata(node.Metadata)
+		copyNode.Failure = nil
+		copyNode.NextAttemptAt = nil
+		copyNode.ReplanProposal = nil
 		copyNode.Revision = number
 		copyNode.UpdatedAt = now
 		resetGraph.Nodes = append(resetGraph.Nodes, &copyNode)
@@ -519,6 +558,7 @@ func (r *planRuntime) executeRevision(c *gin.Context) {
 		if current.Status == models.StatusInProgress {
 			return fmt.Errorf("plan is already running")
 		}
+		preserveRecovery(current.Nodes, resetGraph.Nodes)
 		current.Nodes = resetGraph.Nodes
 		current.Edges = resetGraph.Edges
 		current.Budget = resetGraph.Budget

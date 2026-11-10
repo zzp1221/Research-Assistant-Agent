@@ -328,6 +328,9 @@ func (s *Store) Update(ownerID, id string, input Input) (Profile, error) {
 	if input.Capabilities.RenderedInputCount != "" {
 		next.Capabilities.RenderedInputCount = input.Capabilities.RenderedInputCount
 	}
+	if input.Capabilities.ToolCalling != "" {
+		next.Capabilities.ToolCalling = input.Capabilities.ToolCalling
+	}
 	if err := next.validate(); err != nil {
 		return Profile{}, err
 	}

@@ -14,7 +14,7 @@ type TaskContract struct {
 	OutputArtifacts []string `json:"output_artifacts"`
 	InputSchema     string   `json:"input_schema,omitempty"`
 	OutputSchema    string   `json:"output_schema,omitempty"`
-	AllowedTools    []string `json:"allowed_tools,omitempty"`
+	AllowedTools    []string `json:"allowed_tools"`
 }
 
 // ApprovalState records the human decision required before a high-risk plan runs.

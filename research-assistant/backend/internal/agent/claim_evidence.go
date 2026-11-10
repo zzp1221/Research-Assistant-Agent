@@ -6,10 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"research-assistant-backend/internal/llmclient"
 	"sort"
 	"strings"
 
+	"research-assistant-backend/internal/claimverify"
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
 
@@ -68,7 +68,7 @@ type claimCriterionLocation struct {
 }
 
 func (a *LibrarianAgent) executeClaimRubricExtraction(ctx context.Context, task *models.Task) error {
-	if a == nil || a.ChatModel == nil {
+	if a == nil || wrapRuntimeModel(a.Runtime, a.ChatModel) == nil {
 		return failClaimTask(task, fmt.Errorf("claim rubric model is not configured"))
 	}
 	parsedPaper := strings.TrimSpace(extractTaskInputLike(task, "parsed_paper"))
@@ -78,7 +78,7 @@ func (a *LibrarianAgent) executeClaimRubricExtraction(ctx context.Context, task 
 	parsedPaper = truncateClaimBytes(parsedPaper, claimMaxPaperBytes)
 	parsedPaper = truncateToTokens(parsedPaper, agentEnvInt("CLAIM_PAPER_MAX_TOKENS", 24000))
 
-	message, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
+	message, err := generateRuntimeModel(ctx, a.Runtime, a.ChatModel, "claim-rubric-extraction", []*schema.Message{
 		{Role: schema.System, Content: prompts.ClaimRubricSystemPrompt},
 		{Role: schema.User, Content: prompts.ClaimRubricUserPrompt(task.Description, parsedPaper)},
 	})
@@ -92,6 +92,9 @@ func (a *LibrarianAgent) executeClaimRubricExtraction(ctx context.Context, task 
 	}
 	rubric, err := normalizeClaimRubric(proposed)
 	if err != nil {
+		return failClaimTask(task, err)
+	}
+	if err := bindFrozenClaimNumericContracts(task, &rubric); err != nil {
 		return failClaimTask(task, err)
 	}
 	rubricPayload, err := json.Marshal(rubric)
@@ -111,22 +114,27 @@ func (a *LibrarianAgent) executeClaimRubricExtraction(ctx context.Context, task 
 	return nil
 }
 
-func (a *DataAgent) executeClaimEvidenceBuild(ctx context.Context, task *models.Task) error {
+func (a *DataAgent) executeClaimEvidenceBuild(ctx context.Context, task *models.Task, sharedContexts ...map[string]interface{}) error {
 	rubric, rubricJSON, err := claimRubricFromTask(task)
 	if err != nil {
 		return failClaimTask(task, err)
 	}
 	evidence, evidenceValues, evidenceContext := collectClaimEvidence(task)
+	var shared map[string]interface{}
+	if len(sharedContexts) > 0 {
+		shared = sharedContexts[0]
+	}
+	numeric := numericClaimAssessments(task, rubric, shared)
 	status := "assessed"
 	statusReason := "all criterion verdicts were produced and validated against the bounded evidence inventory"
 	adjudicationComplete := false
 
 	var proposal claimEvidenceProposal
-	if a == nil || a.ChatModel == nil {
+	if a == nil || wrapRuntimeModel(a.Runtime, a.ChatModel) == nil {
 		status = "degraded"
 		statusReason = "claim adjudication model is unavailable; all criteria remain unverifiable"
 	} else {
-		message, generateErr := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
+		message, generateErr := generateRuntimeModel(ctx, a.Runtime, a.ChatModel, "claim-evidence-adjudication", []*schema.Message{
 			{Role: schema.System, Content: prompts.ClaimEvidenceSystemPrompt},
 			{Role: schema.User, Content: prompts.ClaimEvidenceUserPrompt(rubricJSON, evidenceContext)},
 		})
@@ -141,11 +149,29 @@ func (a *DataAgent) executeClaimEvidenceBuild(ctx context.Context, task *models.
 		}
 	}
 
-	results, validationErr := buildClaimEvidenceResults(rubric, proposal, evidence, evidenceValues, adjudicationComplete, statusReason)
+	evidence, evidenceValues = appendNumericClaimEvidence(evidence, evidenceValues, numeric, shared)
+	results, validationErr := buildClaimEvidenceResults(rubric, proposal, evidence, evidenceValues, adjudicationComplete, statusReason, numeric)
 	if validationErr != nil {
 		status = "degraded"
 		statusReason = "claim adjudication violated the evidence contract; all criteria remain unverifiable: " + validationErr.Error()
-		results, _ = buildClaimEvidenceResults(rubric, claimEvidenceProposal{}, evidence, evidenceValues, false, statusReason)
+		results, _ = buildClaimEvidenceResults(rubric, claimEvidenceProposal{}, evidence, evidenceValues, false, statusReason, numeric)
+	}
+	allDeterministic := len(results) > 0
+	needsReview := false
+	for _, result := range results {
+		for _, verdict := range result.Criteria {
+			if verdict.VerificationMethod != "deterministic" || verdict.Status == models.ClaimStatusUnverifiable {
+				allDeterministic = false
+			}
+			if verdict.Status == models.ClaimStatusUnverifiable || verdict.Status == models.ClaimStatusBlockedMissingAsset {
+				needsReview = true
+			}
+		}
+	}
+	if allDeterministic {
+		status, statusReason = "assessed", "all numeric criteria were compared by the backend against frozen protocols; negative results remain valid completed assessments"
+	} else if needsReview {
+		status, statusReason = "degraded", "one or more criteria lack complete frozen protocol or evidence; review is required"
 	}
 	summary := summarizeClaimEvidence(results)
 	graph := models.ClaimEvidenceGraph{
@@ -224,6 +250,13 @@ func normalizeClaimRubric(proposed models.ClaimRubric) (models.ClaimRubric, erro
 				Tolerance:        rawCriterion.Tolerance,
 				Unit:             truncateClaimRunes(strings.TrimSpace(rawCriterion.Unit), 80),
 				RequiredEvidence: normalizeRequiredEvidence(rawCriterion.RequiredEvidence),
+				NumericContract:  rawCriterion.NumericContract,
+			}
+			if criterion.ExpectedValue != nil && !claimverify.Finite(*criterion.ExpectedValue) || criterion.Tolerance != nil && !claimverify.Finite(*criterion.Tolerance) {
+				return models.ClaimRubric{}, fmt.Errorf("claim contains a non-finite expected value or tolerance")
+			}
+			if _, err := json.Marshal(criterion.NumericContract); err != nil {
+				return models.ClaimRubric{}, fmt.Errorf("claim numeric contract is not serializable: %w", err)
 			}
 			if criterion.ExpectedValue == nil {
 				criterion.Tolerance = nil
@@ -340,7 +373,7 @@ func collectClaimEvidence(task *models.Task) ([]models.ClaimEvidenceNode, map[st
 	return evidence, values, contextText
 }
 
-func buildClaimEvidenceResults(rubric models.ClaimRubric, proposal claimEvidenceProposal, evidence []models.ClaimEvidenceNode, evidenceValues map[string]string, requireComplete bool, fallbackReason string) ([]models.ClaimEvidenceResult, error) {
+func buildClaimEvidenceResults(rubric models.ClaimRubric, proposal claimEvidenceProposal, evidence []models.ClaimEvidenceNode, evidenceValues map[string]string, requireComplete bool, fallbackReason string, numeric map[string]claimNumericAssessment) ([]models.ClaimEvidenceResult, error) {
 	criteria := map[string]claimCriterionLocation{}
 	for _, claim := range rubric.Claims {
 		for _, criterion := range claim.Criteria {
@@ -371,6 +404,7 @@ func buildClaimEvidenceResults(rubric models.ClaimRubric, proposal claimEvidence
 		evidenceIDs := make([]string, 0, len(raw.EvidenceKeys))
 		seenEvidence := map[string]struct{}{}
 		hasExecutionDerivedEvidence := false
+		evidenceTypes := map[string]bool{}
 		for _, rawKey := range raw.EvidenceKeys {
 			key := strings.TrimSpace(rawKey)
 			node, exists := evidenceByKey[key]
@@ -385,6 +419,7 @@ func buildClaimEvidenceResults(rubric models.ClaimRubric, proposal claimEvidence
 			}
 			seenEvidence[key] = struct{}{}
 			evidenceIDs = append(evidenceIDs, node.ID)
+			evidenceTypes[node.EvidenceType] = true
 			if _, direct := claimExecutionDerivedEvidence[key]; direct {
 				hasExecutionDerivedEvidence = true
 			}
@@ -398,17 +433,25 @@ func buildClaimEvidenceResults(rubric models.ClaimRubric, proposal claimEvidence
 			}
 			reason = "downgraded because no execution-derived metric, comparison, or figure evidence was cited; " + reason
 		}
+		for _, required := range location.criterion.RequiredEvidence {
+			if claimStatusRequiresExecution(status) && !evidenceTypes[required] {
+				status, confidence = models.ClaimStatusUnverifiable, 0
+				reason = "required evidence type is missing: " + required + "; " + reason
+			}
+		}
 		if reason == "" {
 			reason = "no evidence-based reason was supplied"
 		}
 		findings[raw.CriterionID] = models.ClaimCriterionVerdict{
-			CriterionID:   raw.CriterionID,
-			Description:   location.criterion.Description,
-			Status:        status,
-			Confidence:    confidence,
-			ObservedValue: truncateClaimRunes(strings.TrimSpace(raw.ObservedValue), 500),
-			EvidenceIDs:   evidenceIDs,
-			Reason:        reason,
+			CriterionID:        raw.CriterionID,
+			Description:        location.criterion.Description,
+			Status:             status,
+			Confidence:         confidence,
+			ObservedValue:      truncateClaimRunes(strings.TrimSpace(raw.ObservedValue), 500),
+			EvidenceIDs:        evidenceIDs,
+			Reason:             reason,
+			VerificationMethod: "model_assisted",
+			ModelProposal:      &models.ClaimModelProposal{Status: models.ClaimVerificationStatus(raw.Status), Confidence: clampUnit(raw.Confidence), ObservedValue: raw.ObservedValue, EvidenceKeys: append([]string(nil), raw.EvidenceKeys...), Reason: raw.Reason},
 		}
 	}
 	if requireComplete && len(findings) != len(criteria) {
@@ -428,6 +471,45 @@ func buildClaimEvidenceResults(rubric models.ClaimRubric, proposal claimEvidence
 					Confidence:  0,
 					EvidenceIDs: []string{},
 					Reason:      truncateClaimRunes(fallbackReason, 1600),
+				}
+			}
+			if assessment, numericCriterion := numeric[criterion.ID]; numericCriterion {
+				verdict.VerificationMethod = "deterministic"
+				verdict.DeterministicVerdict = &assessment.verdict
+				verdict.Observations = assessment.observations
+				verdict.Status, verdict.Reason = assessment.verdict.Status, assessment.verdict.Reason
+				verdict.Confidence = 0
+				verdict.ObservedValue = ""
+				if assessment.verdict.ObservedValue != nil {
+					verdict.ObservedValue = fmt.Sprintf("%.17g %s", *assessment.verdict.ObservedValue, assessment.verdict.Unit)
+					verdict.Confidence = 1
+				}
+				if assessment.verdict.ReviewRequired {
+					verdict.Status, verdict.Confidence = models.ClaimStatusUnverifiable, 0
+					verdict.Reason = "program-reported metric requires independent verification or review; numeric comparison: " + assessment.verdict.Reason
+				}
+				for _, observation := range assessment.observations {
+					for key := range observation.SourceArtifacts {
+						id := "evidence-" + strings.ReplaceAll(key, "_", "-")
+						verdict.EvidenceIDs = append(verdict.EvidenceIDs, id)
+					}
+				}
+				verdict.EvidenceIDs = cleanSortedClaimStrings(verdict.EvidenceIDs)
+				if claimStatusRequiresExecution(verdict.Status) {
+					availableTypes := map[string]bool{"run": len(assessment.observations) > 0}
+					for _, id := range verdict.EvidenceIDs {
+						for _, node := range evidence {
+							if node.ID == id && node.Available {
+								availableTypes[node.EvidenceType] = true
+							}
+						}
+					}
+					for _, required := range criterion.RequiredEvidence {
+						if !availableTypes[required] {
+							verdict.Status, verdict.Confidence = models.ClaimStatusUnverifiable, 0
+							verdict.Reason = "numeric comparison is available but required evidence is missing: " + required
+						}
+					}
 				}
 			}
 			verdicts = append(verdicts, verdict)
@@ -589,10 +671,42 @@ func renderClaimEvidenceReport(rubric models.ClaimRubric, graph models.ClaimEvid
 			builder.WriteString("\n  ")
 			builder.WriteString(markdownClaimText(verdict.Reason))
 			builder.WriteString("\n")
+			if numeric := verdict.DeterministicVerdict; numeric != nil {
+				builder.WriteString("  Backend verifier: `" + numeric.VerifierVersion + "`; comparison: `" + numeric.Operator + "`.")
+				if numeric.ExpectedValue != nil {
+					builder.WriteString(fmt.Sprintf(" Frozen expected: %.17g %s.", *numeric.ExpectedValue, markdownClaimText(numeric.Unit)))
+				}
+				if criterion, ok := findClaimCriterion(rubric, verdict.CriterionID); ok && criterion.NumericContract != nil {
+					c := criterion.NumericContract
+					builder.WriteString(" Tolerance: `" + c.ToleranceMode + "`;")
+					if c.AbsoluteTolerance != nil {
+						builder.WriteString(fmt.Sprintf(" atol=%.17g;", *c.AbsoluteTolerance))
+					}
+					if c.RelativeTolerance != nil {
+						builder.WriteString(fmt.Sprintf(" rtol=%.17g;", *c.RelativeTolerance))
+					}
+					builder.WriteString(" split=`" + markdownClaimText(c.Split) + "`; protocol=`" + c.ProtocolSHA256 + "`.")
+				}
+				builder.WriteString(" Trust boundary: " + markdownClaimText(numeric.TrustBoundary) + ".\n")
+			}
+			if verdict.ModelProposal != nil {
+				builder.WriteString("  Model proposal (advisory): `" + string(verdict.ModelProposal.Status) + "`; " + markdownClaimText(verdict.ModelProposal.ObservedValue) + ".\n")
+			}
 		}
 	}
 	builder.WriteString("\n## Boundary\n\nA successful command is execution evidence, not scientific verification by itself. Missing metrics or protocol evidence remains `unverifiable`.\n")
 	return builder.String()
+}
+
+func findClaimCriterion(rubric models.ClaimRubric, id string) (models.ClaimCriterion, bool) {
+	for _, claim := range rubric.Claims {
+		for _, criterion := range claim.Criteria {
+			if criterion.ID == id {
+				return criterion, true
+			}
+		}
+	}
+	return models.ClaimCriterion{}, false
 }
 
 func normalizeRequiredEvidence(values []string) []string {

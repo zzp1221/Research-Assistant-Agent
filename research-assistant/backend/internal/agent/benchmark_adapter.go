@@ -9,12 +9,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"research-assistant-backend/internal/llmclient"
 	"sort"
 	"strings"
 
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
+	"research-assistant-backend/internal/recovery"
 	"research-assistant-backend/internal/workspace"
 
 	"github.com/cloudwego/eino/schema"
@@ -49,7 +49,7 @@ type benchmarkAdapterRepairResponse struct {
 }
 
 func (a *ResearchCodingAgent) executeAdapterGeneration(ctx context.Context, task *models.Task) error {
-	if a == nil || a.ChatModel == nil {
+	if a == nil || wrapRuntimeModel(a.Runtime, a.ChatModel) == nil {
 		return failResearchCodingTask(task, fmt.Errorf("benchmark adapter model is not configured"))
 	}
 	workspacePath, err := benchmarkWorkspace(task)
@@ -73,7 +73,7 @@ func (a *ResearchCodingAgent) executeAdapterGeneration(ctx context.Context, task
 	// Token-level budget on top of the byte hard cap.
 	repositoryContext = truncateToTokens(repositoryContext, agentEnvInt("BENCHMARK_REPO_MAX_TOKENS", 8000))
 
-	planMessage, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
+	planMessage, err := generateRuntimeModel(ctx, a.Runtime, a.ChatModel, "benchmark-adapter-plan", []*schema.Message{
 		{Role: schema.System, Content: prompts.BenchmarkAdapterSystemPrompt},
 		{Role: schema.User, Content: prompts.BenchmarkAdapterPlanUserPrompt(repositoryContext, manifestJSON, task.Description)},
 	})
@@ -96,7 +96,12 @@ func (a *ResearchCodingAgent) executeAdapterGeneration(ctx context.Context, task
 	var generation benchmarkAdapterGenerationResponse
 	var generationErr error
 	for attempt := 1; attempt <= 2; attempt++ {
-		generationMessage, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, generationMessages)
+		if attempt > 1 {
+			if reserveErr := recovery.Reserve(ctx, "output_repair", recovery.Classify(generationErr, "adapter_output", recovery.Hash(generationMessages))); reserveErr != nil {
+				return failResearchCodingTask(task, reserveErr)
+			}
+		}
+		generationMessage, err := generateRuntimeModel(ctx, a.Runtime, a.ChatModel, fmt.Sprintf("benchmark-adapter-generate/%d", attempt), generationMessages)
 		if err != nil {
 			return failResearchCodingTask(task, fmt.Errorf("adapter code generation failed: %w", err))
 		}

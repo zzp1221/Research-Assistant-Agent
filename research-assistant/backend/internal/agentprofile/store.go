@@ -251,6 +251,9 @@ func (r *Registry) GetProfileForOwner(ownerID, id string) (models.AgentProfile, 
 }
 
 func (r *Registry) SaveProfile(profile models.AgentProfile) (models.AgentProfile, error) {
+	if err := NormalizeExecution(&profile); err != nil {
+		return models.AgentProfile{}, err
+	}
 	if strings.TrimSpace(profile.Name) == "" {
 		return models.AgentProfile{}, fmt.Errorf("%w: name is required", ErrInvalid)
 	}
@@ -295,6 +298,9 @@ func (r *Registry) UpdateProfile(ownerID string, isAdmin bool, id string, patch 
 			return ErrForbidden
 		}
 		if err := patch(&current); err != nil {
+			return err
+		}
+		if err := NormalizeExecution(&current); err != nil {
 			return err
 		}
 		current.UpdatedAt = r.now()

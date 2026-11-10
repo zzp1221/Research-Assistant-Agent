@@ -4,7 +4,6 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
-	"research-assistant-backend/internal/llmclient"
 	"strings"
 
 	"research-assistant-backend/internal/prompts"
@@ -294,7 +293,7 @@ func shouldAttemptPythonRuntimeCodeRepair(errText string) bool {
 }
 
 func (a *CoderAgent) repairGeneratedPythonCodeForRuntimeError(ctx context.Context, code string, errText string) (string, bool, error) {
-	if a == nil || a.ChatModel == nil || strings.TrimSpace(code) == "" || !shouldAttemptPythonRuntimeCodeRepair(errText) {
+	if a == nil || wrapRuntimeModel(a.Runtime, a.ChatModel) == nil || strings.TrimSpace(code) == "" || !shouldAttemptPythonRuntimeCodeRepair(errText) {
 		return "", false, nil
 	}
 
@@ -304,7 +303,7 @@ func (a *CoderAgent) repairGeneratedPythonCodeForRuntimeError(ctx context.Contex
 	code = truncateToTokens(code, agentEnvInt("CODER_REPAIR_CODE_MAX_TOKENS", 24000))
 	errText = truncateToTokens(errText, agentEnvInt("CODER_REPAIR_ERROR_MAX_TOKENS", 8000))
 	prompt := prompts.RuntimeCodeRepairUserPromptForTask(errText, code, intentType, taskType, taskName)
-	msg, err := llmclient.GenerateWithUsage(ctx, a.ChatModel, []*schema.Message{
+	msg, err := generateRuntimeModel(ctx, a.Runtime, a.ChatModel, "python-runtime-repair", []*schema.Message{
 		{Role: schema.System, Content: coderSystemPromptFromContext(ctx, a.SystemPrompt)},
 		{Role: schema.User, Content: prompt},
 	})

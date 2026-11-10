@@ -17,7 +17,7 @@ import (
 )
 
 // RegisterAgentProfileRoutes wires custom AgentProfile and PromptVersion CRUD.
-func RegisterAgentProfileRoutes(apiGroup *gin.RouterGroup, registry *agentprofile.Registry, toolRegistry *tools.Registry) {
+func RegisterAgentProfileRoutes(apiGroup *gin.RouterGroup, registry *agentprofile.Registry, toolRegistry *tools.Registry, taskRunners ...agentprofile.TaskEvalRunner) {
 	if registry == nil {
 		return
 	}
@@ -62,6 +62,10 @@ func RegisterAgentProfileRoutes(apiGroup *gin.RouterGroup, registry *agentprofil
 			respondError(c, http.StatusBadRequest, "invalid_agent_profile", "AgentProfile 格式错误", "提供需要修改的字段")
 			return
 		}
+		if payload.MaxSteps < 0 || payload.MaxToolCalls < 0 {
+			respondError(c, http.StatusBadRequest, "invalid_agent_profile", "执行限制不能为负数", "提供有效的 max_steps/max_tool_calls")
+			return
+		}
 		owner := resolveUserID(c)
 		updated, err := registry.UpdateProfile(owner, isAdminRequest(c), c.Param("id"), func(profile *models.AgentProfile) error {
 			if payload.Name != "" {
@@ -81,6 +85,12 @@ func RegisterAgentProfileRoutes(apiGroup *gin.RouterGroup, registry *agentprofil
 			}
 			if payload.MaxSteps > 0 {
 				profile.MaxSteps = payload.MaxSteps
+			}
+			if payload.ExecutionMode != "" {
+				profile.ExecutionMode = payload.ExecutionMode
+			}
+			if payload.MaxToolCalls > 0 {
+				profile.MaxToolCalls = payload.MaxToolCalls
 			}
 			if payload.OutputSchema != "" {
 				profile.OutputSchema = payload.OutputSchema
@@ -114,7 +124,9 @@ func RegisterAgentProfileRoutes(apiGroup *gin.RouterGroup, registry *agentprofil
 
 	apiGroup.POST("/agent-profiles/:id/eval", func(c *gin.Context) {
 		var payload promptEvalPayload
-		_ = c.ShouldBindJSON(&payload)
+		if !bindPromptEval(c, &payload) {
+			return
+		}
 		owner := resolveUserID(c)
 		profile, err := registry.GetProfileForOwner(owner, c.Param("id"))
 		if err != nil {
@@ -125,8 +137,8 @@ func RegisterAgentProfileRoutes(apiGroup *gin.RouterGroup, registry *agentprofil
 			respondError(c, http.StatusBadRequest, "invalid_agent_profile", "profile 没有绑定 PromptVersion", "先绑定 prompt_version_id")
 			return
 		}
-		evaluator := agentprofile.Evaluator{Registry: registry, Completer: modelresolver.Default()}
-		result, err := evaluator.Evaluate(c.Request.Context(), owner, profile.PromptVersionID, payload.Cases, payload.UseModel, profile.ModelProfileID)
+		evaluator := newProfileEvaluator(registry, taskRunners)
+		result, err := evaluator.EvaluateMode(c.Request.Context(), owner, profile.PromptVersionID, payload.Cases, payload.evalMode(), profile.ModelProfileID, profile.ID)
 		if err != nil {
 			respondAgentError(c, err)
 			return
@@ -181,10 +193,12 @@ func RegisterAgentProfileRoutes(apiGroup *gin.RouterGroup, registry *agentprofil
 
 	apiGroup.POST("/prompt-versions/:id/eval", func(c *gin.Context) {
 		var payload promptEvalPayload
-		_ = c.ShouldBindJSON(&payload)
+		if !bindPromptEval(c, &payload) {
+			return
+		}
 		owner := resolveUserID(c)
-		evaluator := agentprofile.Evaluator{Registry: registry, Completer: modelresolver.Default()}
-		result, err := evaluator.Evaluate(c.Request.Context(), owner, c.Param("id"), payload.Cases, payload.UseModel, payload.ModelProfileID)
+		evaluator := newProfileEvaluator(registry, taskRunners)
+		result, err := evaluator.EvaluateMode(c.Request.Context(), owner, c.Param("id"), payload.Cases, payload.evalMode(), payload.ModelProfileID, payload.ProfileID)
 		if err != nil {
 			respondAgentError(c, err)
 			return
@@ -200,6 +214,8 @@ type agentProfilePayload struct {
 	ModelProfileID  string   `json:"model_profile_id"`
 	ToolAllowlist   []string `json:"tool_allowlist"`
 	MaxSteps        int      `json:"max_steps"`
+	ExecutionMode   string   `json:"execution_mode"`
+	MaxToolCalls    int      `json:"max_tool_calls"`
 	OutputSchema    string   `json:"output_schema"`
 	Enabled         *bool    `json:"enabled"`
 }
@@ -213,9 +229,48 @@ type promptEvalPayload struct {
 	Cases          []models.PromptEvalCase `json:"cases"`
 	UseModel       bool                    `json:"use_model"`
 	ModelProfileID string                  `json:"model_profile_id"`
+	Mode           string                  `json:"mode"`
+	ProfileID      string                  `json:"profile_id"`
+}
+
+func (p promptEvalPayload) evalMode() string {
+	if p.Mode != "" {
+		return p.Mode
+	}
+	if p.UseModel {
+		return "model"
+	}
+	return "template"
+}
+
+func bindPromptEval(c *gin.Context, payload *promptEvalPayload) bool {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
+	if err := c.ShouldBindJSON(payload); err != nil {
+		respondError(c, http.StatusBadRequest, "invalid_agent_eval", "评测请求格式错误", "提供显式 mode、cases 和 grader")
+		return false
+	}
+	if payload.UseModel && payload.Mode != "" && payload.Mode != "model" {
+		respondError(c, http.StatusBadRequest, "invalid_agent_eval", "mode 与 use_model 冲突", "使用显式 mode")
+		return false
+	}
+	return true
+}
+
+func newProfileEvaluator(registry *agentprofile.Registry, runners []agentprofile.TaskEvalRunner) agentprofile.Evaluator {
+	e := agentprofile.Evaluator{Registry: registry}
+	if resolver := modelresolver.Default(); resolver != nil {
+		e.Completer = resolver
+	}
+	if len(runners) > 0 {
+		e.TaskRunner = runners[0]
+	}
+	return e
 }
 
 func buildAgentProfile(owner string, payload agentProfilePayload) (models.AgentProfile, error) {
+	if payload.MaxSteps < 0 || payload.MaxToolCalls < 0 {
+		return models.AgentProfile{}, fmt.Errorf("execution limits cannot be negative")
+	}
 	if strings.TrimSpace(payload.Name) == "" {
 		return models.AgentProfile{}, fmt.Errorf("name is required")
 	}
@@ -235,6 +290,9 @@ func buildAgentProfile(owner string, payload agentProfilePayload) (models.AgentP
 	maxSteps := payload.MaxSteps
 	if maxSteps <= 0 {
 		maxSteps = 8
+		if payload.ExecutionMode == "tool_loop" {
+			maxSteps = 6
+		}
 	}
 	if maxSteps > 64 {
 		return models.AgentProfile{}, fmt.Errorf("max_steps must be <= 64")
@@ -248,6 +306,8 @@ func buildAgentProfile(owner string, payload agentProfilePayload) (models.AgentP
 		ModelProfileID:  strings.TrimSpace(payload.ModelProfileID),
 		ToolAllowlist:   payload.ToolAllowlist,
 		MaxSteps:        maxSteps,
+		ExecutionMode:   payload.ExecutionMode,
+		MaxToolCalls:    payload.MaxToolCalls,
 		OutputSchema:    payload.OutputSchema,
 		Builtin:         false,
 		Enabled:         enabled,

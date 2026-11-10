@@ -36,7 +36,7 @@ func TestRecordPlanExtractsEpisodeFactAndNegative(t *testing.T) {
 	}
 }
 
-func TestRecordTrialWritesNegativeAndProcedure(t *testing.T) {
+func TestRecordTrialCannotInferProcedureFromCampaignRunCount(t *testing.T) {
 	store := NewMemoryStore()
 	plan := &models.PlanGraph{ID: "p-2", OwnerID: "u1", UserIntent: "tune", IntentType: "AutoResearch"}
 	metric1 := 0.5
@@ -60,7 +60,7 @@ func TestRecordTrialWritesNegativeAndProcedure(t *testing.T) {
 	for _, rec := range records {
 		kinds[rec.Kind] = true
 	}
-	if !kinds[KindNegative] || !kinds[KindProcedure] || !kinds[KindFact] {
+	if !kinds[KindNegative] || kinds[KindProcedure] || !kinds[KindFact] || !kinds[KindEpisode] {
 		t.Fatalf("missing trial memory kinds: %#v", kinds)
 	}
 }

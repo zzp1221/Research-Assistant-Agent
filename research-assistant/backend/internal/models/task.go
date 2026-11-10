@@ -39,6 +39,11 @@ type Task struct {
 	RunCount          int
 	ExecutionID       string
 	ExecutionEpoch    int
+	Recovery          *RecoveryState
+	Failure           *FailureInfo
+	ToolCalls         []ToolCallRecord
+	Artifacts         []Artifact
+	AgentRun          *AgentRunState
 	LeaseOwner        string
 	LeaseExpiresAt    *time.Time
 	TimeoutSeconds    int

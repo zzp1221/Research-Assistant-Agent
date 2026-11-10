@@ -31,6 +31,7 @@ type InvokeRequest struct {
 
 // InvokeResult is the normalized outcome of a tool call.
 type InvokeResult struct {
+	RawText   string
 	Record    models.ToolCallRecord
 	Text      string
 	JSON      map[string]any
@@ -140,6 +141,8 @@ func (i *Invoker) Invoke(ctx context.Context, request InvokeRequest) *InvokeResu
 	}
 	approval := tool.EffectiveApproval(grant)
 	if tool.NeedsApproval() || approval == models.ToolApprovalAlways {
+		request.ToolVersion = tool.Version
+		request.ApprovalID = ApprovedCallID(ctx, request, i.Now())
 		if strings.TrimSpace(request.ApprovalID) == "" {
 			record.Status = models.ToolCallPending
 			now := i.Now()
@@ -212,7 +215,7 @@ func (i *Invoker) Invoke(ctx context.Context, request InvokeRequest) *InvokeResu
 	record.Status = models.ToolCallCompleted
 	record.ResultPreview = preview(text, 512)
 	record.ResultHash = models.HashResult(map[string]any{"text": text, "json": result.JSON})
-	out := &InvokeResult{Record: record, Text: text, JSON: result.JSON}
+	out := &InvokeResult{Record: record, Text: text, RawText: result.Text, JSON: result.JSON}
 	if tool.ID != "" {
 		artifact := models.Artifact{
 			Key:            "tool_result",

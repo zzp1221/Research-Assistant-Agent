@@ -18,8 +18,8 @@ type fakeCompleter struct {
 
 func (f *fakeCompleter) pick(messages []oaichat.Message) string {
 	text := ""
-	if len(messages) > 0 {
-		text = messages[0].Text
+	for _, message := range messages {
+		text += message.Text + "\n"
 	}
 	for marker, response := range f.responses {
 		if strings.Contains(text, marker) {
@@ -34,7 +34,7 @@ func (f *fakeCompleter) Complete(_ context.Context, _ string, messages []oaichat
 }
 
 func (f *fakeCompleter) ResolveProfile(_ string, _ string) (modelprofile.Resolved, error) {
-	return modelprofile.Resolved{Profile: modelprofile.Profile{Model: f.model, Revision: 3}}, nil
+	return modelprofile.Resolved{Profile: modelprofile.Profile{Model: f.model, Revision: 3, ContextWindowTokens: 32000, MaxOutputTokens: 1024}}, nil
 }
 
 func (f *fakeCompleter) CompleteWithResolved(_ context.Context, _ modelprofile.Resolved, messages []oaichat.Message, _ oaichat.Options) (*oaichat.Response, error) {

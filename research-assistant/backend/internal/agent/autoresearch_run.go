@@ -39,7 +39,7 @@ func (a *ResearchCodingAgent) executeAutoResearchRun(ctx context.Context, task *
 	if a == nil || a.Sandbox == nil {
 		return failResearchCodingTask(task, fmt.Errorf("AutoResearch sandbox is not configured"))
 	}
-	if a.ChatModel == nil {
+	if wrapRuntimeModel(a.Runtime, a.ChatModel) == nil {
 		return failResearchCodingTask(task, fmt.Errorf("AutoResearch candidate model is not configured"))
 	}
 	workspacePath, err := benchmarkWorkspace(task)

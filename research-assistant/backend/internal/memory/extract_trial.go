@@ -3,10 +3,12 @@ package memory
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/recovery"
 )
 
 // RecordTrial turns an AutoResearch ledger into negative/procedure/fact
@@ -42,7 +44,20 @@ func RecordTrial(ctx context.Context, store Store, plan *models.PlanGraph, ledge
 			continue
 		}
 		if trial.Status == "kept" {
-			if ledger.SearchRuns >= 2 {
+			// SearchRuns counts the whole campaign. Only this trial's own
+			// successful evaluator runs can support independent case counts.
+			independent := 0
+			seen := map[string]bool{}
+			for _, run := range trial.EvalResults {
+				if run.ExitCode == 0 && run.ExecutionID != "" {
+					key := run.ExecutionID
+					if !seen[key] {
+						seen[key] = true
+						independent++
+					}
+				}
+			}
+			if independent >= 2 && len(trial.Patches) > 0 && ledger.SpecSHA256 != "" && plan.EnvironmentManifest != nil {
 				rec := Record{
 					ID: fmt.Sprintf("mem-trial-proc-%s-%d", plan.ID, trial.Number), Kind: KindProcedure, Scope: scope,
 					Title:   fmt.Sprintf("AutoResearch 有效策略 trial %d", trial.Number),
@@ -51,8 +66,17 @@ func RecordTrial(ctx context.Context, store Store, plan *models.PlanGraph, ledge
 					Source:   Source{Type: "trial", Ref: fmt.Sprintf("%s#%d", plan.ID, trial.Number), CreatedAt: now},
 					Refs:     []SourceRef{{PlanID: plan.ID, SessionID: plan.SessionID}},
 					Evidence: Evidence{Class: "execution_derived", Confidence: 0.85}, Validity: Validity{ValidFrom: &trial.FinishedAt, RecordedAt: now},
-					Importance: 7, Confidence: 0.85, Trust: TrustVerified, Sensitivity: "private", Status: StatusActive,
+					Importance: 7, Confidence: 0.85, Trust: TrustInferred, Sensitivity: "private", Status: StatusPending,
+					Attributes: map[string]any{"independent_cases": independent, "protocol_hash": ledger.SpecSHA256, "environment_hash": recovery.Hash(plan.EnvironmentManifest)},
 				}
+				if strings.EqualFold(os.Getenv("MEMORY_PROCEDURE_PROMOTION"), "true") {
+					rec.Status = StatusActive
+				}
+				if _, err := store.Put(ctx, rec); err != nil {
+					return err
+				}
+			} else {
+				rec := Record{ID: fmt.Sprintf("mem-trial-case-%s-%d", plan.ID, trial.Number), Kind: KindEpisode, Scope: scope, Title: fmt.Sprintf("AutoResearch trial %d 执行案例", trial.Number), Content: truncateRunes(fmt.Sprintf("假设：%s；指标：%s；独立验证：%d；单次案例不自动晋升通用方法", trial.Hypothesis, metric, independent), 700), Tags: []string{"autoresearch", "case"}, Source: Source{Type: "trial", Ref: fmt.Sprintf("%s#%d", plan.ID, trial.Number), CreatedAt: now}, Trust: TrustVerified, Status: StatusActive, Attributes: map[string]any{"independent_cases": independent}}
 				if _, err := store.Put(ctx, rec); err != nil {
 					return err
 				}
