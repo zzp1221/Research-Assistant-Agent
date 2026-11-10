@@ -67,6 +67,12 @@ type planRuntime struct {
 	running     map[string]context.CancelFunc
 	planLimiter *rateLimiter
 	idempotency *idempotencyCache
+
+	// revisionMutationLocks holds one *sync.Mutex per plan id. Revision
+	// create/review/execute serialise on it so two requests cannot both decide
+	// that "the revision I name is the latest one". The map is per plan, so
+	// unrelated plans keep progressing independently.
+	revisionMutationLocks sync.Map
 }
 
 func newPlanRuntime(p *planner.Planner, planStore store.PlanStore, runner *scheduler.Scheduler, eventBus *events.Bus) *planRuntime {
@@ -927,6 +933,20 @@ func (r *planRuntime) executePlan(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// Everything below decides and starts the run: the state guards, the
+	// revision bind and the launch. Holding the per-plan revision lock means two
+	// execute requests cannot both read a runnable plan and then race into
+	// launchPlan, and the graph that gets bound is the one the store holds now.
+	unlock := r.lockPlanRevisionMutation(plan.ID)
+	defer unlock()
+	// The ownership check above only decided access; the state acted on here is
+	// re-read under the lock because the scheduler may have moved it since.
+	if fresh, err := r.store.GetPlan(plan.ID); err != nil || fresh == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "plan not found", "code": "plan_not_found"})
+		return
+	} else {
+		plan = fresh
+	}
 	if plan.Paused {
 		c.JSON(http.StatusConflict, gin.H{"error": "plan is paused; resume it before running", "code": "plan_paused", "remediation": errorRemediation("plan_paused")})
 		return
@@ -973,7 +993,7 @@ func (r *planRuntime) executePlan(c *gin.Context) {
 	}
 	actor := resolveUserID(c)
 	if err := r.launchPlan(planID, trigger, actor); err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "plan is already running", "code": "plan_already_running", "remediation": errorRemediation("plan_already_running")})
+		respondPlanLaunchError(c, err)
 		return
 	}
 	recordAuditEvent("plan_execution_requested", actor, planID, map[string]any{"trigger": trigger})
@@ -1261,26 +1281,42 @@ func (r *planRuntime) streamPlanEvents(c *gin.Context) {
 	// reconnect never re-transfers the entire plan history.
 	lastSeq := parseAfterSeq(c)
 	seen := map[string]struct{}{}
+	livePayload := map[int64]map[string]any{}
 	replayUnseen := func() bool {
 		history, err := r.store.ListEventsAfter(planID, lastSeq)
 		if err != nil {
 			writePlanSSE(c, "error", gin.H{"error": err.Error()})
 			return false
 		}
+		// The durable log is the single authority for what the client sees.
+		// Sorting it means a delayed bus publication can never overtake a
+		// missing earlier event, whatever order the in-memory bus delivered.
+		sort.SliceStable(history, func(i, j int) bool { return history[i].Seq < history[j].Seq })
 		for _, event := range history {
-			fingerprint := planEventFingerprint(event)
-			if _, duplicate := seen[fingerprint]; duplicate {
+			key := planEventDedupeKey(event)
+			if _, duplicate := seen[key]; duplicate {
 				continue
 			}
-			seen[fingerprint] = struct{}{}
+			seen[key] = struct{}{}
+			outgoing := event
+			if live, ok := livePayload[event.Seq]; ok {
+				delete(livePayload, event.Seq)
+				outgoing.Payload = mergePlanEventPayload(event.Payload, live)
+			}
+			if !writePlanSSEWithID(c, planStreamEventName, event.Seq, outgoing) {
+				return false
+			}
+			// The cursor advances only after the event reached the client, so a
+			// failed write leaves lastSeq on the event the client still needs.
 			if event.Seq > lastSeq {
 				lastSeq = event.Seq
 			}
-			if !writePlanSSEWithID(c, planStreamEventName, event.Seq, event) || isTerminalPlanEvent(event) {
-				return false
-			}
 		}
-		return true
+		// Replay deliberately runs past terminal events: the history of an older
+		// run is not a reason to end a stream that is waiting for a newer run.
+		// The stream closes only once the current run is terminal *and* its own
+		// terminal event has been delivered (or already sits behind the cursor).
+		return !r.streamShouldClose(planID, lastSeq)
 	}
 	if !replayUnseen() {
 		return
@@ -1295,15 +1331,26 @@ func (r *planRuntime) streamPlanEvents(c *gin.Context) {
 			if !ok {
 				return
 			}
-			fingerprint := planEventFingerprint(event)
-			if _, duplicate := seen[fingerprint]; duplicate {
+			// A bus publication is only a wakeup signal. The durable history is
+			// the authority for both content and order, so a delayed seq N can no
+			// longer be overtaken by N+1: writing the live copy directly is what
+			// gave a client an applied N+1 cursor it could never repair from.
+			if event.Seq <= 0 {
+				// Legacy zero-seq publication: no cursor may be derived from it,
+				// so it can only ask for a durable resync.
+				if !replayUnseen() {
+					return
+				}
 				continue
 			}
-			seen[fingerprint] = struct{}{}
-			if !writePlanSSEWithID(c, planStreamEventName, event.Seq, event) {
-				return
+			if event.Seq <= lastSeq {
+				// Already delivered from the durable log.
+				continue
 			}
-			if isTerminalPlanEvent(event) {
+			// Keep the live-only payload so the durable replay can still hand the
+			// UI the hydrated copy it expects, without trusting the bus for order.
+			rememberLivePayload(livePayload, event)
+			if !replayUnseen() {
 				return
 			}
 		case <-heartbeat.C:
@@ -1561,4 +1608,127 @@ func planEventFingerprint(event models.PlanEvent) string {
 
 func isTerminalPlanEvent(event models.PlanEvent) bool {
 	return event.EventType == "plan_completed" || event.EventType == "plan_failed" || event.EventType == "plan_canceled"
+}
+
+// rememberLivePayload keeps the extra payload a publisher attaches for live
+// consumers only (the scheduler hydrates image_base64 into the published copy
+// while the durable event keeps just the blob reference). It is keyed by the
+// durable seq, so it can decorate an authoritative event but never create one.
+func rememberLivePayload(cache map[int64]map[string]any, event models.PlanEvent) {
+	if event.Seq <= 0 || len(event.Payload) == 0 {
+		return
+	}
+	cache[event.Seq] = event.Payload
+}
+
+// mergePlanEventPayload overlays live-only keys on the durable payload. Durable
+// fields always win, so the authoritative content cannot be rewritten by a bus
+// message.
+func mergePlanEventPayload(durable, live map[string]any) map[string]any {
+	if len(live) == 0 {
+		return durable
+	}
+	merged := make(map[string]any, len(durable)+len(live))
+	for key, value := range durable {
+		merged[key] = value
+	}
+	for key, value := range live {
+		if _, exists := merged[key]; exists {
+			continue
+		}
+		merged[key] = value
+	}
+	return merged
+}
+
+// planEventDedupeKey identifies an event inside one stream. Numbered events are
+// identified by their seq, which is exact and cannot collide across runs; only
+// legacy zero-seq history needs the heuristic fingerprint.
+func planEventDedupeKey(event models.PlanEvent) string {
+	if event.Seq > 0 {
+		return "seq:" + strconv.FormatInt(event.Seq, 10)
+	}
+	return "fp:" + planEventFingerprint(event)
+}
+
+// planSnapshotTerminal reports whether the current plan snapshot is finished.
+func planSnapshotTerminal(plan *models.PlanGraph) bool {
+	if plan == nil {
+		return false
+	}
+	switch plan.Status {
+	case models.StatusCompleted, models.StatusFailed, models.StatusCanceled:
+		return true
+	default:
+		return false
+	}
+}
+
+// planEventInCurrentRun reports whether a durable event was emitted by the run
+// the plan snapshot currently describes. usage.started_at is written when a run
+// starts, so an event stamped before it belongs to an earlier run; a revision
+// mismatch likewise means the event predates the currently bound revision.
+func planEventInCurrentRun(plan *models.PlanGraph, event models.PlanEvent) bool {
+	if plan == nil {
+		return true
+	}
+	if plan.Usage.StartedAt != nil && !event.Timestamp.IsZero() && event.Timestamp.Before(*plan.Usage.StartedAt) {
+		return false
+	}
+	if event.Revision > 0 && plan.CurrentRevision > 0 && event.Revision != plan.CurrentRevision {
+		return false
+	}
+	return true
+}
+
+// streamShouldClose decides whether a durable replay has reached the end of the
+// run the client is watching. A terminal event from an older run is history the
+// client must receive, not a reason to end a stream that is waiting on the
+// current run: the stream closes only once the snapshot is terminal *and* the
+// terminal event of its own run has been delivered to this client.
+func (r *planRuntime) streamShouldClose(planID string, lastSeq int64) bool {
+	plan, err := r.store.GetPlan(planID)
+	if err != nil || plan == nil || !planSnapshotTerminal(plan) {
+		return false
+	}
+	history, err := r.store.ListEvents(planID)
+	if err != nil {
+		return false
+	}
+	latestTerminalSeq := int64(0)
+	currentTerminalSeq := int64(0)
+	currentRunEvents := 0
+	for _, event := range history {
+		if !isTerminalPlanEvent(event) {
+			if planEventInCurrentRun(plan, event) {
+				currentRunEvents++
+			}
+			continue
+		}
+		if event.Seq > latestTerminalSeq {
+			latestTerminalSeq = event.Seq
+		}
+		if planEventInCurrentRun(plan, event) && event.Seq > currentTerminalSeq {
+			currentTerminalSeq = event.Seq
+		}
+	}
+	if currentTerminalSeq > 0 {
+		// Delivery of the terminal event belonging to the current run ends the
+		// stream, exactly as a live terminal notification did before.
+		return currentTerminalSeq <= lastSeq
+	}
+	if currentRunEvents > 0 {
+		// The current run made durable progress but has not persisted its own
+		// terminal event yet (the snapshot flips to terminal just before the
+		// event is appended). Closing on an older run's terminal here would drop
+		// the real end of this run, so keep the stream open for the next replay.
+		return false
+	}
+	if latestTerminalSeq == 0 {
+		return false
+	}
+	// Legacy history carries no run markers at all. The last terminal event is
+	// then the only end-of-run evidence available, so closing after delivering
+	// it is right, and a fresh stream past the cursor closes immediately.
+	return latestTerminalSeq <= lastSeq
 }

@@ -300,6 +300,10 @@ func (r *planRuntime) bulkApprovals(c *gin.Context) {
 	decided := make([]string, 0, len(found))
 	for _, item := range found {
 		if err := r.applyBulkDecision(item.planID, item.actionID, decision, userID, payload.Note, now); err != nil {
+			if errors.Is(err, errEventPersistence) {
+				respondEventPersistFailure(c, err)
+				return
+			}
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "bulk_partial_failed", "decided": decided})
 			return
 		}
@@ -369,8 +373,9 @@ func (r *planRuntime) applyBulkDecision(planID, actionID, decision, actor, note 
 		},
 		Timestamp: now,
 	}
-	_ = r.store.AppendEvent(planID, event)
-	r.events.Publish(planID, event)
+	if err := r.persistAndPublishPlanEvent(planID, event); err != nil {
+		return err
+	}
 	recordAuditEvent("approval_bulk_decided", actor, planID, map[string]any{"action_id": actionID, "decision": decision})
 	return nil
 }

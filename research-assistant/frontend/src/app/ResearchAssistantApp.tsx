@@ -1,8 +1,9 @@
-import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Edge, Node, OnEdgesChange, OnNodesChange } from '@xyflow/react';
-import { GitBranch, MessageSquareText } from 'lucide-react';
 
 import { LeftWorkspaceChat, LeftWorkspacePdf } from './components/LeftWorkspace';
+import { ResearchAssistantAppShell } from './components/ResearchAssistantAppShell';
+import { WorkbenchDialog } from './components/WorkbenchDialog';
 import { useResearchAssistantRuntimeContext, type ResearchAssistantRuntimeContextValue } from './context/ResearchAssistantRuntimeContext';
 import { ResearchAssistantRuntimeProvider } from './context/ResearchAssistantRuntimeProvider';
 import { usePdfAssistFlow } from './hooks/usePdfAssistFlow';
@@ -11,187 +12,20 @@ import { useGraphState } from './hooks/useGraphState';
 import { useResearchAssistantLayoutState } from './hooks/useResearchAssistantLayoutState';
 import { useResearchAssistantRuntime } from './hooks/useResearchAssistantRuntime';
 import { readPlanRunTrigger, useGraphExecutionViewModel, type PlanRunTrigger } from './viewModels/useGraphExecutionViewModel';
-import { ExecutionSidebar } from '../features/execution/ExecutionSidebar';
 import { HelpDrawer, type HelpSection } from '../features/help/HelpDrawer';
 import { Onboarding } from '../features/onboarding/Onboarding';
-import { GraphPanel } from '../features/plan-graph/GraphPanel';
-import { DesktopStatusBanner } from '../components/DesktopStatusBanner';
-import { NetworkIsolationBanner } from '../components/NetworkIsolationBanner';
-import { UpdateAvailableBanner } from '../components/UpdateAvailableBanner';
 import { buildGraphLayout } from '../features/plan-graph/buildGraphLayout';
 import { SettingsPanel } from '../features/settings/SettingsPanel';
 import { PlanLibraryPanel } from '../features/plan-library/PlanLibraryPanel';
 import { CostConsolePanel } from '../features/cost/CostConsolePanel';
 import { PlanReviewPanel } from '../features/review/PlanReviewPanel';
 import { ApprovalInboxPanel } from '../features/review/ApprovalInboxPanel';
-import { WorkbenchRail } from '../features/workbench/WorkbenchRail';
-import { WorkbenchStatusBar } from '../features/workbench/WorkbenchStatusBar';
 import { useWorkbenchBudget, type WorkbenchBudgetState } from './hooks/useWorkbenchBudget';
 import { answerQuestion, listApprovals } from '../services/api/researchAssistantApi';
 import { getDesktopBridge } from '../services/desktopBridge';
-import { usePlanCompletionNotification } from './hooks/usePlanCompletionNotification';
 import type { IntentContext, MissingRequirement, PlanQuestion, RuntimeAction, UploadedFile } from '../contracts/api';
 import type { PlanExecutionTrigger } from '../services/api/researchAssistantApi';
 import { isPdfAttachment } from '../features/pdf-viewer/pdfAttachment';
-
-interface ResearchAssistantAppShellProps {
-  layout: ReturnType<typeof useResearchAssistantLayoutState>;
-  leftWorkspace: ReactNode;
-  graphExecutionViewModel: ReturnType<typeof useGraphExecutionViewModel>;
-  mobilePane: 'chat' | 'graph';
-  onMobilePaneChange: (pane: 'chat' | 'graph') => void;
-  workspaceView: 'chat' | 'literature';
-  onWorkspaceViewChange: (view: 'chat' | 'literature') => void;
-  accountLabel: string;
-  budget: WorkbenchBudgetState;
-  pendingWorkCount: number;
-  pendingApprovalCount: number;
-  pendingQuestionCount: number;
-  activePlanStatus: string | null;
-  reviewRequired: boolean;
-  reviewStatus?: string | null;
-  showModelSettings?: boolean;
-  onOpenModelSettings?: () => void;
-  onOpenPlanLibrary?: () => void;
-  onOpenCostConsole?: () => void;
-  onOpenReview?: () => void;
-  onOpenInbox?: () => void;
-  onOpenHelp: () => void;
-}
-
-function ResearchAssistantAppShell(props: ResearchAssistantAppShellProps) {
-  const { layout, leftWorkspace, graphExecutionViewModel, mobilePane, onMobilePaneChange, workspaceView, onWorkspaceViewChange, accountLabel, budget, pendingWorkCount, pendingApprovalCount, pendingQuestionCount, activePlanStatus, reviewRequired, reviewStatus, onOpenModelSettings, onOpenPlanLibrary, onOpenCostConsole, onOpenReview, onOpenInbox, onOpenHelp } = props;
-  const graphNodeCount = graphExecutionViewModel.graphPanelProps.nodes.length;
-  const isResizing = layout.isResizing || layout.isResizingSidebar;
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
-      if (!graphExecutionViewModel.executionSidebarProps) return;
-      const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-      graphExecutionViewModel.executionSidebarProps.onClose();
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [graphExecutionViewModel.executionSidebarProps]);
-
-  const graphProps = graphExecutionViewModel.graphPanelProps;
-  usePlanCompletionNotification(graphProps.planId, props.activePlanStatus);
-  const stepCount = graphProps.nodes.length;
-  const completedCount = graphProps.nodes.filter((node) => node.data.status === 'completed').length;
-  const runningCount = graphProps.nodes.filter((node) => node.data.status === 'in_progress').length;
-
-  return (
-    <div
-      className="research-assistant-app-shell font-sans text-ink"
-      data-mobile-pane={mobilePane}
-      data-resizing={isResizing ? 'true' : 'false'}
-    >
-      <WorkbenchRail
-        activeView={workspaceView}
-        planId={graphProps.planId ?? null}
-        pendingWorkCount={pendingWorkCount}
-        reviewPending={reviewRequired && reviewStatus !== 'approved'}
-        accountLabel={accountLabel}
-        onSelectView={onWorkspaceViewChange}
-        onOpenPlanLibrary={onOpenPlanLibrary ?? (() => undefined)}
-        onOpenCostConsole={onOpenCostConsole ?? (() => undefined)}
-        onOpenInbox={onOpenInbox ?? (() => undefined)}
-        onOpenReview={onOpenReview ?? (() => undefined)}
-        onOpenHelp={onOpenHelp}
-        onOpenModelSettings={onOpenModelSettings}
-      />
-      <div className="research-assistant-workbench-stack">
-        <DesktopStatusBanner />
-        <UpdateAvailableBanner />
-        <NetworkIsolationBanner />
-        <div className="research-assistant-workbench-row">
-          <div className="research-assistant-mobile-tabbar">
-            <button
-              type="button"
-              onClick={() => onMobilePaneChange('chat')}
-              aria-pressed={mobilePane === 'chat'}
-              className={mobilePane === 'chat' ? 'is-active' : ''}
-            >
-              <MessageSquareText className="h-4 w-4" />
-              对话
-            </button>
-            <button
-              type="button"
-              onClick={() => onMobilePaneChange('graph')}
-              aria-pressed={mobilePane === 'graph'}
-              className={mobilePane === 'graph' ? 'is-active' : ''}
-            >
-              <GitBranch className="h-4 w-4" />
-              执行图{graphNodeCount > 0 ? ` ${graphNodeCount}` : ''}
-            </button>
-          </div>
-
-          {leftWorkspace}
-
-          <div
-            className="research-assistant-left-resize-handle group relative flex w-1.5 shrink-0 cursor-col-resize items-center justify-center bg-surface transition-colors hover:bg-line"
-            onPointerDown={(event) => {
-              event.preventDefault();
-              layout.startResizingLeftPanel();
-            }}
-            onDoubleClick={layout.resetLeftPanel}
-            title="拖动调整对话栏宽度 · 双击恢复默认"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="调整对话栏宽度"
-          >
-            <div className={`h-12 w-px rounded-full transition-colors ${layout.isResizing ? 'bg-accent' : 'bg-line-strong group-hover:bg-accent'}`} />
-          </div>
-
-          <div className="research-assistant-graph-workspace relative flex min-w-0 flex-1 overflow-hidden">
-            <GraphPanel {...graphExecutionViewModel.graphPanelProps} />
-
-            {graphExecutionViewModel.showExecutionResizeHandle && (
-              <div
-                className="group relative z-20 flex w-1.5 shrink-0 cursor-col-resize items-center justify-center bg-surface transition-colors hover:bg-surface-muted"
-                onPointerDown={(event) => {
-                  event.preventDefault();
-                  layout.startResizingSidebar();
-                }}
-                onDoubleClick={layout.resetSidebar}
-                title="拖动调整详情栏宽度 · 双击恢复默认"
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="调整详情栏宽度"
-              >
-                <div className={`h-12 w-px rounded-full transition-colors ${layout.isResizingSidebar ? 'bg-accent' : 'bg-line-strong group-hover:bg-accent'}`} />
-              </div>
-            )}
-
-            {graphExecutionViewModel.executionSidebarProps && <ExecutionSidebar {...graphExecutionViewModel.executionSidebarProps} />}
-          </div>
-        </div>
-
-        <WorkbenchStatusBar
-          planId={graphProps.planId ?? null}
-          planStatus={activePlanStatus}
-          reviewRequired={reviewRequired}
-          reviewStatus={reviewStatus}
-          stepCount={stepCount}
-          completedCount={completedCount}
-          runningCount={runningCount}
-          budget={budget}
-          pendingWorkCount={pendingWorkCount}
-          pendingApprovalCount={pendingApprovalCount}
-          pendingQuestionCount={pendingQuestionCount}
-          permissionMode={graphProps.runtimePermissionMode ?? null}
-          onOpenPlanLibrary={onOpenPlanLibrary ?? (() => undefined)}
-          onOpenCostConsole={onOpenCostConsole ?? (() => undefined)}
-          onOpenInbox={onOpenInbox ?? (() => undefined)}
-          onOpenReview={onOpenReview ?? (() => undefined)}
-        />
-      </div>
-    </div>
-  );
-}
 
 interface ResearchAssistantWorkspaceContentProps {
   nodes: Node[];
@@ -213,6 +47,8 @@ interface ResearchAssistantWorkspaceContentProps {
     setPrompt: (value: string) => void;
     handleSendMessage: () => void;
     pendingAttachments: ReturnType<typeof useResearchAssistantChatFlow>['pendingAttachments'];
+    documentReferences: ReturnType<typeof useResearchAssistantChatFlow>['documentReferences'];
+    removeDocumentReference: ReturnType<typeof useResearchAssistantChatFlow>['removeDocumentReference'];
     uploadingAttachments: boolean;
     attachmentError: string;
     handleAttachFiles: (files: File[]) => void;
@@ -253,6 +89,7 @@ interface ResearchAssistantWorkspaceContentProps {
     handleOpenServerPlan: (planId: string) => Promise<void>;
   };
   pdfFlow: ReturnType<typeof usePdfAssistFlow>;
+  executionViewRequest: number;
   mobilePane: 'chat' | 'graph';
   onMobilePaneChange: (pane: 'chat' | 'graph') => void;
   workspaceView: 'chat' | 'literature';
@@ -268,6 +105,25 @@ interface ResearchAssistantWorkspaceContentProps {
 function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceContentProps) {
   const { nodes, edges, onNodesChange, onEdgesChange, logsEndRef, showModelSettings, onOpenModelSettings, onCloseModelSettings, layout, budget, pendingWorkCounts, chatFlow, pdfFlow, mobilePane, onMobilePaneChange, workspaceView, onWorkspaceViewChange, onOpenHelp, onOpenPlanLibrary, onOpenCostConsole, onOpenReview, onOpenInbox } = props;
   const runtime = useResearchAssistantRuntimeContext();
+  const [readerView, setReaderView] = useState<{ url: string | null; error: string; executionViewRequest: number; view: 'graph' | 'pdf' }>(() => ({
+    url: pdfFlow.pdfUrl, error: pdfFlow.documentError, executionViewRequest: props.executionViewRequest, view: pdfFlow.pdfUrl || pdfFlow.documentError ? 'pdf' : 'graph',
+  }));
+  if (readerView.url !== pdfFlow.pdfUrl || readerView.error !== pdfFlow.documentError || readerView.executionViewRequest !== props.executionViewRequest) {
+    setReaderView({ url: pdfFlow.pdfUrl, error: pdfFlow.documentError, executionViewRequest: props.executionViewRequest,
+      view: readerView.executionViewRequest !== props.executionViewRequest ? 'graph' : pdfFlow.pdfUrl || pdfFlow.documentError ? 'pdf' : 'graph' });
+  }
+  const mainContentView = readerView.view;
+  const setMainContentView = (view: 'graph' | 'pdf') => setReaderView({ url: pdfFlow.pdfUrl, error: pdfFlow.documentError, executionViewRequest: props.executionViewRequest, view });
+  const showChat = () => {
+    onWorkspaceViewChange('chat');
+    onMobilePaneChange('chat');
+    if (layout.chatCollapsed) layout.toggleChat();
+  };
+  const openPdf = async (upload: UploadedFile) => {
+    setMainContentView('pdf');
+    onMobilePaneChange('graph');
+    await pdfFlow.openPdfFromUpload(upload);
+  };
   const graphExecutionViewModel = useGraphExecutionViewModel({
     nodes,
     edges,
@@ -298,18 +154,32 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
     logsEndRef,
   });
 
-  const leftWorkspace = pdfFlow.pdfUrl ? (
+  const readerWorkspace = pdfFlow.pdfUrl || pdfFlow.documentError ? (
+    <>
+    {pdfFlow.documentError && <div role="alert" className="border-b border-line bg-proof-soft p-4 text-sm text-proof">{pdfFlow.documentError}<button type="button" className="ml-3 underline" onClick={() => setMainContentView('graph')}>返回执行图</button></div>}
+    {pdfFlow.pdfUrl && (
     <LeftWorkspacePdf
-      widthPercent={layout.leftPanelWidth}
+      widthPercent={100}
       pdfUrl={pdfFlow.pdfUrl}
+      documentName={pdfFlow.documentName}
+      documentKey={pdfFlow.documentKey}
+      initialPage={pdfFlow.readingState.page}
+      initialScale={pdfFlow.readingState.scale}
+      onPageChange={(page) => pdfFlow.setReadingState({ page })}
+      onScaleChange={(scale) => pdfFlow.setReadingState({ scale })}
       documentInfo={pdfFlow.documentInfo}
       onClosePdf={pdfFlow.closePdf}
+      onReturnToGraph={() => setMainContentView('graph')}
+      onShowChat={showChat}
       translation={pdfFlow.translation}
       onAskAI={pdfFlow.handleAskAI}
       onAssist={pdfFlow.assistWithUpload}
       onOpenHelp={() => onOpenHelp('pdf')}
     />
-  ) : (
+    )}
+    </>
+  ) : null;
+  const leftWorkspace = (
     <LeftWorkspaceChat
       widthPercent={layout.leftPanelWidth}
       activeView={workspaceView}
@@ -320,6 +190,7 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
         prompt: chatFlow.prompt,
         showSuggestions: pdfFlow.showSuggestions,
         pendingAttachments: chatFlow.pendingAttachments,
+        documentReferences: chatFlow.documentReferences,
         uploadingAttachments: chatFlow.uploadingAttachments,
         attachmentError: chatFlow.attachmentError,
         runtimePermissionMode: chatFlow.runtimePermissionMode,
@@ -340,7 +211,13 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
         onSwitchSession: chatFlow.handleSwitchSession,
         onAttachFiles: chatFlow.handleAttachFiles,
         onRemoveAttachment: chatFlow.handleRemoveAttachment,
-        onOpenAttachment: pdfFlow.openPdfFromUpload,
+        onOpenAttachment: openPdf,
+        onRemoveDocumentReference: chatFlow.removeDocumentReference,
+        onOpenDocumentReference: async (reference) => {
+          await pdfFlow.restoreReference(reference);
+          setMainContentView('pdf');
+          onMobilePaneChange('graph');
+        },
         onRuntimePermissionModeChange: chatFlow.handleRuntimePermissionModeChange,
         onConfirmFullAccess: chatFlow.handleConfirmFullAccess,
         onCancelFullAccess: chatFlow.handleCancelFullAccess,
@@ -352,18 +229,22 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
             chatFlow.appendChatMessage({ role: 'system', text: '请先上传 PDF 附件，再打开阅读器。' });
             return;
           }
-          void pdfFlow.openPdfFromUpload(pdfAttachment);
+          void openPdf(pdfAttachment);
         },
         onClosePdf: pdfFlow.closePdf,
       }}
       taskActions={{
-        onOpenTaskView: runtime.actions.handleOpenTaskView,
+        onOpenTaskView: (taskId, mode) => {
+          setMainContentView('graph');
+          onMobilePaneChange('graph');
+          runtime.actions.handleOpenTaskView(taskId, mode);
+        },
       }}
       literatureActions={{
         activeSessionId: chatFlow.activeSessionId,
         onAttachToSession: chatFlow.attachUploadToSession,
         onDetachFromSession: chatFlow.handleRemoveAttachment,
-        onOpenPdf: pdfFlow.openPdfFromUpload,
+        onOpenPdf: openPdf,
         onOpenHelp: () => onOpenHelp('library'),
       }}
     />
@@ -374,6 +255,9 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
       <ResearchAssistantAppShell
         layout={layout}
         leftWorkspace={leftWorkspace}
+        readerWorkspace={readerWorkspace}
+        mainContentView={mainContentView}
+        onMainContentViewChange={setMainContentView}
         graphExecutionViewModel={graphExecutionViewModel}
         mobilePane={mobilePane}
         onMobilePaneChange={onMobilePaneChange}
@@ -417,6 +301,7 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
 export default function ResearchAssistantApp() {
   const { nodes, setNodes, onNodesChange, edges, setEdges, onEdgesChange } = useGraphState();
   const [mobilePane, setMobilePane] = useState<'chat' | 'graph'>('chat');
+  const [executionViewRequest, setExecutionViewRequest] = useState(0);
   const [workspaceView, setWorkspaceView] = useState<'chat' | 'literature'>('chat');
   const [showModelSettings, setShowModelSettings] = useState(() =>
     typeof window !== 'undefined' && window.location.hash.startsWith('#settings:'),
@@ -431,7 +316,17 @@ export default function ResearchAssistantApp() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const runtimeActionsRef = useRef<((planId: string, trigger?: PlanExecutionTrigger) => void) | null>(null);
+  const reviewLeaveGuardRef = useRef<((proceed: () => void) => Promise<boolean>) | null>(null);
   const layout = useResearchAssistantLayoutState();
+  const registerReviewLeaveGuard = useCallback((guard: ((proceed: () => void) => Promise<boolean>) | null) => {
+    reviewLeaveGuardRef.current = guard;
+  }, []);
+  const leaveReview = useCallback((proceed: () => void) => {
+    const continueAfterReview = () => { setShowReview(false); proceed(); };
+    if (showReview && reviewLeaveGuardRef.current) {
+      void reviewLeaveGuardRef.current(continueAfterReview);
+    } else continueAfterReview();
+  }, [showReview]);
 
   useEffect(() => {
     let cancelled = false;
@@ -519,9 +414,11 @@ export default function ResearchAssistantApp() {
     };
   }, []);
 
+  const displayedPlanRef = useRef<string | null>(null);
   const handlePlanGraphChanged = useCallback(
     (planGraph: ReturnType<typeof useResearchAssistantChatFlow>['intentContext'] extends never ? never : Parameters<Parameters<typeof useResearchAssistantChatFlow>[0]['onPlanGraphChanged']>[0]) => {
       if (!planGraph) {
+        displayedPlanRef.current = null;
         setNodes([]);
         setEdges([]);
         setMobilePane('chat');
@@ -532,7 +429,8 @@ export default function ResearchAssistantApp() {
         const graphLayout = buildGraphLayout(planGraph);
         setNodes(graphLayout.nodes);
         setEdges(graphLayout.edges);
-        setMobilePane('graph');
+        if (displayedPlanRef.current !== planGraph.id) setMobilePane('graph');
+        displayedPlanRef.current = planGraph.id;
       } catch (error) {
         // A malformed persisted plan must not take down the whole workspace.
         console.error('[plan] failed to build graph layout', error);
@@ -571,7 +469,6 @@ export default function ResearchAssistantApp() {
     refreshPlanState: chatFlow.refreshActivePlan,
     activePlanGraph: chatFlow.activePlanGraph,
   });
-  const { resetRuntimeState } = runtime;
   const runAllTasks = runtime.handleRunAllTasks;
 
   useEffect(() => {
@@ -585,15 +482,18 @@ export default function ResearchAssistantApp() {
     appendChatMessage: chatFlow.appendChatMessage,
     appendSelectedTaskLog: runtime.appendSelectedTaskLog,
     identity: chatFlow.requestIdentity,
+    activeSessionId: chatFlow.activeSessionId,
+    onAskReference: (reference) => {
+      chatFlow.addDocumentReference(reference);
+      setWorkspaceView('chat');
+      setMobilePane('chat');
+      if (layout.chatCollapsed) layout.toggleChat();
+    },
   });
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [runtime.selectedTaskState.logs]);
-
-  useEffect(() => {
-    resetRuntimeState();
-  }, [chatFlow.activeSessionId, resetRuntimeState]);
 
   const runtimeContextValue = useMemo<ResearchAssistantRuntimeContextValue>(
     () => ({
@@ -609,10 +509,13 @@ export default function ResearchAssistantApp() {
         handleApproveAndRun: runtime.handleApproveAndRun,
         handleRuntimeActionDecision: runtime.handleRuntimeActionDecision,
         handleCancelPlan: runtime.handleCancelPlan,
+        handleResumePlan: runtime.handleResumePlan,
         handleRetryFailedPlan: runtime.handleRetryFailedPlan,
         setDisplayMode: runtime.setDisplayMode,
         closeTaskPanel: runtime.closeTaskPanel,
         resetRuntimeState: runtime.resetRuntimeState,
+        observePlan: runtime.observePlan,
+        handleReconnect: runtime.handleReconnect,
       },
       meta: {
         appendSelectedTaskLog: runtime.appendSelectedTaskLog,
@@ -648,6 +551,8 @@ export default function ResearchAssistantApp() {
             setPrompt: chatFlow.setPrompt,
             handleSendMessage: chatFlow.handleSendMessage,
             pendingAttachments: chatFlow.pendingAttachments,
+            documentReferences: chatFlow.documentReferences,
+            removeDocumentReference: chatFlow.removeDocumentReference,
             uploadingAttachments: chatFlow.uploadingAttachments,
             attachmentError: chatFlow.attachmentError,
             handleAttachFiles: chatFlow.handleAttachFiles,
@@ -682,13 +587,14 @@ export default function ResearchAssistantApp() {
             setLoginInput: chatFlow.setLoginInput,
             activeSessionId: chatFlow.activeSessionId,
             sessionSummaries: chatFlow.sessionSummaries,
-            handleLogin: chatFlow.handleLogin,
-            handleCreateSession: chatFlow.handleCreateSession,
-            handleSwitchSession: chatFlow.handleSwitchSession,
-            handleOpenServerPlan: chatFlow.handleOpenServerPlan,
+            handleLogin: () => leaveReview(chatFlow.handleLogin),
+            handleCreateSession: () => leaveReview(chatFlow.handleCreateSession),
+            handleSwitchSession: (sessionId) => leaveReview(() => chatFlow.handleSwitchSession(sessionId)),
+            handleOpenServerPlan: async (planId) => leaveReview(() => { void chatFlow.handleOpenServerPlan(planId); }),
           }}
             pdfFlow={pdfFlow}
             mobilePane={mobilePane}
+            executionViewRequest={executionViewRequest}
             onMobilePaneChange={setMobilePane}
             workspaceView={workspaceView}
             onWorkspaceViewChange={setWorkspaceView}
@@ -712,7 +618,7 @@ export default function ResearchAssistantApp() {
                 onClose={() => setShowPlanLibrary(false)}
                 onOpenPlan={(planId) => {
                   setShowPlanLibrary(false);
-                  void chatFlow.handleOpenServerPlan(planId);
+                  leaveReview(() => { void chatFlow.handleOpenServerPlan(planId); });
                 }}
               />
             </div>
@@ -726,18 +632,24 @@ export default function ResearchAssistantApp() {
           </div>
         )}
         {showReview && chatFlow.activePlanId && (
-          <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-ink/20 p-3 backdrop-blur-[2px] md:p-6" role="dialog" aria-modal="true" aria-label="计划审阅">
+          <WorkbenchDialog label="计划审阅" onRequestClose={() => leaveReview(() => undefined)} className="workbench-review-dialog">
             <div className="h-full w-full max-w-[100rem] overflow-hidden rounded-3xl border border-line bg-paper shadow-float">
               <PlanReviewPanel
                 planId={chatFlow.activePlanId}
+                identity={chatFlow.requestIdentity}
                 onClose={() => setShowReview(false)}
-                onApplied={() => {
+                onRegisterLeaveGuard={registerReviewLeaveGuard}
+                onSaved={() => { void chatFlow.refreshActivePlan(); }}
+                onExecutionStarted={() => {
                   void chatFlow.refreshActivePlan();
                   setShowReview(false);
+                  setMobilePane('graph');
+                  setExecutionViewRequest((request) => request + 1);
+                  void runtime.observePlan(chatFlow.activePlanId!, { startAccepted: true });
                 }}
               />
             </div>
-          </div>
+          </WorkbenchDialog>
         )}
         {showInbox && (
           <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-ink/20 p-3 backdrop-blur-[2px] md:p-6" role="dialog" aria-modal="true" aria-label="待办中心">
@@ -746,7 +658,7 @@ export default function ResearchAssistantApp() {
                 onClose={() => setShowInbox(false)}
                 onOpenPlan={(planId) => {
                   setShowInbox(false);
-                  void chatFlow.handleOpenServerPlan(planId);
+                  leaveReview(() => { void chatFlow.handleOpenServerPlan(planId); });
                 }}
               />
             </div>

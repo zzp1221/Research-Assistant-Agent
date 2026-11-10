@@ -2,6 +2,7 @@ import type {
   AssistResponse,
   DocumentInfoResponse,
   TranslationJob,
+  UploadedFile,
 } from '../../contracts/api';
 import { httpClient } from './httpClient';
 import type { RequestIdentity } from './researchAssistantApi';
@@ -10,6 +11,14 @@ import type { RequestIdentity } from './researchAssistantApi';
 const buildIdentityHeaders = (identity?: RequestIdentity) => {
   void identity;
   return {};
+};
+
+// getUpload resolves the owner-scoped upload metadata. The reader uses it to
+// restore a document from its persisted upload identity (refresh, session
+// switch, reference jump) instead of fabricating a blob URL.
+export const getUpload = async (uploadId: string): Promise<UploadedFile> => {
+  const response = await httpClient.get<UploadedFile>(`/api/uploads/${uploadId}`);
+  return response.data;
 };
 
 export const getUploadDocument = async (uploadId: string, identity: RequestIdentity): Promise<DocumentInfoResponse> => {

@@ -1,5 +1,6 @@
-﻿import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { AITranslationPopover } from '../../src/hooks/AITranslationPopover';
 import type { AssistResponse } from '../../src/contracts/api';
 
@@ -9,9 +10,9 @@ let observers: { disconnected: boolean; trigger: () => void }[];
 let frames: Map<number, FrameRequestCallback>;
 let nextFrame: number;
 const flush = () => act(() => { const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach((cb) => cb(0)); });
-function reader(left: number) {
+function reader(left: number, pageIndex = 0) {
   const root = document.createElement('div');
-  root.innerHTML = '<div class="rpv-default-layout__body"><div data-testid="core__page-layer-0"></div></div>';
+  root.innerHTML = `<div class="rpv-default-layout__body"><div data-testid="core__page-layer-${pageIndex}"></div></div>`;
   root.getBoundingClientRect = () => rect(left, 80, 280, 300);
   const body = root.firstElementChild as HTMLElement;
   body.getBoundingClientRect = () => rect(left, 110, 280, 270);
@@ -81,5 +82,50 @@ describe('reader-scoped translation popover', () => {
     expect(screen.getByRole('dialog')).toHaveTextContent('translated result');
     expect(observers.slice(0, -1).every((o) => o.disconnected)).toBe(true);
     view.unmount(); expect(observers.every((o) => o.disconnected)).toBe(true);
+  });
+
+  it('passes the selection text and its one-based page to 询问 AI', async () => {
+    // The anchoring logic looks for the page layer of the selection's index, so
+    // the reader has to expose the same page the region points at.
+    const actual = reader(200, 6);
+    const onAskAI = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <AITranslationPopover
+        {...props}
+        readerRef={{ current: actual.root as HTMLDivElement }}
+        selectionRegion={{ pageIndex: 6, left: 10, top: 10, width: 10, height: 5 }}
+        selectedText="the selected paragraph"
+        onAskAI={onAskAI}
+        onClose={onClose}
+      />,
+    );
+
+    // The dialog header and the reference card must agree with the callback: the
+    // viewer reports a zero-based page index, the reader is one-based.
+    expect(screen.getByRole('dialog')).toHaveTextContent('第 7 页');
+    await userEvent.click(screen.getByRole('button', { name: /针对此段落向 Research Assistant Agent 追问/ }));
+    expect(onAskAI).toHaveBeenCalledWith('the selected paragraph', 7);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps working with a legacy single-argument onAskAI handler', async () => {
+    const actual = reader(200);
+    const legacyHandler = vi.fn<[string], void>();
+    render(
+      <AITranslationPopover
+        {...props}
+        readerRef={{ current: actual.root as HTMLDivElement }}
+        selectionRegion={{ pageIndex: 0, left: 10, top: 10, width: 10, height: 5 }}
+        selectedText="first page text"
+        // A host that was not updated yet only reads the first argument. Extra
+        // arguments are ignored by JavaScript, so the call must still succeed.
+        onAskAI={legacyHandler}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /针对此段落向 Research Assistant Agent 追问/ }));
+    expect(legacyHandler).toHaveBeenCalledTimes(1);
+    expect(legacyHandler.mock.calls[0][0]).toBe('first page text');
   });
 });

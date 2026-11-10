@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./styles/workbench-layout.css";
 @plugin "@tailwindcss/typography";
 
 /*
@@ -139,14 +140,13 @@
   display: flex;
   flex: 1;
   min-width: 0;
+  min-height: 0;
   flex-direction: column;
+  overflow: hidden;
 }
 
-.research-assistant-workbench-row {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-}
+/* The workbench row (panes, drag handles) is laid out in
+   `styles/workbench-layout.css` together with the responsive modes. */
 
 :where(button, a, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--color-accent) !important;
@@ -1005,11 +1005,10 @@
     #ffffff;
 }
 
-/* ---------- Mobile ---------- */
-.research-assistant-mobile-tabbar {
-  display: none;
-}
-
+/* ---------- Mobile ----------
+   Pane stacking, tab bar and details overlay live in
+   `styles/workbench-layout.css` (driven by `data-layout-mode`). Only the
+   viewport-level chrome that the layout hook cannot measure stays here. */
 @media (max-width: 767px) {
   .research-assistant-app-shell {
     height: 100dvh;
@@ -1021,25 +1020,28 @@
 
   .research-assistant-workbench-stack {
     min-height: 0;
-  }
-
-  .research-assistant-workbench-row {
-    position: relative;
-    flex-direction: column;
-    min-height: 0;
+    overflow: hidden;
   }
 
   .research-assistant-rail {
     order: 3;
     width: 100%;
-    height: 52px;
-    flex: 0 0 52px;
+    height: calc(56px + env(safe-area-inset-bottom, 0px));
+    flex: 0 0 auto;
     flex-direction: row;
     align-items: center;
     gap: 2px;
-    padding: 6px 10px;
+    padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid var(--color-line);
     border-right: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .research-assistant-rail::-webkit-scrollbar {
+    display: none;
   }
 
   .research-assistant-rail-brand {
@@ -1047,6 +1049,7 @@
   }
 
   .research-assistant-rail-group {
+    flex: 0 0 auto;
     flex-direction: row;
     gap: 2px;
   }
@@ -1055,12 +1058,11 @@
     flex: 1;
   }
 
-
-
+  /* 44px targets: the rail is the primary navigation on phones. */
   .research-assistant-rail-btn {
-    width: 34px;
-    height: 34px;
-    flex-basis: 34px;
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
   }
 
   .research-assistant-rail-avatar {
@@ -1070,71 +1072,6 @@
 
   .research-assistant-status-bar {
     display: none;
-  }
-
-  .research-assistant-mobile-tabbar {
-    display: flex;
-    flex: 0 0 42px;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    border-bottom: 1px solid var(--color-line);
-    background: rgb(255 255 255 / 0.8);
-  }
-
-  .research-assistant-mobile-tabbar button {
-    display: flex;
-    height: 32px;
-    flex: 1;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    border: 1px solid transparent;
-    border-radius: 9px;
-    background: transparent;
-    color: var(--color-muted);
-    font-size: 12px;
-    font-weight: 600;
-  }
-
-  .research-assistant-mobile-tabbar button.is-active {
-    border-color: var(--color-line-strong);
-    background: var(--color-surface);
-    color: var(--color-ink);
-    box-shadow: 0 6px 14px -12px rgb(20 52 34 / 0.5);
-  }
-
-  .research-assistant-left-workspace {
-    width: 100% !important;
-    height: 100%;
-    min-height: 0;
-    border-right: 0;
-  }
-
-  .research-assistant-left-resize-handle {
-    display: none;
-  }
-
-  .research-assistant-graph-workspace {
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-  }
-
-  .research-assistant-app-shell[data-mobile-pane='chat'] .research-assistant-graph-workspace,
-  .research-assistant-app-shell[data-mobile-pane='graph'] .research-assistant-left-workspace {
-    position: absolute;
-    inset: 42px 0 0;
-    visibility: hidden;
-    pointer-events: none;
-  }
-
-  .research-assistant-execution-sidebar {
-    position: absolute !important;
-    inset: 0;
-    width: 100% !important;
-    margin: 0;
-    border-radius: 0;
   }
 
   .research-assistant-canvas-head {

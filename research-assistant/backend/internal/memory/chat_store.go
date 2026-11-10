@@ -13,6 +13,19 @@ import (
 	"github.com/google/uuid"
 )
 
+// ChatReference is the provenance of one document passage the user selected in
+// the PDF reader when asking a question. It records what the user pointed at,
+// which is a user claim about the source, not server-verified verbatim evidence
+// of the document text.
+type ChatReference struct {
+	UploadID     string `json:"upload_id"`
+	DocumentName string `json:"document_name,omitempty"`
+	Page         int    `json:"page"`
+	Quote        string `json:"quote,omitempty"`
+	// Source names how the passage was produced; currently "user_selection".
+	Source string `json:"source,omitempty"`
+}
+
 // ChatTurn is one persisted chat message.
 type ChatTurn struct {
 	ID           string    `json:"id,omitempty"`
@@ -22,6 +35,11 @@ type ChatTurn struct {
 	CreatedAt    time.Time `json:"created_at"`
 	PlanID       string    `json:"plan_id,omitempty"`
 	Tokens       int       `json:"tokens,omitempty"`
+	// References carries the document passages attached to a user turn so a
+	// later turn in the same session can keep citing the same pages. Content
+	// stays the original question so titles, memory indexing and recall are
+	// unaffected by the source context.
+	References []ChatReference `json:"references,omitempty"`
 }
 
 // ChatSession is the server-side chat history for one session.
@@ -155,6 +173,9 @@ func (s *ChatStore) Append(ownerID, id, projectID string, turn ChatTurn) (ChatSe
 	if session.ProjectID == "" {
 		session.ProjectID = projectID
 	}
+	// The store must not alias the caller's reference slice: a caller that
+	// reuses or mutates its turn would otherwise rewrite persisted provenance.
+	cloneChatTurnReferences(&turn)
 	session.Turns = append(append([]ChatTurn(nil), session.Turns...), turn)
 	if session.Title == "" || session.Title == "新会话" {
 		session.Title = deriveChatTitle(turn.Content)

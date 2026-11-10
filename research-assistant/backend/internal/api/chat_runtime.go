@@ -77,6 +77,14 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 		}
 	}
 
+	// Document references are validated before anything is persisted or sent to
+	// a model, so a rejected reference never leaves a phantom user turn behind.
+	references, referenceErr := resolveChatDocumentReferences(c, ownerID, payload.DocumentReferences)
+	if referenceErr != nil {
+		referenceErr.write(c)
+		return
+	}
+
 	unlock, lockErr := chatTurnGate.Acquire(c.Request.Context(), ownerID+":"+sessionID)
 	if lockErr != nil {
 		c.JSON(http.StatusRequestTimeout, gin.H{"error": "chat request cancelled"})
@@ -136,7 +144,7 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 			}
 		}
 		var err error
-		savedInput, err = chatStore.Append(ownerID, sessionID, projectID, memory.ChatTurn{Role: "user", Content: message})
+		savedInput, err = chatStore.Append(ownerID, sessionID, projectID, memory.ChatTurn{Role: "user", Content: message, References: chatTurnReferences(references)})
 		if err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "chat input persistence failed"})
 			return
@@ -161,6 +169,24 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 		}
 		callBudget = budget.PromptBudget
 		ctx = modelresolver.WithResolvedCall(ctx, call)
+	}
+
+	// The document block shares the prompt budget with the memory and wiki
+	// blocks: it is capped by tokens and characters instead of being appended
+	// unbounded. A follow-up without new references rebuilds a smaller block
+	// from the provenance persisted on the most recent user turn that carried
+	// references, so a long ordinary follow-up chain keeps its source.
+	documentRefs := references
+	documentTokens, documentRunes := chatDocumentContextBudget(callBudget)
+	if len(documentRefs) == 0 {
+		documentRefs = chatDocumentContinuationReferences(c, ownerID, history)
+		documentTokens = max(documentTokens/2, 1)
+		documentRunes = max(documentRunes/2, 1)
+	}
+	var documentContext string
+	var documentContextReport chatDocumentContextReport
+	if len(documentRefs) > 0 {
+		documentContext, documentContextReport = buildChatDocumentContext(documentRefs, documentTokens, documentRunes)
 	}
 
 	// Wiki context is computed first so the retrieved-memory budget can be
@@ -219,6 +245,13 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 		if turn.Role == "assistant" && turn.ModelContent != "" {
 			content = turn.ModelContent
 		}
+		// Persisted provenance keeps an earlier document reference visible to
+		// later turns without resending the whole page text.
+		if turn.Role == "user" {
+			if provenance := renderChatTurnReferences(turn.References); provenance != "" {
+				content = content + "\n\n" + provenance
+			}
+		}
 		messages = append(messages, &schema.Message{Role: role, Content: content})
 	}
 	if effectiveMode == "on" && memCtx.RetrievedText != "" {
@@ -232,6 +265,9 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 	}
 	if wikiCtx.DocumentText != "" {
 		messages = append(messages, &schema.Message{Role: schema.System, Content: "[document context]\n" + wikiCtx.DocumentText})
+	}
+	if documentContext != "" {
+		messages = append(messages, &schema.Message{Role: schema.System, Content: documentContext})
 	}
 	messages = append(messages, &schema.Message{Role: schema.User, Content: message})
 
@@ -289,5 +325,14 @@ func handleChat(c *gin.Context, chatAgent *agent.ChatAgent) {
 		"memory_report":      memCtx.Report,
 		"chat_recall_report": recallCtx.Report,
 		"wiki_citations":     wikiCtx.Citations,
+		// document_references echoes the server-resolved provenance so the
+		// workbench can render source cards from server names, not client ones.
+		"document_references": documentContextReport.References,
+		"document_context_report": gin.H{
+			"tokens":        documentContextReport.Tokens,
+			"budget_tokens": documentContextReport.BudgetTokens,
+			"chars":         documentContextReport.Chars,
+			"truncated":     documentContextReport.Truncated,
+		},
 	})
 }

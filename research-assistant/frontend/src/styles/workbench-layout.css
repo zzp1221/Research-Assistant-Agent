@@ -1,0 +1,371 @@
+/*
+ * Workbench responsive layout (UI-03).
+ *
+ * The shell writes `data-layout-mode`, `data-chat-collapsed` and
+ * `data-details-mode` from `useResearchAssistantLayoutState`; the row carries
+ * `--chat-width` in pixels measured by that hook. Sizes below mirror
+ * `src/app/hooks/workspaceLayout.ts` — change both together.
+ *
+ * Column visibility is decided in React (`hidden` / `inert`), so this file only
+ * lays panels out. Nothing here hides the canvas or the chat behind
+ * `visibility`, which would leave focusable content behind.
+ */
+
+/* ---------- Row and panes ---------- */
+.research-assistant-workbench-row {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.research-assistant-app-shell [hidden] { display: none !important; }
+
+.research-assistant-app-shell[data-layout-mode] {
+  height: calc(var(--workbench-viewport-bottom, 100dvh) - 24px);
+}
+
+.research-assistant-chat-pane {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 0 0 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/*
+ * The chat column width is owned by the hook in pixels. `LeftWorkspace` still
+ * sets an inline percentage width, so this has to win with `!important`.
+ */
+.research-assistant-chat-pane > .research-assistant-left-workspace {
+  width: var(--chat-width, 320px) !important;
+  max-width: 100%;
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+}
+
+.research-assistant-main-content {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.research-assistant-main-content > .research-assistant-graph-workspace {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.research-assistant-reader-workspace {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.research-assistant-reader-workspace > .research-assistant-left-workspace {
+  width: 100% !important;
+  height: 100%;
+  min-height: 0;
+  flex: 1;
+}
+
+/* ---------- Collapsed chat (wide/medium only) ---------- */
+[data-layout-mode='wide'][data-chat-collapsed='true'] .research-assistant-chat-pane,
+[data-layout-mode='medium'][data-chat-collapsed='true'] .research-assistant-chat-pane {
+  display: none;
+}
+
+[data-layout-mode='wide'][data-chat-collapsed='true'] .research-assistant-left-resize-handle,
+[data-layout-mode='medium'][data-chat-collapsed='true'] .research-assistant-left-resize-handle {
+  display: none;
+}
+
+/* ---------- Main-content toolbar ---------- */
+.research-assistant-view-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-surface);
+}
+
+.research-assistant-view-toolbar button {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 9px;
+  background: var(--color-surface);
+  color: var(--color-ink-soft);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  /* A squeezed toolbar wraps whole buttons; it never stacks single characters. */
+  white-space: nowrap;
+  word-break: keep-all;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.research-assistant-view-toolbar button:hover {
+  border-color: var(--color-line-strong);
+  background: var(--color-surface-muted);
+}
+
+.research-assistant-view-toolbar button[aria-pressed='true'] {
+  border-color: var(--color-line-strong);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+}
+
+.research-assistant-reading-status {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Single main area (single / mobile) ---------- */
+.research-assistant-pane-switcher,
+.research-assistant-mobile-tabbar {
+  display: none;
+}
+
+[data-layout-mode='single'] .research-assistant-pane-switcher,
+[data-layout-mode='mobile'] .research-assistant-pane-switcher {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-line);
+  background: rgb(255 255 255 / 0.8);
+}
+
+.research-assistant-pane-switcher button {
+  display: flex;
+  min-width: 0;
+  min-height: 34px;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.research-assistant-pane-switcher button.is-active {
+  border-color: var(--color-line-strong);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: 0 6px 14px -12px rgb(20 52 34 / 0.5);
+}
+
+/* Tab bar on top, one pane taking the remaining space: never "100% + tab bar". */
+[data-layout-mode='single'] .research-assistant-workbench-row,
+[data-layout-mode='mobile'] .research-assistant-workbench-row {
+  flex-direction: column;
+}
+
+[data-layout-mode='single'] .research-assistant-chat-pane,
+[data-layout-mode='mobile'] .research-assistant-chat-pane,
+[data-layout-mode='single'] .research-assistant-main-content,
+[data-layout-mode='mobile'] .research-assistant-main-content {
+  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+[data-layout-mode='single'] .research-assistant-chat-pane > .research-assistant-left-workspace,
+[data-layout-mode='mobile'] .research-assistant-chat-pane > .research-assistant-left-workspace {
+  width: 100% !important;
+  height: 100%;
+  min-width: 0;
+  border-right: 0;
+}
+
+[data-layout-mode='single'] .research-assistant-left-resize-handle,
+[data-layout-mode='mobile'] .research-assistant-left-resize-handle {
+  display: none;
+}
+
+[data-layout-mode='single'] .research-assistant-graph-workspace,
+[data-layout-mode='mobile'] .research-assistant-graph-workspace {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The rail sits under the row on small screens; keep it out of the pane area. */
+.research-assistant-app-shell[data-layout-mode='mobile'] {
+  height: var(--workbench-viewport-height, 100dvh);
+  min-width: 0;
+}
+
+[data-layout-mode='mobile'] .research-assistant-workbench-stack {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ---------- Details overlay (drawer / fullscreen) ---------- */
+.workbench-dialog {
+  max-width: 100vw;
+  max-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.workbench-dialog::backdrop {
+  background: rgb(23 33 27 / 0.32);
+}
+
+.execution-details-overlay {
+  position: fixed;
+  inset: var(--workbench-viewport-top, 0px) 0 auto auto;
+  display: flex;
+  width: min(440px, 100vw);
+  max-width: 100vw;
+  height: var(--workbench-viewport-height, 100dvh);
+  max-height: var(--workbench-viewport-height, 100dvh);
+  margin: 0 0 0 auto;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+}
+
+.execution-details-overlay:not([open]) {
+  display: none;
+}
+
+.execution-details-overlay.is-drawer {
+  align-items: stretch;
+  justify-content: flex-end;
+}
+
+.execution-details-overlay.is-fullscreen {
+  align-items: stretch;
+  justify-content: stretch;
+  width: 100vw;
+}
+
+.execution-details-overlay > .research-assistant-execution-sidebar {
+  width: 100% !important;
+  max-width: 100vw;
+  height: 100%;
+  max-height: 100%;
+  margin: 0;
+  border-radius: 18px 0 0 18px;
+  box-shadow: var(--shadow-float);
+}
+
+.workbench-review-dialog {
+  width: calc(100vw - 24px);
+  max-width: 1600px;
+  height: calc(var(--workbench-viewport-height, 100dvh) - 32px);
+  max-height: calc(var(--workbench-viewport-height, 100dvh) - 32px);
+  margin: auto;
+  border-radius: 24px;
+  background: var(--color-paper);
+}
+
+.research-assistant-app-shell .research-assistant-canvas-head {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.research-assistant-canvas-head > div:first-child { flex: 1 1 320px; min-width: min(100%, 240px); }
+.research-assistant-app-shell .research-assistant-canvas-title-row h2 { max-width: 100%; white-space: nowrap; }
+.research-assistant-canvas-breadcrumb { white-space: nowrap; overflow: hidden; }
+
+.research-assistant-canvas-actions {
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.research-assistant-canvas-actions button { white-space: nowrap; }
+
+.execution-details-overlay.is-fullscreen > .research-assistant-execution-sidebar {
+  width: 100% !important;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Mobile details always take the full viewport (mode is `fullscreen`). */
+[data-layout-mode='mobile'] .execution-details-overlay > .research-assistant-execution-sidebar {
+  width: 100% !important;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* ---------- Touch sizing on small screens ---------- */
+@media (max-width: 767px) {
+  .research-assistant-pane-switcher button {
+    min-height: 44px;
+  }
+
+  .research-assistant-view-toolbar button {
+    min-height: 44px;
+  }
+
+  .execution-details-overlay > .research-assistant-execution-sidebar {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .workbench-review-dialog {
+    width: 100vw;
+    max-width: 100vw;
+    height: var(--workbench-viewport-height, 100dvh);
+    max-height: var(--workbench-viewport-height, 100dvh);
+    border-radius: 0;
+  }
+
+  .research-assistant-app-shell .research-assistant-rail {
+    height: auto;
+    min-height: calc(56px + env(safe-area-inset-bottom, 0px));
+    flex-basis: auto;
+    overflow-x: auto;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .research-assistant-app-shell .research-assistant-rail-btn {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+  }
+
+  .research-assistant-rail-group { flex-shrink: 0; }
+  .research-assistant-chat-pane { overflow-y: auto; }
+  .research-assistant-chat-pane .research-assistant-left-workspace { min-height: 280px; }
+  .execution-details-overlay button[aria-label*='关闭'] { min-width: 44px; min-height: 44px; }
+}

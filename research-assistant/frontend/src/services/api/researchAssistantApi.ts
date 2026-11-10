@@ -3,6 +3,7 @@ import type {
   AgentProfile,
   ApprovalInboxItem,
   ChatResponse,
+  DocumentReference,
   ExecutePlanResponse,
   MCPServer,
   MemoryRecord,
@@ -263,7 +264,36 @@ export interface ChatRequestOptions {
   projectId?: string;
   useMemory?: boolean;
   messages?: Array<{ role: string; content: string }>;
+  // Reading context for a chat turn asked against a document passage. The
+  // backend re-checks upload ownership, page range and quote length; the client
+  // only carries the reference the user actually selected.
+  documentReferences?: DocumentReference[];
 }
+
+// Keep the selected page intact: repairing an invalid page to page one would
+// silently ask the model about a different passage. The backend validates the
+// same limits together with document access and extraction state.
+export const serializeDocumentReferences = (references?: DocumentReference[]): DocumentReference[] => {
+  if (!references) return [];
+  if (references.length > 4) throw new Error('每条消息最多引用 4 段论文原文。');
+  return references.map((reference) => {
+    if (!reference || typeof reference.upload_id !== 'string' || !reference.upload_id.trim()) {
+      throw new Error('论文引用缺少文档，请移除后重新选择。');
+    }
+    if (!Number.isSafeInteger(reference.page) || reference.page < 1) {
+      throw new Error('论文引用页码无效，请返回原文重新选择。');
+    }
+    if (typeof reference.quote !== 'string' || Array.from(reference.quote).length > 2000) {
+      throw new Error('论文引用最多保留 2000 个字符，请缩短选中文字。');
+    }
+    return {
+      upload_id: reference.upload_id.trim(),
+      document_name: typeof reference.document_name === 'string' ? reference.document_name : '',
+      page: reference.page,
+      quote: reference.quote,
+    };
+  });
+};
 
 export const chat = async (message: string, identity: RequestIdentity, options: ChatRequestOptions = {}): Promise<ChatResponse> => {
   const payload: Record<string, unknown> = { message };
@@ -271,6 +301,8 @@ export const chat = async (message: string, identity: RequestIdentity, options: 
   if (options.projectId) payload.project_id = options.projectId;
   if (options.useMemory !== undefined) payload.use_memory = options.useMemory;
   if (options.messages && options.messages.length > 0) payload.messages = options.messages;
+  const documentReferences = serializeDocumentReferences(options.documentReferences);
+  if (documentReferences.length > 0) payload.document_references = documentReferences;
   const response = await httpClient.post<ChatResponse>('/api/chat', payload, { headers: buildIdentityHeaders(identity) });
   return response.data;
 };
@@ -319,6 +351,12 @@ export const approvePlan = async (planId: string, identity: RequestIdentity): Pr
 
 export const cancelPlan = async (planId: string, identity: RequestIdentity): Promise<ExecutePlanResponse> => {
 	const response = await httpClient.post<ExecutePlanResponse>(`/api/plans/${planId}/cancel`, {}, { headers: buildIdentityHeaders(identity) });
+	return response.data;
+};
+
+// Resume the existing paused run without submitting another execution.
+export const resumePlan = async (planId: string, identity: RequestIdentity): Promise<ExecutePlanResponse> => {
+	const response = await httpClient.post<ExecutePlanResponse>(`/api/plans/${planId}/resume`, {}, { headers: buildIdentityHeaders(identity) });
 	return response.data;
 };
 

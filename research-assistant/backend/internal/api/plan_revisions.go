@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -152,8 +151,14 @@ type createRevisionPayload struct {
 }
 
 // createRevision stores an immutable snapshot of an edited graph. The base
-// revision must match the latest revision, which provides optimistic locking:
-// two clients editing the same revision cannot silently overwrite each other.
+// revision is mandatory and must match the latest revision, which provides
+// optimistic locking: two clients editing the same revision cannot silently
+// overwrite each other.
+//
+// Everything that can reject the edit (running/paused state, an accepted launch,
+// a stale base) is decided inside the plan store's UpdatePlan callback. Only
+// after the revision is durably created is the live graph replaced, so a
+// rejected edit leaves neither a revision behind nor a half-applied graph.
 func (r *planRuntime) createRevision(c *gin.Context) {
 	plan, ok := r.authorizedPlan(c)
 	if !ok {
@@ -168,13 +173,34 @@ func (r *planRuntime) createRevision(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "graph is required", "code": "invalid_revision"})
 		return
 	}
-	// Editing a running plan is never allowed; it would make the executing
-	// revision ambiguous. Awaiting-review plans may be edited (draft) but not
-	// executed until approved again.
-	if plan.Status == models.StatusInProgress || plan.Status == models.StatusAwaitingApproval || plan.Status == models.StatusAwaitingInput {
-		c.JSON(http.StatusConflict, gin.H{"error": "plan is running or waiting; cancel or finish before editing", "code": "plan_running"})
+	if payload.BaseRevision <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "base_revision is required and must be a positive revision number",
+			"code":  "invalid_base_revision",
+		})
 		return
 	}
+
+	unlock := r.lockPlanRevisionMutation(plan.ID)
+	defer unlock()
+
+	// Everything below acts on a plan re-read while holding the lock; the
+	// snapshot from authorizedPlan only decided ownership.
+	if fresh, err := r.store.GetPlan(plan.ID); err != nil || fresh == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "plan not found", "code": "plan_not_found"})
+		return
+	} else {
+		plan = fresh
+	}
+	// Editing a running or paused plan is never allowed; it would make the
+	// executing revision ambiguous. The authoritative re-check happens again
+	// inside UpdatePlan.
+	if guard := checkPlanRevisionEditable(plan, "plan is running or waiting; cancel or finish before editing"); guard != nil {
+		respondRevisionMutationError(c, guard)
+		return
+	}
+	// Lazy migration happens under the lock so two editors cannot both create
+	// revision 1, and from a freshly read plan so the initial snapshot is real.
 	if _, err := r.ensureInitialRevision(plan); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "revision_store_unavailable"})
 		return
@@ -186,93 +212,103 @@ func (r *planRuntime) createRevision(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "plan validation failed", "code": "validation_failed", "validation_errors": validation.Errors})
 		return
 	}
-	// The edited graph must keep the plan identity and ownership; everything
-	// else is the user's to change.
-	payload.Graph.ID = plan.ID
-	payload.Graph.OwnerID = plan.OwnerID
-	payload.Graph.SessionID = plan.SessionID
-	payload.Graph.TraceID = plan.TraceID
-	payload.Graph.CreatedAt = plan.CreatedAt
-	if payload.Graph.Artifacts == nil {
-		payload.Graph.Artifacts = plan.Artifacts
-	}
-	// The review and runtime-approval gates are server-owned. A client edit may
-	// change the graph but must never clear a required review or silently
-	// inherit an earlier approval: the new draft needs its own review decision.
-	payload.Graph.Approval = plan.Approval
-	if plan.Review.Required || plan.Status == models.StatusAwaitingReview {
-		payload.Graph.Review = models.ReviewState{
-			Required:     true,
-			Status:       models.ReviewPending,
-			Reason:       plan.Review.Reason,
-			Risk:         plan.Review.Risk,
-			EstimatedUSD: plan.Review.EstimatedUSD,
-		}
-	} else {
-		payload.Graph.Review = plan.Review
-	}
-	base := payload.BaseRevision
-	if base <= 0 {
-		latest, err := r.revisionStore().Latest(plan.ID)
-		if err == nil {
-			base = latest.Revision
-		}
-	}
-	previous, _ := r.revisionStore().Latest(plan.ID)
-	rev, err := r.revisionStore().Create(&models.PlanRevision{
-		PlanID:    plan.ID,
-		Graph:     payload.Graph,
-		Status:    models.RevisionDraft,
-		CreatedBy: resolveUserID(c),
-		Reason:    strings.TrimSpace(payload.Reason),
-	}, base)
-	if err != nil {
-		var conflict *revision.ConflictError
-		if errors.As(err, &conflict) {
-			c.JSON(http.StatusConflict, gin.H{
-				"error":            "base revision is stale; reload and retry",
-				"code":             "revision_conflict",
-				"current_revision": conflict.CurrentRevision,
-			})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "revision_store_unavailable"})
-		return
-	}
-	if previous != nil {
-		diff := diffPlanGraphs(previous.Graph, payload.Graph)
-		rev.DiffSummary = diffSummary(diff)
-	}
-	// Apply the draft graph to the editable plan view, keeping runtime state
-	// (status/usage/artifacts) that the draft must not clobber.
+
 	now := time.Now().UTC()
-	if err := r.store.UpdatePlan(plan.ID, func(current *models.PlanGraph) error {
+	actor := resolveUserID(c)
+	var created *models.PlanRevision
+	err := r.store.UpdatePlan(plan.ID, func(current *models.PlanGraph) error {
+		if current == nil {
+			return newRevisionGuard(http.StatusNotFound, "plan_not_found", "plan not found")
+		}
+		// Authoritative state check: the snapshot from authorizedPlan may be
+		// stale, and a disabled button in the UI is not a concurrency control.
+		if guard := checkPlanRevisionEditable(current, "plan is running or waiting; cancel or finish before editing"); guard != nil {
+			return guard
+		}
+		if r.planExecutionAccepted(plan.ID) {
+			return newRevisionGuard(http.StatusConflict, "plan_running", "plan is already running; cancel or finish before editing")
+		}
+		// Server-owned identity and gate state are stamped from the state the
+		// store just read, not from the possibly stale request snapshot.
+		prepareRevisionDraft(current, payload.Graph)
+		previous, _ := r.revisionStore().Latest(plan.ID)
+		rev, createErr := r.revisionStore().Create(&models.PlanRevision{
+			PlanID:    plan.ID,
+			Graph:     payload.Graph,
+			Status:    models.RevisionDraft,
+			CreatedBy: actor,
+			Reason:    strings.TrimSpace(payload.Reason),
+		}, payload.BaseRevision)
+		if createErr != nil {
+			return createErr
+		}
+		if previous != nil {
+			rev.DiffSummary = diffSummary(diffPlanGraphs(previous.Graph, payload.Graph))
+		}
+		// The snapshot is durable; only now may the live graph change.
 		applyDraftGraph(current, payload.Graph)
 		current.UpdatedAt = now
+		created = rev
 		return nil
-	}); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "plan_update_failed"})
+	})
+	if err != nil {
+		respondRevisionMutationError(c, err)
 		return
 	}
 	event := models.PlanEvent{
 		PlanID:    plan.ID,
 		EventType: "plan_revision_created",
-		Revision:  rev.Revision,
+		Revision:  created.Revision,
 		Payload: map[string]any{
-			"revision":        rev.Revision,
-			"parent_revision": rev.ParentRevision,
-			"actor":           resolveUserID(c),
-			"reason":          rev.Reason,
-			"diff_summary":    rev.DiffSummary,
+			"revision":        created.Revision,
+			"parent_revision": created.ParentRevision,
+			"actor":           actor,
+			"reason":          created.Reason,
+			"diff_summary":    created.DiffSummary,
 		},
 		Timestamp: now,
 	}
-	_ = r.store.AppendEvent(plan.ID, event)
-	r.events.Publish(plan.ID, event)
-	recordAuditEvent("plan_revision_created", resolveUserID(c), plan.ID, map[string]any{"revision": rev.Revision, "parent_revision": rev.ParentRevision})
+	if err := r.persistAndPublishPlanEvent(plan.ID, event); err != nil {
+		respondEventPersistFailure(c, err)
+		return
+	}
+	recordAuditEvent("plan_revision_created", actor, plan.ID, map[string]any{"revision": created.Revision, "parent_revision": created.ParentRevision})
 	updated, _ := r.store.GetPlan(plan.ID)
 	draft := summarizePlan(updated)
-	c.JSON(http.StatusOK, gin.H{"revision": summarizeRevision(rev), "plan": draft})
+	c.JSON(http.StatusOK, gin.H{"revision": summarizeRevision(created), "plan": draft})
+}
+
+// prepareRevisionDraft stamps the server-owned identity and gate state of the
+// authoritative plan onto a client-edited draft graph.
+func prepareRevisionDraft(current, draft *models.PlanGraph) {
+	if current == nil || draft == nil {
+		return
+	}
+	// The edited graph must keep the plan identity and ownership; everything
+	// else is the user's to change.
+	draft.ID = current.ID
+	draft.OwnerID = current.OwnerID
+	draft.SessionID = current.SessionID
+	draft.TraceID = current.TraceID
+	draft.CreatedAt = current.CreatedAt
+	if draft.Artifacts == nil {
+		draft.Artifacts = current.Artifacts
+	}
+	// The review and runtime-approval gates are server-owned. A client edit may
+	// change the graph but must never clear a required review or silently
+	// inherit an earlier approval: the new draft needs its own review decision.
+	draft.Approval = current.Approval
+	if current.Review.Required || current.Status == models.StatusAwaitingReview {
+		draft.Review = models.ReviewState{
+			Required:     true,
+			Status:       models.ReviewPending,
+			Reason:       current.Review.Reason,
+			Risk:         current.Review.Risk,
+			EstimatedUSD: current.Review.EstimatedUSD,
+		}
+	} else {
+		draft.Review = current.Review
+	}
 }
 
 // applyDraftGraph copies the editable graph fields into the live plan while
@@ -392,25 +428,32 @@ func (r *planRuntime) reviewRevision(c *gin.Context, approve bool) {
 	if !ok {
 		return
 	}
+	unlock := r.lockPlanRevisionMutation(plan.ID)
+	defer unlock()
+
+	if fresh, err := r.store.GetPlan(plan.ID); err != nil || fresh == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "plan not found", "code": "plan_not_found"})
+		return
+	} else {
+		plan = fresh
+	}
 	store := r.revisionStore()
-	latest, err := store.Latest(plan.ID)
-	if err != nil {
-		if errors.Is(err, revision.ErrNotFound) {
-			latest, err = r.ensureInitialRevision(plan)
+	if _, err := store.Latest(plan.ID); err != nil {
+		if !errors.Is(err, revision.ErrNotFound) {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "revision_store_unavailable"})
+			return
 		}
-		if err != nil {
+		if _, err := r.ensureInitialRevision(plan); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "revision_store_unavailable"})
 			return
 		}
 	}
-	if latest.Revision != number {
-		c.JSON(http.StatusConflict, gin.H{
-			"error":            "only the latest revision can be reviewed",
-			"code":             "revision_not_latest",
-			"current_revision": latest.Revision,
-		})
+	// Fast failure on the locked snapshot; UpdatePlan re-checks below.
+	if guard := checkPlanRevisionEditable(plan, "plan is running or waiting; cannot review now"); guard != nil {
+		respondRevisionMutationError(c, guard)
 		return
 	}
+
 	now := time.Now().UTC()
 	actor := resolveUserID(c)
 	status := models.RevisionRejected
@@ -419,16 +462,31 @@ func (r *planRuntime) reviewRevision(c *gin.Context, approve bool) {
 		status = models.RevisionApproved
 		reviewStatus = models.ReviewApproved
 	}
-	if plan.Status == models.StatusInProgress || plan.Status == models.StatusAwaitingInput || plan.Status == models.StatusAwaitingApproval {
-		c.JSON(http.StatusConflict, gin.H{"error": "plan is running or waiting; cannot review now", "code": "plan_running"})
-		return
-	}
-	if err := store.UpdateStatus(plan.ID, number, status, actor, &now); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "revision_store_unavailable"})
-		return
-	}
-	eventType := "plan_reviewed"
-	if err := r.store.UpdatePlan(plan.ID, func(current *models.PlanGraph) error {
+	// The approval decision and the live review state change inside the same
+	// plan store callback: a rejection therefore never leaves the revision
+	// approved (or vice versa), and the revision the caller named must still be
+	// the latest one.
+	err := r.store.UpdatePlan(plan.ID, func(current *models.PlanGraph) error {
+		if current == nil {
+			return newRevisionGuard(http.StatusNotFound, "plan_not_found", "plan not found")
+		}
+		if guard := checkPlanRevisionEditable(current, "plan is running or waiting; cannot review now"); guard != nil {
+			return guard
+		}
+		if r.planExecutionAccepted(plan.ID) {
+			return newRevisionGuard(http.StatusConflict, "plan_running", "plan is already running; cannot review now")
+		}
+		latest, latestErr := store.Latest(plan.ID)
+		if latestErr != nil {
+			return latestErr
+		}
+		if latest.Revision != number {
+			return newRevisionGuard(http.StatusConflict, "revision_not_latest", "only the latest revision can be reviewed").
+				with("current_revision", latest.Revision)
+		}
+		if err := store.UpdateStatus(plan.ID, number, status, actor, &now); err != nil {
+			return err
+		}
 		current.Review.Status = reviewStatus
 		current.Review.ReviewedBy = actor
 		current.Review.ReviewedAt = &now
@@ -441,19 +499,22 @@ func (r *planRuntime) reviewRevision(c *gin.Context, approve bool) {
 		}
 		current.UpdatedAt = now
 		return nil
-	}); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error(), "code": "plan_not_found"})
+	})
+	if err != nil {
+		respondRevisionMutationError(c, err)
 		return
 	}
 	event := models.PlanEvent{
 		PlanID:    plan.ID,
-		EventType: eventType,
+		EventType: "plan_reviewed",
 		Revision:  number,
 		Payload:   map[string]any{"revision": number, "decision": reviewStatus, "actor": actor},
 		Timestamp: now,
 	}
-	_ = r.store.AppendEvent(plan.ID, event)
-	r.events.Publish(plan.ID, event)
+	if err := r.persistAndPublishPlanEvent(plan.ID, event); err != nil {
+		respondEventPersistFailure(c, err)
+		return
+	}
 	recordAuditEvent("plan_reviewed", actor, plan.ID, map[string]any{"revision": number, "decision": reviewStatus})
 	c.JSON(http.StatusOK, gin.H{"revision": number, "status": status, "review_status": reviewStatus})
 }
@@ -484,14 +545,24 @@ func (r *planRuntime) executeRevision(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "trigger must be manual or auto", "code": "invalid_trigger"})
 		return
 	}
-	if plan.Status == models.StatusInProgress || plan.Status == models.StatusAwaitingApproval || plan.Status == models.StatusAwaitingInput {
-		c.JSON(http.StatusConflict, gin.H{"error": "plan is running or waiting; cancel or finish before executing a revision", "code": "plan_running"})
+	unlock := r.lockPlanRevisionMutation(plan.ID)
+	defer unlock()
+
+	if fresh, err := r.store.GetPlan(plan.ID); err != nil || fresh == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "plan not found", "code": "plan_not_found"})
+		return
+	} else {
+		plan = fresh
+	}
+	// Fast failure on the locked snapshot; the authoritative re-check happens
+	// inside UpdatePlan.
+	if guard := checkPlanRevisionEditable(plan, "plan is running or waiting; cancel or finish before executing a revision"); guard != nil {
+		respondRevisionMutationError(c, guard)
 		return
 	}
-	if plan.Paused {
-		c.JSON(http.StatusConflict, gin.H{"error": "plan is paused; resume it before running", "code": "plan_paused"})
-		return
-	}
+
+	// Read the snapshot under the lock: a revision created concurrently must not
+	// be applied from a half-stale read.
 	store := r.revisionStore()
 	rev, err := store.Get(plan.ID, number)
 	if err != nil {
@@ -506,22 +577,9 @@ func (r *planRuntime) executeRevision(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "revision has no graph snapshot", "code": "revision_empty"})
 		return
 	}
-	if plan.Review.Required && plan.Review.Status == models.ReviewRejected {
-		c.JSON(http.StatusConflict, gin.H{"error": "plan review was rejected; approve a revision before running", "code": "review_rejected"})
-		return
-	}
-	// Status is authoritative even if an older draft tried to clear the review
-	// state: a plan waiting in the review queue can only run an approved revision.
-	if plan.Status == models.StatusAwaitingReview && plan.Review.Status != models.ReviewApproved && rev.Status != models.RevisionApproved {
-		c.JSON(http.StatusConflict, gin.H{"error": "plan is awaiting review; approve it before running", "code": "review_pending"})
-		return
-	}
 	// Each revision carries its own approval: approving r3 must not authorize
-	// running an older, never-reviewed snapshot.
-	if plan.Review.Required && rev.Status != models.RevisionApproved {
-		c.JSON(http.StatusConflict, gin.H{"error": "plan revision is awaiting review; approve it before running", "code": "review_pending"})
-		return
-	}
+	// running an older, never-reviewed snapshot. That check needs the
+	// authoritative review state, so it runs inside the store callback below.
 	// Reset execution state on a deep copy before applying it.
 	resetGraph := *rev.Graph
 	resetGraph.Nodes = make([]*models.TaskNode, 0, len(rev.Graph.Nodes))
@@ -554,9 +612,32 @@ func (r *planRuntime) executeRevision(c *gin.Context) {
 		copyNode.UpdatedAt = now
 		resetGraph.Nodes = append(resetGraph.Nodes, &copyNode)
 	}
-	if err := r.store.UpdatePlan(plan.ID, func(current *models.PlanGraph) error {
-		if current.Status == models.StatusInProgress {
-			return fmt.Errorf("plan is already running")
+
+	// The status, pause and launch-window checks happen inside the callback so
+	// they see the state the store holds now, not the request's snapshot. A plan
+	// the scheduler already accepted is rejected here instead of having its live
+	// graph reset underneath the running execution.
+	err = r.store.UpdatePlan(plan.ID, func(current *models.PlanGraph) error {
+		if current == nil {
+			return newRevisionGuard(http.StatusNotFound, "plan_not_found", "plan not found")
+		}
+		if guard := checkPlanRevisionEditable(current, "plan is running or waiting; cancel or finish before executing a revision"); guard != nil {
+			return guard
+		}
+		if r.planExecutionAccepted(plan.ID) {
+			return newRevisionGuard(http.StatusConflict, "plan_running", "plan was already started; cancel or finish before executing a revision")
+		}
+		if current.Review.Required && current.Review.Status == models.ReviewRejected {
+			return newRevisionGuard(http.StatusConflict, "review_rejected", "plan review was rejected; approve a revision before running")
+		}
+		// Status is authoritative even if an older draft tried to clear the
+		// review state: a plan waiting in the review queue can only run an
+		// approved revision.
+		if current.Status == models.StatusAwaitingReview && current.Review.Status != models.ReviewApproved && rev.Status != models.RevisionApproved {
+			return newRevisionGuard(http.StatusConflict, "review_pending", "plan is awaiting review; approve it before running")
+		}
+		if current.Review.Required && rev.Status != models.RevisionApproved {
+			return newRevisionGuard(http.StatusConflict, "review_pending", "plan revision is awaiting review; approve it before running")
 		}
 		preserveRecovery(current.Nodes, resetGraph.Nodes)
 		current.Nodes = resetGraph.Nodes
@@ -576,13 +657,14 @@ func (r *planRuntime) executeRevision(c *gin.Context) {
 		current.UpdatedAt = now
 		fillMetaForRuntime(current)
 		return nil
-	}); err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "plan_running"})
+	})
+	if err != nil {
+		respondRevisionMutationError(c, err)
 		return
 	}
 	actor := resolveUserID(c)
 	if err := r.launchPlan(plan.ID, trigger, actor); err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "plan is already running", "code": "plan_already_running"})
+		respondPlanLaunchError(c, err)
 		return
 	}
 	event := models.PlanEvent{
@@ -592,8 +674,10 @@ func (r *planRuntime) executeRevision(c *gin.Context) {
 		Payload:   map[string]any{"revision": number, "actor": actor, "trigger": trigger},
 		Timestamp: now,
 	}
-	_ = r.store.AppendEvent(plan.ID, event)
-	r.events.Publish(plan.ID, event)
+	if err := r.persistAndPublishPlanEvent(plan.ID, event); err != nil {
+		respondEventPersistFailure(c, err)
+		return
+	}
 	recordAuditEvent("plan_revision_executed", actor, plan.ID, map[string]any{"revision": number, "trigger": trigger})
 	c.JSON(http.StatusAccepted, gin.H{
 		"message":  "Plan revision execution started",

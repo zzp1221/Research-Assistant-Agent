@@ -7,11 +7,25 @@ import (
 	"strings"
 )
 
+// cloneSession returns a deep copy so a caller can mutate its result without
+// reaching into the live store. The JSON round trip decouples every slice,
+// including ChatTurn.References; cloneChatTurnReferences covers the paths that
+// only copy turn structs, where the reference slice would otherwise be shared.
 func cloneSession(session ChatSession) ChatSession {
 	raw, _ := json.Marshal(session)
 	var copied ChatSession
 	_ = json.Unmarshal(raw, &copied)
 	return copied
+}
+
+// cloneChatTurnReferences detaches one turn's reference slice from its source.
+func cloneChatTurnReferences(turn *ChatTurn) {
+	if turn == nil || turn.References == nil {
+		return
+	}
+	references := make([]ChatReference, len(turn.References))
+	copy(references, turn.References)
+	turn.References = references
 }
 
 func chatRecord(session ChatSession, turn ChatTurn, part int, text string) (Record, error) {
@@ -142,6 +156,9 @@ func (s *ChatStore) WorkingState(ownerID, sessionID string) map[string]ChatTurn 
 				continue
 			}
 			if role := researchRole(turn.Content); role != "" {
+				// The returned turn must not alias the live store's reference
+				// slice; callers may edit the handoff before reuse.
+				cloneChatTurnReferences(&turn)
 				state[role] = turn
 			}
 		}

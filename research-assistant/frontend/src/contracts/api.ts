@@ -4,12 +4,33 @@ export type ChatAction =
   | 'view_plot'
   | 'view_report';
 
+// A document reference is the reading context a chat turn was asked about. It
+// is deliberately keyed by the uploaded document identity (never a temporary
+// blob URL) so the backend can verify access and reload the quoted page.
+export interface DocumentReference {
+  upload_id: string;
+  document_name: string;
+  // One-based page number, converted from the viewer's zero-based page index.
+  page: number;
+  quote: string;
+}
+
+// Front-end draft only: the composer keeps these fields so a reference card can
+// be removed or re-opened, and so a draft can never leak into another session.
+export interface DocumentReferenceDraft extends DocumentReference {
+  id: string;
+  sessionId: string;
+}
+
 export interface ChatMessage {
   role: string;
   text: string;
   actions?: ChatAction[];
   taskId?: string;
   contextReport?: ContextReport;
+  // Provenance of a user turn that was asked against a document passage. These
+  // are snapshots of what was sent, not editable drafts.
+  documentReferences?: DocumentReference[];
 }
 
 export interface OCRStats {

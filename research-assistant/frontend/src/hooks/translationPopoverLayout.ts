@@ -1,4 +1,4 @@
-﻿export interface LayoutRect { left: number; top: number; right: number; bottom: number }
+export interface LayoutRect { left: number; top: number; right: number; bottom: number }
 export interface PopoverLayout { left: number; top: number; width: number; height: number }
 export function intersectRects(...rects: LayoutRect[]): LayoutRect | null {
   const r = {
@@ -8,17 +8,28 @@ export function intersectRects(...rects: LayoutRect[]): LayoutRect | null {
   return r.right > r.left && r.bottom > r.top ? r : null;
 }
 const clamp = (value: number, low: number, high: number) => Math.min(Math.max(value, low), high);
+// One 24px line of translated text plus 24px of vertical padding. A box that
+// only fits the header and footer leaves the body unreadable, so it is hidden
+// instead of being rendered as a header/footer strip.
+const minBodyHeight = 48;
 export function computePopoverLayout(
   visible: LayoutRect, selection: LayoutRect, desiredHeight: number, chromeHeight: number,
 ): PopoverLayout | null {
   if (!intersectRects(visible, selection)) return null;
   const marginX = Math.min(8, (visible.right - visible.left) / 10);
-  const marginY = Math.min(8, (visible.bottom - visible.top) / 10);
+  const visibleHeight = visible.bottom - visible.top;
+  // The 8px vertical margin is a comfort gutter, not a hard requirement. In a
+  // tight viewport (1024x500 with full-document translation) it is what pushes a
+  // readable body out of the box, so it shrinks first, down to 1px, to keep
+  // chrome + 48px of body visible. The height/10 small-area limit still applies.
+  const marginY = Math.min(8, visibleHeight / 10, Math.max(1, (visibleHeight - chromeHeight - minBodyHeight) / 2));
   const bounds = { left: visible.left + marginX, right: visible.right - marginX, top: visible.top + marginY, bottom: visible.bottom - marginY };
   const width = Math.min(360, bounds.right - bounds.left);
   const available = bounds.bottom - bounds.top;
-  // A header and close control must fit; never impose a minimum on the box.
-  if (width < 80 || available < chromeHeight) return null;
+  // A header, close control and a readable scrollable body must all fit; if the
+  // body would collapse to a few pixels the popover is hidden rather than shown
+  // as a header/footer strip, and it returns as soon as space is available.
+  if (width < 80 || available < chromeHeight + minBodyHeight) return null;
   const height = Math.min(Math.max(chromeHeight, desiredHeight), available);
   const below = Math.max(0, bounds.bottom - selection.bottom - 8);
   const above = Math.max(0, selection.top - 8 - bounds.top);

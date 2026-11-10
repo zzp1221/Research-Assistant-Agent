@@ -91,3 +91,16 @@ export const describeReconnect = (attempt: number): string => {
   const seconds = Math.max(1, Math.round(nextBackoffMs(safeAttempt - 1) / 1_000));
   return `计划事件流已中断，${seconds} 秒后自动重连（第 ${safeAttempt} 次）。`;
 };
+
+/**
+ * Reconnect budget exhausted. The last snapshot stays on screen and the user
+ * gets an explicit entry point; the server-side run is never cancelled here.
+ */
+export const describeInterruptedStream = (): string =>
+  '进度更新已中断；已保留最后一次快照，可点击“重新连接”继续观察（不会重新启动任务）。';
+
+/** One-time notice once a reconnect delivered an event again. */
+export const describeResumedStream = (resumeSeq: number): string => {
+  const seq = Number.isFinite(resumeSeq) ? Math.max(0, Math.floor(resumeSeq)) : 0;
+  return `计划事件流已恢复（从序号 ${seq} 继续）`;
+};

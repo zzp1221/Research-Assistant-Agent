@@ -1,8 +1,8 @@
 import { useId, useRef } from 'react';
-import { BookOpen, ChevronDown, Eye, FileText, HelpCircle, Loader2, Paperclip, Send, ShieldCheck, X } from 'lucide-react';
+import { BookOpen, ChevronDown, Eye, FileText, HelpCircle, Loader2, Paperclip, Quote, Send, ShieldCheck, X } from 'lucide-react';
 import { useAutoRunOnCreateControl } from '../../app/hooks/useResearchAssistantChatFlow';
 import { uiText } from '../../app/constants/uiText';
-import type { UploadedFile } from '../../contracts/api';
+import type { DocumentReferenceDraft, UploadedFile } from '../../contracts/api';
 import { isPdfAttachment } from '../pdf-viewer/pdfAttachment';
 
 interface ChatComposerProps {
@@ -12,6 +12,12 @@ interface ChatComposerProps {
   isLoggedIn: boolean;
   showSuggestions: boolean;
   pendingAttachments: UploadedFile[];
+  /**
+   * Reading references kept separate from the prompt and from attachments: they
+   * carry document provenance for the next turn without editing the user's text
+   * and without entering the plan-creating attachment path.
+   */
+  documentReferences?: DocumentReferenceDraft[];
   uploadingAttachments: boolean;
   attachmentError: string;
   setPrompt: (value: string) => void;
@@ -20,6 +26,8 @@ interface ChatComposerProps {
   onAttachFiles: (files: File[]) => void;
   onRemoveAttachment: (uploadId: string) => void;
   onOpenAttachment: (attachment: UploadedFile) => void;
+  onRemoveDocumentReference?: (id: string) => void;
+  onOpenDocumentReference?: (reference: DocumentReferenceDraft) => void;
   onOpenLiterature?: () => void;
   runtimePermissionMode?: 'confirm_important' | 'full_access';
   onRuntimePermissionModeChange?: (mode: 'confirm_important' | 'full_access') => void;
@@ -36,13 +44,18 @@ const suggestions = [
 /** A quiet command surface: one text area, one primary send, tools on demand. */
 export function ChatComposer(props: ChatComposerProps) {
   const {
-    prompt, hasConversation = false, loading, isLoggedIn, showSuggestions, pendingAttachments, uploadingAttachments, attachmentError,
-    setPrompt, setShowSuggestions, onSendMessage, onAttachFiles, onRemoveAttachment, onOpenAttachment, onOpenLiterature,
+    prompt, hasConversation = false, loading, isLoggedIn, showSuggestions, pendingAttachments,
+    documentReferences = [], uploadingAttachments, attachmentError,
+    setPrompt, setShowSuggestions, onSendMessage, onAttachFiles, onRemoveAttachment, onOpenAttachment,
+    onRemoveDocumentReference, onOpenDocumentReference, onOpenLiterature,
     runtimePermissionMode = 'confirm_important', onRuntimePermissionModeChange = () => undefined,
   } = props;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const autoRunCopyId = useId();
   const { autoRunOnCreate, setAutoRunOnCreate } = useAutoRunOnCreateControl();
+  // Sending a selection alone asks for an explanation; it remains separate
+  // from task attachments and leaves the user's own question editable.
+  const hasSendableContent = Boolean(prompt.trim()) || pendingAttachments.length > 0 || documentReferences.length > 0;
 
   return (
     <div className="shrink-0 border-t border-line bg-surface px-4 pb-3.5 pt-3">
@@ -108,6 +121,59 @@ export function ChatComposer(props: ChatComposerProps) {
           </div>
         ) : null}
 
+        {documentReferences.length > 0 ? (
+          // Reading references are shown as independent cards: the user's own
+          // question stays untouched in the textarea below.
+          <ul className="mb-1 flex flex-col gap-1 px-1 pt-1" aria-label="论文引用">
+            {documentReferences.map((reference) => (
+              <li
+                key={reference.id}
+                className="flex min-w-0 items-start gap-1.5 rounded-lg border border-accent/35 bg-accent-soft px-2 py-1.5 text-[10.5px] text-accent-ink"
+                data-testid="composer-document-reference"
+              >
+                <Quote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                    <span className="min-w-0 max-w-full truncate font-semibold" title={reference.document_name || '当前论文'}>
+                      {reference.document_name || '当前论文'}
+                    </span>
+                    <span className="shrink-0 font-mono text-[9.5px] text-accent">· 第 {reference.page} 页</span>
+                    <span className="shrink-0 rounded-full bg-surface/70 px-1.5 py-px text-[9px] text-muted">用户选中文字</span>
+                  </div>
+                  {reference.quote ? (
+                    <p className="mt-0.5 line-clamp-2 text-[10.5px] leading-4 text-ink-soft" title={reference.quote}>
+                      “{reference.quote.length > 160 ? `${reference.quote.slice(0, 160)}…` : reference.quote}”
+                    </p>
+                  ) : null}
+                </div>
+                {onOpenDocumentReference ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenDocumentReference(reference)}
+                    className="flex h-11 w-8 shrink-0 items-center justify-center gap-1 rounded-md text-[10px] text-accent-ink transition-colors hover:bg-surface/70 sm:h-6 sm:w-auto sm:px-1"
+                    title={`返回原文第 ${reference.page} 页`}
+                    aria-label={`返回 ${reference.document_name || '论文'} 第 ${reference.page} 页`}
+                  >
+                    <BookOpen className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">返回原页</span>
+                  </button>
+                ) : null}
+                {onRemoveDocumentReference ? (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveDocumentReference(reference.id)}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-proof-soft hover:text-proof sm:h-6 sm:w-6"
+                    title="移除引用（保留你的问题）"
+                    aria-label={`移除引用 ${reference.document_name || '论文'} 第 ${reference.page} 页`}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
@@ -165,7 +231,7 @@ export function ChatComposer(props: ChatComposerProps) {
           <button
             type="button"
             onClick={onSendMessage}
-            disabled={loading || uploadingAttachments || (!prompt.trim() && pendingAttachments.length === 0)}
+            disabled={loading || uploadingAttachments || !hasSendableContent}
             className="flex h-8 items-center gap-1.5 rounded-xl bg-accent px-3 text-[11px] font-semibold text-white shadow-[0_10px_18px_-14px_rgba(31,107,79,0.9)] transition-colors hover:bg-accent-strong active:translate-y-px disabled:cursor-not-allowed disabled:bg-surface-strong disabled:text-muted disabled:shadow-none"
             title="发送消息"
             aria-label="发送消息"

@@ -84,6 +84,8 @@
 | [文献库与 PDF 阅读体验改版](design/2026-10-27-literature-ui-redesign.md) | 文献库与 PDF 阅读的方向探索、关键改动与交互动效 |
 | [预算 / HITL 工作台](design/2026-10-29-budget-hitl-workbench.md) | 成本、预算、审批与人在回路的工作台设计 |
 | [Aperture 工作台](design/2026-10-30-aperture-workbench.md) | 工作台空间与信息层级的方向与取舍 |
+| [工作台交互改进：审阅、运行恢复、响应式布局与 PDF 对话](design/2026-11-09-workbench-interaction-improvements.md) | **设计稿，待实施**：前四项体验改进的现状、目标行为、实现边界、实施拆分与验收用例 |
+| [工作台交互改进实施报告](design/2026-11-09-workbench-implementation-report.md) | UI-01–04 的实现、自动化与真实后端验收结果、截图索引及已知边界；与原始设计稿分开记录 |
 | [UI 升级设计说明](ui-research-console.md) | 科研仪器风格的视觉与交互规范、三个方向的取舍与实现记录 |
 
 ### 缺陷与整改

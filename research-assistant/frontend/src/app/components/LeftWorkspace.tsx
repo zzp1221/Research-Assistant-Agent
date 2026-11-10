@@ -1,10 +1,11 @@
 import { lazy, Suspense, useState, type ReactNode } from 'react';
-import { BookOpen, X } from 'lucide-react';
+import { BookOpen, MessagesSquare, Network, X } from 'lucide-react';
 import { ChatPanel } from '../../features/chat/ChatPanel';
 import type {
   AssistResponse,
   ChatMessage,
   DocumentInfoResponse,
+  DocumentReferenceDraft,
   LiteratureRecord,
   TranslationJob,
   UploadedFile,
@@ -16,39 +17,66 @@ const LiteraturePanel = lazy(() => import('../../features/literature/LiteratureP
 
 interface LeftWorkspaceShellProps {
   widthPercent: number;
-  showClosePdf: boolean;
-  onClosePdf: () => void;
   documentName?: string;
+  /** Renders the reader header. Chat and literature panes have no header. */
+  showReaderHeader?: boolean;
+  onClosePdf?: () => void;
+  onReturnToGraph?: () => void;
+  onShowChat?: () => void;
   accountLabel?: string;
   children: ReactNode;
 }
 
+// Reader toolbar actions stay reachable on the narrowest supported workbench and
+// grow to a 44px touch target on mobile. They wrap instead of clipping so the
+// document name and the close control never overlap the primary actions.
+const readerToolbarButtonClass =
+  'inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-[11px] font-medium text-ink-soft transition-colors hover:border-accent hover:text-accent sm:h-7';
+
 /** The left page of the spread: manuscript copy under review. */
 function LeftWorkspaceShell(props: LeftWorkspaceShellProps) {
-  const { widthPercent, showClosePdf, onClosePdf, documentName, children } = props;
+  const { widthPercent, showReaderHeader, documentName, onClosePdf, onReturnToGraph, onShowChat, children } = props;
 
   return (
     <div
       style={{ width: `${widthPercent}%` }}
       className="research-assistant-left-workspace relative z-10 flex flex-shrink-0 flex-col overflow-hidden"
     >
-      {showClosePdf && (
-        <header className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-4">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="grid h-6 w-6 place-items-center rounded-lg bg-accent-soft text-accent">
+      {showReaderHeader && (
+        <header className="flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-line bg-surface px-3 py-1.5">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
               <BookOpen className="h-3.5 w-3.5" />
             </span>
-            <span className="truncate text-[12px] font-semibold text-ink-soft">{documentName || '未命名稿件'}</span>
+            <span className="truncate text-[12px] font-semibold text-ink-soft" title={documentName || '未命名稿件'}>
+              {documentName || '未命名稿件'}
+            </span>
           </div>
-          <button
-            type="button"
-            onClick={onClosePdf}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-muted hover:text-ink"
-            title="关闭论文阅读器"
-            aria-label="关闭论文阅读器"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+            {onReturnToGraph ? (
+              <button type="button" onClick={onReturnToGraph} className={readerToolbarButtonClass} title="返回执行图，不关闭这篇论文">
+                <Network className="h-3.5 w-3.5" />
+                返回执行图
+              </button>
+            ) : null}
+            {onShowChat ? (
+              <button type="button" onClick={onShowChat} className={readerToolbarButtonClass} title="显示对话输入框，不关闭这篇论文">
+                <MessagesSquare className="h-3.5 w-3.5" />
+                显示对话
+              </button>
+            ) : null}
+            {onClosePdf ? (
+              <button
+                type="button"
+                onClick={onClosePdf}
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-muted hover:text-ink sm:h-7 sm:w-7"
+                title="关闭论文阅读器"
+                aria-label="关闭论文阅读器"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
         </header>
       )}
       {children}
@@ -66,6 +94,8 @@ interface LeftWorkspaceChatProps {
     prompt: string;
     showSuggestions: boolean;
     pendingAttachments: UploadedFile[];
+    /** Independent reading references attached to the next message. */
+    documentReferences?: DocumentReferenceDraft[];
     uploadingAttachments: boolean;
     attachmentError: string;
     runtimePermissionMode: 'confirm_important' | 'full_access';
@@ -93,6 +123,9 @@ interface LeftWorkspaceChatProps {
     onAttachFiles: (files: File[]) => void;
     onRemoveAttachment: (uploadId: string) => void;
     onOpenAttachment: (attachment: UploadedFile) => void;
+    /** Optional so hosts that never attach reading references keep compiling. */
+    onRemoveDocumentReference?: (id: string) => void;
+    onOpenDocumentReference?: (reference: DocumentReferenceDraft) => void;
     onRuntimePermissionModeChange: (mode: 'confirm_important' | 'full_access') => void;
     onConfirmFullAccess: () => void;
     onCancelFullAccess: () => void;
@@ -121,8 +154,7 @@ export function LeftWorkspaceChat(props: LeftWorkspaceChatProps) {
   return (
     <LeftWorkspaceShell
       widthPercent={widthPercent}
-      showClosePdf={false}
-      onClosePdf={pdfActions.onClosePdf}
+      showReaderHeader={false}
       accountLabel={state.userId ? `会话 ${state.userId.slice(0, 8)}` : '正在建立安全会话…'}
     >
       <div className="min-h-0 flex-1">
@@ -154,11 +186,26 @@ export function LeftWorkspaceChat(props: LeftWorkspaceChatProps) {
 interface LeftWorkspacePdfProps {
   widthPercent: number;
   pdfUrl: string;
+  /**
+   * Stable document identity (the upload id) used as the reader key. Using the
+   * pdf URL would rebuild the viewer whenever the blob is re-created, which
+   * drops the reader back to page one on a chat or layout update.
+   */
+  documentKey?: string;
+  documentName?: string;
   documentInfo: DocumentInfoResponse | null;
+  /** One-based page to restore when the reader mounts or the document changes. */
+  initialPage?: number;
+  /** Zoom scale to restore (1 = 100%). */
+  initialScale?: number;
   onClosePdf: () => void;
+  onReturnToGraph?: () => void;
+  onShowChat?: () => void;
   onPageChange?: (page: number) => void;
+  onScaleChange?: (scale: number) => void;
   translation: TranslationPanelState;
-  onAskAI: (text: string) => void;
+  /** Kept as `(text, page)`; a legacy single-argument handler still works. */
+  onAskAI: (text: string, page: number) => void;
   onAssist: (mode: AssistMode, text: string, page: number) => Promise<AssistResponse>;
   onOpenHelp?: () => void;
 }
@@ -190,20 +237,32 @@ function PdfViewerSkeleton() {
 }
 
 export function LeftWorkspacePdf(props: LeftWorkspacePdfProps) {
-  const { widthPercent, pdfUrl, documentInfo, onClosePdf, onPageChange, translation, onAskAI, onAssist, onOpenHelp } = props;
+  const {
+    widthPercent, pdfUrl, documentKey, documentName, documentInfo, initialPage, initialScale,
+    onClosePdf, onReturnToGraph, onShowChat, onPageChange, onScaleChange, translation, onAskAI, onAssist, onOpenHelp,
+  } = props;
+  // The reader instance must survive chat updates and reading-position props;
+  // only a different document may remount it.
+  const readerKey = documentKey || pdfUrl;
   return (
     <LeftWorkspaceShell
       widthPercent={widthPercent}
-      showClosePdf
+      showReaderHeader
       onClosePdf={onClosePdf}
-      documentName={documentInfo?.name}
+      onReturnToGraph={onReturnToGraph}
+      onShowChat={onShowChat}
+      documentName={documentName || documentInfo?.name}
     >
       <Suspense fallback={<PdfViewerSkeleton />}>
         <PdfViewerSurface
-          key={pdfUrl}
+          key={readerKey}
           pdfUrl={pdfUrl}
+          documentKey={readerKey}
           documentInfo={documentInfo}
+          initialPage={initialPage}
+          initialScale={initialScale}
           onPageChange={onPageChange}
+          onScaleChange={onScaleChange}
           translation={translation}
           onAskAI={onAskAI}
           onAssist={onAssist}
