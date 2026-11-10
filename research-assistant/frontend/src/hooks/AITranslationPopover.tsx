@@ -23,12 +23,19 @@ interface AITranslationPopoverProps {
   error: string;
   answer: AssistResponse | null;
   onClose: () => void;
-  onAskAI?: (text: string) => void;
+  /**
+   * Called with the selected text and its one-based page. A legacy handler that
+   * only accepts the text keeps working, so older hosts do not break.
+   */
+  onAskAI?: (text: string, page: number) => void;
 }
 
 export function AITranslationPopover(props: AITranslationPopoverProps) {
   const { readerRef, selectionRegion, selectedText, mode, isLoading, error, answer, onClose, onAskAI } = props;
   const { pageIndex, left: selectionLeft, top: selectionTop, width: selectionWidth, height: selectionHeight } = selectionRegion;
+  // pdf.js reports a zero-based page index; references, the reader header and
+  // the chat reference card are all one-based, so convert once here.
+  const oneBasedPage = pageIndex + 1;
   const popoverRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -129,7 +136,7 @@ export function AITranslationPopover(props: AITranslationPopoverProps) {
       <div ref={headerRef} className="flex min-w-0 shrink-0 items-center justify-between gap-1 border-b border-line bg-surface-muted px-2.5 py-1.5">
         <span className="flex min-w-0 flex-wrap items-center gap-1.5">
           <span className="instrument-kicker">{mode === 'translate' ? '段落翻译' : '段落解释'}</span>
-          <span className="instrument-num text-[11px] text-faint">第 {pageIndex + 1} 页</span>
+          <span className="instrument-num text-[11px] text-faint">第 {oneBasedPage} 页</span>
         </span>
         <button onClick={onClose} className="flex h-5 w-5 shrink-0 items-center justify-center text-muted transition-colors hover:bg-surface-strong hover:text-ink" aria-label="关闭">
           <X className="h-3.5 w-3.5" />
@@ -176,7 +183,7 @@ export function AITranslationPopover(props: AITranslationPopoverProps) {
         <button
           ref={footerRef}
           onClick={() => {
-            onAskAI(selectedText);
+            onAskAI(selectedText, oneBasedPage);
             onClose();
           }}
           className="flex min-w-0 shrink-0 items-center justify-center gap-2 border-t border-line bg-accent-soft py-2 text-[11.5px] font-semibold text-accent-ink transition-colors hover:bg-accent-soft/70"

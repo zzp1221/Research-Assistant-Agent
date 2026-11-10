@@ -53,6 +53,11 @@ type ChatPayload struct {
 	DocumentID string        `json:"document_id,omitempty"`
 	UseMemory  *bool         `json:"use_memory,omitempty"`
 	Messages   []ChatMessage `json:"messages,omitempty"`
+	// DocumentReferences attaches PDF passages the user selected in the reader
+	// to this ordinary chat turn. They add source context only: they never
+	// create a plan. Every reference is validated against the caller's own
+	// uploads before the turn is saved or a model is called.
+	DocumentReferences []ChatDocumentReference `json:"document_references,omitempty"`
 }
 
 type ChatMessage struct {

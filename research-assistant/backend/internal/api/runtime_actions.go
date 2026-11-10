@@ -203,8 +203,13 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 		},
 		Timestamp: now,
 	}
-	_ = r.store.AppendEvent(plan.ID, event)
-	r.events.Publish(plan.ID, event)
+	if err := r.persistAndPublishPlanEvent(plan.ID, event); err != nil {
+		// The decision is stored, but its event is not. Report the failure
+		// instead of answering 200 for a change clients cannot replay, and do
+		// not start or cancel a run on the strength of a half-recorded decision.
+		respondEventPersistFailure(c, err)
+		return
+	}
 
 	if replayDecision {
 		// Replay decisions only update the audit record; the plan is finished.

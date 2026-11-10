@@ -4,12 +4,13 @@
 
 ## 最近验证
 
-- 日期：2026-11-02（Asia/Shanghai）
-- 代码状态：`master` + MyGo 0.7.4 桌面外壳（Wails 回退保留）
-- 环境：Windows 11 本机（Go 1.27.3、WebView2 156、NSIS 3.13）+ CI 容器回归
+- 日期：2026-11-09（Asia/Shanghai）
+- 代码状态：`feature/workbennch` 分支实现，基线 `e6bfb26`；2026-11-10 整理为 GitHub PR，此前 MyGo 桌面验证作为历史记录保留
+- 环境：Windows 本机（Go 1.27.3、Node 24.14.0、Chrome）+ `golang:1.27.3-bookworm` 隔离容器；静态前端预览与独立真实 API/模型服务
 
 | 层级 | 覆盖 | 结果 |
 |---|---|---|
+| 2026-11-09 工作台交互改进 UI-01–04 | 审阅草稿与 revision 执行、历史/SSE 恢复与运行控制、容器布局/原生抽屉、PDF 引用与连续对话及资源生命周期 | 前端 build/lint/bundle 通过，21 单元 + 486 组件测试通过；37 个浏览器用例最终均通过（整套 36 + 修正坐标等待后的真实 PDF 定点 1）；真实 48 秒任务保存并执行 r2、刷新/切会话自动接续且只 execute 一次；真实三页 PDF 两轮回答含第 2 页 42.73 与相邻第 3 页 19.26，0 plan，刷新保留第 2 页；Linux backend 全量 test/vet 通过，Windows API race 通过，Windows 全量仍有现有平台限制。截图、命令、具体覆盖与限制见 [实施报告](design/2026-11-09-workbench-implementation-report.md)。原生桌面系统关闭未有可取消 bridge，125%/150% 与软键盘以等效 CSS 视口/visualViewport 模拟记录 |
 | 2026-11-02 MyGo 桌面外壳 | `desktop/main_mygo.go`、`desktop/mygo` 适配层、`mygo.Bind`、loopback proxy、托盘/通知/单实例/NSIS 安装包 | `go test ./...`、`go vet ./...`（desktop）通过；Windows `mygo build` 产出 18.6 MB exe 与 20 MB NSIS 安装包；安装包在 `Downloads` 目录静默安装验证通过，交互式 MUI2 向导提供选择安装位置/组件页面（从受 ACL 限制的工作区目录直接运行会被 NSIS 临时文件检查拒绝，属于工作区 ACL 限制）；真实启动验证窗口、前端、`/api/health` 与 bridge（NeedsOnboarding/GetRuntimeSettings/ExportDiagnostics/Notify）；supervisor 以 `CREATE_NO_WINDOW` 启动 backend/sandbox，运行时不再出现控制台窗口；关闭到托盘与第二实例唤起通过；Wails `-tags "desktop wails"` 与 Linux 交叉编译通过；前端 37 文件/146 tests + build + lint + bundle 通过。Windows 本机 backend/docker-sandbox 的失败项均为平台限制（symlink 权限、POSIX 文件权限、PDF OCR 外部工具、Windows 文件锁）；Linux 容器（golang:1.27.3-bookworm）内 backend/docker-sandbox/desktop 全量测试与 go vet 通过 |
 | 2026-11-02 文档与架构图 | 全量 README 中英双语重写；3 张 draw.io/SVG + 2 张 Archify HTML 重建 | 74 个 README 文件的本地链接检查 0 缺失、代码围栏全配对；3 张 draw.io XML 解析通过；Archify `finalize` 的 validate/deliver/check/browser-check 四门禁通过（architecture / workflow） |
 | 2026-11-01 记忆系统 | internal/memory + session + chat 多轮 + plan/任务注入 + consolidation + 前端 MemoryPanel | 容器内 `go build ./...`、`go vet ./...`、`go test ./...` 通过；前端 36 文件/144 tests + build + lint 通过；长对话 E2E 32 请求/24 消息上限/摘要生效；计划 A→B parent_plan_id 通过；真实 LLM（deepseek-v4.1-flash）15 轮基础 E2E 与 30 轮科研长任务 + 15 节点计划 A/B 通过；长任务发现并修复 createPlan nil pointer；详见 [MEMORY-TEST-REPORT](improvement-2026-11-01/MEMORY-TEST-REPORT.md) |
@@ -67,7 +68,7 @@
 | D3 | P1 | intent 服务 `/predict` 偶发 502/超时，拖慢计划创建 | 待修复 |
 | D4 | P2 | document assist 非法 `mode` 返回 502，应为 400 | 待修复 |
 | D5 | P2 | 文献检索 relevance 排序差，跨 provider 结果不按相关性排序 | 已在工作区修复（见 [FIX-REPORT-LITERATURE-RELEVANCE.md](improvement-2026-10-26/FIX-REPORT-LITERATURE-RELEVANCE.md)），待提交 |
-| D6 | P2 | AI 翻译浮层在 1024×500 遮挡 PDF 缩放按钮 | 待修复 |
+| D6 | P2 | AI 翻译浮层在 1024×500 遮挡 PDF 缩放按钮 | 已在本工作区修复；原 PDF 浏览器 6 项均通过，覆盖全文翻译收放、缩放、窄区隐藏/恢复、分隔条及偏移 visualViewport，见 2026-11-09 实施报告 |
 | D7 | P3 | Playwright 选择器过期 | 已随 `5242ccd` 更新 |
 | D8 | P3 | Paper_Reproduction 的 L4 agent planner 回退（`planner node ref is empty`） | 待修复 |
 | D9 | P3 | intent `/health` 泄漏 provider/base_url/model | 待修复 |

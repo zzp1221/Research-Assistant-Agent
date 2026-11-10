@@ -160,8 +160,9 @@ func (r *planRuntime) createReplayApproval(plan *models.PlanGraph, record *model
 		Payload:   map[string]any{"action": action, "replay_of": record.ID},
 		Timestamp: now,
 	}
-	_ = r.store.AppendEvent(plan.ID, event)
-	r.events.Publish(plan.ID, event)
+	if err := r.persistAndPublishPlanEvent(plan.ID, event); err != nil {
+		return nil, err
+	}
 	return &action, nil
 }
 

@@ -270,8 +270,10 @@ func (r *planRuntime) answerQuestion(c *gin.Context) {
 		},
 		Timestamp: now,
 	}
-	_ = r.store.AppendEvent(plan.ID, event)
-	r.events.Publish(plan.ID, event)
+	if err := r.persistAndPublishPlanEvent(plan.ID, event); err != nil {
+		respondEventPersistFailure(c, err)
+		return
+	}
 	recordAuditEvent("question_answered", actor, plan.ID, map[string]any{"question_id": answered.ID, "answer_option": answerOption})
 	c.JSON(http.StatusOK, gin.H{"question": answered, "plan_id": plan.ID})
 }

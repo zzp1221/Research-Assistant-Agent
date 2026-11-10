@@ -1,5 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import type { ChatMessage, IntentContext, PlanClarification, PlanGraph, UploadedFile } from '../../contracts/api';
+import type {
+  ChatMessage,
+  DocumentReference,
+  DocumentReferenceDraft,
+  IntentContext,
+  PlanClarification,
+  PlanGraph,
+  UploadedFile,
+} from '../../contracts/api';
 import { PLAN_CREATE_TIMEOUT_MESSAGE, chat, createPlan, getMe, getPlan, listPlans, uploadFile } from '../../services/api/researchAssistantApi';
 import type { PlanSummary } from '../../services/api/researchAssistantApi';
 import { formatApiError } from '../../services/api/apiError';
@@ -12,6 +20,48 @@ const isTaskIntent = (input: string) => {
     /rag|benchmark|plot|matplotlib|python|reproduce|summary|report/,
   ].some((pattern) => pattern.test(normalized));
 };
+
+// A reading session only escalates to the plan path when the user asks for the
+// experiment itself (reproduce / run code / execute the plan). Ordinary reading
+// questions — including ones that mention 论文、分析、总结 or summary — stay in
+// chat so a document reference can never turn into a plan on its own.
+const EXPLICIT_EXECUTION_PATTERNS = [
+  /复现|重现|重跑|重新运行|跑实验|做实验|执行实验|执行计划|执行代码|执行脚本|运行实验|运行代码|运行脚本|跑一下代码|跑一下脚本/,
+  /reproduce|re-run|rerun|run the (experiment|code|script|plan)|execute the (experiment|code|script|plan)/,
+];
+
+const isExplicitExecutionIntent = (input: string) => {
+  const normalized = input.toLowerCase();
+  return EXPLICIT_EXECUTION_PATTERNS.some((pattern) => pattern.test(normalized));
+};
+
+// UI-04 refresh regression: `readingMode` lives only in the in-memory draft map,
+// so a reload forgets it. What a reload does keep is the persisted chat history,
+// where a user turn that was asked against a paper still carries the
+// documentReferences it was sent with. Re-deriving the reading session from that
+// history is what stops a later "总结论文" from silently turning into a plan.
+//
+// Only the fact that a referenced turn exists is recovered, never the upload ids
+// behind it: an explicit reproduce/run turn must be planned from the draft the
+// user is sending right now, not from references the user never re-attached.
+const historyHasReadingTurn = (history: ChatMessage[]) => history.some((message) => (
+  message.role === 'user'
+  && Array.isArray(message.documentReferences)
+  && message.documentReferences.length > 0
+));
+
+export const MAX_DOCUMENT_REFERENCES = 4;
+export const MAX_DOCUMENT_QUOTE_LENGTH = 2000;
+export const MAX_SESSION_ATTACHMENTS = 8;
+
+export type DocumentReferenceAddResult =
+  | 'added'
+  | 'duplicate'
+  | 'full'
+  | 'session-mismatch'
+  | 'invalid-page'
+  | 'quote-too-long'
+  | 'invalid';
 
 export interface PlanReadyOptions {
   autoRun: boolean;
@@ -37,6 +87,61 @@ interface PersistedChatState {
   userId: string | null;
   activeSessionId: string | null;
   sessions: ChatSessionRecord[];
+}
+
+// One composer draft, owned by one session. Prompt text, pending attachments and
+// document references travel together so a session switch preserves all three
+// and can never mix drafts from two sessions.
+interface SessionDraft {
+  prompt: string;
+  pendingAttachments: UploadedFile[];
+  documentReferences: DocumentReferenceDraft[];
+  uploadingAttachments: boolean;
+  attachmentError: string;
+  // A session that has been asked about a document passage stays in reading
+  // mode: follow-up turns keep going to chat even when they mention 论文/总结/分析,
+  // and only an explicit reproduce/run request escalates to a plan.
+  readingMode: boolean;
+}
+
+const createEmptyDraft = (): SessionDraft => ({
+  prompt: '',
+  pendingAttachments: [],
+  documentReferences: [],
+  uploadingAttachments: false,
+  attachmentError: '',
+  readingMode: false,
+});
+
+// Stable instance so an untouched session does not hand fresh empty arrays to
+// every consumer on each render.
+const EMPTY_DRAFT: SessionDraft = createEmptyDraft();
+
+const readDraft = (drafts: Record<string, SessionDraft>, sessionId: string | null): SessionDraft =>
+  (sessionId ? drafts[sessionId] : undefined) ?? EMPTY_DRAFT;
+
+// A reference only counts when it came from the session it is drafted in. The
+// other bounds (page > 0, quote length) are validated before this point so an
+// invalid reference is reported instead of silently rewritten.
+const isReferenceForSession = (reference: DocumentReferenceDraft, sessionId: string | null) =>
+  Boolean(sessionId) && reference.sessionId === sessionId;
+
+const toWireReference = (reference: DocumentReferenceDraft): DocumentReference => ({
+  upload_id: reference.upload_id,
+  document_name: reference.document_name,
+  page: reference.page,
+  quote: reference.quote,
+});
+
+// Everything one send froze at submission time. A failure replays it into the
+// same session; a success only clears the parts that did not change meanwhile.
+interface SentDraftSnapshot {
+  sessionId: string;
+  userId: string;
+  prompt: string;
+  history: ChatMessage[];
+  attachments: UploadedFile[];
+  references: DocumentReferenceDraft[];
 }
 
 interface SessionSummary {
@@ -231,14 +336,50 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     args: Parameters<typeof createPlan>;
     commitUnknown: boolean;
   }>());
+  const planRefreshSequence = useRef(0);
+  // Opening a library plan changes the active conversation. Only the latest
+  // navigation intent may apply its response, even before React effects run.
+  const planOpenGeneration = useRef(0);
+  const planOpenIdentityKey = useRef('');
   const sending = useRef(false);
   const activeSessionRef = useRef(persistedState.activeSessionId);
   useEffect(() => { activeSessionRef.current = persistedState.activeSessionId; }, [persistedState.activeSessionId]);
-  const [prompt, setPrompt] = useState('');
+  // UI-04: drafts are per session. A prompt, a document reference or a pending
+  // attachment belongs to exactly one session and can never leak into another
+  // one after a switch. The map is in-memory only; blobs are never persisted.
+  const [drafts, setDrafts] = useState<Record<string, SessionDraft>>({});
+  const draftsRef = useRef(drafts);
+  useEffect(() => { draftsRef.current = drafts; }, [drafts]);
+
+  const updateDraftForSession = useCallback((
+    sessionId: string,
+    updater: (draft: SessionDraft) => SessionDraft,
+  ) => {
+    setDrafts((prev) => {
+      const current = prev[sessionId] ?? createEmptyDraft();
+      const next = updater(current);
+      if (next === current) return prev;
+      const updated = { ...prev, [sessionId]: next };
+      draftsRef.current = updated;
+      return updated;
+    });
+  }, []);
+
+  const activeSessionId = persistedState.activeSessionId;
+  const activeDraft = readDraft(drafts, activeSessionId);
+
+  const setPrompt = useCallback((value: string) => {
+    const sessionId = activeSessionRef.current;
+    if (!sessionId) return;
+    updateDraftForSession(sessionId, (draft) => ({ ...draft, prompt: value }));
+  }, [updateDraftForSession]);
+
+  const prompt = activeDraft.prompt;
+  const pendingAttachments = activeDraft.pendingAttachments;
+  const uploadingAttachments = activeDraft.uploadingAttachments;
+  const attachmentError = activeDraft.attachmentError;
+  const documentReferences = activeDraft.documentReferences;
   const [loading, setLoading] = useState(false);
-	const [pendingAttachments, setPendingAttachments] = useState<UploadedFile[]>([]);
-	const [uploadingAttachments, setUploadingAttachments] = useState(false);
-	const [attachmentError, setAttachmentError] = useState('');
   const [runtimePermissionMode, setRuntimePermissionMode] = useState<'confirm_important' | 'full_access'>('confirm_important');
   const [fullAccessAcknowledged, setFullAccessAcknowledged] = useState(false);
   const [showFullAccessConfirm, setShowFullAccessConfirm] = useState(false);
@@ -275,11 +416,22 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
   }, []);
 
   const handleOpenServerPlan = useCallback(async (planId: string) => {
+    const generation = ++planOpenGeneration.current;
+    const sourceSessionId = activeSessionRef.current;
+    const identityKey = planOpenIdentityKey.current;
     try {
       const planGraph = await getPlan(planId, { userId: '', sessionId: '' });
+      if (generation !== planOpenGeneration.current
+        || identityKey !== planOpenIdentityKey.current
+        || sourceSessionId !== activeSessionRef.current) return;
       setPersistedState((prev) => {
+        // React may apply this updater after a newer navigation was queued.
+        if (generation !== planOpenGeneration.current
+          || identityKey !== planOpenIdentityKey.current
+          || prev.activeSessionId !== sourceSessionId) return prev;
         const existing = prev.sessions.find((session) => session.activePlanId === planId);
         if (existing) {
+          activeSessionRef.current = existing.id;
           return { ...prev, activeSessionId: existing.id };
         }
         const now = new Date().toISOString();
@@ -297,6 +449,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
           intentContext: null,
           planGraph,
         };
+        activeSessionRef.current = record.id;
         return { ...prev, activeSessionId: record.id, sessions: [record, ...prev.sessions] };
       });
     } catch (error) {
@@ -309,6 +462,11 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     getMe()
       .then((identity) => {
         if (cancelled) return;
+        const key = `${identity.user_id}|${identity.session_id}`;
+        if (key !== planOpenIdentityKey.current) {
+          planOpenGeneration.current += 1;
+          planOpenIdentityKey.current = key;
+        }
         setServerIdentity({ userId: identity.user_id, sessionId: identity.session_id });
       })
       .catch((error) => {
@@ -319,6 +477,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
       });
     return () => {
       cancelled = true;
+      planOpenGeneration.current += 1;
     };
   }, [refreshServerPlans]);
 
@@ -407,6 +566,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
   }, []);
 
   const handleCreateSession = useCallback(() => {
+    planOpenGeneration.current += 1;
     const sessionTitlePrefix = persistedState.userId ? '新会话' : '临时会话';
     const nextSession = {
       ...createSessionRecord(persistedState.sessions.length + 1),
@@ -417,12 +577,14 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
       activeSessionId: nextSession.id,
       sessions: [nextSession, ...prev.sessions],
     }));
-    setPrompt('');
-	setPendingAttachments([]);
-	setAttachmentError('');
-  }, [persistedState.sessions.length, persistedState.userId]);
+    // A brand-new session starts with an empty draft; the previous session keeps
+    // its own prompt, references and attachments untouched.
+    updateDraftForSession(nextSession.id, () => createEmptyDraft());
+    activeSessionRef.current = nextSession.id;
+  }, [persistedState.sessions.length, persistedState.userId, updateDraftForSession]);
 
   const handleSwitchSession = useCallback((sessionId: string) => {
+    planOpenGeneration.current += 1;
     if (sessionId.startsWith('plan:')) {
       void handleOpenServerPlan(sessionId.slice('plan:'.length));
       return;
@@ -431,61 +593,158 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
       ...prev,
       activeSessionId: sessionId,
     }));
-    setPrompt('');
-	setPendingAttachments([]);
-	setAttachmentError('');
+    // No prompt reset: the target session renders whatever draft it already had,
+    // and the source session draft stays where it was.
+    activeSessionRef.current = sessionId;
   }, [handleOpenServerPlan]);
 
-	const handleAttachFiles = useCallback(async (files: File[]) => {
-		if (files.length === 0 || !persistedState.activeSessionId) return;
-		const availableSlots = Math.max(0, 8 - pendingAttachments.length);
-		const selected = files.slice(0, availableSlots);
-		if (selected.length === 0) {
-			setAttachmentError('每个计划最多添加 8 个附件');
-			return;
-		}
-		setUploadingAttachments(true);
-		setAttachmentError('');
-		const identity = {
-			userId: serverIdentity?.userId ?? '',
-			sessionId: persistedState.activeSessionId,
-		};
-		const uploaded: UploadedFile[] = [];
-		try {
-			for (const file of selected) {
-				uploaded.push(await uploadFile(file, identity));
-			}
-			setPendingAttachments((current) => [...current, ...uploaded].slice(0, 8));
-		} catch (error) {
-			console.error(error);
-			setAttachmentError('附件上传失败，请检查文件类型和大小');
-		} finally {
-			setUploadingAttachments(false);
-		}
-	}, [serverIdentity?.userId, pendingAttachments.length, persistedState.activeSessionId]);
+  const handleAttachFiles = useCallback(async (files: File[]) => {
+    // Bind the upload to the session and identity that started it. A slow
+    // response must land in that session's draft, never in a newer one.
+    const requestSessionId = activeSessionRef.current;
+    if (files.length === 0 || !requestSessionId) return;
+    const requestUserId = serverIdentity?.userId ?? '';
+    const currentDraft = readDraft(draftsRef.current, requestSessionId);
+    const availableSlots = Math.max(0, MAX_SESSION_ATTACHMENTS - currentDraft.pendingAttachments.length);
+    const selected = files.slice(0, availableSlots);
+    if (selected.length === 0) {
+      updateDraftForSession(requestSessionId, (draft) => ({
+        ...draft,
+        attachmentError: '每个计划最多添加 8 个附件',
+      }));
+      return;
+    }
+    const identity = { userId: requestUserId, sessionId: requestSessionId };
+    updateDraftForSession(requestSessionId, (draft) => ({
+      ...draft,
+      uploadingAttachments: true,
+      attachmentError: '',
+    }));
+    const uploaded: UploadedFile[] = [];
+    try {
+      for (const file of selected) {
+        uploaded.push(await uploadFile(file, identity));
+      }
+      updateDraftForSession(requestSessionId, (draft) => ({
+        ...draft,
+        pendingAttachments: [
+          ...draft.pendingAttachments,
+          ...uploaded.filter((upload) => !draft.pendingAttachments.some((existing) => existing.id === upload.id)),
+        ].slice(0, MAX_SESSION_ATTACHMENTS),
+        uploadingAttachments: false,
+        attachmentError: '',
+      }));
+    } catch (error) {
+      console.error(error);
+      updateDraftForSession(requestSessionId, (draft) => ({
+        ...draft,
+        uploadingAttachments: false,
+        attachmentError: '附件上传失败，请检查文件类型和大小',
+      }));
+    }
+  }, [serverIdentity?.userId, updateDraftForSession]);
 
-	const handleRemoveAttachment = useCallback((uploadId: string) => {
-		setPendingAttachments((current) => current.filter((attachment) => attachment.id !== uploadId));
-		setAttachmentError('');
-	}, []);
+  const handleRemoveAttachment = useCallback((uploadId: string) => {
+    const sessionId = activeSessionRef.current;
+    if (!sessionId) return;
+    updateDraftForSession(sessionId, (draft) => ({
+      ...draft,
+      pendingAttachments: draft.pendingAttachments.filter((attachment) => attachment.id !== uploadId),
+      attachmentError: '',
+    }));
+  }, [updateDraftForSession]);
 
-	// Literature records and search results become ordinary chat attachments.
-	// Keeping this in the flow hook means the composer, the literature panel and
-	// the PDF reader all agree on the same eight-slot attachment budget.
-	const attachUploadToSession = useCallback((upload: UploadedFile): 'added' | 'duplicate' | 'full' => {
-		if (pendingAttachments.some((attachment) => attachment.id === upload.id)) return 'duplicate';
-		if (pendingAttachments.length >= 8) {
-			setAttachmentError('每个计划最多添加 8 个附件');
-			return 'full';
-		}
-		setPendingAttachments((current) => (
-			current.some((attachment) => attachment.id === upload.id)
-				? current
-				: [...current, upload].slice(0, 8)
-		));
-		setAttachmentError('');
-		return 'added';
-	}, [pendingAttachments]);
+  // Literature records and search results become ordinary chat attachments.
+  // Keeping this in the flow hook means the composer, the literature panel and
+  // the PDF reader all agree on the same eight-slot attachment budget.
+  const attachUploadToSession = useCallback((upload: UploadedFile): 'added' | 'duplicate' | 'full' => {
+    const sessionId = activeSessionRef.current;
+    if (!sessionId) return 'full';
+    const draft = readDraft(draftsRef.current, sessionId);
+    if (draft.pendingAttachments.some((attachment) => attachment.id === upload.id)) return 'duplicate';
+    if (draft.pendingAttachments.length >= MAX_SESSION_ATTACHMENTS) {
+      updateDraftForSession(sessionId, (current) => ({ ...current, attachmentError: '每个计划最多添加 8 个附件' }));
+      return 'full';
+    }
+    updateDraftForSession(sessionId, (current) => (
+      current.pendingAttachments.some((attachment) => attachment.id === upload.id)
+        ? current
+        : {
+            ...current,
+            pendingAttachments: [...current.pendingAttachments, upload].slice(0, MAX_SESSION_ATTACHMENTS),
+            attachmentError: '',
+          }
+    ));
+    return 'added';
+  }, [updateDraftForSession]);
+
+  // UI-04 draft references. "Ask AI" only ever drafts: no message is sent and no
+  // plan is created, and an existing prompt is never overwritten.
+  const addDocumentReference = useCallback((reference: DocumentReferenceDraft): DocumentReferenceAddResult => {
+    const sessionId = activeSessionRef.current;
+    if (!sessionId) return 'invalid';
+    // A reference raised in another session must not enter this one.
+    if (reference?.sessionId && reference.sessionId !== sessionId) return 'session-mismatch';
+    const uploadId = typeof reference?.upload_id === 'string' ? reference.upload_id.trim() : '';
+    const page = reference?.page;
+    const quote = typeof reference?.quote === 'string' ? reference.quote : '';
+    if (!uploadId) {
+      updateDraftForSession(sessionId, (draft) => ({ ...draft, attachmentError: '引用缺少文档标识，无法添加。' }));
+      return 'invalid';
+    }
+    if (!Number.isFinite(page) || Math.floor(page) !== page || page < 1) {
+      updateDraftForSession(sessionId, (draft) => ({ ...draft, attachmentError: '引用页码必须是大于 0 的整数。' }));
+      return 'invalid-page';
+    }
+    if (Array.from(quote).length > MAX_DOCUMENT_QUOTE_LENGTH) {
+      updateDraftForSession(sessionId, (draft) => ({
+        ...draft,
+        attachmentError: `引用原文超过 ${MAX_DOCUMENT_QUOTE_LENGTH} 字，请缩短选中范围后再引用。`,
+      }));
+      return 'quote-too-long';
+    }
+    const draft = readDraft(draftsRef.current, sessionId);
+    if (draft.documentReferences.some((existing) => (
+      existing.upload_id === uploadId && existing.page === page && existing.quote === quote
+    ))) {
+      return 'duplicate';
+    }
+    if (draft.documentReferences.length >= MAX_DOCUMENT_REFERENCES) {
+      updateDraftForSession(sessionId, (current) => ({
+        ...current,
+        attachmentError: `每个会话最多引用 ${MAX_DOCUMENT_REFERENCES} 段原文，请先移除已有引用。`,
+      }));
+      return 'full';
+    }
+    const nextReference: DocumentReferenceDraft = {
+      upload_id: uploadId,
+      document_name: typeof reference.document_name === 'string' ? reference.document_name : '',
+      page,
+      quote,
+      id: typeof reference.id === 'string' && reference.id.trim() ? reference.id : createId('ref'),
+      sessionId,
+    };
+    updateDraftForSession(sessionId, (current) => (
+      current.documentReferences.length >= MAX_DOCUMENT_REFERENCES
+        ? current
+        : {
+            ...current,
+            documentReferences: [...current.documentReferences, nextReference],
+            attachmentError: '',
+          }
+    ));
+    return 'added';
+  }, [updateDraftForSession]);
+
+  const removeDocumentReference = useCallback((referenceId: string) => {
+    const sessionId = activeSessionRef.current;
+    if (!sessionId) return;
+    updateDraftForSession(sessionId, (draft) => ({
+      ...draft,
+      documentReferences: draft.documentReferences.filter((reference) => reference.id !== referenceId),
+      attachmentError: '',
+    }));
+  }, [updateDraftForSession]);
 
   const updateSessionPlanState = useCallback(
     (sessionId: string, payload: { activePlanId: string | null; intentContext: IntentContext | null; planGraph: PlanGraph | null }) => {
@@ -509,20 +768,30 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     const planId = session?.activePlanId;
     const sessionId = persistedState.activeSessionId;
     if (!planId || !sessionId) return;
+    const sequence = ++planRefreshSequence.current;
     try {
       const planGraph = await getPlan(planId, {
         userId: serverIdentity?.userId ?? '',
         sessionId,
       });
-      updateSessionPlanState(sessionId, {
-        activePlanId: planGraph.id,
-        intentContext: session.intentContext ?? null,
-        planGraph,
+      if (sequence !== planRefreshSequence.current) return;
+      setPersistedState((previous) => {
+        const target = previous.sessions.find((record) => record.id === sessionId);
+        // A new plan may have been created while this snapshot was loading.
+        if (target?.activePlanId !== planId) return previous;
+        return {
+          ...previous,
+          sessions: updateSessionRecord(previous.sessions, sessionId, (record) => ({
+            ...record,
+            planGraph,
+            updatedAt: new Date().toISOString(),
+          })),
+        };
       });
     } catch (error) {
       console.warn('[chat] failed to refresh plan state', error);
     }
-  }, [activeSession, serverIdentity?.userId, persistedState.activeSessionId, updateSessionPlanState]);
+  }, [activeSession, serverIdentity?.userId, persistedState.activeSessionId]);
 
   useEffect(() => {
     if (activeSession?.activePlanId) {
@@ -543,23 +812,115 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
     return () => window.removeEventListener('focus', refreshOnFocus);
   }, [activeSession?.activePlanId, refreshActivePlan]);
 
-  const handleSendMessage = useCallback(async () => {
-	if (sending.current || loading || (!prompt.trim() && pendingAttachments.length === 0) || !persistedState.activeSessionId || uploadingAttachments) return;
+  // A failed send puts the question, its references and the staged attachments
+  // back into the session they were sent from. It never writes into whatever
+  // session or identity the user has moved to meanwhile.
+  const restoreFailedDraft = useCallback((sent: SentDraftSnapshot) => {
+    const currentUserId = serverIdentity?.userId ?? '';
+    if (sent.userId && currentUserId && sent.userId !== currentUserId) return;
+    updateDraftForSession(sent.sessionId, (draft) => {
+      const missingReferences = sent.references.filter((reference, index) => (
+        draft.documentReferences.length + index < MAX_DOCUMENT_REFERENCES
+        && !draft.documentReferences.some((existing) => existing.id === reference.id)
+      ));
+      const missingAttachments = sent.attachments.filter((attachment) => (
+        !draft.pendingAttachments.some((existing) => existing.id === attachment.id)
+      ));
+      return {
+        ...draft,
+        prompt: draft.prompt.trim() ? draft.prompt : sent.prompt,
+        documentReferences: [...draft.documentReferences, ...missingReferences].slice(0, MAX_DOCUMENT_REFERENCES),
+        pendingAttachments: [...draft.pendingAttachments, ...missingAttachments].slice(0, MAX_SESSION_ATTACHMENTS),
+      };
+    });
+  }, [serverIdentity?.userId, updateDraftForSession]);
 
-	const userPrompt = prompt.trim() || '请分析上传的材料，并设计预算受限的轻量消融实验。';
-	const attachmentNames = pendingAttachments.map((attachment) => attachment.name);
-	const attachmentIDs = pendingAttachments.map((attachment) => attachment.id);
+  // Clears only what this send actually consumed. Anything the user typed,
+  // attached or quoted while the request was in flight stays in the draft.
+  const clearSentDraft = useCallback((sessionId: string, sent: SentDraftSnapshot, consumeAttachments: boolean) => {
+    updateDraftForSession(sessionId, (draft) => {
+      const sentReferenceIds = new Set(sent.references.map((reference) => reference.id));
+      const sentAttachmentIds = new Set(sent.attachments.map((attachment) => attachment.id));
+      const nextPrompt = draft.prompt.trim() === sent.prompt ? '' : draft.prompt;
+      const nextReferences = draft.documentReferences.filter((reference) => !sentReferenceIds.has(reference.id));
+      const nextAttachments = consumeAttachments
+        ? draft.pendingAttachments.filter((attachment) => !sentAttachmentIds.has(attachment.id))
+        : draft.pendingAttachments;
+      return {
+        ...draft,
+        prompt: nextPrompt,
+        documentReferences: nextReferences,
+        pendingAttachments: nextAttachments,
+        attachmentError: consumeAttachments ? '' : draft.attachmentError,
+      };
+    });
+  }, [updateDraftForSession]);
+
+  const handleSendMessage = useCallback(async () => {
+    // The lock is taken synchronously, so a double click or an Enter+click race
+    // can only ever produce one request for one snapshot.
+    if (sending.current || loading) return;
+    const requestSessionId = activeSessionRef.current;
+    if (!requestSessionId) return;
+    const draftSnapshot = readDraft(draftsRef.current, requestSessionId);
+    if (draftSnapshot.uploadingAttachments) return;
+    const requestText = draftSnapshot.prompt.trim();
+    // Only references drafted in this session are ever sent; the prompt text,
+    // attachments and references are frozen here and never re-read from state.
+    const requestReferences = draftSnapshot.documentReferences
+      .filter((reference) => isReferenceForSession(reference, requestSessionId));
+    const requestAttachments = draftSnapshot.pendingAttachments;
+    if (!requestText && requestAttachments.length === 0 && requestReferences.length === 0) return;
+
     const requestUserId = serverIdentity?.userId ?? '';
-    const requestSessionId = persistedState.activeSessionId;
+    const requestHistorySnapshot = [...(activeSession?.chatHistory ?? [])];
+    const userPrompt = requestText || (requestReferences.length > 0
+      ? '请结合原文解释引用的论文内容。'
+      : '请分析上传的材料，并设计预算受限的轻量消融实验。');
+    const attachmentNames = requestAttachments.map((attachment) => attachment.name);
+    const referenceSnapshot = requestReferences.map(toWireReference);
+    const sentSnapshot: SentDraftSnapshot = {
+      sessionId: requestSessionId,
+      userId: requestUserId,
+      prompt: userPrompt,
+      history: requestHistorySnapshot,
+      attachments: requestAttachments,
+      references: requestReferences,
+    };
+    // Plan submissions carry both the pending attachment ids and the upload ids
+    // behind the document references, de-duplicated into the same 8 slots.
+    const attachmentIDs = Array.from(new Set([
+      ...sentSnapshot.attachments.map((attachment) => attachment.id),
+      ...referenceSnapshot.map((reference) => reference.upload_id),
+    ])).slice(0, MAX_SESSION_ATTACHMENTS);
+    const explicitExecution = isExplicitExecutionIntent(userPrompt);
+    // Reading mode survives a reload through the persisted user turns: a history
+    // that already contains a referenced turn marks this session as a reading
+    // session even though the in-memory draft was reset. Ordinary reading turns
+    // — including 总结论文/分析/总结 — stay in chat, while an explicit
+    // reproduce/run request still escalates to a plan.
+    const isReadingTurn = draftSnapshot.readingMode
+      || requestReferences.length > 0
+      || historyHasReadingTurn(requestHistorySnapshot);
+    const isTaskRequest = isReadingTurn
+      ? explicitExecution
+      : requestAttachments.length > 0 || isTaskIntent(userPrompt);
     sending.current = true;
     setLoading(true);
 	appendMessageToSession(requestSessionId, {
 		role: 'user',
-		text: attachmentNames.length > 0 ? `${userPrompt}\n\n附件：${attachmentNames.join('、')}` : userPrompt,
+		text: isTaskRequest && attachmentNames.length > 0 ? `${userPrompt}\n\n附件：${attachmentNames.join('、')}` : userPrompt,
+		...(referenceSnapshot.length > 0 ? { documentReferences: referenceSnapshot } : {}),
 	});
-    setPrompt('');
 
-	const isTaskRequest = pendingAttachments.length > 0 || isTaskIntent(userPrompt);
+    // A turn that carries a document reference is a reading turn: it only goes
+    // to the plan path when the user explicitly asks to reproduce or run
+    // something. A session that is already reading keeps that mode for later
+    // follow-ups, even when they mention 论文/分析/总结/summary. Untouched
+    // attachments never force a reading question into a plan.
+    if (requestReferences.length > 0 && !explicitExecution && !draftSnapshot.readingMode) {
+      updateDraftForSession(requestSessionId, (draft) => ({ ...draft, readingMode: true }));
+    }
 
     try {
       if (isTaskRequest) {
@@ -599,8 +960,7 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
             text: clarificationText,
 		});
         }
-        setPendingAttachments([]);
-        setAttachmentError('');
+        clearSentDraft(requestSessionId, sentSnapshot, true);
         // The plan message must land before any execution request, otherwise the
         // chat log claims the run started before the plan existed. Auto-run gets
         // a short first line plus the dedicated "auto started" line; approval
@@ -622,10 +982,16 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
         const response = await chat(userPrompt, {
           userId: requestUserId,
           sessionId: requestSessionId,
-        }, { sessionId: requestSessionId });
+        }, {
+          sessionId: requestSessionId,
+          ...(referenceSnapshot.length > 0 ? { documentReferences: referenceSnapshot } : {}),
+        });
         const citationText = response.answer_citations && response.answer_citations.length > 0
           ? `\n\n原文依据：${response.answer_citations.map((citation) => `[${citation.kind}] ${citation.title}${citation.quote ? `：“${citation.quote}”` : ''}`).join('；')}`
           : '';
+        // A plain reading chat never consumes pending attachments: they stay in
+        // the session draft for the实验 request they were staged for.
+        clearSentDraft(requestSessionId, sentSnapshot, false);
         appendMessageToSession(requestSessionId, { role: 'system', text: response.response + citationText, contextReport: response.context_report });
       }
     } catch (error) {
@@ -650,17 +1016,18 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
         } else if (submission && !submission.commitUnknown) {
           message += '\n可再次发送相同输入重试；当前服务进程内会复用原提交。若服务已重启，请先核对计划库。';
         }
-        if (activeSessionRef.current === requestSessionId) setPrompt((current) => current || userPrompt);
         void refreshServerPlans();
       }
-      if (!isTaskRequest && activeSessionRef.current === requestSessionId) setPrompt((current) => current || userPrompt);
+      // A failed send keeps the question and its references in the session draft
+      // it was sent from, so the user can retry without retyping or re-quoting.
+      restoreFailedDraft(sentSnapshot);
       const contextReport = (error as { response?: { data?: { context_report?: import('../../contracts/api').ContextReport } } })?.response?.data?.context_report;
       appendMessageToSession(requestSessionId, { role: 'system', text: message, contextReport });
     } finally {
       sending.current = false;
       setLoading(false);
     }
-	}, [appendMessageToSession, autoRunOnCreate, fullAccessAcknowledged, serverIdentity?.userId, loading, onPlanReady, pendingAttachments, persistedState.activeSessionId, prompt, refreshServerPlans, runtimePermissionMode, updateSessionPlanState, uploadingAttachments]);
+	}, [activeSession?.chatHistory, appendMessageToSession, autoRunOnCreate, clearSentDraft, fullAccessAcknowledged, serverIdentity?.userId, loading, onPlanReady, refreshServerPlans, restoreFailedDraft, runtimePermissionMode, updateDraftForSession, updateSessionPlanState]);
 
   return {
     prompt,
@@ -669,6 +1036,9 @@ export function useResearchAssistantChatFlow(options: UseResearchAssistantChatFl
 	pendingAttachments,
 	uploadingAttachments,
 	attachmentError,
+    documentReferences,
+    addDocumentReference,
+    removeDocumentReference,
     chatHistory,
     activePlanId,
 	activePlanStatus,

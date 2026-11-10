@@ -1,4 +1,4 @@
-import { useMemo, useState, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { HelpCircle, Highlighter, Languages, X } from 'lucide-react';
 import { Viewer, Worker } from '@react-pdf-viewer/core';
 import type { PdfJs } from '@react-pdf-viewer/core';
@@ -6,14 +6,26 @@ import type { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import type { Plugin } from '@react-pdf-viewer/core';
 import type { DocumentInfoResponse, TranslationJob } from '../../contracts/api';
 import { TranslationPanel } from './TranslationPanel';
+import { usePdfPageControl } from './usePdfPageControl';
+import { clampReadingScale, normalizeReadingPage } from './readingStateStorage';
 
 interface PdfPanelProps {
   readerRef?: RefObject<HTMLDivElement | null>;
   pdfUrl: string;
+  /**
+   * Stable document identity. Changing it means a different document, which is
+   * allowed to reset the reader; chat and layout updates must not change it.
+   */
+  documentKey?: string;
   documentInfo: DocumentInfoResponse | null;
   defaultLayoutPluginInstance: ReturnType<typeof defaultLayoutPlugin>;
   aiTranslationPluginInstance: Plugin;
+  /** One-based page the reader should show (restored reading position). */
+  initialPage?: number;
+  /** Zoom scale the reader should show (1 = 100%). */
+  initialScale?: number;
   onPageChange?: (page: number) => void;
+  onScaleChange?: (scale: number) => void;
   translation: {
     job: TranslationJob | null;
     isStarting: boolean;
@@ -50,16 +62,19 @@ export function PdfPanel(props: PdfPanelProps) {
   const {
     pdfUrl,
     readerRef,
+    documentKey,
     documentInfo,
     defaultLayoutPluginInstance,
     aiTranslationPluginInstance,
+    initialPage,
+    initialScale,
     onPageChange,
+    onScaleChange,
     translation,
     onOpenHelp,
   } = props;
   const [showTranslation, setShowTranslation] = useState(false);
   const [showStructure, setShowStructure] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
   const [showReaderHint, setShowReaderHint] = useState(() => {
     try {
       return window.localStorage.getItem(READER_HINT_KEY) !== '1';
@@ -67,6 +82,99 @@ export function PdfPanel(props: PdfPanelProps) {
       return true;
     }
   });
+  const restoredPage = normalizeReadingPage(initialPage ?? 1);
+  const restoredScale = clampReadingScale(initialScale ?? 1);
+  const [currentPage, setCurrentPage] = useState(restoredPage);
+  const pageControl = usePdfPageControl();
+  const { jumpToPage, zoomTo, getPagesContainer, isPageVisible } = pageControl;
+  const [documentLoadVersion, setDocumentLoadVersion] = useState(0);
+  // Latest handlers in refs: the restore effect must not re-run (and must never
+  // remount the viewer) just because a parent re-created a callback.
+  const onPageChangeRef = useRef(onPageChange);
+  const onScaleChangeRef = useRef(onScaleChange);
+  useEffect(() => {
+    onPageChangeRef.current = onPageChange;
+    onScaleChangeRef.current = onScaleChange;
+  });
+  // Only an explicit initialPage/initialScale change (document switch, "return to
+  // page") may move the reader. The echo of our own onPageChange/onScaleChange
+  // report is skipped, otherwise onPageChange -> props -> jumpToPage would feed
+  // back into itself and fight the user's scrolling.
+  const lastReportedPageRef = useRef(restoredPage);
+  const lastReportedScaleRef = useRef(restoredScale);
+  // A jump requested before the document is ready is parked here and applied on
+  // the reader's document-load callback, never by remounting the viewer.
+  const pendingPageRef = useRef<number | null>(restoredPage > 1 ? restoredPage : null);
+  // Initialization can report page one before the requested page is laid out.
+  // Keep the restore target until the viewer confirms it in its visible area.
+  const restoringPageRef = useRef<number | null>(restoredPage > 1 ? restoredPage : null);
+  const pendingScaleRef = useRef<number | null>(null);
+  // A parked restore request belongs to the document that requested it. When the
+  // host swaps the document without remounting this panel, the stale request must
+  // not jump the new paper to the old paper's page.
+  const restoreDocumentRef = useRef(documentKey || pdfUrl);
+
+  const applyPendingRestore = () => {
+    const pendingPage = pendingPageRef.current;
+    if (pendingPage !== null && jumpToPage(pendingPage)) pendingPageRef.current = null;
+    const pendingScale = pendingScaleRef.current;
+    if (pendingScale !== null && zoomTo(pendingScale)) pendingScaleRef.current = null;
+  };
+
+  useEffect(() => {
+    const next = documentKey || pdfUrl;
+    if (next === restoreDocumentRef.current) return;
+    // A different document: drop the previous paper's parked request so it cannot
+    // drag the new paper to the old paper's page.
+    restoreDocumentRef.current = next;
+    restoringPageRef.current = restoredPage > 1 ? restoredPage : null;
+    pendingPageRef.current = restoringPageRef.current;
+    pendingScaleRef.current = null;
+  }, [documentKey, pdfUrl, restoredPage]);
+
+  useEffect(() => {
+    if (restoredPage === lastReportedPageRef.current) return;
+    lastReportedPageRef.current = restoredPage;
+    restoringPageRef.current = restoredPage;
+    // Moving the reader is an imperative call into the mounted viewer; the page
+    // label follows the viewer's own change event, so a failed or deferred jump
+    // never claims a page the reader is not on.
+    if (!jumpToPage(restoredPage)) pendingPageRef.current = restoredPage;
+  }, [jumpToPage, restoredPage]);
+
+  useEffect(() => {
+    if (restoredScale === lastReportedScaleRef.current) return;
+    lastReportedScaleRef.current = restoredScale;
+    if (!zoomTo(restoredScale)) pendingScaleRef.current = restoredScale;
+  }, [restoredScale, zoomTo]);
+
+  useEffect(() => {
+    // The captured plugin functions and the document-load callback can arrive in
+    // either order, so whichever render finally has both drains the parked
+    // request. Nothing here recreates the viewer.
+    if (pendingPageRef.current !== null || pendingScaleRef.current !== null) applyPendingRestore();
+  });
+
+  const handleDocumentLoad = () => {
+    // Child effects (the Viewer's plugin install) run before this panel's
+    // effects, but a document reload can still land before the plugin
+    // functions are handed back, so both sides drain the parked request.
+    applyPendingRestore();
+    setDocumentLoadVersion((version) => version + 1);
+  };
+
+  useEffect(() => {
+    const container = getPagesContainer();
+    if (!container || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      const target = restoringPageRef.current;
+      if (target !== null && jumpToPage(target)) pendingPageRef.current = null;
+      const scale = pendingScaleRef.current;
+      if (scale !== null && zoomTo(scale)) pendingScaleRef.current = null;
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [documentLoadVersion, getPagesContainer, jumpToPage, zoomTo]);
 
   const dismissReaderHint = () => {
     setShowReaderHint(false);
@@ -115,21 +223,23 @@ export function PdfPanel(props: PdfPanelProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-surface-muted">
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-line bg-surface px-3 text-[11px] text-muted">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="text-[10px] font-semibold text-muted">论文阅读器</span>
-          {pageCount > 0 && <span className="rounded-full bg-surface-muted px-2 py-0.5 font-mono text-[10px] text-ink-soft">共 {pageCount} 页</span>}
-          {pageCount > 0 && <span className="hidden font-mono text-[10px] text-faint sm:inline">第 {currentPage} 页</span>}
-          {pageCount > 0 && <span className="rounded-full border border-line px-2 py-0.5 font-mono text-[9.5px] text-muted">{documentBadge}</span>}
+      <div className="flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b border-line bg-surface px-3 py-1 text-[11px] text-muted">
+        <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+          <span className="hidden text-[10px] font-semibold text-muted sm:inline">论文阅读器</span>
+          {pageCount > 0 && <span className="shrink-0 rounded-full bg-surface-muted px-2 py-0.5 font-mono text-[10px] text-ink-soft">共 {pageCount} 页</span>}
+          {pageCount > 0 && <span className="hidden shrink-0 font-mono text-[10px] text-faint sm:inline">第 {currentPage} 页</span>}
+          {pageCount > 0 && <span className="shrink-0 rounded-full border border-line px-2 py-0.5 font-mono text-[9.5px] text-muted">{documentBadge}</span>}
           {ocrStats && ocrStats.ocr_pages > 0 ? (
-            <span className="instrument-num hidden text-[10.5px] text-muted sm:inline">
+            <span className="instrument-num hidden truncate text-[10.5px] text-muted md:inline">
               OCR {ocrStats.ocr_pages} 页 · 置信度 {Math.round((ocrStats.average_confidence ?? 0) * 100)}%
             </span>
           ) : null}
         </span>
-        <div className="flex shrink-0 items-center gap-1.5">
+        {/* Secondary controls collapse before the primary translation action, so
+            narrow readers wrap instead of clipping the main control. */}
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
           <span
-            className="hidden h-7 items-center gap-1 rounded-full border border-line bg-surface px-2 text-[9.5px] text-muted sm:inline-flex"
+            className="hidden h-7 items-center gap-1 rounded-full border border-line bg-surface px-2 text-[9.5px] text-muted lg:inline-flex"
             title="在 PDF 中选中任意文字，浮层会出现「翻译」和「解释」"
           >
             <Highlighter className="h-3 w-3" />
@@ -139,7 +249,7 @@ export function PdfPanel(props: PdfPanelProps) {
             <button
               type="button"
               onClick={onOpenHelp}
-              className="flex h-7 w-7 items-center justify-center rounded-lg border border-transparent text-muted transition-colors hover:bg-surface-muted hover:text-ink"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-muted transition-colors hover:bg-surface-muted hover:text-ink sm:h-7 sm:w-7"
               title="打开阅读指南"
               aria-label="打开阅读指南"
             >
@@ -254,12 +364,36 @@ export function PdfPanel(props: PdfPanelProps) {
             <div style={{ height: '100%', width: '100%' }}>
               <Viewer
                 fileUrl={pdfUrl}
-                plugins={[defaultLayoutPluginInstance, aiTranslationPluginInstance]}
+                plugins={[defaultLayoutPluginInstance, aiTranslationPluginInstance, pageControl.plugin]}
+                defaultScale={restoredScale}
+                initialPage={Math.max(0, restoredPage - 1)}
                 transformGetDocumentParams={transformGetDocumentParams}
+                onDocumentLoad={handleDocumentLoad}
                 onPageChange={(event) => {
+                  // The viewer reports a zero-based index; every callback,
+                  // stored state and reference card above stays one-based.
                   const page = event.currentPage + 1;
+                  const target = restoringPageRef.current;
+                  if (target !== null) {
+                    if (page !== target || !isPageVisible(target)) {
+                      pendingPageRef.current = jumpToPage(target) ? null : target;
+                      return;
+                    }
+                    restoringPageRef.current = null;
+                    pendingPageRef.current = null;
+                  }
                   setCurrentPage(page);
-                  onPageChange?.(page);
+                  if (page === lastReportedPageRef.current) return;
+                  lastReportedPageRef.current = page;
+                  onPageChangeRef.current?.(page);
+                }}
+                onZoom={(event) => {
+                  const scale = event.scale;
+                  if (!Number.isFinite(scale) || scale <= 0) return;
+                  const clamped = clampReadingScale(scale);
+                  if (clamped === lastReportedScaleRef.current) return;
+                  lastReportedScaleRef.current = clamped;
+                  onScaleChangeRef.current?.(clamped);
                 }}
               />
             </div>

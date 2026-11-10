@@ -75,6 +75,8 @@ Both are self-contained HTML files (inline SVG/styles/scripts) that open directl
 | [Literature library and PDF reading redesign](design/2026-10-27-literature-ui-redesign.md) | Direction exploration, key changes, and interaction motion |
 | [Budget / HITL workbench](design/2026-10-29-budget-hitl-workbench.md) | Cost, budget, approval, and human-in-the-loop workbench design |
 | [Aperture workbench](design/2026-10-30-aperture-workbench.md) | Workspace space and information-hierarchy directions and tradeoffs |
+| [Workbench interaction improvements (Chinese)](design/2026-11-09-workbench-interaction-improvements.md) | **Proposal, not implemented**: review drafts, live run recovery, responsive layout, and PDF/chat workflow; scope, implementation steps, and acceptance cases |
+| [Workbench implementation report (Chinese)](design/2026-11-09-workbench-implementation-report.md) | UI-01–04 implementation, automated and live backend validation, screenshot index, and limitations; recorded separately from the original proposal |
 | [UI upgrade design notes](ui-research-console.md) | Research-instrument visual/interaction spec, three directions, and implementation record |
 
 ### Defects and remediation

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDown, FileText, Maximize2, X } from 'lucide-react';
+import { ArrowDown, BookOpen, FileText, Maximize2, Quote, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { ChatMessage } from '../../contracts/api';
+import type { ChatMessage, DocumentReference } from '../../contracts/api';
 import { ContextStatus } from './ContextStatus';
 
 interface PdfActions {
@@ -20,16 +20,66 @@ interface ChatMessageListProps {
   isLoggedIn: boolean;
   pdfActions: PdfActions;
   taskActions: TaskActions;
+  /**
+   * Copy shown while a turn is in flight. Ordinary answers and plan creation are
+   * different waits, so the neutral default must not claim a plan is being built.
+   */
+  loadingLabel?: string;
+  /** Reopen a sent message's source page; omitted when the host has no reader. */
+  onOpenDocumentReference?: (reference: DocumentReference) => void;
 }
 
 const roleLabel = (role: string) => (role === 'user' ? '你' : '助手');
+
+export const DEFAULT_CHAT_LOADING_LABEL = '正在整理回答：阅读你的问题与已引用段落';
+
+// Provenance, not verification: these references are a snapshot of what the
+// user selected, so they are labelled as such and never as checked evidence.
+function DocumentReferenceSources(props: { references: DocumentReference[]; onOpen?: (reference: DocumentReference) => void }) {
+  const { references, onOpen } = props;
+  return (
+    <div className="mt-1.5 rounded-lg border border-line bg-surface-muted px-2 py-1.5">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[9.5px] font-semibold text-muted">
+        <Quote className="h-3 w-3" aria-hidden="true" />
+        出处：用户选中文字
+        <span className="font-normal text-faint">· 未由服务端核实</span>
+      </div>
+      <ul className="mt-1 flex flex-col gap-1">
+        {references.map((reference, index) => (
+          <li key={`${reference.upload_id}-${reference.page}-${index}`} className="flex min-w-0 items-start gap-1.5 text-[10.5px] leading-4 text-ink-soft">
+            <div className="min-w-0 flex-1">
+              <span className="min-w-0 break-words font-medium">
+                {reference.document_name || '论文'} · 第 {reference.page} 页
+              </span>
+              {reference.quote ? (
+                <span className="mt-0.5 line-clamp-2 block text-[10px] text-muted">“{reference.quote}”</span>
+              ) : null}
+            </div>
+            {onOpen ? (
+              <button
+                type="button"
+                onClick={() => onOpen(reference)}
+                className="flex shrink-0 items-center gap-1 rounded-md px-1 py-0.5 text-[10px] text-accent transition-colors hover:bg-surface"
+                title={`返回 ${reference.document_name || '论文'} 第 ${reference.page} 页`}
+              >
+                <BookOpen className="h-3 w-3" />
+                返回原页
+              </button>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 
 /**
  * Conversation reads as a quiet research thread: role above, body below,
  * user text in a soft green bubble, assistant text on the page itself.
  */
 export function ChatMessageList(props: ChatMessageListProps) {
-  const { chatHistory, loading, isLoggedIn, pdfActions, taskActions } = props;
+  const { chatHistory, loading, isLoggedIn, pdfActions, taskActions, loadingLabel = DEFAULT_CHAT_LOADING_LABEL, onOpenDocumentReference } = props;
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [nearBottom, setNearBottom] = useState(true);
@@ -87,6 +137,10 @@ export function ChatMessageList(props: ChatMessageListProps) {
                 </div>
                 <ContextStatus report={msg.contextReport} />
 
+                {msg.documentReferences && msg.documentReferences.length > 0 ? (
+                  <DocumentReferenceSources references={msg.documentReferences} onOpen={onOpenDocumentReference} />
+                ) : null}
+
                 {msg.actions && msg.actions.length > 0 ? (
                   <div className="message-actions">
                     {msg.actions.includes('open_pdf') ? (
@@ -137,7 +191,7 @@ export function ChatMessageList(props: ChatMessageListProps) {
             <span className="message-role">助手</span>
             <p className="message-body flex items-center gap-2 text-[12px]">
               <span className="proof-pulse h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
-              正在生成执行计划：解析意图、绑定上下文、编排节点依赖
+              {loadingLabel}
             </p>
           </div>
         ) : null}

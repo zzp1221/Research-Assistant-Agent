@@ -19,6 +19,15 @@ export default function GraphCanvas(props: GraphCanvasProps) {
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onNodeClick={onNodeClick}
+      onKeyDownCapture={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        if (!(event.target instanceof HTMLElement) || !event.target.matches('.react-flow__node')) return;
+        const node = nodes.find((candidate) => candidate.id === (event.target as HTMLElement).dataset.id);
+        if (!node) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onNodeClick(event, node);
+      }}
       nodesConnectable={false}
       nodesDraggable={false}
       onlyRenderVisibleElements={nodes.length > 120}

@@ -1,7 +1,9 @@
 import { lazy, memo, Suspense, useRef, useState } from 'react';
 import type { Edge, Node, OnEdgesChange, OnNodesChange } from '@xyflow/react';
-import { ChevronDown, Eye, MoreHorizontal, Play, RotateCcw, ShieldCheck, Square, X } from 'lucide-react';
+import { Ban, ChevronDown, Eye, MessageSquare, MoreHorizontal, Play, RefreshCw, RotateCcw, ShieldCheck, Square, WifiOff, X } from 'lucide-react';
 import type { IntentContext, MissingRequirement, PlanQuestion, RuntimeAction, Verification } from '../../contracts/api';
+import { describeConnectionState, planBusinessState } from '../../app/hooks/planObservation';
+import type { PlanBusinessState, PlanConnectionState } from '../../app/hooks/planObservation';
 import { VerificationBadge } from '../verification/VerificationBadge';
 
 const GraphCanvas = lazy(() => import('./GraphCanvas'));
@@ -41,7 +43,22 @@ interface GraphPanelProps {
   onApproveAndRun: () => void;
   onCancel: () => void;
   onRetryFailed: () => void;
+  /**
+   * Resume an already-started paused plan. Absent when the runtime has no
+   * backend-permitted resume action; a paused plan then only offers cancel.
+   */
+  onResume?: () => void;
   onOpenTask?: (taskId: string) => void;
+  /** Primary action gate computed by the view model from the business status. */
+  canRun?: boolean;
+  /** Local "execute returned 202" flag: the run must not be submitted again. */
+  startAccepted?: boolean;
+  /** Pause is an independent flag, not a plan status. */
+  planPaused?: boolean;
+  connectionState?: PlanConnectionState;
+  connectionDetail?: string;
+  /** Rebuild the observation flow only; never executes the plan. */
+  onReconnect?: () => void;
 }
 
 const intentLabels: Record<string, string> = {
@@ -101,6 +118,115 @@ const describeRuntimeAction = (action: RuntimeAction): string => {
 const runTriggerLabel = (trigger: 'manual' | 'auto' | '' | null | undefined) =>
   trigger === 'auto' ? '自动运行' : trigger === 'manual' ? '手动运行' : '未运行';
 
+/**
+ * Business label for the canvas pill. Derived from the server snapshot through
+ * `planBusinessState`, so `blocked`/`paused`/`unknown` never fall back to
+ * "待运行"; `unknown` stays explicitly unknown instead of pretending to be
+ * runnable.
+ */
+const planStateLabelFor = (
+  state: PlanBusinessState,
+  requiresReview: boolean | undefined,
+  requiresApproval: boolean | undefined,
+  hasNodes: boolean,
+  planStatus?: string | null,
+  outcome?: string | null,
+): string => {
+  if (requiresReview || state === 'review') return '待审阅';
+  if (requiresApproval || state === 'awaiting_approval') return '待批准';
+  switch (state) {
+    case 'observing':
+      return '运行中';
+    case 'awaiting_input':
+      return '待回答';
+    case 'paused':
+      return '已暂停';
+    case 'blocked':
+      return '已阻塞';
+    case 'terminal':
+      return terminalStateLabel(planStatus, outcome);
+    case 'runnable':
+      return hasNodes ? '待运行' : '未开始';
+    default:
+      return '未知状态';
+  }
+};
+
+/** Outcome/terminal labels (`outcome` already carries the fine-grained value). */
+const terminalStateLabel = (planStatus: string | null | undefined, outcome?: string | null): string => {
+  if (outcome && outcomeLabels[outcome]) return outcomeLabels[outcome];
+  switch (String(planStatus ?? '').trim()) {
+    case 'completed':
+      return '已完成';
+    case 'failed':
+      return '失败';
+    case 'canceled':
+      return '已取消';
+    default:
+      return '已结束';
+  }
+};
+
+/**
+ * Concrete help line for the current business state, so the canvas explains why
+ * the primary action is what it is. Wording stays user-facing: no stream/API/
+ * snapshot implementation details, only what the user can decide next.
+ */
+const businessHelpText = (
+  state: PlanBusinessState,
+  options: {
+    requiresReview?: boolean;
+    requiresApproval?: boolean;
+    startAccepted?: boolean;
+    hasPendingRuntimeActions?: boolean;
+    planStatus?: string | null;
+    outcome?: string | null;
+    connectionInterrupted?: boolean;
+  },
+): string => {
+  const body = (): string => {
+    if (options.startAccepted) {
+      return '正在确认启动，请稍候。';
+    }
+    if (options.requiresReview || state === 'review') {
+      return '计划还在审阅中，审阅通过后才会开始运行；请先打开审阅处理意见。';
+    }
+    if (options.requiresApproval || state === 'awaiting_approval') {
+      return options.hasPendingRuntimeActions
+        ? '计划在等你确认一项运行授权；请在上面的“需要你处理”里批准或拒绝。'
+        : '计划正在等待审批，批准后会立即开始（或继续）运行。';
+    }
+    switch (state) {
+      case 'observing':
+        return '计划正在运行，进度会自动更新。';
+      case 'awaiting_input':
+        return '先回答问题，计划会继续。';
+      case 'paused':
+        return '计划已暂停；恢复或取消后才能继续。';
+      case 'blocked':
+        return '计划暂时不能继续；先解决下面的问题。';
+      case 'terminal':
+        return `本次运行已结束：${terminalStateLabel(options.planStatus, options.outcome)}。可以查看结果，或按需重试。`;
+      case 'runnable':
+        return '计划尚未启动，可以从这里开始运行。';
+      default:
+        return '暂时无法确认计划状态，请刷新后再试。';
+    }
+  };
+  const text = body();
+  if (!options.connectionInterrupted) return text;
+  // A dropped feed never changes the business state. A run that is still going
+  // keeps that reassurance; a waiting gate also keeps its own next step.
+  const runContinues =
+    options.startAccepted === true ||
+    state === 'observing' ||
+    state === 'awaiting_approval' ||
+    state === 'awaiting_input';
+  if (!runContinues) return `进度更新中断，可重新连接。${text}`;
+  const interruptedNotice = '进度更新中断，可重新连接；任务仍在运行。';
+  return state === 'observing' ? interruptedNotice : `${interruptedNotice}${text}`;
+};
+
 function GraphCanvasSkeleton() {
   return (
     <div className="absolute inset-0 flex items-center justify-center" aria-busy="true" aria-label="正在加载执行图">
@@ -151,6 +277,13 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
     onApproveAndRun,
     onCancel,
     onRetryFailed,
+    onResume,
+    canRun,
+    startAccepted,
+    planPaused,
+    connectionState,
+    connectionDetail,
+    onReconnect,
   } = props;
   const completedCount = nodes.filter((node) => node.data.status === 'completed').length;
   const runningCount = nodes.filter((node) => node.data.status === 'in_progress').length;
@@ -162,21 +295,30 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
   const pendingRuntimeActions = (runtimeActions ?? []).filter((action) => action.status === 'pending');
   const pendingQuestions = (questions ?? []).filter((question) => question.status === 'pending');
   const pendingWorkCount = pendingQuestions.length + pendingRuntimeActions.length + (missingRequirements?.length ?? 0);
-  const planStateLabel = requiresReview
-    ? '待审阅'
-    : requiresApproval
-      ? '待批准'
-      : planStatus === 'in_progress'
-        ? '运行中'
-        : planStatus === 'completed'
-          ? '已完成'
-          : planStatus === 'failed'
-            ? '失败'
-            : planStatus === 'awaiting_input'
-              ? '待回答'
-              : nodes.length > 0
-                ? '待运行'
-                : '未开始';
+  // Business status comes from the server snapshot, never from the connection.
+  const businessState = planBusinessState(planStatus, planPaused === true);
+  const planStateLabel = planStateLabelFor(businessState, requiresReview, requiresApproval, nodes.length > 0, planStatus, outcome);
+  const connectionLabel = connectionState ? describeConnectionState(connectionState) : '';
+  // Design 4.4: an exhausted reconnect keeps the last snapshot and shows
+  // "更新已中断" plus an explicit "重新连接" entry, for any business status.
+  const showReconnect = connectionState === 'interrupted';
+  // `canRun` is the view model's business gate; the local `pendingCount` check
+  // keeps legacy callers on the previous behavior and stops an empty run.
+  const runAllowed =
+    businessState === 'runnable' &&
+    !startAccepted &&
+    !planPaused &&
+    pendingCount > 0 &&
+    pendingRuntimeActions.length === 0 &&
+    (canRun ?? true);
+  // A plan the server considers started (or whose start this view already had
+  // accepted). Kept separate from the local `isExecuting` flag so a refreshed
+  // run still exposes "cancel" and the observation hints.
+  const planStarted = startAccepted === true || businessState === 'observing';
+  // Cancel stays available for a run the server reports as active (including a
+  // paused one), whether or not this view started it.
+  const planCancelable =
+    isExecuting || businessState === 'observing' || businessState === 'paused' || startAccepted === true;
   const [questionDrafts, setQuestionDrafts] = useState<Record<string, { option: string; text: string }>>({});
   const [runtimeDecision, setRuntimeDecision] = useState<{ actionId: string; decision: 'approve' | 'reject' } | null>(null);
   const runtimeDecisionLockRef = useRef(false);
@@ -197,6 +339,258 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
       setRuntimeDecision(null);
     }
   };
+
+  // --- Primary action ------------------------------------------------------
+  // The business state owns the primary entry: a plan waiting for approval or
+  // an answer is *started but still observed*, so the runtime reports
+  // `isExecuting` for it too. Checking that local flag first replaced
+  // 审批并运行 / 回答问题 with 取消计划. Cancel stays as an explicit secondary
+  // control next to those gates instead.
+  const planIsPaused = planPaused === true || businessState === 'paused';
+
+  const cancelButton = (title: string) => (
+    <button
+      type="button"
+      onClick={onCancel}
+      title={title}
+      data-testid="plan-cancel"
+      className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-proof/40 bg-surface px-3 text-[10.5px] font-semibold text-proof transition-colors hover:bg-proof-soft active:translate-y-px"
+    >
+      <Square className="h-2.5 w-2.5 fill-current" />
+      取消计划
+    </button>
+  );
+
+  // Waiting gates: review, plan approval and plan questions. A paused plan keeps
+  // pause authoritative, so these entries never appear next to it.
+  const waitingGateAction = (() => {
+    if (planIsPaused) return null;
+    if (requiresReview || businessState === 'review') {
+      return (
+        <button type="button" onClick={onOpenReview} data-testid="plan-open-review" className="research-assistant-canvas-primary shrink-0 whitespace-nowrap">
+          <ShieldCheck className="h-3.5 w-3.5" />
+          去审阅
+        </button>
+      );
+    }
+    if (requiresApproval || businessState === 'awaiting_approval') {
+      // A pending runtime action must be decided on its own card first; the
+      // plan-level button would be a guaranteed rejection.
+      return pendingRuntimeActions.length > 0 ? (
+        <button
+          type="button"
+          onClick={() => setShowPendingWork(true)}
+          data-testid="plan-open-approval"
+          className="research-assistant-canvas-primary shrink-0 whitespace-nowrap"
+        >
+          <ShieldCheck className="h-3.5 w-3.5" />
+          处理审批
+        </button>
+      ) : (
+        <button type="button" onClick={onApproveAndRun} data-testid="plan-approve-and-run" className="research-assistant-canvas-primary shrink-0 whitespace-nowrap">
+          <ShieldCheck className="h-3.5 w-3.5" />
+          审批并运行
+        </button>
+      );
+    }
+    if (businessState === 'awaiting_input') {
+      return (
+        <button
+          type="button"
+          onClick={() => setShowPendingWork(true)}
+          disabled={pendingQuestions.length === 0}
+          data-testid="plan-answer-question"
+          title={pendingQuestions.length === 0 ? '还没有收到问题内容，请刷新后再试' : undefined}
+          className="research-assistant-canvas-primary shrink-0 whitespace-nowrap"
+        >
+          <MessageSquare className="h-3.5 w-3.5" />
+          回答问题
+        </button>
+      );
+    }
+    return null;
+  })();
+
+  const waitingGateWithCancel = waitingGateAction ? (
+    <>
+      {waitingGateAction}
+      {planCancelable ? cancelButton('取消这次运行；计划会停止等待') : null}
+    </>
+  ) : null;
+
+  // A paused plan that was already started is resumed or canceled. Resume is
+  // the primary entry and only exists when the runtime exposes the
+  // backend-permitted resume action; cancel stays the secondary control. Pause
+  // outranks the local `isExecuting` flag and every review/approval gate, and
+  // this entry never submits an execute, approve or retry request.
+  const resumeButton = onResume ? (
+    <button
+      type="button"
+      onClick={() => onResume()}
+      data-testid="plan-resume"
+      title="从暂停处继续；不会重新开始计划"
+      className="research-assistant-canvas-primary shrink-0 whitespace-nowrap"
+    >
+      <Play className="h-3 w-3 fill-current" />
+      恢复计划
+    </button>
+  ) : null;
+  const pausedAction = (
+    <>
+      {resumeButton}
+      {cancelButton('取消已暂停的计划')}
+    </>
+  );
+
+  const primaryAction = (() => {
+    if (showReconnect) {
+      // A dropped stream keeps the business state, the waiting gate and the
+      // cancel entry: the run continues, only the progress feed needs rebuilding.
+      return (
+        <>
+          {planIsPaused
+            ? pausedAction
+            : waitingGateWithCancel ?? (planCancelable ? cancelButton('取消这次运行；任务会停止') : null)}
+          <button
+            type="button"
+            onClick={() => onReconnect?.()}
+            disabled={!onReconnect}
+            data-testid="plan-reconnect"
+            title="重新获取进度；不会重新启动任务"
+            className="inline-flex h-8 max-w-[16rem] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-warn/45 bg-warn-soft px-3 text-[10.5px] font-semibold text-warn transition-colors hover:border-warn active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            重新连接
+          </button>
+        </>
+      );
+    }
+
+    // Pause is authoritative: it wins over the local execution flag and over
+    // the review/approval/question gates, so those entries can never replace it.
+    if (planIsPaused) return pausedAction;
+
+    if (waitingGateWithCancel) return waitingGateWithCancel;
+
+    // An accepted start keeps its 受理 entry (disabled) plus cancel, even while
+    // the runtime already observes it as executing: it must never fall back to
+    // a plain "run" and never be submitted twice.
+    if (startAccepted && businessState === 'runnable') {
+      return (
+        <>
+          <button
+            type="button"
+            onClick={onRunAll}
+            disabled
+            data-testid="plan-run"
+            title="正在确认启动，请稍候"
+            className="research-assistant-canvas-primary shrink-0 whitespace-nowrap"
+          >
+            <Play className="h-3 w-3 fill-current" />
+            启动已受理
+          </button>
+          {planCancelable ? cancelButton('取消这次运行；任务会停止') : null}
+        </>
+      );
+    }
+
+    if (isExecuting || businessState === 'observing') {
+      return cancelButton('取消正在运行的计划');
+    }
+
+    if (businessState === 'blocked') {
+      return (
+        <button
+          type="button"
+          onClick={() => setShowPendingWork(pendingWorkCount > 0)}
+          disabled={pendingWorkCount === 0}
+          data-testid="plan-blocked"
+          title="计划暂时不能继续；先解决下面的问题"
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-warn/45 bg-warn-soft px-3 text-[10.5px] font-semibold text-warn disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          <Ban className="h-3.5 w-3.5" />
+          已阻塞
+        </button>
+      );
+    }
+
+    if (businessState === 'terminal') {
+      const resultNode = [...nodes].reverse().find((node) => Boolean(node.data.task)) ?? null;
+      // Only a real failed node can be retried: the runtime returns immediately
+      // when there is nothing failed, so the button would do nothing.
+      if (failedCount > 0) {
+        return (
+          <button
+            type="button"
+            onClick={onRetryFailed}
+            data-testid="plan-retry-failed"
+            title="只重跑失败的节点；其余结果保留"
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-warn/40 bg-surface px-3 text-[10.5px] font-semibold text-warn transition-colors hover:bg-warn-soft active:translate-y-px"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            重试失败节点
+          </button>
+        );
+      }
+      // A failed plan without failed nodes still needs a working entry: adjust
+      // the plan through the review, otherwise fall back to the last results.
+      if (planStatus === 'failed' && onOpenReview) {
+        return (
+          <button type="button" onClick={onOpenReview} data-testid="plan-review-and-rerun" className="research-assistant-canvas-primary shrink-0 whitespace-nowrap">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            审阅后重新运行
+          </button>
+        );
+      }
+      if (resultNode) {
+        return (
+          <button
+            type="button"
+            onClick={() => onNodeClick(null, resultNode)}
+            data-testid="plan-view-result"
+            className="research-assistant-canvas-primary shrink-0 whitespace-nowrap"
+          >
+            <Eye className="h-3.5 w-3.5" />
+            查看结果
+          </button>
+        );
+      }
+      // A finished plan without result nodes has nothing left to run.
+      return null;
+    }
+
+    if (businessState === 'runnable') {
+      const blockedByRuntimeAction = pendingRuntimeActions.length > 0;
+      return (
+        <button
+          type="button"
+          onClick={onRunAll}
+          disabled={!runAllowed || blockedByRuntimeAction}
+          data-testid="plan-run"
+          title={blockedByRuntimeAction ? '先处理运行授权，再开始运行' : undefined}
+          className="research-assistant-canvas-primary shrink-0 whitespace-nowrap"
+        >
+          <Play className="h-3 w-3 fill-current" />
+          {runAllText}
+        </button>
+      );
+    }
+
+    // unknown: never default to "run"; keep the plan visible and non-actionable.
+    return (
+      <button
+        type="button"
+        onClick={() => onReconnect?.()}
+        disabled={!onReconnect}
+        data-testid="plan-refresh-state"
+        title="先刷新一次，确认计划的当前状态"
+        className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-line-strong bg-surface px-3 text-[10.5px] font-semibold text-ink-soft transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <RefreshCw className="h-3.5 w-3.5" />
+        刷新状态
+      </button>
+    );
+  })();
 
   return (
     <div className="research-assistant-graph-panel relative">
@@ -225,11 +619,32 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
           </div>
         </div>
 
-        <div className="research-assistant-canvas-actions">
+        <div className="research-assistant-canvas-actions flex-wrap justify-end">
           {planId ? (
-            <span className={`research-assistant-status-pill ${planStateLabel === '待审阅' || planStateLabel === '待批准' ? 'is-alert' : ''}`}>
+            <span
+              className={`research-assistant-status-pill ${planStateLabel === '待审阅' || planStateLabel === '待批准' || planStateLabel === '已阻塞' ? 'is-alert' : ''}`}
+              data-testid="plan-state-pill"
+              title={businessHelpText(businessState, { requiresReview, requiresApproval, startAccepted, hasPendingRuntimeActions: pendingRuntimeActions.length > 0, planStatus, outcome, connectionInterrupted: showReconnect })}
+            >
               <i aria-hidden="true" />
               {planStateLabel}
+            </span>
+          ) : null}
+          {connectionLabel ? (
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${
+                connectionState === 'interrupted'
+                  ? 'border-warn/40 bg-warn-soft text-warn'
+                  : connectionState === 'live'
+                    ? 'border-ok/30 bg-ok-soft text-ok'
+                    : 'border-line bg-surface text-muted'
+              }`}
+              data-testid="plan-connection-pill"
+              data-connection-state={connectionState}
+              title={connectionDetail || connectionLabel}
+            >
+              {connectionState === 'interrupted' ? <WifiOff className="h-3 w-3" aria-hidden="true" /> : <span className={`h-1.5 w-1.5 rounded-full ${connectionState === 'live' ? 'bg-ok' : 'bg-muted'}`} aria-hidden="true" />}
+              {connectionLabel}
             </span>
           ) : null}
           {pendingWorkCount > 0 ? (
@@ -245,38 +660,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
             </button>
           ) : null}
 
-          {isExecuting ? (
-            <button type="button" onClick={onCancel} title="取消计划" className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-proof/40 bg-surface px-3 text-[10.5px] font-semibold text-proof transition-colors hover:bg-proof-soft active:translate-y-px">
-              <Square className="h-2.5 w-2.5 fill-current" />
-              取消计划
-            </button>
-          ) : requiresReview ? (
-            <button type="button" onClick={onOpenReview} className="research-assistant-canvas-primary">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              去审阅
-            </button>
-          ) : requiresApproval ? (
-            <button type="button" onClick={onApproveAndRun} className="research-assistant-canvas-primary">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              审批并运行
-            </button>
-          ) : failedCount > 0 ? (
-            <button type="button" onClick={onRetryFailed} className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-warn/40 bg-surface px-3 text-[10.5px] font-semibold text-warn transition-colors hover:bg-warn-soft active:translate-y-px">
-              <RotateCcw className="h-3.5 w-3.5" />
-              重试失败节点
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onRunAll}
-              disabled={pendingCount === 0 || pendingRuntimeActions.length > 0}
-              title={pendingRuntimeActions.length > 0 ? '先处理运行权限确认' : undefined}
-              className="research-assistant-canvas-primary"
-            >
-              <Play className="h-3 w-3 fill-current" />
-              {runAllText}
-            </button>
-          )}
+          {primaryAction}
 
           {nodes.length > 0 ? (
             <button
@@ -305,6 +689,38 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
           </button>
         </div>
       </header>
+
+      {planId || nodes.length > 0 ? (
+        <div
+          className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-6 pb-2.5 pt-1.5 text-[10.5px] leading-4 text-muted"
+          data-testid="plan-statusline"
+        >
+          <span className="min-w-0 flex-1 break-words" data-testid="plan-business-help">
+            {businessHelpText(businessState, {
+              requiresReview,
+              requiresApproval,
+              startAccepted,
+              hasPendingRuntimeActions: pendingRuntimeActions.length > 0,
+              planStatus,
+              outcome,
+              connectionInterrupted: showReconnect,
+            })}
+          </span>
+          {connectionLabel ? (
+            <span
+              className={`shrink-0 ${connectionState === 'interrupted' ? 'text-warn' : connectionState === 'live' ? 'text-ok' : 'text-muted'}`}
+              data-testid="plan-connection-detail"
+            >
+              {connectionDetail ? `${connectionLabel} · ${connectionDetail}` : connectionLabel}
+            </span>
+          ) : null}
+          {planStarted && !isExecuting && businessState !== 'terminal' ? (
+            <span className="shrink-0 text-proof" data-testid="plan-start-accepted">
+              {startAccepted ? '启动已受理' : '任务运行中'}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       {showColophon ? (
         <div className="absolute right-6 top-[86px] z-30 w-[min(420px,calc(100%-3rem))] rounded-2xl border border-line bg-surface p-4 shadow-float">

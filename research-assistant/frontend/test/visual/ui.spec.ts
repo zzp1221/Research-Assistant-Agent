@@ -23,7 +23,7 @@ const sessionState = {
   ],
 };
 
-async function seedPlanSession(page: Page) {
+async function openPlanSession(page: Page) {
   await page.addInitScript(({ key, value }) => {
     window.localStorage.setItem(key, value);
   }, { key: 'research-assistant.chat-sessions.v1', value: JSON.stringify(sessionState) });
@@ -33,6 +33,9 @@ async function seedPlanSession(page: Page) {
   await page.route(/\/api\/plans\/a11y-plan$/, async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan_graph: planGraph }) });
   });
+  await page.goto('/');
+  // The restored graph is visible before the authoritative plan status arrives.
+  await expect(page.getByTestId('plan-business-help')).toContainText('本次运行已结束：已完成');
 }
 
 test('home empty state', async ({ page }) => {
@@ -49,26 +52,27 @@ test('session menu open', async ({ page }) => {
 });
 
 test('plan graph', async ({ page }) => {
-  await seedPlanSession(page);
-  await page.goto('/');
+  await openPlanSession(page);
   await expect(page.locator('.react-flow__node').first()).toBeVisible();
   await expect(page).toHaveScreenshot('plan-graph.png');
 });
 
 test('node sidebar logs', async ({ page }) => {
-  await seedPlanSession(page);
-  await page.goto('/');
+  await openPlanSession(page);
   await page.locator('.react-flow__node').first().click();
   await expect(page.locator('.research-assistant-execution-sidebar')).toBeVisible();
   await expect(page).toHaveScreenshot('node-sidebar.png');
 });
 
 test('benchmark report', async ({ page }) => {
-  await seedPlanSession(page);
-  await page.goto('/');
+  await openPlanSession(page);
   await page.locator('.react-flow__node').first().click();
   await page.getByRole('tab', { name: '评测报告' }).click();
   await expect(page.getByText('已通过隐藏标签验收')).toBeVisible();
+  // Clicking the tab may scroll its container; compare the report from the top.
+  await page.locator('.research-assistant-execution-sidebar').evaluate((sidebar) => {
+    sidebar.querySelectorAll<HTMLElement>('*').forEach((element) => { element.scrollTop = 0; });
+  });
   await expect(page).toHaveScreenshot('benchmark-report.png');
 });
 
