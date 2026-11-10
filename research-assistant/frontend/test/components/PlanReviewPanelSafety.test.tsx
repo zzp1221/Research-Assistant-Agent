@@ -219,11 +219,16 @@ describe('PlanReviewPanel safety boundaries', () => {
   });
 
   it('returns a historical snapshot to read-only after leaving an unsaved fork', async () => {
+    const comparison = deferred<Awaited<ReturnType<typeof api.getPlanDiff>>>();
+    vi.mocked(api.getPlanDiff).mockReturnValue(comparison.promise);
     render(<PlanReviewPanel planId="plan-1" onClose={vi.fn()} />);
     await screen.findByDisplayValue('原始节点');
     fireEvent.click(screen.getByRole('button', { name: /^r1/ }));
     await waitFor(() => expect(screen.getByDisplayValue('原始节点')).toBeDisabled());
     fireEvent.click(screen.getByRole('button', { name: /基于此版本创建草稿/ }));
+    await waitFor(() => expect(api.getPlanDiff).toHaveBeenCalledExactlyOnceWith('plan-1', 1, 2));
+    // Finish the automatic comparison before exercising version navigation.
+    await act(async () => { comparison.resolve([]); });
     await waitFor(() => expect(screen.getByDisplayValue('原始节点')).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: /^r2/ }));
     fireEvent.click(await screen.findByRole('button', { name: '放弃修改' }));
