@@ -231,6 +231,14 @@ jobs:
       - name: Visual regression
         working-directory: research-assistant/frontend
         run: npm run test:visual
+      - name: Upload visual regression failures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-failures
+          path: research-assistant/frontend/test-results
+          if-no-files-found: ignore
+          retention-days: 7
 
   python:
     runs-on: ubuntu-latest
