@@ -69,6 +69,10 @@ test('benchmark report', async ({ page }) => {
   await page.locator('.react-flow__node').first().click();
   await page.getByRole('tab', { name: '评测报告' }).click();
   await expect(page.getByText('已通过隐藏标签验收')).toBeVisible();
+  // Clicking the tab may scroll its container; compare the report from the top.
+  await page.locator('.research-assistant-execution-sidebar').evaluate((sidebar) => {
+    sidebar.querySelectorAll<HTMLElement>('*').forEach((element) => { element.scrollTop = 0; });
+  });
   await expect(page).toHaveScreenshot('benchmark-report.png');
 });
 
