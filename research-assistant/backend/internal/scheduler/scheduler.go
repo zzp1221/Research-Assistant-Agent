@@ -247,8 +247,6 @@ func (s *Scheduler) claimTerminalCommit(planID string) bool {
 	return claimed
 }
 
-
-
 // checkPlanStall publishes plan_stalled when an in-progress plan has no task
 // progress for PLAN_STALL_SECONDS (default 10 minutes). It never kills a plan:
 // long legitimately silent commands are common, so the event is advisory.
