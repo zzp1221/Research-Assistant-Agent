@@ -25,6 +25,10 @@ func (s *Scheduler) CancelPlanWithActor(planID, reason, actor string) error {
 			return fmt.Errorf("plan cannot be canceled from status %s", plan.Status)
 		}
 		plan.Status = models.StatusCanceled
+		// A canceled plan still needs a result. The reason distinguishes a user
+		// cancel from a budget stop without inventing a canceled outcome.
+		plan.Outcome = models.OutcomeFailed
+		plan.OutcomeReason = reason
 		plan.Usage.FinishedAt = &now
 		plan.UpdatedAt = now
 		for _, task := range plan.Nodes {
@@ -57,6 +61,12 @@ func (s *Scheduler) CancelPlanWithActor(planID, reason, actor string) error {
 	}); err != nil {
 		return err
 	}
+	if !s.claimTerminalCommit(planID) {
+		// Another path already published this stop; the status is committed and
+		// the side effects must not run twice.
+		s.notifyProgress()
+		return nil
+	}
 	payload := map[string]any{"reason": reason}
 	if actor != "" {
 		payload["actor"] = actor
@@ -82,7 +92,9 @@ func (s *Scheduler) CancelPlanWithActor(planID, reason, actor string) error {
 
 func (s *Scheduler) RetryTask(planID, taskID string) error {
 	now := time.Now()
+	events := []models.PlanEvent{}
 	if err := s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
+		events = events[:0]
 		if plan.Status == models.StatusInProgress {
 			return fmt.Errorf("cannot retry a task while the plan is running")
 		}
@@ -100,9 +112,30 @@ func (s *Scheduler) RetryTask(planID, taskID string) error {
 			return fmt.Errorf("task cannot be retried from status %s", task.Status)
 		}
 		resetTaskForRetry(task, now)
-		resetBlockedDependents(plan, taskID, now)
+		// A retry is a new attempt: the artifacts of the previous attempt must be
+		// re-produced, otherwise an old diagnostic would be re-certified simply
+		// because the node now reports completed.
+		if removed := invalidateTaskArtifacts(plan, taskID); len(removed) > 0 {
+			events = append(events, models.PlanEvent{
+				PlanID:    planID,
+				EventType: "artifacts_invalidated",
+				TaskID:    taskID,
+				Payload:   map[string]any{"artifact_keys": removed, "reason": "task_retry"},
+				Timestamp: now,
+			})
+		}
+		events = append(events, resetBlockedDependents(plan, taskID, now)...)
+		refreshBlockedNodes(plan, now)
+		// A rerun is a new attempt: the previous terminal verdict no longer
+		// describes the plan, so it must not survive into the new run.
 		plan.Status = models.StatusPending
+		plan.Outcome = ""
+		plan.OutcomeReason = ""
+		plan.OutcomeDetails = nil
 		plan.Usage.FinishedAt = nil
+		// A rerun is a new attempt: its terminal transition must run its own
+		// side effects instead of inheriting the previous round's marker.
+		plan.TerminalCommittedAt = nil
 		plan.UpdatedAt = now
 		fillMeta(plan)
 		return nil
@@ -110,6 +143,10 @@ func (s *Scheduler) RetryTask(planID, taskID string) error {
 		return err
 	}
 	s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "task_retry_requested", TaskID: taskID, TaskStatus: string(models.StatusPending), Timestamp: now})
+	for _, event := range events {
+		s.publishAndStore(planID, event)
+	}
+	s.notifyProgress()
 	return nil
 }
 
@@ -213,6 +250,7 @@ func (s *Scheduler) ResetFromNode(planID, taskID string) error {
 			}
 			resetTaskForRetry(node, now)
 			node.Usage = nil
+			node.BlockInfo = nil
 			resetIDs = append(resetIDs, node.ID)
 		}
 		for key, artifact := range plan.Artifacts {
@@ -232,17 +270,18 @@ func (s *Scheduler) ResetFromNode(planID, taskID string) error {
 		plan.Status = models.StatusPending
 		plan.Outcome = ""
 		plan.OutcomeReason = ""
+		plan.OutcomeDetails = nil
 		plan.MissingRequirements = nil
 		plan.Paused = false
 		plan.PausedAt = nil
 		plan.Usage.FinishedAt = nil
+		plan.TerminalCommittedAt = nil
 		plan.UpdatedAt = now
 		fillMeta(plan)
 		return nil
 	}); err != nil {
 		return err
 	}
-	s.clearTerminalMarker(planID)
 	s.publishAndStore(planID, models.PlanEvent{
 		PlanID:    planID,
 		EventType: "plan_rewound",
@@ -256,10 +295,12 @@ func (s *Scheduler) ResetFromNode(planID, taskID string) error {
 
 func (s *Scheduler) ReassignTask(planID, taskID, assignedTo string) error {
 	now := time.Now()
+	events := []models.PlanEvent{}
 	if assignedTo == "" {
 		return fmt.Errorf("assigned agent is required")
 	}
 	if err := s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
+		events = events[:0]
 		task := getNodeByID(plan, taskID)
 		if task == nil {
 			return fmt.Errorf("task not found: %s", taskID)
@@ -269,14 +310,24 @@ func (s *Scheduler) ReassignTask(planID, taskID, assignedTo string) error {
 		}
 		task.AssignedTo = assignedTo
 		resetTaskForRetry(task, now)
-		resetBlockedDependents(plan, taskID, now)
+		invalidateTaskArtifacts(plan, taskID)
+		events = append(events, resetBlockedDependents(plan, taskID, now)...)
 		plan.Status = models.StatusPending
+		plan.Outcome = ""
+		plan.OutcomeReason = ""
+		plan.OutcomeDetails = nil
+		plan.Usage.FinishedAt = nil
+		plan.TerminalCommittedAt = nil
 		plan.UpdatedAt = now
 		fillMeta(plan)
 		return nil
 	}); err != nil {
 		return err
 	}
+	for _, event := range events {
+		s.publishAndStore(planID, event)
+	}
+	s.notifyProgress()
 	s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "task_reassigned", TaskID: taskID, TaskStatus: string(models.StatusPending), Payload: map[string]any{"assigned_to": assignedTo}, Timestamp: now})
 	return nil
 }

@@ -97,9 +97,20 @@ func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*m
 			s.releaseGlobalSlot()
 			return nil
 		}
-		executionID, leaseOwner, executionEpoch, err := s.markTaskStarted(planID, task.ID)
+		executionID, leaseOwner, executionEpoch, err := s.markTaskStarted(planID, task.ID, taskDispatchGuard(planForBudget, task.ID))
 		if err != nil {
+			// The budget was reserved before the lease. A dispatch that never starts
+			// must give it back, otherwise a refused stale dispatch would leak the
+			// owner's remaining budget.
+			s.releaseTaskReservation(planID, task.ID)
 			s.releaseGlobalSlot()
+			if errors.Is(err, errTaskNotDispatchable) {
+				// The node was blocked or its dependencies changed between the ready
+				// snapshot and the lease acquisition. Refusing here is what stops a
+				// stale dispatch from starting an already-stopped node.
+				s.notifyProgress()
+				return nil
+			}
 			return err
 		}
 
@@ -173,49 +184,22 @@ func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*m
 			metrics.RecordTask(taskType, string(result.Status), time.Since(startedAt))
 			s.settleTaskBudget(planID, taskID, result.Usage)
 
-			// A structured question pauses the task without consuming a retry or
-			// failing the plan; the scheduler resumes it after the answer.
-			if result.Question != nil {
-				if err := s.applyQuestionFromTask(planID, taskID, result.Question); err != nil {
-					log.Printf("scheduler: persist question failed for %s: %v", taskID, err)
-				}
-				return
-			}
-
-			if result.Status != models.StatusCompleted {
-				if result.Error == "" {
-					result.Error = fmt.Sprintf("task returned non-completed status %q", result.Status)
-				}
-				retrying, err := s.markTaskFailed(planID, taskID, executionID, leaseOwner, executionEpoch, result, true)
-				if errors.Is(err, ErrStaleExecution) {
-					s.publishDiscardedResult(planID, taskID, executionID, leaseOwner)
-					return
-				}
-				if err != nil {
-					log.Printf("scheduler: markTaskFailed failed for %s: %v", taskID, err)
-					return
-				}
-				if !retrying && shouldBlockOnFailure(currentTask) {
-					if err := s.blockDependents(planID, taskID); err != nil {
-						log.Printf("scheduler: blockDependents failed for %s: %v", taskID, err)
-						return
-					}
-				}
-				s.postTaskBudgetCheck(planID)
-				return
-			}
-
-			if err := s.markTaskCompleted(planID, taskID, executionID, leaseOwner, executionEpoch, result); errors.Is(err, ErrStaleExecution) {
+			// One shared transition for waits, completions and stops. A wait keeps
+			// the task on awaiting_* without a failure, a retry charge or a blocked
+			// dependent; only a real stop propagates upstream_failed.
+			_, _, transitionErr := s.applyTaskResult(planID, taskID, executionID, leaseOwner, executionEpoch, result, execErr, taskAllowedRetry(currentTask))
+			if errors.Is(transitionErr, ErrStaleExecution) {
 				s.publishDiscardedResult(planID, taskID, executionID, leaseOwner)
 				return
-			} else if err != nil {
-				log.Printf("scheduler: markTaskCompleted failed for %s: %v", taskID, err)
-				failed := &models.TaskExecutionResult{Status: models.StatusFailed, Error: err.Error()}
-				if _, markErr := s.markTaskFailed(planID, taskID, executionID, leaseOwner, executionEpoch, failed, true); markErr != nil {
-					log.Printf("scheduler: markTaskFailed after completion validation failed for %s: %v", taskID, markErr)
+			}
+			if transitionErr != nil {
+				// A completion that fails artifact/protocol validation is a real
+				// task failure, not a stale result.
+				log.Printf("scheduler: result transition failed for %s: %v", taskID, transitionErr)
+				failed := &models.TaskExecutionResult{Status: models.StatusFailed, Error: transitionErr.Error()}
+				if _, markErr := s.markTaskFailed(planID, taskID, executionID, leaseOwner, executionEpoch, failed, false); markErr != nil && !errors.Is(markErr, ErrStaleExecution) {
+					log.Printf("scheduler: markTaskFailed after transition error failed for %s: %v", taskID, markErr)
 				}
-				s.postTaskBudgetCheck(planID)
-				return
 			}
 			s.postTaskBudgetCheck(planID)
 		}()

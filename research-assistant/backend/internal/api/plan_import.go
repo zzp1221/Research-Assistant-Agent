@@ -50,6 +50,11 @@ func (r *planRuntime) importPlan(c *gin.Context) {
 	plan.SessionID = sessionID
 	plan.TraceID = firstNonEmptyString(plan.TraceID, uuid.NewString())
 	plan.Status = models.StatusPending
+	// Imported contracts keep their acceptance/optional declaration but never
+	// inherit a previous terminal result.
+	plan.Outcome = ""
+	plan.OutcomeReason = ""
+	plan.OutcomeDetails = nil
 	plan.CreatedAt = now
 	plan.UpdatedAt = now
 	if strings.TrimSpace(payload.Title) != "" {
@@ -69,6 +74,18 @@ func (r *planRuntime) importPlan(c *gin.Context) {
 		if node.Status == "" {
 			node.Status = models.StatusPending
 		}
+		// A run's diagnostic state never travels with an imported contract: the
+		// optional/acceptance fields do, the failure/block state does not.
+		node.BlockInfo = nil
+		node.Failure = nil
+		node.ReplanProposal = nil
+		node.Recovery = nil
+		node.NextAttemptAt = nil
+		node.FinishedAt = nil
+		node.StartedAt = nil
+		node.ExecutionID = ""
+		node.LeaseOwner = ""
+		node.LeaseExpiresAt = nil
 	}
 	intentContext := models.IntentContext{RawIntent: plan.UserIntent, IntentType: plan.IntentType}
 	configurePlanGovernance(plan, intentContext, userID, sessionID)

@@ -21,6 +21,7 @@ import { formatApiError } from '../../services/api/apiError';
 import { parseBenchmarkReport } from '../benchmark/benchmarkReport';
 import { VerificationBadge, VerificationDetails } from '../verification/VerificationBadge';
 import { getAgentIcon, getAgentLabel } from '../shared/agentVisuals';
+import { BlockedReason } from '../shared/PlanOutcomeBits';
 import { DEFAULT_LOG_TAIL, filterLogs, splitLogLines, windowLogs, type LogLevel } from './logWindow';
 import { AgentRunDetails } from './AgentRunDetails';
 
@@ -544,6 +545,35 @@ function ExecutionSidebarShell(props: ExecutionSidebarShellProps) {
               <th scope="row" className="border-r border-line px-4 py-1.5 text-left text-[9.5px] font-normal text-muted">任务类型</th>
               <td className="px-3 py-1.5 journal-num text-[11px] text-ink-soft">{selectedTask.Type || '—'}</td>
             </tr>
+            {selectedTask.Optional || (selectedTask.OptionalDependencies?.length ?? 0) > 0 ? (
+              <tr className="border-b border-line">
+                <th scope="row" className="border-r border-line px-4 py-1.5 text-left text-[9.5px] font-normal text-muted">必需性</th>
+                <td className="px-3 py-1.5 text-[11px] text-ink-soft" data-testid="task-optionality">
+                  {selectedTask.Optional ? '可选工作（失败不影响核心目标）' : '核心工作'}
+                  {selectedTask.OptionalDependencies && selectedTask.OptionalDependencies.length > 0
+                    ? ` · 可选依赖 ${selectedTask.OptionalDependencies.join('、')}`
+                    : ''}
+                </td>
+              </tr>
+            ) : null}
+            {selectedTask.Status === 'blocked' || selectedTask.BlockInfo ? (
+              <tr className="border-b border-line">
+                <th scope="row" className="border-r border-line px-4 py-1.5 text-left text-[9.5px] font-normal text-muted">阻断原因</th>
+                <td className="px-3 py-1.5 text-[11px] text-ink-soft">
+                  <BlockedReason blockInfo={selectedTask.BlockInfo} error={selectedTask.Error} />
+                  {selectedTask.BlockInfo?.causes && selectedTask.BlockInfo.causes.length > 0 ? (
+                    <ul className="mt-1 space-y-0.5">
+                      {selectedTask.BlockInfo.causes.map((cause) => (
+                        <li key={`${cause.root_task_id}-${cause.via_task_id ?? ''}-${cause.revision ?? 0}`} className="journal-num text-[10px] text-muted" data-testid="task-blocked-cause">
+                          根因 {cause.root_task_id}
+                          {cause.via_task_id && cause.via_task_id !== cause.root_task_id ? ` · 经 ${cause.via_task_id}` : ''} · {cause.status}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </td>
+              </tr>
+            ) : null}
             {selectedTask.Usage && (
               <tr className="border-b border-line">
                 <th scope="row" className="border-r border-line px-4 py-1.5 text-left text-[9.5px] font-normal text-muted">成本</th>

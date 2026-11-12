@@ -57,6 +57,13 @@ func (s *Scheduler) budgetGate(planID string) (bool, error) {
 	return s.applyBudgetTrigger(plan, trigger, status)
 }
 
+// cancelForBudget stops a plan that still has work but no remaining attempt
+// budget. It records the terminal reason (user-facing message) before the
+// cancellation, so the resulting canceled/failed pair always names the cause.
+func (s *Scheduler) cancelForBudget(planID string) {
+	_ = s.CancelPlan(planID, "run budget exceeded")
+}
+
 // postTaskBudgetCheck re-evaluates a plan after settled usage is folded in.
 // It only uses actual spend, so a completed task cannot be pre-blocked by the
 // next task's estimate.

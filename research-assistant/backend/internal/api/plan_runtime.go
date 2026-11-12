@@ -233,6 +233,20 @@ func RegisterPlanRuntimeRoutes(
 			log.Printf("[sandbox] cleanup plan %s removed %d container(s)", plan.ID, removed)
 		}
 	})
+	// Compensate terminal plans whose side effects never ran: a stop committed
+	// right before a restart leaves no event, no budget release and no memory
+	// record, and nothing else scans plans that already carry a terminal status.
+	if plans, err := planStore.ListPlans(); err == nil {
+		for _, plan := range plans {
+			if plan == nil || plan.TerminalCommittedAt != nil {
+				continue
+			}
+			switch plan.Status {
+			case models.StatusCompleted, models.StatusFailed, models.StatusCanceled:
+				runner.ReconcileTerminalCommits(context.Background(), plan.ID)
+			}
+		}
+	}
 	runtime := newPlanRuntimeWithStores(p, planStore, projectStore, budgetManager, runner, eventBus)
 	runtime.revisions = revisionStore
 	runtime.toolRegistry = toolRuntime.tools
@@ -791,14 +805,10 @@ func (r *planRuntime) getPlan(c *gin.Context) {
 	if !ok {
 		return
 	}
-	// Lazy timeout sweep: a paused plan must honour question deadlines even if
-	// no scheduler goroutine is currently iterating it.
-	if hasPendingQuestions(plan) {
-		_, _ = r.scheduler.ExpireQuestionsNow(plan.ID)
-		if refreshed, err := r.store.GetPlan(plan.ID); err == nil && refreshed != nil {
-			plan = refreshed
-		}
-	}
+	// Lazy timeout sweep: a paused plan must honour its question and approval
+	// deadlines even if no scheduler goroutine is currently iterating it, and a
+	// stop committed before a restart must still get its terminal side effects.
+	plan = r.sweepLazyTimeouts(plan)
 	hydratePlanForResponse(plan)
 	c.JSON(http.StatusOK, gin.H{"plan_graph": plan})
 }
@@ -1167,6 +1177,29 @@ func (r *planRuntime) executeTask(c *gin.Context) {
 	if task.Status == models.StatusInProgress {
 		c.JSON(http.StatusConflict, gin.H{"error": "task is already running"})
 		return
+	}
+	// A pending approval or question means the runtime expects a human decision
+	// first. Starting the node behind that wait is the same bypass the scheduler
+	// refuses at lease time.
+	if task.Status == models.StatusAwaitingApproval {
+		c.JSON(http.StatusConflict, gin.H{"error": "task is awaiting runtime approval; decide or cancel the action first", "code": "task_awaiting_approval"})
+		return
+	}
+	if task.Status == models.StatusAwaitingInput {
+		c.JSON(http.StatusConflict, gin.H{"error": "task is awaiting an answer; answer or cancel the question first", "code": "task_awaiting_input"})
+		return
+	}
+	for _, action := range plan.RuntimeActions {
+		if action.TaskID == task.ID && action.Status == models.RuntimeActionPending {
+			c.JSON(http.StatusConflict, gin.H{"error": "task has a pending runtime action; decide or cancel it first", "code": "task_approval_pending"})
+			return
+		}
+	}
+	for i := range plan.Questions {
+		if plan.Questions[i].TaskID == task.ID && plan.Questions[i].Status == models.QuestionPending {
+			c.JSON(http.StatusConflict, gin.H{"error": "task has a pending question; answer or cancel it first", "code": "task_question_pending"})
+			return
+		}
 	}
 	if plan.Budget.MaxTaskAttempts > 0 && plan.Usage.TaskAttempts >= plan.Budget.MaxTaskAttempts {
 		c.JSON(http.StatusConflict, gin.H{"error": "task attempt budget exceeded"})

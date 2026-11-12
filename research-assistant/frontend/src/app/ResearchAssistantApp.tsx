@@ -23,7 +23,7 @@ import { ApprovalInboxPanel } from '../features/review/ApprovalInboxPanel';
 import { useWorkbenchBudget, type WorkbenchBudgetState } from './hooks/useWorkbenchBudget';
 import { answerQuestion, listApprovals } from '../services/api/researchAssistantApi';
 import { getDesktopBridge } from '../services/desktopBridge';
-import type { IntentContext, MissingRequirement, PlanQuestion, RuntimeAction, UploadedFile } from '../contracts/api';
+import type { IntentContext, MissingRequirement, OutcomeDetails, PlanQuestion, RuntimeAction, UploadedFile } from '../contracts/api';
 import type { PlanExecutionTrigger } from '../services/api/researchAssistantApi';
 import { isPdfAttachment } from '../features/pdf-viewer/pdfAttachment';
 
@@ -58,6 +58,7 @@ interface ResearchAssistantWorkspaceContentProps {
     activePlanId: string | null;
     activePlanStatus: string | null;
     activePlanOutcome: string | null;
+    activePlanOutcomeDetails?: OutcomeDetails | null;
     activePlanMissingRequirements: MissingRequirement[];
     activePlanRuntimeActions: RuntimeAction[];
     activePlanQuestions?: PlanQuestion[];
@@ -133,6 +134,7 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
     activePlanId: chatFlow.activePlanId,
     activePlanStatus: chatFlow.activePlanStatus,
     activePlanOutcome: chatFlow.activePlanOutcome,
+    activePlanOutcomeDetails: null,
     activePlanMissingRequirements: chatFlow.activePlanMissingRequirements,
     activePlanRuntimeActions: chatFlow.activePlanRuntimeActions,
     activePlanQuestions: chatFlow.activePlanQuestions ?? [],
@@ -562,6 +564,7 @@ export default function ResearchAssistantApp() {
             activePlanId: chatFlow.activePlanId,
             activePlanStatus: chatFlow.activePlanStatus,
             activePlanOutcome: chatFlow.activePlanGraph?.outcome ?? null,
+            activePlanOutcomeDetails: chatFlow.activePlanGraph?.outcome_details ?? null,
             activePlanMissingRequirements: chatFlow.activePlanGraph?.missing_requirements ?? [],
             activePlanRuntimeActions: chatFlow.activePlanGraph?.runtime_actions ?? [],
             activePlanQuestions: chatFlow.activePlanGraph?.questions ?? [],

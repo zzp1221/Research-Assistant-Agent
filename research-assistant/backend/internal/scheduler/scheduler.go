@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"log"
 	"os"
 	"research-assistant-backend/internal/blobstore"
 	"research-assistant-backend/internal/budget"
@@ -74,8 +75,6 @@ type Scheduler struct {
 	activityMu    sync.Mutex
 	lastActivity  map[string]time.Time
 	stallNotified map[string]time.Time
-	terminalMu    sync.Mutex
-	terminals     map[string]time.Time
 	// budget is the owner cost ledger. It is optional; nil disables user-budget
 	// reservations while plan-level RunBudget limits still apply.
 	budget       *budget.Manager
@@ -120,7 +119,6 @@ func NewScheduler(planStore store.PlanStore, executor TaskExecutor, publisher Ev
 		globalSlots:   make(chan struct{}, globalLimit),
 		lastActivity:  map[string]time.Time{},
 		stallNotified: map[string]time.Time{},
-		terminals:     map[string]time.Time{},
 		reservations:  map[string]budget.Reservation{},
 	}
 }
@@ -206,23 +204,13 @@ func (s *Scheduler) releaseGlobalSlot() {
 	}
 }
 
-// recordTerminalMetrics records one terminal transition per execution. It is
-// idempotent so the different terminal paths cannot double count.
+// recordTerminalMetrics reports one terminal transition per execution. The
+// one-shot guarantee is owned by claimTerminalCommit, so this only records the
+// metric for a transition that has already claimed it.
 func (s *Scheduler) recordTerminalMetrics(planID string) {
-	if s == nil || strings.TrimSpace(planID) == "" {
+	if s == nil || s.store == nil || strings.TrimSpace(planID) == "" {
 		return
 	}
-	s.terminalMu.Lock()
-	if s.terminals == nil {
-		s.terminals = map[string]time.Time{}
-	}
-	if _, seen := s.terminals[planID]; seen {
-		s.terminalMu.Unlock()
-		return
-	}
-	s.terminals[planID] = time.Now()
-	s.terminalMu.Unlock()
-
 	plan, err := s.store.GetPlan(planID)
 	if err != nil || plan == nil {
 		return
@@ -235,11 +223,31 @@ func (s *Scheduler) recordTerminalMetrics(planID string) {
 	metrics.RecordPlanTerminal(string(plan.Status), string(plan.Outcome), duration)
 }
 
-func (s *Scheduler) clearTerminalMarker(planID string) {
-	s.terminalMu.Lock()
-	defer s.terminalMu.Unlock()
-	delete(s.terminals, planID)
+// claimTerminalCommit atomically marks the terminal side effects of a plan as
+// run and reports whether THIS caller owns them. The marker lives in the plan
+// snapshot, so the claim survives a restart and two entry points observing the
+// same timeout can never both publish, clean up or notify.
+func (s *Scheduler) claimTerminalCommit(planID string) bool {
+	if s == nil || s.store == nil || strings.TrimSpace(planID) == "" {
+		return false
+	}
+	claimed := false
+	now := time.Now()
+	if err := s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
+		if plan.TerminalCommittedAt != nil {
+			return nil
+		}
+		plan.TerminalCommittedAt = &now
+		claimed = true
+		return nil
+	}); err != nil {
+		log.Printf("scheduler: claim terminal commit for %s failed: %v", planID, err)
+		return false
+	}
+	return claimed
 }
+
+
 
 // checkPlanStall publishes plan_stalled when an in-progress plan has no task
 // progress for PLAN_STALL_SECONDS (default 10 minutes). It never kills a plan:

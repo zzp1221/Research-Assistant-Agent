@@ -119,6 +119,13 @@ func diffPlanGraphs(fromGraph, toGraph *models.PlanGraph) planDiff {
 	addBudget("max_download_bytes", fromGraph.Budget.MaxDownloadBytes, toGraph.Budget.MaxDownloadBytes, fromGraph.Budget.MaxDownloadBytes != toGraph.Budget.MaxDownloadBytes)
 	addBudget("policy", fromGraph.Budget.Policy, toGraph.Budget.Policy, fromGraph.Budget.Policy != toGraph.Budget.Policy)
 	result.Diff = append(result.Diff, beforeBudget...)
+	// The acceptance contract is part of what a reviewer approves, so a change
+	// to it must appear in the revision diff instead of only in the raw graph.
+	beforeAcceptance := acceptanceFingerprint(fromGraph)
+	afterAcceptance := acceptanceFingerprint(toGraph)
+	if beforeAcceptance != afterAcceptance {
+		result.Diff = append(result.Diff, diffEntry{Kind: "acceptance_changed", Field: "acceptance", Before: beforeAcceptance, After: afterAcceptance})
+	}
 	return result
 }
 
@@ -138,6 +145,12 @@ func diffNodeFields(nodeID string, before, after *models.TaskNode) []diffEntry {
 	add("priority", before.Priority, after.Priority, before.Priority != after.Priority)
 	add("parallelizable", before.Parallelizable, after.Parallelizable, before.Parallelizable != after.Parallelizable)
 	add("enabled", before.IsEnabled(), after.IsEnabled(), before.IsEnabled() != after.IsEnabled())
+	add("optional", before.IsOptional(), after.IsOptional(), before.IsOptional() != after.IsOptional())
+	beforeOptional := append([]string(nil), before.OptionalDependencies...)
+	afterOptional := append([]string(nil), after.OptionalDependencies...)
+	sort.Strings(beforeOptional)
+	sort.Strings(afterOptional)
+	add("optional_dependencies", beforeOptional, afterOptional, strings.Join(beforeOptional, ",") != strings.Join(afterOptional, ","))
 	beforeDeps := append([]string(nil), before.Dependencies...)
 	afterDeps := append([]string(nil), after.Dependencies...)
 	sort.Strings(beforeDeps)
@@ -192,6 +205,25 @@ func valueEqual(left, right any) bool {
 	}
 }
 
+// acceptanceFingerprint is a stable short description of the acceptance
+// contract, used by the revision diff.
+func acceptanceFingerprint(plan *models.PlanGraph) string {
+	if plan == nil || plan.Acceptance == nil || plan.Acceptance.IsZero() {
+		return ""
+	}
+	parts := []string{}
+	for _, goal := range plan.Acceptance.Goals {
+		parts = append(parts, goal.ID+":"+goal.Statement)
+	}
+	if len(plan.Acceptance.RequiredArtifacts) > 0 {
+		parts = append(parts, "artifacts="+strings.Join(plan.Acceptance.RequiredArtifacts, ","))
+	}
+	if len(plan.Acceptance.RequiredTaskIDs) > 0 {
+		parts = append(parts, "tasks="+strings.Join(plan.Acceptance.RequiredTaskIDs, ","))
+	}
+	return strings.Join(parts, "; ")
+}
+
 // diffSummary renders a short human-readable list for PlanRevision.DiffSummary.
 func diffSummary(diff planDiff) []string {
 	out := make([]string, 0, len(diff.Diff))
@@ -209,6 +241,8 @@ func diffSummary(diff planDiff) []string {
 			out = append(out, "修改节点 "+entry.NodeID+" 字段 "+entry.Field)
 		case "budget_changed":
 			out = append(out, "修改预算 "+entry.Field)
+		case "acceptance_changed":
+			out = append(out, "修改验收合同")
 		}
 	}
 	if len(out) > 20 {

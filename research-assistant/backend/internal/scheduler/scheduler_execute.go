@@ -31,6 +31,13 @@ func (s *Scheduler) ExecutePlan(ctx context.Context, planID string) error {
 		plan.Status = models.StatusInProgress
 		plan.Usage.StartedAt = &now
 		plan.Usage.FinishedAt = nil
+		// A new run must not inherit the previous terminal result or its
+		// explanation; the history stays in the event log.
+		plan.Outcome = ""
+		plan.OutcomeReason = ""
+		plan.OutcomeDetails = nil
+		// A new execution round owns its own terminal transition.
+		plan.TerminalCommittedAt = nil
 		plan.UpdatedAt = now
 		return nil
 	}); err != nil {
@@ -41,7 +48,6 @@ func (s *Scheduler) ExecutePlan(ctx context.Context, planID string) error {
 		EventType: "plan_started",
 		Timestamp: time.Now(),
 	})
-	s.clearTerminalMarker(planID)
 	metrics.Default().AddGauge("active_plans", 1, nil)
 	s.touchActivity(planID)
 
@@ -66,6 +72,9 @@ executionLoop:
 		if expired, expireErr := s.expireApprovalActions(planID); expireErr != nil {
 			return expireErr
 		} else if expired {
+			// Same for an approval timeout: the decision is committed by the sweep,
+			// the terminal pipeline is not.
+			s.finishExternalTerminal(ctx, planID)
 			return nil
 		}
 		// Questions have their own timeout budget. Expiring one either resumes
@@ -74,6 +83,9 @@ executionLoop:
 		if expired, expireErr := s.expireQuestions(planID); expireErr != nil {
 			return expireErr
 		} else if expired {
+			// The timeout already committed failed/blocked; the terminal event,
+			// cleanup, budget release and callback still have to run once.
+			s.finishExternalTerminal(ctx, planID)
 			return nil
 		}
 		plan, err := s.store.GetPlan(planID)
@@ -81,9 +93,14 @@ executionLoop:
 			return err
 		}
 		if plan.Status == models.StatusCanceled {
+			s.finishExternalTerminal(ctx, planID)
 			return nil
 		}
-		if plan.Status == models.StatusFailed && plan.Outcome == models.OutcomeBlocked {
+		if plan.Status == models.StatusFailed {
+			// A stop decided outside this loop (approval rejected, approval or
+			// question timeout, terminal guard) still needs its event, cleanup and
+			// metrics published exactly once.
+			s.finishExternalTerminal(ctx, planID)
 			return nil
 		}
 		// A paused plan keeps its running tasks but dispatches nothing new. The
@@ -99,8 +116,11 @@ executionLoop:
 			continue
 		}
 		s.checkPlanStall(ctx, plan)
+		// The attempt budget only stops new work; it never rewrites a plan whose
+		// tasks already ended. reconcilePlanState re-checks this on the committed
+		// state, so a snapshot cannot decide the terminal result.
 		if budgetExceeded(plan) {
-			_ = s.CancelPlan(planID, "run budget exceeded")
+			s.cancelForBudget(planID)
 			return fmt.Errorf("run budget exceeded")
 		}
 
@@ -129,150 +149,23 @@ executionLoop:
 		availableSlots := s.maxConcurrent - countInProgress(plan)
 		ready := s.findReadyNodes(plan, availableSlots)
 		if len(ready) == 0 {
-			deferredRetry := false
-			for _, node := range plan.Nodes {
-				if node != nil && (node.Status == models.StatusPending || node.Status == models.StatusReady) && node.NextAttemptAt != nil && time.Now().Before(*node.NextAttemptAt) {
-					deferredRetry = true
-					break
-				}
-			}
-			if deferredRetry {
-				s.wait(ctx, pollInterval)
-				continue
-			}
-			if hasAwaitingApproval(plan) || hasAwaitingInput(plan) {
-				s.wait(ctx, 500*time.Millisecond)
-				continue
-			}
-			if allTerminal(plan) {
-				finalStatus := models.StatusCompleted
-				if err := s.store.UpdatePlan(planID, func(current *models.PlanGraph) error {
-					if current.Status == models.StatusCanceled {
-						return ErrPlanCanceled
-					}
-					if !allTerminal(current) {
-						return ErrPlanStateChanged
-					}
-					outcome := models.OutcomeCompleted
-					if hasFailure(current) {
-						finalStatus = models.StatusFailed
-						if hasBlockedOnly(current) {
-							outcome = models.OutcomeBlocked
-						} else {
-							outcome = models.OutcomeFailed
-						}
-					}
-					if s.finalizer != nil && finalStatus == models.StatusCompleted {
-						if finalizeErr := s.finalizer.Finalize(ctx, current); finalizeErr != nil {
-							finalStatus = models.StatusFailed
-							outcome = models.OutcomeFailed
-							current.OutcomeReason = finalizeErr.Error()
-						} else {
-							outcome = current.Outcome
-							if outcome == "" {
-								outcome = models.OutcomeCompleted
-							}
-						}
-					}
-					if finalStatus == models.StatusFailed && outcome == "" {
-						outcome = models.OutcomeFailed
-					}
-					now := time.Now()
-					current.Status = finalStatus
-					current.Outcome = outcome
-					current.Usage.FinishedAt = &now
-					current.UpdatedAt = now
-					fillMeta(current)
+			outcome, reconcileErr := s.reconcilePlanState(ctx, plan)
+			if reconcileErr != nil {
+				if errors.Is(reconcileErr, ErrPlanCanceled) {
 					return nil
-				}); err != nil {
-					if errors.Is(err, ErrPlanCanceled) {
-						return nil
-					}
-					if errors.Is(err, ErrPlanStateChanged) {
-						continue executionLoop
-					}
-					return err
 				}
-
-				eventType := "plan_completed"
-				if finalStatus == models.StatusFailed {
-					eventType = "plan_failed"
-				}
-				latest, _ := s.store.GetPlan(planID)
-				if s.memorySink != nil && latest != nil {
-					_ = s.memorySink.RecordPlan(ctx, latest)
-				}
-				outcome := models.OutcomeCompleted
-				if latest != nil && latest.Outcome != "" {
-					outcome = latest.Outcome
-				}
-				s.publishAndStore(planID, models.PlanEvent{
-					PlanID:    planID,
-					EventType: eventType,
-					Payload:   map[string]any{"outcome": string(outcome)},
-					Timestamp: time.Now(),
-				})
-				s.cleanupPlanSandboxes(context.Background(), planID)
-				s.releasePlanBudget(planID)
-				s.recordTerminalMetrics(planID)
-				if s.onTerminal != nil {
-					if latest, getErr := s.store.GetPlan(planID); getErr == nil && latest != nil {
-						s.onTerminal(ctx, latest)
-					} else {
-						s.onTerminal(ctx, plan)
-					}
-				}
-				return nil
+				return reconcileErr
 			}
-
-			if noRunning(plan) {
-				// Re-check the attempt budget against the refreshed plan: a task may
-				// have failed between the loop-top check and this deadlock check.
-				if budgetExceeded(plan) {
-					_ = s.CancelPlan(planID, "run budget exceeded")
-					return fmt.Errorf("run budget exceeded")
-				}
-				if err := s.store.UpdatePlan(planID, func(current *models.PlanGraph) error {
-					if current.Status == models.StatusCanceled {
-						return ErrPlanCanceled
-					}
-					if !noRunning(current) || len(s.promotePendingNodesToReady(current)) > 0 {
-						return ErrPlanStateChanged
-					}
-					current.Status = models.StatusFailed
-					current.UpdatedAt = time.Now()
-					fillMeta(current)
-					return nil
-				}); err != nil {
-					if errors.Is(err, ErrPlanCanceled) {
-						return nil
-					}
-					if errors.Is(err, ErrPlanStateChanged) {
-						continue executionLoop
-					}
-					return err
-				}
-				s.publishAndStore(planID, models.PlanEvent{
-					PlanID:    planID,
-					EventType: "plan_failed",
-					Payload: map[string]any{
-						"reason": "deadlock_or_unsatisfied_dependencies",
-					},
-					Timestamp: time.Now(),
-				})
-				s.cleanupPlanSandboxes(context.Background(), planID)
-				s.releasePlanBudget(planID)
-				s.recordTerminalMetrics(planID)
-				if s.onTerminal != nil {
-					if latest, getErr := s.store.GetPlan(planID); getErr == nil && latest != nil {
-						s.onTerminal(ctx, latest)
-					} else {
-						s.onTerminal(ctx, plan)
-					}
-				}
+			switch outcome {
+			case reconcileTerminal:
 				return nil
+			case reconcileContinue:
+				// Runnable work exists but was not dispatchable (for example the
+				// global slots are saturated). Wait for a wake-up instead of
+				// spinning, and never write a terminal status for it.
+				s.wait(ctx, 100*time.Millisecond)
+				continue executionLoop
 			}
-
 			s.wait(ctx, pollInterval)
 			continue
 		}
@@ -314,6 +207,13 @@ func (s *Scheduler) ExecuteTask(ctx context.Context, planID, taskID string) (*mo
 	if task.Status == models.StatusInProgress {
 		return nil, fmt.Errorf("task is already running")
 	}
+	// The manual entry point uses the same legality predicate as automatic
+	// dispatch: a node whose hard dependencies are not satisfied, that is blocked
+	// on a real cause, or that still has a pending approval/question must not be
+	// started behind the scheduler's back.
+	if err := dispatchLegality(plan, task); err != nil {
+		return nil, err
+	}
 	// Single-node execution is still spend: honour the plan and user budget
 	// gates and settle measured usage exactly like a scheduled task.
 	if blocked, err := s.budgetGate(planID); err != nil {
@@ -325,8 +225,12 @@ func (s *Scheduler) ExecuteTask(ctx context.Context, planID, taskID string) (*mo
 		return nil, err
 	}
 	defer s.releaseTaskReservation(planID, taskID)
-	executionID, leaseOwner, executionEpoch, err := s.markTaskStarted(planID, taskID)
+	// The legality predicate is re-checked inside the same UpdatePlan that takes
+	// the lease, so a decision made between the snapshot read above and this
+	// commit cannot start an already-stopped node.
+	executionID, leaseOwner, executionEpoch, err := s.markTaskStarted(planID, taskID, taskDispatchGuard(plan, taskID))
 	if err != nil {
+		s.releaseTaskReservation(planID, taskID)
 		return nil, err
 	}
 
@@ -350,11 +254,8 @@ func (s *Scheduler) ExecuteTask(ctx context.Context, planID, taskID string) (*mo
 	}
 
 	result, execErr := s.executor.ExecuteTask(taskCtx, plan, task)
-	if execErr != nil {
-		if result == nil {
-			result = &models.TaskExecutionResult{}
-		}
-		result.Status, result.Error = models.StatusFailed, execErr.Error()
+	if result != nil && result.Status == "" && execErr == nil {
+		result.Status = models.StatusCompleted
 	}
 	if result == nil {
 		result = &models.TaskExecutionResult{
@@ -362,8 +263,8 @@ func (s *Scheduler) ExecuteTask(ctx context.Context, planID, taskID string) (*mo
 			Error:  "task execution returned nil result",
 		}
 	}
-	if result.Status == "" {
-		result.Status = models.StatusCompleted
+	if execErr != nil && result.Status != models.StatusCanceled {
+		result.Status, result.Error = models.StatusFailed, execErr.Error()
 	}
 	result.Usage = taskUsageFromSnapshot(recorder.Snapshot(), time.Since(startedAt))
 	if controller := recovery.FromContext(taskCtx); controller != nil {
@@ -371,34 +272,18 @@ func (s *Scheduler) ExecuteTask(ctx context.Context, planID, taskID string) (*mo
 		result.Recovery = &snapshot
 	}
 	s.settleTaskBudget(planID, taskID, result.Usage)
-	if result.Question != nil {
-		if err := s.applyQuestionFromTask(planID, taskID, result.Question); err != nil {
-			return nil, err
-		}
-		return result, nil
-	}
-
-	if result.Status != models.StatusCompleted {
-		if result.Error == "" {
-			result.Error = fmt.Sprintf("task returned non-completed status %q", result.Status)
-		}
-		if _, markErr := s.markTaskFailed(planID, taskID, executionID, leaseOwner, executionEpoch, result, false); markErr != nil {
-			return result, markErr
+	if _, _, transitionErr := s.applyTaskResult(planID, taskID, executionID, leaseOwner, executionEpoch, result, execErr, false); transitionErr != nil {
+		// A non-stale protocol/validation error still means this execution is over.
+		// Committing the real failure releases the lease and records the reason;
+		// only a stale execution keeps its result discarded.
+		if !errors.Is(transitionErr, ErrStaleExecution) {
+			failed := &models.TaskExecutionResult{Status: models.StatusFailed, Error: transitionErr.Error()}
+			if _, markErr := s.markTaskFailed(planID, taskID, executionID, leaseOwner, executionEpoch, failed, false); markErr != nil && !errors.Is(markErr, ErrStaleExecution) {
+				return result, markErr
+			}
 		}
 		s.postTaskBudgetCheck(planID)
-		return result, nil
-	}
-
-	if err := s.markTaskCompleted(planID, taskID, executionID, leaseOwner, executionEpoch, result); err != nil {
-		failed := &models.TaskExecutionResult{
-			Status: models.StatusFailed,
-			Error:  err.Error(),
-		}
-		if _, markErr := s.markTaskFailed(planID, taskID, executionID, leaseOwner, executionEpoch, failed, false); markErr != nil {
-			return result, markErr
-		}
-		s.postTaskBudgetCheck(planID)
-		return result, err
+		return result, transitionErr
 	}
 	s.postTaskBudgetCheck(planID)
 	return result, nil
@@ -406,6 +291,7 @@ func (s *Scheduler) ExecuteTask(ctx context.Context, planID, taskID string) (*mo
 
 func (s *Scheduler) promotePendingNodesToReady(plan *models.PlanGraph) []models.PlanEvent {
 	events := []models.PlanEvent{}
+	now := time.Now()
 	for _, node := range plan.Nodes {
 		if node == nil || node.Status != models.StatusPending {
 			continue
@@ -415,20 +301,20 @@ func (s *Scheduler) promotePendingNodesToReady(plan *models.PlanGraph) []models.
 		// continue without executing the node.
 		if !node.IsEnabled() {
 			node.Status = models.StatusSkipped
-			node.UpdatedAt = time.Now()
+			node.UpdatedAt = now
 			events = append(events, models.PlanEvent{
 				PlanID:     plan.ID,
 				EventType:  "task_skipped",
 				TaskID:     node.ID,
 				TaskStatus: string(node.Status),
 				Payload:    map[string]any{"name": node.Name, "reason": "disabled"},
-				Timestamp:  time.Now(),
+				Timestamp:  now,
 			})
 			continue
 		}
-		if allDependenciesCompleted(plan, node) && artifactsSatisfied(plan, node) {
+		if hardDependenciesSatisfied(plan, node) && optionalDependenciesSatisfied(plan, node) && requiredArtifactsSatisfied(plan, node) {
 			node.Status = models.StatusReady
-			node.UpdatedAt = time.Now()
+			node.UpdatedAt = now
 			events = append(events, models.PlanEvent{
 				PlanID:     plan.ID,
 				EventType:  "task_ready",
@@ -438,12 +324,12 @@ func (s *Scheduler) promotePendingNodesToReady(plan *models.PlanGraph) []models.
 					"name":   node.Name,
 					"inputs": summarizeTaskInputs(plan, node),
 				},
-				Timestamp: time.Now(),
+				Timestamp: now,
 			})
 		}
 	}
 	if len(events) > 0 {
-		plan.UpdatedAt = time.Now()
+		plan.UpdatedAt = now
 	}
 	return events
 }

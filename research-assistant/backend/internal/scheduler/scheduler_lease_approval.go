@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+// expireStaleLeases fails tasks whose execution lease expired and propagates the
+// resulting block to their hard dependents in the same state transition.
 func (s *Scheduler) expireStaleLeases(planID string) error {
 	now := time.Now()
 	current, err := s.store.GetPlan(planID)
@@ -55,6 +57,7 @@ func (s *Scheduler) expireStaleLeases(planID string) error {
 				Payload:    map[string]any{"error": task.Error, "reason": "lease_expired"},
 				Timestamp:  now,
 			})
+			events = append(events, propagateBlockToDependents(plan, task, now)...)
 		}
 		fillMeta(plan)
 		return nil
@@ -66,37 +69,6 @@ func (s *Scheduler) expireStaleLeases(planID string) error {
 		s.publishAndStore(planID, event)
 	}
 	return nil
-}
-
-func resetTaskForRetry(task *models.TaskNode, now time.Time) {
-	task.Status = models.StatusPending
-	task.Result = ""
-	task.Error = ""
-	task.ExecutionID = ""
-	task.LeaseOwner = ""
-	task.LeaseExpiresAt = nil
-	task.RunCount = 0
-	task.StartedAt = nil
-	task.FinishedAt = nil
-	task.UpdatedAt = now
-}
-
-func resetBlockedDependents(plan *models.PlanGraph, taskID string, now time.Time) {
-	visited := map[string]bool{}
-	var visit func(string)
-	visit = func(currentID string) {
-		for _, next := range getOutgoingNodes(plan, currentID) {
-			if next == nil || visited[next.ID] {
-				continue
-			}
-			visited[next.ID] = true
-			if next.Status == models.StatusBlocked || next.Status == models.StatusCanceled {
-				resetTaskForRetry(next, now)
-			}
-			visit(next.ID)
-		}
-	}
-	visit(taskID)
 }
 
 // approvalTimeoutSeconds is the independent budget for waiting on a human
@@ -132,14 +104,15 @@ func effectivePlanElapsed(plan *models.PlanGraph, now time.Time) time.Duration {
 	return elapsed
 }
 
+// budgetExceeded reports whether the plan has spent its configured budget.
+// It is only consulted for a plan that still has work left: a plan whose tasks
+// all ended naturally is summarized by its acceptance result instead of being
+// rewritten as a budget cancel (see scheduler_execute.go ordering).
 func budgetExceeded(plan *models.PlanGraph) bool {
 	if plan == nil {
 		return false
 	}
-	// A plan that finished every task successfully must not be canceled just
-	// because it used its final allowed attempt. Any other terminal mix
-	// (failure/blocked/canceled) still means the budget was exhausted.
-	if plan.Budget.MaxTaskAttempts > 0 && plan.Usage.TaskAttempts >= plan.Budget.MaxTaskAttempts && noRunning(plan) && !allSucceeded(plan) {
+	if plan.Budget.MaxTaskAttempts > 0 && plan.Usage.TaskAttempts >= plan.Budget.MaxTaskAttempts && noRunning(plan) && !allSucceeded(plan) && !allTerminal(plan) {
 		return true
 	}
 	if plan.Budget.MaxDurationSec <= 0 || plan.Usage.StartedAt == nil {
@@ -197,8 +170,20 @@ func (s *Scheduler) expireApprovalActions(planID string) (bool, error) {
 			if task != nil {
 				task.Status = models.StatusBlocked
 				task.Error = "approval timed out after " + strconv.Itoa(approvalTimeoutSeconds()) + "s"
+				task.BlockInfo = &models.BlockInfo{
+					Code:       models.BlockUpstreamBlocked,
+					Message:    "approval timed out",
+					OccurredAt: now,
+					Causes: []models.BlockCause{{
+						Code:       models.BlockUpstreamBlocked,
+						RootTaskID: task.ID,
+						Status:     models.StatusBlocked,
+						Message:    "approval timed out",
+					}},
+				}
 				task.FinishedAt = &now
 				task.UpdatedAt = now
+				events = append(events, propagateBlockToDependents(plan, task, now)...)
 			}
 			plan.MissingRequirements = appendMissingRequirement(plan.MissingRequirements, models.MissingRequirement{
 				Kind:        "approval_timeout",
@@ -246,17 +231,30 @@ func (s *Scheduler) expireApprovalActions(planID string) (bool, error) {
 	for _, event := range events {
 		s.publishAndStore(planID, event)
 	}
+	// The sweep commits the state and the events only. The terminal event,
+	// sandbox cleanup, budget release, memory record and callback belong to the
+	// shared one-shot pipeline, so this path cannot publish a second terminal
+	// event or claim the marker before finishExternalTerminal runs.
 	if expired {
-		s.publishAndStore(planID, models.PlanEvent{
-			PlanID:    planID,
-			EventType: "plan_failed",
-			Payload:   map[string]any{"outcome": string(models.OutcomeBlocked), "reason": "approval_timeout"},
-			Timestamp: time.Now(),
-		})
-		s.cleanupPlanSandboxes(context.Background(), planID)
-		s.recordTerminalMetrics(planID)
+		s.notifyProgress()
 	}
-	s.notifyProgress()
+	return expired, nil
+}
+
+// ExpireApprovalsNow runs the approval timeout sweep for one plan outside the
+// execution loop, mirroring ExpireQuestionsNow. API reads call it so a plan that
+// is waiting for a decision still honours APPROVAL_TIMEOUT_SECONDS after a
+// restart, when no scheduler goroutine is iterating the plan.
+func (s *Scheduler) ExpireApprovalsNow(planID string) (bool, error) {
+	expired, err := s.expireApprovalActions(planID)
+	if err != nil {
+		return expired, err
+	}
+	if expired {
+		s.finishExternalTerminal(context.Background(), planID)
+	}
+	// The plan may already be terminal from an earlier interrupted run.
+	s.ReconcileTerminalCommits(context.Background(), planID)
 	return expired, nil
 }
 
@@ -272,48 +270,4 @@ func (s *Scheduler) publishDiscardedResult(planID, taskID, executionID, leaseOwn
 		},
 		Timestamp: time.Now(),
 	})
-}
-
-func (s *Scheduler) blockDependents(planID, taskID string) error {
-	events := []models.PlanEvent{}
-	err := s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
-		visited := map[string]bool{}
-		var visit func(string)
-		visit = func(currentID string) {
-			for _, next := range getOutgoingNodes(plan, currentID) {
-				if next == nil || visited[next.ID] {
-					continue
-				}
-				visited[next.ID] = true
-				if next.Status == models.StatusPending || next.Status == models.StatusReady {
-					next.Status = models.StatusBlocked
-					next.UpdatedAt = time.Now()
-					events = append(events, models.PlanEvent{
-						PlanID:     planID,
-						EventType:  "task_blocked",
-						TaskID:     next.ID,
-						TaskStatus: string(models.StatusBlocked),
-						Payload: map[string]any{
-							"reason":           "upstream_failed",
-							"upstream_task_id": currentID,
-						},
-						Timestamp: time.Now(),
-					})
-				}
-				visit(next.ID)
-			}
-		}
-		visit(taskID)
-		fillMeta(plan)
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	if len(events) > 0 {
-		for _, event := range events {
-			s.publishAndStore(planID, event)
-		}
-	}
-	return nil
 }

@@ -6,6 +6,8 @@ export const PLAN_EVENTS = {
   TASK_LOG: 'task_log',
   ARTIFACT_CREATED: 'artifact_created',
   TASK_BLOCKED: 'task_blocked',
+  TASK_UNBLOCKED: 'task_unblocked',
+  TASK_BLOCK_REASON_UPDATED: 'task_block_reason_updated',
   TASK_COMPLETED: 'task_completed',
   TASK_FAILED: 'task_failed',
   PLAN_COMPLETED: 'plan_completed',

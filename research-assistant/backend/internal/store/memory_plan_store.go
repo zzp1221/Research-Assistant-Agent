@@ -172,6 +172,10 @@ func clonePlanGraph(plan *models.PlanGraph) *models.PlanGraph {
 		waitingSince := *plan.Usage.ApprovalWaitingSince
 		cloned.Usage.ApprovalWaitingSince = &waitingSince
 	}
+	if plan.TerminalCommittedAt != nil {
+		committedAt := *plan.TerminalCommittedAt
+		cloned.TerminalCommittedAt = &committedAt
+	}
 	cloned.Nodes = make([]*models.TaskNode, 0, len(plan.Nodes))
 	for _, node := range plan.Nodes {
 		if node == nil {
@@ -182,6 +186,14 @@ func clonePlanGraph(plan *models.PlanGraph) *models.PlanGraph {
 		nodeCopy.Recovery = cloneTyped(node.Recovery)
 		nodeCopy.Failure = cloneTyped(node.Failure)
 		nodeCopy.ReplanProposal = cloneTyped(node.ReplanProposal)
+		nodeCopy.BlockInfo = cloneTyped(node.BlockInfo)
+		if node.Optional != nil {
+			optional := *node.Optional
+			nodeCopy.Optional = &optional
+		}
+		if node.OptionalDependencies != nil {
+			nodeCopy.OptionalDependencies = append([]string(nil), node.OptionalDependencies...)
+		}
 		if node.NextAttemptAt != nil {
 			next := *node.NextAttemptAt
 			nodeCopy.NextAttemptAt = &next
@@ -241,6 +253,20 @@ func clonePlanGraph(plan *models.PlanGraph) *models.PlanGraph {
 	if plan.Meta.MemoryRefs != nil {
 		cloned.Meta.MemoryRefs = append([]string(nil), plan.Meta.MemoryRefs...)
 	}
+	if plan.Acceptance != nil {
+		acceptance := *plan.Acceptance
+		if plan.Acceptance.Goals != nil {
+			acceptance.Goals = cloneTyped(plan.Acceptance.Goals)
+		}
+		if plan.Acceptance.RequiredArtifacts != nil {
+			acceptance.RequiredArtifacts = append([]string(nil), plan.Acceptance.RequiredArtifacts...)
+		}
+		if plan.Acceptance.RequiredTaskIDs != nil {
+			acceptance.RequiredTaskIDs = append([]string(nil), plan.Acceptance.RequiredTaskIDs...)
+		}
+		cloned.Acceptance = &acceptance
+	}
+	cloned.OutcomeDetails = cloneTyped(plan.OutcomeDetails)
 
 	cloned.Artifacts = make(map[string]models.Artifact, len(plan.Artifacts))
 	cloned.RuntimeActions = cloneTyped(plan.RuntimeActions)

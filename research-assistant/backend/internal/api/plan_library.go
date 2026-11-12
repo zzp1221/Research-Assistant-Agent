@@ -719,8 +719,16 @@ func duplicateNodes(nodes []*models.TaskNode) []*models.TaskNode {
 		copyNode.ExecutionEpoch = 0
 		copyNode.RunCount = 0
 		copyNode.Verification = nil
+		copyNode.BlockInfo = nil
+		copyNode.Failure = nil
+		copyNode.ReplanProposal = nil
+		copyNode.Recovery = nil
+		copyNode.NextAttemptAt = nil
 		copyNode.Inputs = cloneAnyMap(node.Inputs)
 		copyNode.Dependencies = append([]string(nil), node.Dependencies...)
+		// The optional contract travels with the copy: a duplicate is a new run of
+		// the same plan, not a silently stricter or looser one.
+		copyNode.OptionalDependencies = append([]string(nil), node.OptionalDependencies...)
 		copyNode.RequiredArtifacts = append([]string(nil), node.RequiredArtifacts...)
 		copyNode.OutputArtifacts = append([]string(nil), node.OutputArtifacts...)
 		copyNode.Contract.InputArtifacts = append([]string(nil), node.Contract.InputArtifacts...)

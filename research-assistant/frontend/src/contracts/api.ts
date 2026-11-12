@@ -318,6 +318,12 @@ export interface Task {
   Recovery?: AgentRecoveryState;
   Failure?: AgentFailureInfo;
   ReplanProposal?: AgentReplanProposal;
+  /** Optional work: losing it does not break the plan's core goal. */
+  Optional?: boolean;
+  /** Producers this node waits for without requiring their success. */
+  OptionalDependencies?: string[];
+  /** Structured reason the node is blocked (server-derived, survives refresh). */
+  BlockInfo?: BlockInfo;
 }
 
 export interface GraphTask {
@@ -361,7 +367,58 @@ export interface GraphTask {
   recovery?: AgentRecoveryState;
   failure?: AgentFailureInfo;
   replan_proposal?: AgentReplanProposal;
+  /** Optional work: its failure does not break the plan's core goal. */
+  optional?: boolean;
+  /** Producers to wait for without requiring their success. */
+  optional_dependencies?: string[];
+  /** Structured reason this node is blocked (server-derived). */
+  block_info?: BlockInfo;
   metadata?: { agent_run?: AgentRunState; [key: string]: unknown };
+}
+
+/** One effective blocking source of a blocked task. */
+export interface BlockCause {
+  code: string;
+  root_task_id: string;
+  via_task_id?: string;
+  revision?: number;
+  execution_epoch?: number;
+  status: string;
+  message?: string;
+}
+
+export interface BlockInfo {
+  code: string;
+  message?: string;
+  causes?: BlockCause[];
+  occurred_at: string;
+}
+
+/** One core acceptance goal and the evidence that proved it. */
+export interface AcceptedGoalDetail {
+  id: string;
+  statement: string;
+  evidence_refs?: string[];
+  verified: boolean;
+  reason?: string;
+}
+
+/** One enabled optional task that did not complete. */
+export interface OptionalLoss {
+  task_id: string;
+  name?: string;
+  status: string;
+  reason?: string;
+}
+
+export interface OutcomeDetails {
+  mode?: string;
+  accepted_goals?: AcceptedGoalDetail[];
+  optional_losses?: OptionalLoss[];
+  missing_artifacts?: string[];
+  limitations?: string[];
+  claims_verified?: number;
+  claims_total?: number;
 }
 
 export interface TaskUsageModel {
@@ -546,6 +603,14 @@ export interface PlanGraph {
   status: string;
   outcome?: string;
   outcome_reason?: string;
+  outcome_details?: OutcomeDetails;
+  /** Pre-execution acceptance contract; absent on legacy plans. */
+  acceptance?: {
+    version?: string;
+    goals?: { id: string; statement: string; evidence_refs?: string[]; min_verified_claims?: number }[];
+    required_artifacts?: string[];
+    required_task_ids?: string[];
+  };
   current_revision?: number;
   review?: ReviewState;
   questions?: PlanQuestion[];

@@ -76,6 +76,9 @@ export const graphTaskToTask = (task: GraphTask): Task => ({
   Recovery: task.recovery,
   Failure: task.failure,
   ReplanProposal: task.replan_proposal,
+  Optional: task.optional === true,
+  OptionalDependencies: task.optional_dependencies ?? [],
+  BlockInfo: task.block_info,
 });
 
 // Go marshals a nil slice as JSON null, so a plan created before a dependency
@@ -86,6 +89,7 @@ export const normalizePlanGraph = (planGraph: PlanGraph): PlanGraph => ({
   nodes: (planGraph.nodes ?? []).map((task) => ({
     ...task,
     dependencies: task.dependencies ?? [],
+    optional_dependencies: task.optional_dependencies ?? [],
     required_artifacts: task.required_artifacts ?? [],
     output_artifacts: task.output_artifacts ?? [],
     inputs: task.inputs ?? {},

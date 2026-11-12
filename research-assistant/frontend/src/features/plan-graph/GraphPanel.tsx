@@ -4,6 +4,8 @@ import { Ban, ChevronDown, Eye, MessageSquare, MoreHorizontal, Play, RefreshCw, 
 import type { IntentContext, MissingRequirement, PlanQuestion, RuntimeAction, Verification } from '../../contracts/api';
 import { describeConnectionState, planBusinessState } from '../../app/hooks/planObservation';
 import type { PlanBusinessState, PlanConnectionState } from '../../app/hooks/planObservation';
+import type { OutcomeDetails } from '../../contracts/api';
+import { summarizePlanOutcome } from '../shared/planOutcome';
 import { VerificationBadge } from '../verification/VerificationBadge';
 
 const GraphCanvas = lazy(() => import('./GraphCanvas'));
@@ -16,6 +18,8 @@ interface GraphPanelProps {
   onNodeClick: (_: unknown, node: Node) => void;
   intentContext: IntentContext | null;
   outcome?: string | null;
+  /** Explains a terminal outcome: accepted core goals and optional losses. */
+  outcomeDetails?: OutcomeDetails | null;
   missingRequirements?: MissingRequirement[];
   runtimeActions?: RuntimeAction[];
   questions?: PlanQuestion[];
@@ -250,6 +254,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
     onNodeClick,
     intentContext,
     outcome,
+    outcomeDetails,
     missingRequirements,
     runtimeActions,
     questions,
@@ -285,6 +290,12 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
     connectionDetail,
     onReconnect,
   } = props;
+  const outcomeSummary = summarizePlanOutcome({
+    status: planStatus ?? '',
+    outcome: outcome ?? '',
+    outcome_details: outcomeDetails ?? undefined,
+  });
+  const blockingCount = nodes.filter((node) => node.data.status === 'blocked').length;
   const completedCount = nodes.filter((node) => node.data.status === 'completed').length;
   const runningCount = nodes.filter((node) => node.data.status === 'in_progress').length;
   const failedCount = nodes.filter((node) => node.data.status === 'failed').length;
@@ -611,6 +622,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
             <span>{nodes.length} 节点</span>
             <span>{completedCount} 完成</span>
             {runningCount > 0 ? <span>{runningCount} 运行中</span> : null}
+            {blockingCount > 0 ? <span className="text-proof" data-testid="plan-blocked-count">{blockingCount} 被阻断</span> : null}
             {plannerSource === 'template' ? (
               <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[9.5px] text-warn" title={plannerFallbackReason || '该计划由模板规划生成'}>
                 模板规划
@@ -718,6 +730,37 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
             <span className="shrink-0 text-proof" data-testid="plan-start-accepted">
               {startAccepted ? '启动已受理' : '任务运行中'}
             </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {businessState === 'terminal' && (outcome === 'partial' || outcome === 'blocked' || outcome === 'needs_review') ? (
+        <div
+          className="mx-6 mb-2 rounded-xl border border-warn/40 bg-warn-soft px-3 py-2 text-[11px] leading-5 text-ink-soft"
+          data-testid="plan-outcome-details"
+          data-outcome={outcome}
+        >
+          <p className="font-semibold text-warn">
+            {outcomeSummary.headline}
+            {outcomeSummary.detail ? ' · ' : ''}
+            <span className="font-normal text-ink-soft">{outcomeSummary.detail}</span>
+          </p>
+          {outcomeSummary.losses.length > 0 ? (
+            <ul className="mt-1 list-disc pl-4">
+              {outcomeSummary.losses.map((loss) => (
+                <li key={loss}>{loss}</li>
+              ))}
+            </ul>
+          ) : null}
+          {outcomeSummary.limitations.length > 0 ? (
+            <div className="mt-1">
+              <span className="font-semibold">{outcomeSummary.limitationsLabel}</span>
+              <ul className="list-disc pl-4">
+                {outcomeSummary.limitations.map((limitation) => (
+                  <li key={limitation}>{limitation}</li>
+                ))}
+              </ul>
+            </div>
           ) : null}
         </div>
       ) : null}

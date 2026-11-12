@@ -109,6 +109,8 @@ The 2026-10 → 2026-11 upgrade moved the system from a single-machine web proto
 | Layered candidate search | Bounded exhaustive search, route UCB, Top-K Beam, UCT-style parameter trees, virtual visits, and hidden holdout validation |
 | Claim-level evidence | Freeze a hierarchical rubric and bind paper claims, criteria, and real artifacts into an evidence graph with coverage |
 | Semantic outcomes | `PlanOutcome` distinguishes completed / partial / smoke / mock / blocked / failed / needs_review and lists missing requirements |
+| Waiting and block semantics | Approvals/questions stay `awaiting_*` without blocking dependents; `block_info` keeps the root cause, the forwarding node and the epoch, so the reason survives a refresh |
+| Partial acceptance | A plan can declare an `acceptance` contract (core goals + required artifacts) and `optional` work; when only optional work is lost the run ends `completed/partial` with the losses listed |
 | Visual verification | Image structure gate + multimodal visual verdict (pass / fail / inconclusive); visual failure never fabricates completed |
 | Reproducible export | `manifest.json` + `checksums.sha256` + `environment/*` + `provenance/*`; missing key evidence marks the bundle partial and lists what is missing |
 

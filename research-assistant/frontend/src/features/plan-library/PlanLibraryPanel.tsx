@@ -58,10 +58,19 @@ const outcomeLabel = (outcome?: string) => {
   switch (outcome) {
     case 'completed':
       return '成功';
+    case 'partial':
+      return '部分完成';
+    case 'needs_review':
+      // Execution finished; only the evidence verdict is pending.
+      return '已结束·待复核';
+    case 'smoke':
+      return '冒烟';
+    case 'mock':
+      return '模拟';
     case 'failed':
       return '失败';
     case 'blocked':
-      return '阻塞';
+      return '缺少条件';
     case 'canceled':
       return '取消';
     default:

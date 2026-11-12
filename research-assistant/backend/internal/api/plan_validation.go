@@ -115,6 +115,41 @@ func validatePlanGraph(plan *models.PlanGraph) planValidationResult {
 		result.Valid = false
 		result.Errors = append(result.Errors, newValidationError("", "dependencies", "dependency cycle detected: "+strings.Join(cycle, " -> "), "移除循环依赖"))
 	}
+	// Hard and optional relations are validated as one contract: the same pair
+	// cannot be both, and an optional relation may not hide a cycle.
+	for _, node := range plan.Nodes {
+		if node == nil {
+			continue
+		}
+		hard := map[string]bool{}
+		for _, dependency := range node.Dependencies {
+			hard[dependency] = true
+		}
+		for _, dependency := range node.OptionalDependencies {
+			if hard[dependency] {
+				result.Valid = false
+				result.Errors = append(result.Errors, newValidationError(node.ID, "optional_dependencies", "dependency is declared as both hard and optional: "+dependency, "保留一种关系"))
+				continue
+			}
+			if _, ok := byID[dependency]; !ok {
+				result.Valid = false
+				result.Errors = append(result.Errors, newValidationError(node.ID, "optional_dependencies", "optional dependency not found: "+dependency, "移除悬挂依赖或补回节点"))
+				continue
+			}
+			if dependency == node.ID {
+				result.Valid = false
+				result.Errors = append(result.Errors, newValidationError(node.ID, "optional_dependencies", "node optionally depends on itself", "删除自依赖"))
+			}
+		}
+	}
+	if cycle := detectCombinedDependencyCycle(plan.Nodes); len(cycle) > 0 {
+		result.Valid = false
+		result.Errors = append(result.Errors, newValidationError("", "optional_dependencies", "dependency cycle across hard and optional relations: "+strings.Join(cycle, " -> "), "移除循环依赖"))
+	}
+	if err := validateAcceptanceContractForAPI(plan, byID); err != nil {
+		result.Valid = false
+		result.Errors = append(result.Errors, newValidationError("", "acceptance", err.Error(), "在审阅前修正验收合同"))
+	}
 	// Required artifacts must be produced by a dependency (or already exist as
 	// a plan artifact from an upstream run).
 	producers := map[string]string{}
@@ -264,4 +299,109 @@ func dependsOnTransitively(byID map[string]*models.TaskNode, nodeID, targetID st
 		return false
 	}
 	return walk(nodeID)
+}
+
+// detectCombinedDependencyCycle walks hard and optional relations together so a
+// cycle cannot be hidden by splitting one hop into an optional edge.
+func detectCombinedDependencyCycle(nodes []*models.TaskNode) []string {
+	state := map[string]int{}
+	var stack []string
+	var cycle []string
+	index := map[string]*models.TaskNode{}
+	for _, node := range nodes {
+		if node != nil {
+			index[node.ID] = node
+		}
+	}
+	var visit func(string) bool
+	visit = func(id string) bool {
+		switch state[id] {
+		case 1:
+			start := 0
+			for i, item := range stack {
+				if item == id {
+					start = i
+					break
+				}
+			}
+			cycle = append(append([]string(nil), stack[start:]...), id)
+			return true
+		case 2:
+			return false
+		}
+		state[id] = 1
+		stack = append(stack, id)
+		if node := index[id]; node != nil {
+			edges := append(append([]string(nil), node.Dependencies...), node.OptionalDependencies...)
+			for _, dependency := range edges {
+				if _, ok := index[dependency]; !ok {
+					continue
+				}
+				if visit(dependency) {
+					return true
+				}
+			}
+		}
+		stack = stack[:len(stack)-1]
+		state[id] = 2
+		return false
+	}
+	ids := make([]string, 0, len(index))
+	for id := range index {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		if state[id] == 0 && visit(id) {
+			return cycle
+		}
+	}
+	return nil
+}
+
+// validateAcceptanceContractForAPI applies the pre-execution acceptance rules to
+// an edited plan revision.
+func validateAcceptanceContractForAPI(plan *models.PlanGraph, byID map[string]*models.TaskNode) error {
+	if plan == nil || plan.Acceptance == nil || plan.Acceptance.IsZero() {
+		return nil
+	}
+	if len(plan.Acceptance.Goals) == 0 {
+		return fmt.Errorf("acceptance contract must declare at least one core goal")
+	}
+	seen := map[string]bool{}
+	for _, goal := range plan.Acceptance.Goals {
+		if strings.TrimSpace(goal.ID) == "" {
+			return fmt.Errorf("acceptance goal id is required")
+		}
+		if seen[goal.ID] {
+			return fmt.Errorf("duplicate acceptance goal id: %s", goal.ID)
+		}
+		seen[goal.ID] = true
+		if strings.TrimSpace(goal.Statement) == "" {
+			return fmt.Errorf("acceptance goal %s has no statement", goal.ID)
+		}
+		if len(goal.EvidenceRefs) == 0 && goal.MinVerifiedClaims <= 0 {
+			return fmt.Errorf("acceptance goal %s has no verifiable evidence", goal.ID)
+		}
+	}
+	hasCore := false
+	for _, node := range plan.Nodes {
+		if node != nil && !node.IsOptional() {
+			hasCore = true
+			break
+		}
+	}
+	if !hasCore {
+		return fmt.Errorf("acceptance contract cannot apply when every task is optional")
+	}
+	for _, id := range plan.Acceptance.RequiredTaskIDs {
+		node, ok := byID[id]
+		if !ok {
+			return fmt.Errorf("acceptance requires unknown task %s", id)
+		}
+		if node.IsOptional() {
+			return fmt.Errorf("acceptance requires task %s which is marked optional", id)
+		}
+	}
+	return nil
 }

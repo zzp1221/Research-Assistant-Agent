@@ -11,43 +11,104 @@ import (
 
 func buildEdgesFromNodes(nodes []*models.TaskNode) []*models.TaskEdge {
 	edges := []*models.TaskEdge{}
+	appendEdge := func(from, to, edgeType string) {
+		if from == "" || to == "" || from == to {
+			return
+		}
+		for _, existing := range edges {
+			if existing != nil && existing.From == from && existing.To == to && existing.Type == edgeType {
+				return
+			}
+		}
+		edges = append(edges, &models.TaskEdge{
+			ID:   uuid.New().String(),
+			From: from,
+			To:   to,
+			Type: edgeType,
+		})
+	}
 	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
 		for _, dep := range node.Dependencies {
-			edges = append(edges, &models.TaskEdge{
-				ID:   uuid.New().String(),
-				From: dep,
-				To:   node.ID,
-				Type: "control",
-			})
+			appendEdge(dep, node.ID, "control")
 		}
 	}
 
 	producers := map[string]string{}
 	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
 		for _, key := range node.OutputArtifacts {
 			producers[key] = node.ID
 		}
 	}
 
 	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
 		for _, key := range node.RequiredArtifacts {
 			if producerID, ok := producers[key]; ok && producerID != node.ID {
-				edges = append(edges, &models.TaskEdge{
-					ID:   uuid.New().String(),
-					From: producerID,
-					To:   node.ID,
-					Type: "data",
-				})
+				appendEdge(producerID, node.ID, "data")
 			}
+		}
+		// Optional dependencies keep an explicit relation type so cycle
+		// detection, graph display and rerun analysis can see them, while the
+		// scheduler never propagates a hard failure through them.
+		for _, dep := range node.OptionalDependencies {
+			appendEdge(dep, node.ID, "optional")
 		}
 	}
 
 	return edges
 }
 
+// hardPredecessors returns the same hard precondition set the scheduler uses:
+// declared dependencies plus producers of required artifacts.
+func hardPredecessors(nodes []*models.TaskNode, node *models.TaskNode) []string {
+	if node == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := []string{}
+	appendID := func(id string) {
+		if id == "" || id == node.ID || seen[id] {
+			return
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	for _, dep := range node.Dependencies {
+		appendID(dep)
+	}
+	producers := map[string]string{}
+	for _, candidate := range nodes {
+		if candidate == nil {
+			continue
+		}
+		for _, key := range candidate.OutputArtifacts {
+			producers[key] = candidate.ID
+		}
+	}
+	for _, key := range node.RequiredArtifacts {
+		if producerID, ok := producers[key]; ok {
+			appendID(producerID)
+		}
+	}
+	return out
+}
+
+// fillInitialStatuses applies the same readiness predicate the scheduler uses,
+// so the planner cannot mark a node ready that the runtime would refuse.
 func fillInitialStatuses(nodes []*models.TaskNode) {
 	for _, node := range nodes {
-		if len(node.Dependencies) == 0 && len(node.RequiredArtifacts) == 0 {
+		if node == nil {
+			continue
+		}
+		if len(hardPredecessors(nodes, node)) == 0 && len(node.RequiredArtifacts) == 0 && len(node.OptionalDependencies) == 0 {
 			node.Status = models.StatusReady
 		} else {
 			node.Status = models.StatusPending
@@ -190,6 +251,12 @@ func validatePlanGraph(plan *models.PlanGraph) error {
 		}
 	}
 
+	// Hard and optional relations are always validated together: a pair cannot be
+	// both, and a cycle may not hide across the two kinds.
+	if err := validateDependencyRelations(plan); err != nil {
+		return err
+	}
+
 	adj := map[string][]string{}
 	for _, edge := range plan.Edges {
 		if edge == nil {
@@ -201,9 +268,12 @@ func validatePlanGraph(plan *models.PlanGraph) error {
 		if _, ok := nodeMap[edge.To]; !ok {
 			return fmt.Errorf("edge target not found: %s", edge.To)
 		}
-		if edge.Type == "control" {
+		switch edge.Type {
+		case "control", "data", "optional":
 			inDegree[edge.To]++
 			adj[edge.From] = append(adj[edge.From], edge.To)
+		default:
+			return fmt.Errorf("unknown edge type %q", edge.Type)
 		}
 	}
 
@@ -213,6 +283,11 @@ func validatePlanGraph(plan *models.PlanGraph) error {
 				return fmt.Errorf("dependency not found for node %s: %s", node.ID, dep)
 			}
 		}
+		for _, dep := range node.OptionalDependencies {
+			if _, ok := nodeMap[dep]; !ok {
+				return fmt.Errorf("optional dependency not found for node %s: %s", node.ID, dep)
+			}
+		}
 		for _, key := range node.RequiredArtifacts {
 			producer, ok := artifactProducers[key]
 			if !ok {
@@ -220,6 +295,11 @@ func validatePlanGraph(plan *models.PlanGraph) error {
 			}
 			if producer == node.ID {
 				return fmt.Errorf("node %s (%s) requires its own output %q", node.ID, node.Type, key)
+			}
+			// A "fault tolerant" plan whose core consumer needs the optional
+			// producer's artifact has no fault tolerance at all.
+			if optionalProducer := nodeMap[producer]; optionalProducer != nil && optionalProducer.IsOptional() {
+				return fmt.Errorf("node %s requires %q produced by optional task %s; the producer must be required or the consumer needs an explicit missing branch", node.ID, key, producer)
 			}
 		}
 	}
@@ -246,8 +326,167 @@ func validatePlanGraph(plan *models.PlanGraph) error {
 	}
 
 	if visited != len(plan.Nodes) {
-		return fmt.Errorf("cycle detected in control edges")
+		if cycle := dependencyCycle(plan); len(cycle) > 0 {
+			return fmt.Errorf("cycle detected in dependency relations: %s", strings.Join(cycle, " -> "))
+		}
+		return fmt.Errorf("cycle detected in dependency relations")
 	}
 
+	return validateAcceptanceContract(plan)
+}
+
+// validateDependencyRelations rejects contracts that mix the two relation kinds.
+func validateDependencyRelations(plan *models.PlanGraph) error {
+	known := map[string]*models.TaskNode{}
+	for _, node := range plan.Nodes {
+		if node != nil {
+			known[node.ID] = node
+		}
+	}
+	for _, node := range plan.Nodes {
+		if node == nil {
+			continue
+		}
+		hard := map[string]bool{}
+		for _, dep := range node.Dependencies {
+			hard[dep] = true
+		}
+		seen := map[string]bool{}
+		for _, dep := range node.OptionalDependencies {
+			if hard[dep] {
+				return fmt.Errorf("node %s declares %s as both a hard and an optional dependency", node.ID, dep)
+			}
+			if seen[dep] {
+				return fmt.Errorf("node %s declares duplicate optional dependency %s", node.ID, dep)
+			}
+			if dep == node.ID {
+				return fmt.Errorf("node %s has an optional dependency on itself", node.ID)
+			}
+			seen[dep] = true
+		}
+		for _, edge := range plan.Edges {
+			if edge == nil || edge.To != node.ID {
+				continue
+			}
+			if edge.Type == "optional" && hard[edge.From] {
+				return fmt.Errorf("edge %s->%s is optional but the node declares it as a hard dependency", edge.From, edge.To)
+			}
+			if (edge.Type == "control" || edge.Type == "data") && seen[edge.From] {
+				return fmt.Errorf("edge %s->%s is hard but the node declares it as an optional dependency", edge.From, edge.To)
+			}
+		}
+	}
+	return nil
+}
+
+// dependencyCycle returns one cycle over all dependency relations, if any.
+func dependencyCycle(plan *models.PlanGraph) []string {
+	if plan == nil {
+		return nil
+	}
+	state := map[string]int{}
+	stack := []string{}
+	var cycle []string
+	var visit func(string) bool
+	visit = func(id string) bool {
+		switch state[id] {
+		case 1:
+			start := 0
+			for i, item := range stack {
+				if item == id {
+					start = i
+					break
+				}
+			}
+			cycle = append(append([]string(nil), stack[start:]...), id)
+			return true
+		case 2:
+			return false
+		}
+		state[id] = 1
+		stack = append(stack, id)
+		if node := findNode(plan, id); node != nil {
+			for _, dep := range append(append([]string(nil), node.Dependencies...), node.OptionalDependencies...) {
+				if findNode(plan, dep) == nil {
+					continue
+				}
+				if visit(dep) {
+					return true
+				}
+			}
+		}
+		stack = stack[:len(stack)-1]
+		state[id] = 2
+		return false
+	}
+	for _, node := range plan.Nodes {
+		if node == nil {
+			continue
+		}
+		if state[node.ID] == 0 && visit(node.ID) {
+			return cycle
+		}
+	}
+	return nil
+}
+
+func findNode(plan *models.PlanGraph, id string) *models.TaskNode {
+	if plan == nil {
+		return nil
+	}
+	for _, node := range plan.Nodes {
+		if node != nil && node.ID == id {
+			return node
+		}
+	}
+	return nil
+}
+
+// validateAcceptanceContract enforces the pre-execution acceptance rules. Old
+// plans without a contract stay valid and strictly required.
+func validateAcceptanceContract(plan *models.PlanGraph) error {
+	if plan == nil || plan.Acceptance == nil || plan.Acceptance.IsZero() {
+		return nil
+	}
+	if len(plan.Acceptance.Goals) == 0 {
+		return fmt.Errorf("acceptance contract must declare at least one core goal")
+	}
+	seen := map[string]bool{}
+	for _, goal := range plan.Acceptance.Goals {
+		if strings.TrimSpace(goal.ID) == "" {
+			return fmt.Errorf("acceptance goal id is required")
+		}
+		if seen[goal.ID] {
+			return fmt.Errorf("duplicate acceptance goal id: %s", goal.ID)
+		}
+		seen[goal.ID] = true
+		if strings.TrimSpace(goal.Statement) == "" {
+			return fmt.Errorf("acceptance goal %s has no statement", goal.ID)
+		}
+		if len(goal.EvidenceRefs) == 0 && goal.MinVerifiedClaims <= 0 {
+			return fmt.Errorf("acceptance goal %s has no verifiable evidence", goal.ID)
+		}
+	}
+	// Every task must be either core or explicitly optional, and a plan whose
+	// work is entirely optional could claim success without doing anything.
+	hasCore := false
+	for _, node := range plan.Nodes {
+		if node != nil && !node.IsOptional() {
+			hasCore = true
+			break
+		}
+	}
+	if !hasCore {
+		return fmt.Errorf("plan declares an acceptance contract but every task is optional")
+	}
+	for _, id := range plan.Acceptance.RequiredTaskIDs {
+		node := findNode(plan, id)
+		if node == nil {
+			return fmt.Errorf("acceptance requires unknown task %s", id)
+		}
+		if node.IsOptional() {
+			return fmt.Errorf("acceptance requires task %s which is marked optional", id)
+		}
+	}
 	return nil
 }

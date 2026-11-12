@@ -27,11 +27,17 @@ func claimGraphArtifact(t *testing.T, status string, verified int, claims int) m
 func smokePlanWithClaimGraph(t *testing.T, graph models.Artifact) *models.PlanGraph {
 	t.Helper()
 	mode, _ := json.Marshal(map[string]any{"effective_mode": "smoke"})
+	// A real plan always has a producer for the claim evidence graph: acceptance
+	// evidence is only trusted when it is traceable to a completed task.
+	graph.ProducerTaskID = "n2"
 	return &models.PlanGraph{
 		ID:         "plan-claim-test",
 		IntentType: "Paper_Reproduction",
 		Status:     models.StatusCompleted,
-		Nodes:      []*models.TaskNode{{ID: "n1", Type: "paper_code_execute", Status: models.StatusCompleted}},
+		Nodes: []*models.TaskNode{
+			{ID: "n1", Type: "paper_code_execute", Status: models.StatusCompleted},
+			{ID: "n2", Type: "claim_evidence_build", AssignedTo: "data_agent", Status: models.StatusCompleted, OutputArtifacts: []string{"claim_evidence_graph"}},
+		},
 		Artifacts: map[string]models.Artifact{
 			"reproduction_mode_report": {Key: "reproduction_mode_report", Value: string(mode)},
 			"claim_evidence_graph":     graph,
