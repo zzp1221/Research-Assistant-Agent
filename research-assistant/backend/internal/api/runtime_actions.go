@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/scheduler"
 
 	"github.com/gin-gonic/gin"
 )
@@ -70,7 +71,9 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 	_, alreadyRunning := r.running[plan.ID]
 	r.mu.Unlock()
 	var decided *models.RuntimeActionRequest
+	recoveryEvents := []models.PlanEvent{}
 	if err := r.store.UpdatePlan(plan.ID, func(current *models.PlanGraph) error {
+		recoveryEvents = recoveryEvents[:0]
 		if isTerminalPlanStatus(current.Status) && !replayDecision {
 			return fmt.Errorf("plan has already ended (%s); create a new plan or rerun it", current.Status)
 		}
@@ -132,6 +135,11 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 			task.Error = ""
 			task.FinishedAt = nil
 			task.UpdatedAt = now
+			// Approving one action must not blanket-reset unrelated blocked nodes;
+			// only the nodes whose recorded causes are truly gone are released.
+			for _, event := range scheduler.RecoverBlockedDependents(current, now).Events {
+				recoveryEvents = append(recoveryEvents, event)
+			}
 			if alreadyRunning {
 				current.Status = models.StatusInProgress
 			} else {
@@ -190,6 +198,12 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 		}
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
+	}
+	for _, recoveryEvent := range recoveryEvents {
+		if err := r.persistAndPublishPlanEvent(plan.ID, recoveryEvent); err != nil {
+			respondEventPersistFailure(c, err)
+			return
+		}
 	}
 	event := models.PlanEvent{
 		PlanID:    plan.ID,

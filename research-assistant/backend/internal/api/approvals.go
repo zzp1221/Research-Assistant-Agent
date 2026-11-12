@@ -93,11 +93,8 @@ func (r *planRuntime) listApprovals(c *gin.Context) {
 		if planID != "" && plan.ID != planID {
 			continue
 		}
-		if hasPendingQuestions(plan) {
-			_, _ = r.scheduler.ExpireQuestionsNow(plan.ID)
-			if refreshed, getErr := r.store.GetPlan(plan.ID); getErr == nil && refreshed != nil {
-				plan = refreshed
-			}
+		if hasPendingQuestions(plan) || hasPendingApprovals(plan) {
+			plan = r.sweepLazyTimeouts(plan)
 		}
 		title := planDisplayTitle(plan)
 		if kind == "all" || kind == "approval" {

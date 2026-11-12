@@ -16,6 +16,8 @@ import {
 } from '../../services/api/researchAssistantApi';
 import type { PlanExecutionTrigger, RequestIdentity } from '../../services/api/researchAssistantApi';
 import { getDesktopBridge } from '../../services/desktopBridge';
+import { describeBlockedNode } from '../../features/shared/planOutcome';
+import { planNotificationText } from './usePlanCompletionNotification';
 import { usePlanHistoryHydrator } from './usePlanHistoryHydrator';
 import {
   anchorRunFromSnapshot,
@@ -463,7 +465,30 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
       }
       if (event.event_type === PLAN_EVENTS.TASK_BLOCKED && event.task_id) {
         const upstream = String(event.payload?.upstream_task_id || '');
-        appendNodeLog(event.task_id, `[Plan] blocked${upstream ? ` by ${upstream}` : ''}`);
+        // The structured cause travels with the event, so the reason is visible
+        // without a full snapshot refresh; the refresh then persists it.
+        const blockInfo = event.payload?.block_info as Task['BlockInfo'] | undefined;
+        const blockedReason = describeBlockedNode(blockInfo, String(event.payload?.reason || ''));
+        appendNodeLog(
+          event.task_id,
+          `[Plan] blocked${upstream ? ` by ${upstream}` : ''}${blockedReason ? ` · ${blockedReason}` : ''}`,
+        );
+        if (blockInfo) {
+          setNodesNow((current) => current.map((node) => node.id === event.task_id
+            ? updateNodeStatus(node, 'blocked', {
+                BlockInfo: blockInfo,
+                Error: (node.data.task as Task | undefined)?.Error ?? blockedReason,
+              })
+            : node));
+        }
+        if (notify) void refresh?.();
+      }
+      if ((event.event_type === PLAN_EVENTS.TASK_UNBLOCKED || event.event_type === PLAN_EVENTS.TASK_BLOCK_REASON_UPDATED) && event.task_id) {
+        appendNodeLog(
+          event.task_id,
+          event.event_type === PLAN_EVENTS.TASK_UNBLOCKED ? '[Plan] unblocked' : '[Plan] block reason updated',
+        );
+        if (notify) void refresh?.();
       }
       if (event.event_type === PLAN_EVENTS.TASK_COMPLETED && event.task_id) {
         const result = String(event.payload?.result || event.payload?.result_summary || '');
@@ -721,13 +746,19 @@ export function useResearchAssistantRuntime(options: UseResearchAssistantRuntime
       if (event?.event_type === PLAN_EVENTS.PLAN_COMPLETED || event?.event_type === PLAN_EVENTS.PLAN_FAILED) {
         const bridge = getDesktopBridge();
         if (bridge) {
-          const completed = event.event_type === PLAN_EVENTS.PLAN_COMPLETED;
-          void Promise.resolve()
-            .then(() => bridge.notify(
-              completed ? '计划已完成' : '计划失败',
-              completed ? '计划已在后台完成。' : '计划执行失败，请打开详情查看原因。',
-            ))
-            .catch((error) => console.warn('[plan] desktop notification failed', error));
+          // The event payload carries the fine-grained outcome: a completed run
+          // can still be partial and a failed run can be a missing-condition
+          // block, so the notification must not infer "全部成功" from the status.
+          const outcome = typeof event.payload?.outcome === 'string' ? event.payload.outcome : '';
+          const text = planNotificationText(
+            event.event_type === PLAN_EVENTS.PLAN_COMPLETED ? 'completed' : 'failed',
+            outcome,
+          );
+          if (text) {
+            void Promise.resolve()
+              .then(() => bridge.notify(text.title, text.body))
+              .catch((error) => console.warn('[plan] desktop notification failed', error));
+          }
         }
       }
       if (event?.event_type === PLAN_EVENTS.PLAN_COMPLETED) {

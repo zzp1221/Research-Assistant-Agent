@@ -66,7 +66,10 @@ func TestSchedulerEnforcesTaskTimeout(t *testing.T) {
 	}
 }
 
-func TestSchedulerCancelsPlanWhenAttemptBudgetIsExhausted(t *testing.T) {
+// The attempt budget stops new work; it never rewrites a plan whose tasks all
+// ended. Here the only executed task failed and its dependent was blocked, so
+// the committed result is failed/failed even though the attempt budget is spent.
+func TestExhaustedAttemptBudgetDoesNotOverwriteTerminalSummary(t *testing.T) {
 	planStore := store.NewMemoryPlanStore()
 	plan := governanceTestPlan("budget-plan", 2)
 	plan.Nodes[1].Dependencies = []string{plan.Nodes[0].ID}
@@ -76,13 +79,43 @@ func TestSchedulerCancelsPlanWhenAttemptBudgetIsExhausted(t *testing.T) {
 	}
 	runner := NewScheduler(planStore, NewDefaultTaskExecutor(), &NoopEventPublisher{}, 1)
 
-	execErr := runner.ExecutePlan(context.Background(), plan.ID)
-	finalPlan, _ := planStore.GetPlan(plan.ID)
-	if execErr == nil {
-		t.Fatalf("expected execution to report exhausted budget; final status=%s outcome=%s nodes=%v", finalPlan.Status, finalPlan.Outcome, nodeStatuses(finalPlan))
+	if err := runner.ExecutePlan(context.Background(), plan.ID); err != nil {
+		t.Fatalf("terminal summary must not report a budget error: %v", err)
 	}
-	if finalPlan.Status != models.StatusCanceled || finalPlan.Usage.TaskAttempts != 1 {
-		t.Fatalf("budget did not cancel plan: status=%s usage=%#v", finalPlan.Status, finalPlan.Usage)
+	finalPlan, _ := planStore.GetPlan(plan.ID)
+	if finalPlan.Status != models.StatusFailed || finalPlan.Outcome != models.OutcomeFailed || finalPlan.OutcomeReason == "" {
+		t.Fatalf("terminal result was overwritten by the budget: status=%s outcome=%s reason=%q", finalPlan.Status, finalPlan.Outcome, finalPlan.OutcomeReason)
+	}
+	if finalPlan.Usage.TaskAttempts != 1 || finalPlan.Usage.FinishedAt == nil {
+		t.Fatalf("unexpected usage: %#v", finalPlan.Usage)
+	}
+	if blocked := finalPlan.Nodes[1]; blocked.Status != models.StatusBlocked || blocked.BlockInfo == nil || blocked.BlockInfo.Code != models.BlockUpstreamFailed {
+		t.Fatalf("dependent was not blocked with upstream_failed: %#v", blocked)
+	}
+}
+
+// Work that still should run but has no attempt left is a budget stop, not a
+// deadlock and not a completion.
+func TestExhaustedAttemptBudgetWithRunnableWorkCancels(t *testing.T) {
+	planStore := store.NewMemoryPlanStore()
+	plan := governanceTestPlan("budget-plan-live", 1)
+	plan.Budget.MaxTaskAttempts = 1
+	plan.Usage.TaskAttempts = 1
+	if err := planStore.SavePlan(plan); err != nil {
+		t.Fatal(err)
+	}
+	runner := NewScheduler(planStore, NewDefaultTaskExecutor(), &NoopEventPublisher{}, 1)
+	// A budget stop is reported to the caller, but the plan itself must be a
+	// canceled plan with a recorded reason, never a deadlock or a completion.
+	if err := runner.ExecutePlan(context.Background(), plan.ID); err == nil {
+		t.Fatal("expected the budget stop to be reported")
+	}
+	finalPlan, _ := planStore.GetPlan(plan.ID)
+	if finalPlan.Status != models.StatusCanceled || finalPlan.Outcome != models.OutcomeFailed {
+		t.Fatalf("status=%s outcome=%s, want canceled/failed", finalPlan.Status, finalPlan.Outcome)
+	}
+	if !strings.Contains(finalPlan.OutcomeReason, "budget") {
+		t.Fatalf("cancel reason=%q", finalPlan.OutcomeReason)
 	}
 }
 

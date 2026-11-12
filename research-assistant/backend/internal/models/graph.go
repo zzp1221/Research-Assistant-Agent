@@ -45,7 +45,16 @@ type TaskNode struct {
 	Revision int `json:"revision,omitempty"`
 	// Enabled controls whether the node participates in execution. Nil means
 	// enabled so legacy plans keep running unchanged.
-	Enabled        *bool          `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
+	// Optional marks a node whose failure does not break the plan's core goal.
+	// Nil/false means core work, which keeps legacy plans strictly required.
+	Optional *bool `json:"optional,omitempty"`
+	// OptionalDependencies are nodes the consumer waits for but does not require
+	// to succeed. They never replace the hard Dependencies list.
+	OptionalDependencies []string `json:"optional_dependencies,omitempty"`
+	// BlockInfo is the structured reason this node is blocked. It is written in
+	// the same state transition as Status=blocked.
+	BlockInfo      *BlockInfo     `json:"block_info,omitempty"`
 	LeaseOwner     string         `json:"lease_owner,omitempty"`
 	LeaseExpiresAt *time.Time     `json:"lease_expires_at,omitempty"`
 	TimeoutSeconds int            `json:"timeout_seconds,omitempty"`
@@ -125,10 +134,17 @@ type PlanGraph struct {
 	UserIntent string     `json:"user_intent"`
 	IntentType string     `json:"intent_type"`
 	// ParentPlanID links a follow-up plan to the plan it continues.
-	ParentPlanID        string                 `json:"parent_plan_id,omitempty"`
-	Status              TaskStatus             `json:"status"`
-	Outcome             PlanOutcome            `json:"outcome,omitempty"`
-	OutcomeReason       string                 `json:"outcome_reason,omitempty"`
+	ParentPlanID  string      `json:"parent_plan_id,omitempty"`
+	Status        TaskStatus  `json:"status"`
+	Outcome       PlanOutcome `json:"outcome,omitempty"`
+	OutcomeReason string      `json:"outcome_reason,omitempty"`
+	// Acceptances declares the pre-execution acceptance contract (core goals,
+	// required artifacts). Legacy plans leave it zero: nothing is optional and
+	// no partial outcome can be manufactured after execution.
+	Acceptance *AcceptanceContract `json:"acceptance,omitempty"`
+	// OutcomeDetails explains a terminal outcome: accepted core goals and the
+	// optional work that was lost.
+	OutcomeDetails      *OutcomeDetails        `json:"outcome_details,omitempty"`
 	MissingRequirements []MissingRequirement   `json:"missing_requirements,omitempty"`
 	OwnerID             string                 `json:"owner_id,omitempty"`
 	SessionID           string                 `json:"session_id,omitempty"`
@@ -149,6 +165,12 @@ type PlanGraph struct {
 	Paused     bool       `json:"paused,omitempty"`
 	PausedAt   *time.Time `json:"paused_at,omitempty"`
 	RunTrigger string     `json:"run_trigger,omitempty"`
+	// TerminalCommittedAt records that the one-shot terminal side effects (event,
+	// sandbox cleanup, budget release, memory record, callback) were committed for
+	// this plan. It is persisted because the terminal status is written before
+	// those side effects run: without it a restart between the two steps would
+	// permanently lose the completion event and every cleanup that follows it.
+	TerminalCommittedAt *time.Time `json:"terminal_committed_at,omitempty"`
 	// Verification is the final advisory verdict of the plan. Legacy plans have
 	// no field and are treated as skipped by the UI.
 	Verification *Verification `json:"verification,omitempty"`
@@ -208,6 +230,21 @@ type TaskExecutionResult struct {
 // enabled, preserving the behaviour of plans created before the field existed.
 func (n *TaskNode) IsEnabled() bool {
 	return n == nil || n.Enabled == nil || *n.Enabled
+}
+
+// IsOptional reports whether the node is optional work. A nil flag means core
+// work, preserving the behaviour of plans created before the field existed.
+func (n *TaskNode) IsOptional() bool {
+	return n != nil && n.Optional != nil && *n.Optional
+}
+
+// SetOptional stores an explicit optional flag.
+func (n *TaskNode) SetOptional(optional bool) {
+	if n == nil {
+		return
+	}
+	value := optional
+	n.Optional = &value
 }
 
 // SetEnabled stores an explicit enabled flag.

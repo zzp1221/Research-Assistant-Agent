@@ -81,6 +81,8 @@ Both are self-contained HTML files (inline SVG/styles/scripts) that open directl
 
 ### Defects and remediation
 
+- [Scheduler waiting states, failure propagation, and partial outcomes — repair report (2026-11-11, Chinese)](defect-remediation-2026-11-11-scheduler-results.md): implemented fixes plus backend, race, frontend and online acceptance evidence for approval waits, terminal-state races, persistent block reasons, and partial-outcome contracts.
+- [Scheduler waiting states, failure propagation, and partial outcomes — plan (2026-11-11, Chinese)](defect-remediation-2026-11-11-scheduler.md): implemented (v1.1); original problems, repair boundaries, state contracts and acceptance-case design.
 - [Defect remediation (2026-10-25)](defect-remediation-2026-10-25.md): D1–D10 "why fix / what was wrong / how to fix", with rollout order and acceptance checklist.
 - [ADR template](adr/000-template.md): copy this when adding an architecture decision record.
 

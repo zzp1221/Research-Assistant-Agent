@@ -1,15 +1,13 @@
 package scheduler
 
 import (
-	"fmt"
+	"context"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"research-assistant-backend/internal/models"
-
-	"github.com/google/uuid"
 )
 
 // questionTimeoutSeconds is the default lifetime of a structured question.
@@ -46,68 +44,20 @@ func hasAwaitingReview(plan *models.PlanGraph) bool {
 	return plan != nil && plan.Status == models.StatusAwaitingReview
 }
 
-// applyQuestionFromTask persists a question returned by a task execution and
-// pauses the task/plan instead of marking the task failed.
-func (s *Scheduler) applyQuestionFromTask(planID, taskID string, question *models.PlanQuestion) error {
-	now := time.Now().UTC()
-	event := models.PlanEvent{}
-	err := s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
-		task := getNodeByID(plan, taskID)
-		if task == nil {
-			return fmt.Errorf("task not found: %s", taskID)
-		}
-		if question == nil {
-			return fmt.Errorf("question is nil")
-		}
-		if question.ID == "" {
-			question.ID = "q-" + uuid.NewString()
-		}
-		question.PlanID = planID
-		question.TaskID = taskID
-		question.NodeType = task.Type
-		question.Revision = task.Revision
-		question.Status = models.QuestionPending
-		if question.RequestedAt.IsZero() {
-			question.RequestedAt = now
-		}
-		if question.ExpiresAt == nil {
-			expires := now.Add(time.Duration(questionTimeoutSeconds()) * time.Second)
-			question.ExpiresAt = &expires
-		}
-		plan.Questions = append(plan.Questions, *question)
-		task.Status = models.StatusAwaitingInput
-		task.Error = ""
-		task.FinishedAt = nil
-		task.UpdatedAt = now
-		plan.Status = models.StatusAwaitingInput
-		plan.UpdatedAt = now
-		event = models.PlanEvent{
-			PlanID:    planID,
-			TaskID:    taskID,
-			EventType: "question_requested",
-			Revision:  task.Revision,
-			Payload: map[string]any{
-				"question":    question,
-				"question_id": question.ID,
-				"header":      question.Header,
-				"prompt":      question.Prompt,
-			},
-			Timestamp: now,
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	s.publishAndStore(planID, event)
-	return nil
-}
-
 // ExpireQuestionsNow runs the timeout sweep for one plan outside the execution
 // loop. API reads call it so a paused plan still honours its question timeout
 // even when no scheduler goroutine is running (for example after a restart).
+//
+// A timeout that ends the plan goes through the same one-shot terminal pipeline
+// as the execution loop: the event, cleanup, budget release, memory record and
+// terminal callback must not depend on which entry point noticed the timeout.
 func (s *Scheduler) ExpireQuestionsNow(planID string) (bool, error) {
-	return s.expireQuestions(planID)
+	expired, err := s.expireQuestions(planID)
+	if err != nil || !expired {
+		return expired, err
+	}
+	s.finishExternalTerminal(context.Background(), planID)
+	return expired, nil
 }
 
 // expireQuestions answers overdue questions from their default option, or

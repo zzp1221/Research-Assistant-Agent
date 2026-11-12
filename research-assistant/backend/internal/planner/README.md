@@ -46,6 +46,15 @@
 - 模板变体：General / Code_Execution / Framework_Evaluation 提供 simple/standard/full，Paper_Reproduction 提供 light/standard/full；其他 intent 默认 standard。
 - 路由与变体写入 `GraphMeta`（`planning_route` / `complexity` / `complexity_source` / `template_variant` / `general_plan_shape`），并暴露到 SSE、计划详情与 `/api/metrics`。
 
+## 验收合同与可选工作
+
+- `PlanGraph.acceptance` 在审阅前冻结核心目标、必需产物与必需任务；每个目标必须有可验证证据（产物键或 `min_verified_claims`），全部任务可选时拒绝生成合同。
+- `TaskNode.optional` 标记可选工作；`TaskNode.optional_dependencies` 只决定"是否必须等待生产者成功"，与决定"失败是否破坏核心目标"的 `optional` 不能互换。
+- 图关系新增 `optional` 边，参与环检测、图展示与重跑失效分析；校验禁止同一依赖同时为硬/可选、禁止跨类成环、禁止可选生产者的产物成为必需输入。
+- `fillInitialStatuses` 与调度器使用同一 readiness 谓词：仅有可选依赖的节点不会被提前置为 ready。
+- `ContextBinder` 不把"仅由可选依赖生产"的必需产物、或失败生产者的诊断值绑定为可信输入；可选输入缺失时显式不注入。
+- `PlanFinalizer` 按停止语义 → 核心失败/阻断 → 证据不足 → mock/smoke → 验收合同 → 仅可选损失 `partial` → `completed` 的顺序产出结果。
+
 ## 设计约束
 
 - 规划器不执行任务，也不直接访问 Docker。

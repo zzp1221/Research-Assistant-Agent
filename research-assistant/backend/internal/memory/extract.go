@@ -58,6 +58,10 @@ func RecordPlan(ctx context.Context, store Store, plan *models.PlanGraph) error 
 		importance = 9
 	case models.OutcomeNeedsReview:
 		importance = 8
+	case models.OutcomePartial:
+		// A partial result is still useful experience, and its losses are the
+		// part a later plan must not repeat.
+		importance = 7
 	}
 	title := strings.TrimSpace(plan.Title)
 	if title == "" {
@@ -87,6 +91,38 @@ func RecordPlan(ctx context.Context, store Store, plan *models.PlanGraph) error 
 			}
 			builder.WriteString("- ")
 			builder.WriteString(line)
+			builder.WriteString("\n")
+		}
+	}
+	if plan.OutcomeDetails != nil {
+		if accepted := plan.OutcomeDetails.AcceptedGoals; len(accepted) > 0 {
+			builder.WriteString("已通过的核心目标：")
+			for i, goal := range accepted {
+				if i >= 5 {
+					break
+				}
+				if i > 0 {
+					builder.WriteString("；")
+				}
+				builder.WriteString(truncateRunes(goal.Statement, 120))
+			}
+			builder.WriteString("\n")
+		}
+		if losses := plan.OutcomeDetails.OptionalLosses; len(losses) > 0 {
+			builder.WriteString("未完成的可选工作：")
+			for i, loss := range losses {
+				if i >= 5 {
+					break
+				}
+				if i > 0 {
+					builder.WriteString("；")
+				}
+				name := loss.Name
+				if strings.TrimSpace(name) == "" {
+					name = loss.TaskID
+				}
+				builder.WriteString(truncateRunes(name+"("+string(loss.Status)+")", 120))
+			}
 			builder.WriteString("\n")
 		}
 	}

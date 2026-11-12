@@ -117,15 +117,6 @@ func appendMissingRequirement(list []models.MissingRequirement, item models.Miss
 	return append(list, item)
 }
 
-func hasFailure(plan *models.PlanGraph) bool {
-	for _, node := range plan.Nodes {
-		if node != nil && (node.Status == models.StatusFailed || node.Status == models.StatusBlocked || node.Status == models.StatusCanceled) {
-			return true
-		}
-	}
-	return false
-}
-
 func noRunning(plan *models.PlanGraph) bool {
 	for _, node := range plan.Nodes {
 		if node != nil && node.Status == models.StatusInProgress {
@@ -146,6 +137,8 @@ func countInProgress(plan *models.PlanGraph) int {
 }
 
 func fillMeta(plan *models.PlanGraph) {
+	// fillMeta rebuilds the summary counters only. The terminal-commit marker is a
+	// lifecycle fact on PlanGraph, not a counter, so it survives every transition.
 	meta := models.GraphMeta{
 		TotalNodes:            len(plan.Nodes),
 		PlannerSource:         plan.Meta.PlannerSource,

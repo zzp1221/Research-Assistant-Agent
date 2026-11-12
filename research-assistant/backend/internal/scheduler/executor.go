@@ -1061,6 +1061,40 @@ func (e *RoutedTaskExecutor) executeToolCall(ctx context.Context, plan *models.P
 			result.StructuredData = string(encoded)
 		}
 	}
+	// A tool that stops for approval is a wait, not a failure: returning the
+	// pending action here lets the scheduler park the task on awaiting_approval
+	// and resume it with the same arguments after the human decision.
+	if invoke.Record.Status == models.ToolCallPending || invoke.Record.ErrorCode == "tool_approval_required" {
+		action := &models.RuntimeActionRequest{
+			ID:          "approval-" + contextwindow.Hash([]byte(plan.ID+"/"+task.ID+"/"+callID)),
+			PlanID:      plan.ID,
+			TaskID:      task.ID,
+			Kind:        models.RuntimeActionToolCall,
+			Title:       "Approve tool " + toolID,
+			Status:      models.RuntimeActionPending,
+			RequestedAt: time.Now().UTC(),
+			Details: map[string]any{
+				"tool_id":        toolID,
+				"tool_version":   invoke.Record.ToolVersion,
+				"call_id":        callID,
+				"arguments_hash": models.HashArguments(arguments),
+				"expires_at":     time.Now().UTC().Add(30 * time.Minute).Format(time.RFC3339Nano),
+				"arguments":      tools.PreviewArguments(arguments),
+			},
+		}
+		if existing := findRuntimeAction(plan, task.ID, models.RuntimeActionToolCall); existing != nil {
+			action = existing
+		}
+		return &models.TaskExecutionResult{
+			Status:        models.StatusAwaitingApproval,
+			RuntimeAction: action,
+			Metadata: map[string]any{
+				"tool_id":      toolID,
+				"tool_version": invoke.Record.ToolVersion,
+				"tool_status":  string(invoke.Record.Status),
+			},
+		}
+	}
 	if invoke.Record.Status != models.ToolCallCompleted {
 		result.Status = models.StatusFailed
 		result.Error = chooseNonEmpty(invoke.Record.ErrorCode, "tool_execution_failed") + ": " + chooseNonEmpty(invoke.Record.Error, "tool call failed")

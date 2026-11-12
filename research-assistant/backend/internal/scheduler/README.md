@@ -44,6 +44,38 @@
 - 运行时动作有超时窗口（`APPROVAL_TIMEOUT_SECONDS`）；拒绝或超时会终止计划并标记 `outcome=blocked`，不会把等待审批当作终态。
 - `SetToolGate` 把 `tool_call` 节点的 `AllowedTools` / `ToolGrant` 判断接入同一审批门：必然被拒绝的调用不会弹审批。
 
+## 结果流转与等待态
+
+- 节点结果只经过一个入口 `applyTaskResult`：等待（审批 / 问题）、完成、`blocked`、`failed`、`canceled`、未知协议错误。自动派发与手动单节点执行共用它，不存在第二份"非 completed 即失败"的判断。
+- `awaiting_approval` / `awaiting_input` 必须在同一状态提交内写入对应的 pending 审批或问题记录；裸等待状态返回协议错误，不写状态。等待不写 `Error` / `FinishedAt` / `Failure`，不扣失败重试，恢复检查点置 `Waiting=true、PendingRetry=false`，并释放执行租约。
+- 执行异常优先于等待：已取消、已超时或执行器明确报错的结果即使附带 Question / RuntimeAction 也按终结处理，附件只留作诊断。
+- `tool_call` 节点遇到"需要审批"时返回 `awaiting_approval` 而不是失败；批准后用同一 call_id / 参数恢复，已完成工具副作用不会重复执行。
+- 执行围栏统一校验 `ExecutionID / LeaseOwner / ExecutionEpoch`，问题记录与审批记录同样受约束；陈旧结果不能写等待、问题、审批或后继状态。
+- 派发在获取租约时重新确认节点可执行：`markTaskStarted` 的 `dispatchGuard` 检查启用状态、硬依赖、产物、待审批动作，手动入口复用同一 `dispatchLegality`。
+
+## 失败传播与阻断原因
+
+- 硬依赖只在一处定义：`hardDependencyIDs` = 节点 `Dependencies` + 产物生产者（`data` 边）。ready 判断、初始状态、失败传播、恢复共用这一份。
+- 上游 `failed` / `blocked` / `canceled` 在同一个 `UpdatePlan` 内按 `upstream_failed` / `upstream_blocked` / `upstream_canceled` 阻断硬后继；`awaiting_*` 不传播，后继保持 pending。独立分支不受影响。
+- `TaskNode.block_info` 记录 `code/message/causes[]/occurred_at`；`causes[]` 保留全部根因（`root_task_id / via_task_id / revision / execution_epoch / status`），事件从这里构造，同时保留 `task_blocked / upstream_task_id` 兼容字段。
+- 恢复按根因重算：某根因重试后只移除它旧轮次的 cause；仍有其他有效 cause 则继续 blocked；全部消失才回 `pending` 并按依赖重新判定 ready。升级前无结构化原因的 blocked 节点不自动放行，需显式重跑。
+
+## 终态裁决
+
+- `reconcilePlanState` 是唯一终态入口：外层快照只决定何时尝试，所有判断在提交时的当前图上完成，避免"快照 A=blocked、B=pending，实际已全终结"写出空 `Outcome`。
+- 顺序：保留显式停止 → 提升可运行节点 → 有 ready 但暂时无法派发（全局并发槽不足）继续等待 → 合法等待 / 延迟重试 / 暂停 → 全终结汇总 → 真正的依赖死锁。
+- 终态评估值与 `Status / Outcome / OutcomeReason / OutcomeDetails / FinishedAt` 一次提交；终态事件、清理、预算释放、记忆与通知只在提交成功的迁移上执行一次。
+- `PlanFinalizer` 对每个已结束的图调用（不再只在"无 failed"时调用）；顺序为停止语义 → 核心失败 `failed` / 核心阻断 `blocked` → 证据不足 `needs_review` → mock/smoke → 验收合同 → 仅可选损失 `partial` → `completed`。
+- 预算只阻止新的启动：全图已终结时按验收结果汇总；仍有应执行任务但没有剩余 attempts 才 `CancelPlan("run budget exceeded")`。
+
+## 部分成功合同
+
+- 新字段（可选，旧计划缺省为严格必需）：`TaskNode.optional`、`TaskNode.optional_dependencies`、`PlanGraph.acceptance`、`PlanGraph.outcome_details`。
+- `optional` 决定"失败是否破坏核心目标"；`optional_dependencies` 只决定"是否必须等待生产者成功"。两者不能互换：硬 `dependencies` 仍要求 completed/skipped 与必需产物。
+- 图关系新增 `optional` 边；规划与 API 校验都同时检查硬/可选关系：同一依赖不得同时属于两类，不得跨类成环，可选生产者的产物不得成为必需输入。
+- `acceptance` 在审阅前冻结：至少一个核心目标，每个目标必须有可验证证据（产物键或 `min_verified_claims`），全部任务可选时拒绝生成合同。
+- `outcome_details` 记录已通过的核心目标、可选损失、缺失产物与限制说明；界面、通知、导出和记忆都读同一份结果。
+
 ## 记忆注入
 
 `RoutedTaskExecutor` 在调用 Agent 前从 `sharedContext` 读取：
@@ -78,3 +110,5 @@ go test -race -count=1 ./internal/scheduler/...
 ```
 
 测试覆盖 DAG 调度、租约、重试/改派/从节点重跑、运行时审批、仓库发现/准备、复现模式和验证结果汇总。真实 Git/Docker 用例需要网络和 daemon。
+
+调度语义的回归集集中在 `result_transition_test.go`、`terminal_reconcile_test.go`、`blocked_reason_test.go`、`partial_outcome_test.go`、`tool_approval_wait_test.go`、`terminal_wait_test.go` 与 `dispatch_and_round_test.go`；它们用 channel/barrier 固定交错顺序，不依赖 sleep 碰概率。Windows 主机上 `repo_prepare_test.go` 的 4 个用例需要 `core.symlinks=true` 与 `core.autocrlf=false`，与调度逻辑无关。

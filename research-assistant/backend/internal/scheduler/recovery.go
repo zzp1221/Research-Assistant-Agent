@@ -9,8 +9,24 @@ import (
 	"time"
 )
 
+// recoveryChainID is the durable identity of one logical task's recovery
+// allowance. It is stable across retries so a wait can never renew it.
+func recoveryChainID(plan *models.PlanGraph, task *models.TaskNode) string {
+	owner := ""
+	planID := ""
+	taskID := ""
+	if plan != nil {
+		owner = plan.OwnerID
+		planID = plan.ID
+	}
+	if task != nil {
+		taskID = task.ID
+	}
+	return recovery.Hash([]string{owner, planID, taskID})
+}
+
 func (s *Scheduler) recoveryContext(ctx context.Context, plan *models.PlanGraph, task *models.TaskNode) (context.Context, error) {
-	state := models.RecoveryState{ChainID: recovery.Hash([]string{plan.OwnerID, plan.ID, task.ID}), MaxActions: 2, MaxHTTPAttempts: 64}
+	state := models.RecoveryState{ChainID: recoveryChainID(plan, task), MaxActions: 2, MaxHTTPAttempts: 64}
 	if task.Recovery != nil {
 		state = *task.Recovery
 	}

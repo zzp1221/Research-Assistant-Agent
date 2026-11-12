@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"sort"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/scheduler"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -42,13 +44,7 @@ func (r *planRuntime) listQuestions(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if hasPendingQuestions(plan) {
-		if _, err := r.scheduler.ExpireQuestionsNow(plan.ID); err == nil {
-			if refreshed, getErr := r.store.GetPlan(plan.ID); getErr == nil && refreshed != nil {
-				plan = refreshed
-			}
-		}
-	}
+	plan = r.sweepLazyTimeouts(plan)
 	status := strings.TrimSpace(c.Query("status"))
 	items := make([]models.PlanQuestion, 0, len(plan.Questions))
 	for _, question := range plan.Questions {
@@ -197,7 +193,9 @@ func (r *planRuntime) answerQuestion(c *gin.Context) {
 	actor := resolveUserID(c)
 	now := time.Now().UTC()
 	var answered models.PlanQuestion
+	recoveryEvents := []models.PlanEvent{}
 	if err := r.store.UpdatePlan(plan.ID, func(current *models.PlanGraph) error {
+		recoveryEvents = recoveryEvents[:0]
 		question := models.FindQuestion(current, questionID)
 		if question == nil {
 			return errors.New("question not found")
@@ -250,11 +248,22 @@ func (r *planRuntime) answerQuestion(c *gin.Context) {
 		if current.Status == models.StatusAwaitingInput {
 			current.Status = models.StatusPending
 		}
+		// Answering a question releases only the nodes whose recorded causes are
+		// gone; it never bypasses unmet hard dependencies or permissions.
+		for _, event := range scheduler.RecoverBlockedDependents(current, now).Events {
+			recoveryEvents = append(recoveryEvents, event)
+		}
 		current.UpdatedAt = now
 		return nil
 	}); err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "question_not_answerable"})
 		return
+	}
+	for _, recoveryEvent := range recoveryEvents {
+		if err := r.persistAndPublishPlanEvent(plan.ID, recoveryEvent); err != nil {
+			respondEventPersistFailure(c, err)
+			return
+		}
 	}
 	event := models.PlanEvent{
 		PlanID:    plan.ID,
@@ -318,4 +327,46 @@ func hasPendingQuestions(plan *models.PlanGraph) bool {
 		}
 	}
 	return false
+}
+
+func hasPendingApprovals(plan *models.PlanGraph) bool {
+	if plan == nil {
+		return false
+	}
+	for _, action := range plan.RuntimeActions {
+		if action.Status == models.RuntimeActionPending {
+			return true
+		}
+	}
+	return false
+}
+
+// sweepLazyTimeouts applies the deadline rules that the execution loop normally
+// enforces, for the plans it is not iterating: question timeouts, approval
+// timeouts (after a restart no loop runs at all) and the terminal compensation
+// for a plan whose stop was committed but never finalized.
+//
+// It returns the refreshed snapshot so the caller does not render a plan that
+// already timed out.
+func (r *planRuntime) sweepLazyTimeouts(plan *models.PlanGraph) *models.PlanGraph {
+	if plan == nil || r == nil || r.scheduler == nil {
+		return plan
+	}
+	refreshed := plan
+	if hasPendingQuestions(plan) {
+		if _, err := r.scheduler.ExpireQuestionsNow(plan.ID); err == nil {
+			if current, getErr := r.store.GetPlan(plan.ID); getErr == nil && current != nil {
+				refreshed = current
+			}
+		}
+	}
+	if hasPendingApprovals(refreshed) {
+		if _, err := r.scheduler.ExpireApprovalsNow(refreshed.ID); err == nil {
+			if current, getErr := r.store.GetPlan(refreshed.ID); getErr == nil && current != nil {
+				refreshed = current
+			}
+		}
+	}
+	r.scheduler.ReconcileTerminalCommits(context.Background(), refreshed.ID)
+	return refreshed
 }

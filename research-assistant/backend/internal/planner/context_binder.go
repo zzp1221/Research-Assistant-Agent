@@ -85,9 +85,16 @@ func (b *ContextBinder) BuildInputs(plan *models.PlanGraph, task *models.TaskNod
 		inputs[binding.Target] = value
 	}
 
+	// An artifact produced only by an optional dependency is a diagnostic, not a
+	// trusted input: the failure path keeps it for inspection, but the consumer
+	// must not silently receive it as if the producer had succeeded.
+	optionalOnly := optionalProducerArtifacts(plan, task)
 	for _, key := range task.RequiredArtifacts {
 		if _, exists := inputs[key]; exists {
 			continue
+		}
+		if optionalOnly[key] {
+			return nil, fmt.Errorf("required artifact %q is produced only by an optional dependency and cannot be trusted", key)
 		}
 		artifact, ok := plan.Artifacts[key]
 		if !ok {
@@ -95,7 +102,55 @@ func (b *ContextBinder) BuildInputs(plan *models.PlanGraph, task *models.TaskNod
 		}
 		inputs[key] = artifactInputValue(artifact, key)
 	}
+	// Optional inputs that are missing are reported explicitly instead of being
+	// invented: downstream prompts can then say which metric is unavailable.
+	for _, depID := range task.OptionalDependencies {
+		dep := findPlanTaskNode(plan, depID)
+		if dep == nil {
+			continue
+		}
+		for _, key := range dep.OutputArtifacts {
+			if _, exists := inputs[key]; exists {
+				continue
+			}
+			if _, produced := plan.Artifacts[key]; produced && dep.Status == models.StatusCompleted {
+				inputs[key] = artifactInputValue(plan.Artifacts[key], key)
+			}
+		}
+	}
 	return inputs, nil
+}
+
+// optionalProducerArtifacts lists artifact keys whose producer is an optional
+// dependency of the task. Those values are diagnostics: the failure path keeps
+// them for inspection, but a consumer must not receive them as trusted input.
+func optionalProducerArtifacts(plan *models.PlanGraph, task *models.TaskNode) map[string]bool {
+	out := map[string]bool{}
+	if plan == nil || task == nil {
+		return out
+	}
+	for _, depID := range task.OptionalDependencies {
+		dep := findPlanTaskNode(plan, depID)
+		if dep == nil {
+			continue
+		}
+		for _, key := range dep.OutputArtifacts {
+			out[key] = true
+		}
+	}
+	return out
+}
+
+func findPlanTaskNode(plan *models.PlanGraph, taskID string) *models.TaskNode {
+	if plan == nil {
+		return nil
+	}
+	for _, node := range plan.Nodes {
+		if node != nil && node.ID == taskID {
+			return node
+		}
+	}
+	return nil
 }
 
 func (b *ContextBinder) resolveBinding(plan *models.PlanGraph, binding models.InputBinding) (any, bool, error) {
@@ -145,6 +200,13 @@ func (b *ContextBinder) resolveBinding(plan *models.PlanGraph, binding models.In
 		}
 		artifact, ok := plan.Artifacts[name]
 		if !ok {
+			return nil, false, nil
+		}
+		// An explicit binding obeys the same trust rule as implicit injection: a
+		// diagnostic produced by a failed or superseded task is not an input. A
+		// required binding then reports the input as unavailable, which is the
+		// contract failure the planner declared.
+		if _, trusted := TrustedArtifact(plan, name); !trusted {
 			return nil, false, nil
 		}
 		return artifactInputValue(artifact, binding.Target), true, nil

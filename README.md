@@ -90,6 +90,8 @@ Research Assistant Agent 把这类任务拆成一条可审计的链路：
 | 分层候选搜索 | 受限穷举、路线 UCB、Top-K Beam、UCT-style 参数树、Virtual visit 与隐藏 Holdout |
 | 逐主张证据 | 冻结分层 Rubric，把论文主张、判定准则与真实 Artifact 绑定为证据图，计算覆盖率 |
 | 语义结果状态 | `PlanOutcome` 区分 completed / partial / smoke / mock / blocked / failed / needs_review，并展示缺失项 |
+| 等待与阻断语义 | 审批/提问保持 `awaiting_*` 且不连坐后继；`block_info` 记录根因、经手节点与轮次，刷新后仍可解释 |
+| 部分成功验收 | 计划可声明 `acceptance`（核心目标 + 必需产物）与 `optional` 工作；仅可选损失时结束为 `completed/partial` 并列出损失 |
 | 视觉校验 | 图像结构门禁 + 多模态视觉判定（pass / fail / inconclusive），视觉 fail 不伪造 completed |
 | 可复现导出 | `manifest.json` + `checksums.sha256` + `environment/*` + `provenance/*`；缺关键证据时标记 partial 并列出 missing |
 

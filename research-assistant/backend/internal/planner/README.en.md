@@ -46,6 +46,15 @@
 - Variants: General / Code_Execution / Framework_Evaluation offer simple/standard/full; Paper_Reproduction offers light/standard/full; other intents default to standard.
 - Routing and variants are recorded in `GraphMeta` (`planning_route` / `complexity` / `complexity_source` / `template_variant` / `general_plan_shape`) and exposed through SSE, plan details, and `/api/metrics`.
 
+## Acceptance contract and optional work
+
+- `PlanGraph.acceptance` freezes the core goals, required artifacts and required tasks before review; every goal needs verifiable evidence (artifact keys or `min_verified_claims`), and a plan whose tasks are all optional cannot declare one.
+- `TaskNode.optional` marks optional work; `TaskNode.optional_dependencies` only decides whether the consumer must wait for the producer to succeed. The two fields are not interchangeable.
+- Graphs carry an `optional` edge type that participates in cycle detection, display and rerun impact analysis; validation rejects a pair declared both ways, a cycle across kinds, and an optional producer feeding a required artifact.
+- `fillInitialStatuses` uses the same readiness predicate as the scheduler, so a node with only optional dependencies is never pre-marked ready.
+- `ContextBinder` never binds an artifact produced only by an optional dependency, or a failed producer's diagnostic value, as trusted input; missing optional inputs are reported instead of invented.
+- `PlanFinalizer` decides in a fixed order: stop semantics → core failure/block → insufficient evidence → mock/smoke → acceptance contract → optional losses only `partial` → `completed`.
+
 ## Design constraints
 
 - The planner does not execute tasks or access Docker directly.

@@ -44,6 +44,38 @@
 - Runtime actions have a timeout (`APPROVAL_TIMEOUT_SECONDS`); rejection or timeout terminates the plan with `outcome=blocked`; waiting for approval is never terminal.
 - `SetToolGate` wires `tool_call` node `AllowedTools` / `ToolGrant` checks into the same approval gate; calls that would be rejected never prompt.
 
+## Result transitions and waits
+
+- Every node result goes through one entry point, `applyTaskResult`: wait (approval / question), completed, `blocked`, `failed`, `canceled`, or an explicit protocol error. Automatic dispatch and the manual single-node endpoint share it, so there is no second "anything but completed is a failure" rule.
+- `awaiting_approval` / `awaiting_input` must persist the matching pending approval or question record in the same state transition; a bare wait state returns a protocol error and writes nothing. A wait never writes `Error` / `FinishedAt` / `Failure`, never charges a failed retry, marks the recovery checkpoint `Waiting=true, PendingRetry=false`, and releases the execution lease.
+- Execution exceptions outrank waits: a canceled, timed-out or explicitly failed result stays terminal even when it carries a Question or RuntimeAction; the attachment is kept only as diagnostics.
+- A `tool_call` node that needs approval returns `awaiting_approval` instead of failing. Approving it resumes with the same call_id and arguments, and an already completed tool side effect is not repeated.
+- One execution fence (`ExecutionID / LeaseOwner / ExecutionEpoch`) also covers questions and approvals: a stale execution cannot write a wait, a question, an approval, or a dependent's status.
+- Dispatch re-validates legality at lease time: `markTaskStarted` takes a `dispatchGuard` that checks enabled state, hard dependencies, artifacts and pending approvals; the manual entry point reuses the same `dispatchLegality`.
+
+## Failure propagation and block reasons
+
+- Hard dependencies are defined once: `hardDependencyIDs` = a node's `Dependencies` plus artifact producers (`data` edges). Readiness, initial status, failure propagation and recovery all read that one definition.
+- An upstream `failed` / `blocked` / `canceled` blocks its hard dependents inside the same `UpdatePlan` with `upstream_failed` / `upstream_blocked` / `upstream_canceled`; `awaiting_*` never propagates, so dependents stay pending. Independent branches keep running.
+- `TaskNode.block_info` stores `code/message/causes[]/occurred_at`; `causes[]` keeps every root cause (`root_task_id / via_task_id / revision / execution_epoch / status`). Events are built from the same object, and `task_blocked / upstream_task_id` remain for older clients.
+- Recovery recomputes effective causes: retrying one root only drops that root's older-epoch cause; the node stays blocked while another cause remains, and returns to `pending` only when every cause is gone (readiness is then re-evaluated). Nodes blocked before structured reasons existed are not released automatically; they need an explicit rerun.
+
+## Terminal decision
+
+- `reconcilePlanState` is the single terminal entry point: the outer snapshot only decides when to try, and every decision is taken on the committed graph, so a stale "A=blocked, B=pending" read cannot write an empty `Outcome`.
+- Order: keep an explicit stop → promote runnable nodes → wait when runnable work cannot be dispatched yet (global slots saturated) → legitimate waits / deferred retries / pause → summarize a fully terminal graph → only then treat it as a dependency deadlock.
+- The evaluated result is committed together with `Status / Outcome / OutcomeReason / OutcomeDetails / FinishedAt`; the terminal event, cleanup, budget release, memory and notification run exactly once, on the transition that committed it.
+- `PlanFinalizer` now runs for every ended graph (not only ones without failures) in a fixed order: stop semantics → core failure `failed` / core block `blocked` → insufficient evidence `needs_review` → mock/smoke → acceptance contract → optional losses only `partial` → `completed`.
+- Budget only stops new work: a fully terminal graph is summarized by its acceptance result, and `CancelPlan("run budget exceeded")` is used only while runnable work remains.
+
+## Partial outcome contract
+
+- New optional fields (legacy plans stay strictly required): `TaskNode.optional`, `TaskNode.optional_dependencies`, `PlanGraph.acceptance`, `PlanGraph.outcome_details`.
+- `optional` decides whether a failure breaks the core goal; `optional_dependencies` only decides whether the consumer must wait for the producer to succeed. Hard `dependencies` still require completed/skipped plus required artifacts.
+- Graphs carry an `optional` edge type; planner and API validation both check the two relation kinds together: a pair cannot be both, a cycle cannot cross kinds, and an optional producer's artifact cannot be a required input.
+- `acceptance` is frozen before review: at least one core goal, every goal needs verifiable evidence (artifact keys or `min_verified_claims`), and a plan whose tasks are all optional cannot declare a contract.
+- `outcome_details` records accepted core goals, optional losses, missing artifacts and limitations; the UI, notifications, export and memory all read that one result.
+
 ## Memory injection
 
 Before invoking an agent, `RoutedTaskExecutor` reads from `sharedContext`:
@@ -78,3 +110,5 @@ go test -race -count=1 ./internal/scheduler/...
 ```
 
 Tests cover DAG scheduling, leases, retry/reassign/rerun, runtime approval, repository discovery/preparation, reproduction mode, and result aggregation. Real Git/Docker cases need network and a daemon.
+
+The scheduler-semantics regression set lives in `result_transition_test.go`, `terminal_reconcile_test.go`, `blocked_reason_test.go`, `partial_outcome_test.go`, `tool_approval_wait_test.go`, `terminal_wait_test.go` and `dispatch_and_round_test.go`; interleavings are fixed with channels/barriers rather than sleep-based luck. On Windows, four cases in `repo_prepare_test.go` need `core.symlinks=true` and `core.autocrlf=false` and are unrelated to the scheduler logic.

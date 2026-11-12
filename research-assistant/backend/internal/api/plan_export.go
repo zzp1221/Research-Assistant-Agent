@@ -282,6 +282,37 @@ func renderPlanMarkdown(plan *models.PlanGraph, events []models.PlanEvent) strin
 	fmt.Fprintf(&builder, "- Plan ID: `%s`\n", plan.ID)
 	fmt.Fprintf(&builder, "- Intent type: %s\n", plan.IntentType)
 	fmt.Fprintf(&builder, "- Status: %s (outcome: %s)\n", plan.Status, plan.Outcome)
+	if strings.TrimSpace(plan.OutcomeReason) != "" {
+		fmt.Fprintf(&builder, "- Outcome reason: %s\n", plan.OutcomeReason)
+	}
+	if plan.OutcomeDetails != nil {
+		if accepted := plan.OutcomeDetails.AcceptedGoals; len(accepted) > 0 {
+			builder.WriteString("- Accepted core goals:\n")
+			for _, goal := range accepted {
+				state := "unverified"
+				if goal.Verified {
+					state = "verified"
+				}
+				fmt.Fprintf(&builder, "  - [%s] %s\n", state, goal.Statement)
+			}
+		}
+		if losses := plan.OutcomeDetails.OptionalLosses; len(losses) > 0 {
+			builder.WriteString("- Optional work lost:\n")
+			for _, loss := range losses {
+				name := loss.Name
+				if strings.TrimSpace(name) == "" {
+					name = loss.TaskID
+				}
+				fmt.Fprintf(&builder, "  - %s (%s): %s\n", name, loss.Status, loss.Reason)
+			}
+		}
+		if limitations := plan.OutcomeDetails.Limitations; len(limitations) > 0 {
+			builder.WriteString("- Limitations:\n")
+			for _, limitation := range limitations {
+				fmt.Fprintf(&builder, "  - %s\n", limitation)
+			}
+		}
+	}
 	fmt.Fprintf(&builder, "- Created: %s\n", plan.CreatedAt.Format(time.RFC3339))
 	if plan.Usage.FinishedAt != nil {
 		fmt.Fprintf(&builder, "- Finished: %s\n", plan.Usage.FinishedAt.Format(time.RFC3339))

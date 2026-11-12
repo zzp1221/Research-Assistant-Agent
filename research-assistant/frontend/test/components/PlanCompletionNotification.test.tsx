@@ -1,11 +1,11 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { usePlanCompletionNotification } from '../../src/app/hooks/usePlanCompletionNotification';
+import { planNotificationText, usePlanCompletionNotification } from '../../src/app/hooks/usePlanCompletionNotification';
 import { installDesktopBridge } from '../../src/services/desktopBridge';
 import type { DesktopBridge } from '../../src/contracts/desktop';
 
-function Probe({ planId, status }: { planId: string; status: string }) {
-  usePlanCompletionNotification(planId, status);
+function Probe({ planId, status, outcome }: { planId: string; status: string; outcome?: string }) {
+  usePlanCompletionNotification(planId, status, outcome);
   return null;
 }
 
@@ -49,6 +49,42 @@ describe('usePlanCompletionNotification', () => {
     try {
       render(<Probe planId="p1" status="completed" />);
       expect(fake.notify).not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+});
+describe('planNotificationText', () => {
+  it('never claims full success for a partial plan', () => {
+    const text = planNotificationText('completed', 'partial');
+    expect(text?.title).toContain('部分完成');
+    expect(text?.body).toContain('可选工作');
+  });
+
+  it('reports a blocked plan as missing conditions, not a plain failure', () => {
+    const text = planNotificationText('failed', 'blocked');
+    expect(text?.title).toContain('缺少条件');
+    expect(text?.title).not.toContain('失败');
+  });
+
+  it('keeps smoke and mock downgraded', () => {
+    expect(planNotificationText('completed', 'smoke')?.title).toContain('冒烟');
+    expect(planNotificationText('completed', 'mock')?.title).toContain('模拟');
+  });
+
+  it('does not notify a non-terminal status', () => {
+    expect(planNotificationText('running', '')).toBeNull();
+  });
+});
+
+describe('usePlanCompletionNotification with an outcome', () => {
+  it('uses the partial copy when the plan completed partially', () => {
+    const fake = bridge();
+    const restore = installDesktopBridge(fake);
+    try {
+      const view = render(<Probe planId="p2" status="running" />);
+      view.rerender(<Probe planId="p2" status="completed" outcome="partial" />);
+      expect(fake.notify).toHaveBeenCalledWith('计划部分完成', expect.any(String));
     } finally {
       restore();
     }
