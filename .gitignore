@@ -38,6 +38,10 @@ tmp-realtest-logs/
 **/data/plans.json
 **/data/uploads/
 **/data/private-benchmarks/
+# Memory WAL/lock files written by tests that boot the API runtime.
+**/data/memory/
+*.wal.jsonl
+*.memory.lock
 **/test-results/
 **/playwright-report/
 **/blob-report/
