@@ -380,31 +380,38 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		// the plan_context section instead of appending the user intent again.
 		sharedContext["plan_graph"] = plan
 	}
-	// Wiki context is computed first so the retrieved-memory budget can be
-	// reduced by the wiki tokens (shared dynamic budget, design §10.3).
-	wikiTokens := 0
-	if e.Wiki != nil && wiki.InjectionEnabled() {
+	settings := memory.DefaultSettings()
+	if e.MemorySettings != nil {
+		settings = e.MemorySettings.Get(plan.OwnerID)
+	}
+	mode := memory.EffectiveMode(settings)
+	requiredData, _ := json.Marshal(runtimeTask.Inputs)
+	partitionBudget := memory.ResolveContextBudget(settings, budget.PromptLimit(), memory.EstimateTokens(prompts.TaskInstruction(task)+plan.UserIntent+string(requiredData))+256)
+	// Chat and tasks use the same owner-configured dynamic pool. Wiki is
+	// selected first and its actual consumption is charged before memory.
+	if e.Wiki != nil && wiki.InjectionEnabled() && mode == "on" {
 		entities := make([]memory.Entity, 0, 3)
 		if plan.Context != nil && plan.Context.Paper != nil {
 			entities = append(entities, wiki.MatchEntities(plan.Context.Paper)...)
 		}
+		wikiBudget := min(partitionBudget.Remaining()/2, 1000)
 		query := wiki.TaskQuery{
 			OwnerID: plan.OwnerID, ProjectID: plan.ProjectID, SessionID: plan.SessionID,
 			Text: task.Name + " " + prompts.TruncateRunes(task.Description, 500), Entities: entities,
-			Limit: 2, PromptLimit: budget.PromptLimit(),
+			Limit: 2, PromptLimit: budget.PromptLimit(), ContextBudget: &wikiBudget,
+			DocumentBudget: min(partitionBudget.Remaining()-wikiBudget, wiki.DocumentContextBudget()),
 		}
-		if wikiCtx, wikiErr := e.Wiki.RetrieveForTask(ctx, query); wikiErr == nil && strings.TrimSpace(wikiCtx.Text) != "" {
+		if wikiCtx, wikiErr := e.Wiki.RetrieveForTask(ctx, query); wikiErr == nil && (strings.TrimSpace(wikiCtx.Text) != "" || strings.TrimSpace(wikiCtx.DocumentText) != "") {
 			sharedContext["wiki_context"] = wikiCtx.Text
 			sharedContext["wiki_refs"] = wikiCtx.PaperIDs
-			wikiTokens = wikiCtx.Tokens
+			partitionBudget.WikiTokens = max(0, wikiCtx.Tokens-wikiCtx.DocumentTokens)
+			partitionBudget.DocumentTokens = wikiCtx.DocumentTokens
+			if wikiCtx.DocumentText != "" {
+				sharedContext["wiki_context"] = wikiCtx.Text + "\n\n[document context; source data]\n" + wikiCtx.DocumentText
+			}
 		}
 	}
 	if e.Memory != nil {
-		settings := memory.DefaultSettings()
-		if e.MemorySettings != nil {
-			settings = e.MemorySettings.Get(plan.OwnerID)
-		}
-		mode := memory.EffectiveMode(settings)
 		if mode != "off" {
 			query := memory.Query{
 				OwnerID: plan.OwnerID, ProjectID: plan.ProjectID, SessionID: plan.SessionID,
@@ -413,11 +420,10 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 				Limit:           settings.RetrievalTopK,
 				EnvironmentHash: environmentHash, ProtocolHash: recovery.Hash(runtimeTask.Contract),
 			}
-			retrievedBudget := 3000 - wikiTokens
-			if retrievedBudget < 0 {
-				retrievedBudget = 0
-			}
-			if memCtx, memErr := e.Memory.Retrieve(ctx, query, settings.CoreBudgetTokens, retrievedBudget); memErr == nil && mode == "on" {
+			retrievedBudget := partitionBudget.Remaining()
+			if memCtx, memErr := e.Memory.Retrieve(ctx, query, partitionBudget.Core, retrievedBudget); memErr == nil && mode == "on" {
+				partitionBudget.MemoryTokens = memCtx.Report.RetrievedTokens
+				runtimeTask.Metadata["memory_report"] = memCtx.Report
 				sharedContext["core_memory"] = memCtx.CoreText
 				sharedContext["retrieved_memory"] = memCtx.RetrievedText
 				refs := make([]string, 0, len(memCtx.Citations))
@@ -431,6 +437,7 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 			}
 		}
 	}
+	runtimeTask.Metadata["context_budget_report"] = partitionBudget
 	for _, key := range []string{"memory_refs", "wiki_refs"} {
 		if value, ok := sharedContext[key]; ok {
 			runtimeTask.Metadata[key] = value
@@ -515,7 +522,7 @@ func promptMetadataFromTask(runtimeTask *models.Task) map[string]any {
 	}
 	out := map[string]any{}
 	for _, key := range []string{
-		"prompt_budget", "prompt_truncated_sections", "memory_refs", "wiki_refs", "context_state",
+		"prompt_budget", "prompt_truncated_sections", "memory_refs", "wiki_refs", "context_state", "context_budget_report", "memory_report",
 		"agent_profile_id", "prompt_version_id", "prompt_version", "prompt_hash",
 		"model_profile_id", "model_profile_revision", "model", "max_steps", "repair_session",
 	} {

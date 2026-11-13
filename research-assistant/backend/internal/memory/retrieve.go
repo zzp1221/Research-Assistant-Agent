@@ -2,8 +2,10 @@ package memory
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -219,6 +221,10 @@ func hasTimeWords(query string) bool {
 // searchLocked is the core candidate-generation + fusion step. Callers hold at
 // least a read lock on the store.
 func (s *FileStore) searchLocked(q Query) []ScoredRecord {
+	return mmrSelect(s.rankCandidatesLocked(q), queryLimit(q), 0.7, perKindMaxForQuery())
+}
+
+func queryLimit(q Query) int {
 	limit := q.Limit
 	if limit <= 0 {
 		if q.TopK > 0 {
@@ -227,6 +233,10 @@ func (s *FileStore) searchLocked(q Query) []ScoredRecord {
 			limit = 8
 		}
 	}
+	return limit
+}
+
+func (s *FileStore) rankCandidatesLocked(q Query) []ScoredRecord {
 	now := time.Now().UTC()
 	rrf := map[string]float64{}
 	meta := map[string]*ScoredRecord{}
@@ -260,12 +270,15 @@ func (s *FileStore) searchLocked(q Query) []ScoredRecord {
 			visible[id] = struct{}{}
 		}
 	}
-	bm25Hits := s.idx.SearchBM25In(q.Text, 50, visible)
+	bm25Hits := s.idx.SearchBM25In(ExpandRecallQuery(q.Text), 50, visible)
 	bm25IDs := make([]string, 0, len(bm25Hits))
 	for _, hit := range bm25Hits {
 		bm25IDs = append(bm25IDs, hit.ID)
 	}
 	addRanked(bm25IDs, 1.0, "bm25")
+	for _, hit := range bm25Hits {
+		meta[hit.ID].BM25 = hit.Score
+	}
 
 	if len(q.Entities) > 0 {
 		entityIDs := make([]string, 0)
@@ -326,7 +339,38 @@ func (s *FileStore) searchLocked(q Query) []ScoredRecord {
 		return candidates[i].Score > candidates[j].Score
 	})
 
-	return mmrSelect(candidates, limit, 0.7, perKindMaxForQuery())
+	return candidates
+}
+
+// ExpandRecallQuery is a small, inspectable bilingual alias vocabulary, not a
+// semantic model. All candidates still pass the original visibility filters.
+func ExpandRecallQuery(text string) string {
+	groups := [][]string{
+		{"out of memory", "oom", "显存不足", "内存不足"},
+		{"learning rate", "学习率"},
+		{"batch size", "批大小", "批量大小"},
+		{"negative result", "负结果"},
+		{"macro-f1", "宏平均f1", "宏平均 f1"},
+	}
+	lower := strings.ToLower(text)
+	tokens := map[string]bool{}
+	for _, token := range Tokenize(lower) {
+		tokens[token] = true
+	}
+	var expanded strings.Builder
+	expanded.WriteString(text)
+	for _, group := range groups {
+		matched := false
+		for _, alias := range group {
+			if (alias == "oom" && tokens[alias]) || (alias != "oom" && strings.Contains(lower, alias)) {
+				matched = true
+			}
+		}
+		if matched {
+			expanded.WriteString(" " + strings.Join(group, " "))
+		}
+	}
+	return expanded.String()
 }
 
 // perKindMaxForQuery returns the MMR per-kind cap. Profiles are deliberately
@@ -369,6 +413,15 @@ func mmrSelect(candidates []ScoredRecord, limit int, lambda float64, perKindMax 
 	selected := make([]ScoredRecord, 0, limit)
 	kindCount := map[Kind]int{}
 	used := make([]bool, len(candidates))
+	maxRelevance := 0.0
+	for _, candidate := range candidates {
+		maxRelevance = max(maxRelevance, candidate.Score)
+	}
+	for i := range candidates {
+		if maxRelevance > 0 {
+			candidates[i].Relevance = candidates[i].Score / maxRelevance
+		}
+	}
 	for len(selected) < limit {
 		best := -1
 		bestScore := math.Inf(-1)
@@ -382,11 +435,11 @@ func mmrSelect(candidates []ScoredRecord, limit int, lambda float64, perKindMax 
 			}
 			maxSim := 0.0
 			for _, chosen := range selected {
-				if sim := tokenJaccard(candidate.Record.Content, chosen.Record.Content); sim > maxSim {
+				if sim := redundancy(candidate.Record, chosen.Record); sim > maxSim {
 					maxSim = sim
 				}
 			}
-			score := lambda*candidate.Score - (1-lambda)*maxSim
+			score := lambda*candidate.Relevance - (1-lambda)*maxSim
 			if score > bestScore {
 				bestScore = score
 				best = i
@@ -396,6 +449,7 @@ func mmrSelect(candidates []ScoredRecord, limit int, lambda float64, perKindMax 
 			break
 		}
 		used[best] = true
+		candidates[best].MMRScore = bestScore
 		selected = append(selected, candidates[best])
 		kindCount[candidates[best].Record.Kind]++
 	}
@@ -406,6 +460,37 @@ func mmrSelect(candidates []ScoredRecord, limit int, lambda float64, perKindMax 
 		return selected[i].Score > selected[j].Score
 	})
 	return selected
+}
+
+var evidenceNumber = regexp.MustCompile(`[-+]?[0-9]+(?:\.[0-9]+)?(?:%|[a-zA-Z]+)?`)
+
+func redundancy(a, b Record) float64 {
+	// Similar wording can carry different experimental values or a correction.
+	// Only exact duplicates may suppress those necessary differences.
+	if a.Content != b.Content {
+		for _, key := range []string{"experiment_id", "dataset_version", "split", "method", "configuration_hash", "metric_name", "aggregation", "seed", "environment_hash", "protocol_hash"} {
+			if a.Attributes[key] != nil && b.Attributes[key] != nil && fmt.Sprint(a.Attributes[key]) != fmt.Sprint(b.Attributes[key]) {
+				return 0
+			}
+		}
+		if strings.Join(evidenceNumber.FindAllString(a.Content, -1), "|") != strings.Join(evidenceNumber.FindAllString(b.Content, -1), "|") ||
+			(a.FactID != "" && a.FactID == b.FactID && a.RevisionID != b.RevisionID) ||
+			(a.Kind == KindNegative) != (b.Kind == KindNegative) ||
+			containsCorrection(a.Content) != containsCorrection(b.Content) {
+			return 0
+		}
+	}
+	return tokenJaccard(a.Content, b.Content)
+}
+
+func containsCorrection(text string) bool {
+	lower := strings.ToLower(text)
+	for _, marker := range []string{"纠正", "更正", "修正", "未通过", "失败", "不适用", "没有", "不能", "not ", "failed", "correction", "corrected", "supersed"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func tokenJaccard(a, b string) float64 {
@@ -448,8 +533,12 @@ func (s *FileStore) SearchWithContext(ctx context.Context, q Query, coreBudget, 
 	_ = ctx
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	results := s.searchLocked(q)
-	return SearchResult{Results: results, Context: s.buildContextLocked(q, coreBudget, retrievedBudget, results)}, nil
+	candidates := s.rankCandidatesLocked(q)
+	results := mmrSelect(candidates, queryLimit(q), 0.7, perKindMaxForQuery())
+	result := s.buildContextLocked(q, coreBudget, retrievedBudget, results)
+	result.Report.MatchedCandidates = len(candidates)
+	result.Report.RankExcluded = len(candidates) - len(results)
+	return SearchResult{Results: results, Context: result}, nil
 }
 
 // Retrieve builds the injected memory context: a stable core block plus a
@@ -497,7 +586,10 @@ func (s *FileStore) buildContextLocked(q Query, coreBudget, retrievedBudget int,
 
 	retrievedCandidates := precomputed
 	if retrievedCandidates == nil {
-		retrievedCandidates = s.searchLocked(q)
+		candidates := s.rankCandidatesLocked(q)
+		retrievedCandidates = mmrSelect(candidates, queryLimit(q), 0.7, perKindMaxForQuery())
+		result.Report.MatchedCandidates = len(candidates)
+		result.Report.RankExcluded = len(candidates) - len(retrievedCandidates)
 	}
 	filtered := make([]Record, 0, len(retrievedCandidates))
 	coreIDs := map[string]struct{}{}
@@ -517,6 +609,20 @@ func (s *FileStore) buildContextLocked(q Query, coreBudget, retrievedBudget int,
 	result.Report.Candidates = len(retrievedCandidates)
 	result.Report.Selected = len(retrieved)
 	result.Report.Truncated += retrievedTruncated
+	result.Report.BudgetExcluded = len(filtered) - len(retrieved)
+	result.Report.Ranking = "rrf_max_normalized_mmr_0.7"
+	switch {
+	case result.Report.OwnerRecords == 0:
+		result.Report.FailureStage = "no_records"
+	case result.Report.VisibleRecords == 0:
+		result.Report.FailureStage = "not_visible"
+	case len(retrievedCandidates) == 0 && len(core) == 0:
+		result.Report.FailureStage = "not_recalled"
+	case len(retrieved) == 0 && len(core) == 0:
+		result.Report.FailureStage = "budget_excluded"
+	default:
+		result.Report.FailureStage = "selected"
+	}
 	result.Tokens = coreTokens + retrievedTokens
 	for _, rec := range append(append([]Record{}, core...), retrieved...) {
 		result.Citations = append(result.Citations, Citation{

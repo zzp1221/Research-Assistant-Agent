@@ -185,6 +185,44 @@ func seedChatDocumentUpload(t *testing.T, owner, id, name string, pageTexts []st
 	return metadata
 }
 
+func TestChatDocumentReferenceRestoresFactsClassifiedAsPageMargins(t *testing.T) {
+	fixture := newChatDocumentFixture(t)
+	metadata := seedChatDocumentUpload(t, "doc-owner", "17111111-1111-4111-8111-111111111111", "experiment.pdf", []string{"batch=130 did not pass validation"}, documents.StatusExtracted)
+	directory := filepath.Dir(metadata.StoredPath)
+	document, err := documents.Load(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document.Blocks = []documents.Block{
+		{Page: 1, Type: documents.BlockHeader, Text: "B7401 macro-F1=0.642; split=test"},
+		{Page: 1, Type: documents.BlockParagraph, Text: document.Pages[0].Text},
+		{Page: 1, Type: documents.BlockFooter, Text: "unit=ratio; seed=42"},
+		{Page: 2, Type: documents.BlockHeader, Text: "unrelated-page-header"},
+	}
+	if err := documents.Save(directory, document); err != nil {
+		t.Fatal(err)
+	}
+	recorder, _ := fixture.send(t, "doc-owner", "s-doc-margins", "报告原始数值和负结果", []ChatDocumentReference{{UploadID: metadata.ID, Page: 1}})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	text := fixture.lastCallText(t)
+	for _, original := range []string{"B7401 macro-F1=0.642; split=test", "batch=130 did not pass validation", "unit=ratio; seed=42"} {
+		if !strings.Contains(text, original) {
+			t.Fatalf("page margin fact never reached the model: %s", original)
+		}
+	}
+	if strings.Contains(text, "unrelated-page-header") {
+		t.Fatal("header from a missing page was substituted")
+	}
+	// Legacy text layers and already-inclusive pages retain their exact text.
+	full := "B7401 macro-F1=0.642; split=test\nbatch=130 did not pass validation\nunit=ratio; seed=42"
+	document.Pages[0] = documents.Page{Text: full}
+	if actual, ok := chatDocumentPageText(document, 1); !ok || actual != full {
+		t.Fatalf("legacy/inclusive page was duplicated: %q", actual)
+	}
+}
+
 func TestChatDocumentReferenceInjectsSelectedAndNeighborPages(t *testing.T) {
 	fixture := newChatDocumentFixture(t)
 	metadata := seedChatDocumentUpload(t, "doc-owner", "11111111-1111-4111-8111-111111111111", "attention-is-all-you-need.pdf",

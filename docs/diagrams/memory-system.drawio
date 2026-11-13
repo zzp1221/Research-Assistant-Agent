@@ -1,52 +1,148 @@
-<mxfile host="app.diagrams.net" modified="2026-11-02T00:00:00.000Z" agent="research-assistant" version="24.7.17" type="device">
-  <diagram id="memory-system" name="Memory System Architecture">
-    <mxGraphModel dx="1760" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1760" pageHeight="920" math="0" shadow="0">
+<mxfile host="app.diagrams.net" agent="research-assistant" version="24.7.17" type="device">
+  <diagram id="memory-system" name="记忆架构 / MEMORY &amp; CONTEXT">
+    <mxGraphModel grid="1" gridSize="8" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="1012" background="#ffffff" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="T" value="Agent Memory &amp; Paper Wiki — System Architecture" style="text;html=1;fontSize=20;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="40" y="16" width="1680" height="40" as="geometry" /></mxCell>
-        <mxCell id="G-UI" value="Interfaces" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="40" y="90" width="320" height="380" as="geometry" /></mxCell>
-        <mxCell id="U1" value="Researcher / Desktop user" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="130" width="280" height="42" as="geometry" /></mxCell>
-        <mxCell id="U2" value="Chat &amp; Plan UI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="190" width="280" height="42" as="geometry" /></mxCell>
-        <mxCell id="U3" value="MemoryPanel / PaperWikiPanel" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="250" width="280" height="42" as="geometry" /></mxCell>
-        <mxCell id="U4" value="Citations &amp; review actions" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="60" y="310" width="280" height="42" as="geometry" /></mxCell>
-        <mxCell id="G-CORE" value="Go backend — memory, retrieval, extraction and Paper Wiki" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="390" y="90" width="860" height="700" as="geometry" /></mxCell>
-        <mxCell id="C1" value="Memory &amp; Wiki API&#10;/api/memories · /api/wiki" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="410" y="130" width="260" height="46" as="geometry" /></mxCell>
-        <mxCell id="C2" value="Retrieval pipeline&#10;BM25 + entity + RRF/MMR" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="410" y="210" width="260" height="46" as="geometry" /></mxCell>
-        <mxCell id="C3" value="Budget &amp; render&#10;core / retrieved / wiki" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="410" y="290" width="260" height="46" as="geometry" /></mxCell>
-        <mxCell id="C4" value="Prompt assembly&#10;core_memory · retrieved_memory · wiki_context" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="410" y="370" width="260" height="46" as="geometry" /></mxCell>
-        <mxCell id="C5" value="ChatAgent / RoutedTaskExecutor&#10;inject + record" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="410" y="450" width="260" height="46" as="geometry" /></mxCell>
-        <mxCell id="C6" value="Deterministic extractors&#10;RecordPlan / Task / Trial / Document" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="720" y="130" width="250" height="46" as="geometry" /></mxCell>
-        <mxCell id="C7" value="LLM summarizer (W3)&#10;TLDR · method · limitation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="720" y="210" width="250" height="46" as="geometry" /></mxCell>
-        <mxCell id="C8" value="Link builder (W2/W2.5)&#10;entities · OpenAlex · PDF refs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="720" y="290" width="250" height="46" as="geometry" /></mxCell>
-        <mxCell id="C9" value="Consolidator&#10;ADD/UPDATE/DELETE/NOOP · TTL" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="720" y="370" width="250" height="46" as="geometry" /></mxCell>
-        <mxCell id="NOTE1" value="Memory is data, never instructions. Every write is owner-scoped, redacted, hidden-benchmark filtered and injection-scanned." style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="410" y="530" width="800" height="48" as="geometry" /></mxCell>
-        <mxCell id="G-STORE" value="Owner-scoped persistence" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="1290" y="90" width="430" height="700" as="geometry" /></mxCell>
-        <mxCell id="S1" value="Memory FileStore&#10;memory.wal.jsonl + memory.snapshot.json + lock" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1310" y="130" width="390" height="58" as="geometry" /></mxCell>
-        <mxCell id="S2" value="ChatSessionStore + per-owner settings&#10;turns · summary · switches" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1310" y="220" width="390" height="52" as="geometry" /></mxCell>
-        <mxCell id="S3" value="Paper Wiki store&#10;papers.jsonl + papers.snapshot.json + aliases.json" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1310" y="310" width="390" height="58" as="geometry" /></mxCell>
-        <mxCell id="S4" value="DocumentStore + Literature library&#10;PDF text/sections · DOI/arXiv records" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1310" y="400" width="390" height="58" as="geometry" /></mxCell>
-        <mxCell id="NOTE2" value="PaperPage is a rebuildable projection; Point and Link are memory.Record views. Deleting data/wiki never loses points, links or review decisions." style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1310" y="500" width="390" height="80" as="geometry" /></mxCell>
-        <mxCell id="m1" value="chat / task" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="U1" target="U2"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m2" value="REST / SSE" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="U2" target="C1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m3" value="CRUD / review" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="U3" target="C1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m4" value="retrieve" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="C1" target="C2"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m5" value="scored records" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="C2" target="C3"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m6" value="bounded context" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="C3" target="C4"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m7" value="inject" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="C4" target="C5"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m8" value="record plan/task/trial" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="C5" target="C6"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m9" value="paper_parse" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="C5" target="C7"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m10" value="build links" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="C5" target="C8"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m11" value="background" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="C5" target="C9"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m12" value="records + index" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="C2" target="S1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m13" value="Put" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="C6" target="S1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m14" value="wiki_tldr / points" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="C7" target="S1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m15" value="wiki_link records" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="C8" target="S1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m16" value="merge / TTL" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="C9" target="S1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m17" value="PaperPage / links" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="C8" target="S3"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m18" value="papers / points" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="C1" target="S3"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m19" value="rebuild" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;dashed=1;fontSize=11;" edge="1" parent="1" source="S3" target="S1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="m20" value="PDF refs / DOI" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="C8" target="S4"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="title" parent="1" vertex="1" value="记忆架构 / MEMORY &amp;amp; CONTEXT" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;text;align=left;fontSize=28;fontStyle=1;" tooltip="">
+          <mxGeometry x="32" y="24" width="1216" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" vertex="1" value="可追溯的研究经验 · 按作用域检索 · 按模型容量注入" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;text;align=left;fontSize=18;fontColor=#64748b;" tooltip="">
+          <mxGeometry x="32" y="68" width="1216" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="write" parent="1" vertex="1" value="&lt;b&gt;01  写入与治理 / WRITE&lt;/b&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=1.2;fontSize=18;spacing=10;align=left;verticalAlign=top;spacingLeft=22;spacingTop=14;fontSize=20;" tooltip="">
+          <mxGeometry x="32" y="112" width="368" height="614" as="geometry" />
+        </mxCell>
+        <mxCell id="persist" parent="1" vertex="1" value="&lt;b&gt;02  状态与投影 / STATE&lt;/b&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=1.2;fontSize=18;spacing=10;align=left;verticalAlign=top;spacingLeft=22;spacingTop=14;fontSize=20;" tooltip="">
+          <mxGeometry x="456" y="112" width="368" height="614" as="geometry" />
+        </mxCell>
+        <mxCell id="read" parent="1" vertex="1" value="&lt;b&gt;03  检索与上下文 / READ&lt;/b&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=1.2;fontSize=18;spacing=10;align=left;verticalAlign=top;spacingLeft=22;spacingTop=14;fontSize=20;" tooltip="">
+          <mxGeometry x="880" y="112" width="368" height="614" as="geometry" />
+        </mxCell>
+        <mxCell id="extract" parent="1" vertex="1" value="&lt;b&gt;事件与确定性抽取&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;会话 · Plan · Task · Trial · Document&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf4ff;strokeColor=#92acd1;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/memory/extract.go">
+          <mxGeometry x="56" y="180" width="320" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="validate" parent="1" vertex="1" value="&lt;b&gt;记录校验与作用域&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;owner / scope · 脱敏&lt;br&gt;隐藏评测过滤 · 注入扫描&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#fff0ed;strokeColor=#d3a097;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/memory/redact.go; research-assistant/backend/internal/memory/types.go">
+          <mxGeometry x="56" y="312" width="320" height="88" as="geometry" />
+        </mxCell>
+        <mxCell id="consolidate" parent="1" vertex="1" value="&lt;b&gt;条件案例与维护&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;来源 · 环境 · 协议 · 成败条件&lt;br&gt;TTL / 归档 · 不自动泛化&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf4ff;strokeColor=#92acd1;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/memory/consolidate.go">
+          <mxGeometry x="56" y="454" width="320" height="88" as="geometry" />
+        </mxCell>
+        <mxCell id="human" parent="1" vertex="1" value="&lt;b&gt;人工审阅与修订&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;pending_review · pin · supersede&lt;br&gt;LLM / 归纳候选保留待审状态&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#fff0ed;strokeColor=#d3a097;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/api/memories.go">
+          <mxGeometry x="56" y="596" width="320" height="88" as="geometry" />
+        </mxCell>
+        <mxCell id="session" parent="1" vertex="1" value="&lt;b&gt;会话与活动窗口&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;ChatSession · contextwindow&lt;br&gt;历史 · 摘要 · 私有分支&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#fff5e6;strokeColor=#d7b77d;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/memory/chat_store.go; research-assistant/backend/internal/contextwindow/store.go">
+          <mxGeometry x="480" y="180" width="320" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="memory" parent="1" vertex="1" value="&lt;b&gt;Memory FileStore&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;WAL + snapshot&lt;br&gt;BM25 / 实体索引&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#fff5e6;strokeColor=#d7b77d;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/memory/store.go">
+          <mxGeometry x="480" y="312" width="320" height="88" as="geometry" />
+        </mxCell>
+        <mxCell id="wiki" parent="1" vertex="1" value="&lt;b&gt;Paper Wiki&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;PaperPage 为可重建投影&lt;br&gt;Point / Link 来源于 memory.Record&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f3effb;strokeColor=#b09bcf;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/wiki">
+          <mxGeometry x="480" y="454" width="320" height="88" as="geometry" />
+        </mxCell>
+        <mxCell id="documents" parent="1" vertex="1" value="&lt;b&gt;文档与文献库&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;页码 · 章节 · quote · DOI / arXiv&lt;br&gt;原文引用与论文身份&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#fff5e6;strokeColor=#d7b77d;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/documents; research-assistant/backend/internal/literature">
+          <mxGeometry x="480" y="596" width="320" height="88" as="geometry" />
+        </mxCell>
+        <mxCell id="retrieve" parent="1" vertex="1" value="&lt;b&gt;范围过滤与召回&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;BM25 / entity → RRF / MMR&lt;br&gt;信任 · 时效 · 环境与协议兼容&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f3effb;strokeColor=#b09bcf;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/memory/retrieve.go">
+          <mxGeometry x="904" y="180" width="320" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="budget" parent="1" vertex="1" value="&lt;b&gt;共享上下文预算&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;必需输入 → core → 动态池&lt;br&gt;召回 / Wiki / 文档 / memory 共用&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f3effb;strokeColor=#b09bcf;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/memory/budget.go; research-assistant/backend/internal/api/chat_runtime.go">
+          <mxGeometry x="904" y="312" width="320" height="88" as="geometry" />
+        </mxCell>
+        <mxCell id="material" parent="1" vertex="1" value="&lt;b&gt;带来源的资料块&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;id · source · trust · version&lt;br&gt;verbatim / retrievable 保留策略&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f3effb;strokeColor=#b09bcf;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/contextwindow/material.go">
+          <mxGeometry x="904" y="454" width="320" height="88" as="geometry" />
+        </mxCell>
+        <mxCell id="preflight" parent="1" vertex="1" value="&lt;b&gt;模型调用与压缩检查&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;按实际容量预检 · 原文摘要校验&lt;br&gt;必需原文超限时显式失败&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf4ff;strokeColor=#92acd1;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/modelresolver/runtime.go; research-assistant/backend/internal/contextwindow/summary.go">
+          <mxGeometry x="904" y="596" width="320" height="88" as="geometry" />
+        </mxCell>
+        <mxCell id="output" parent="1" vertex="1" value="&lt;b&gt;04  统一输出 / CONTEXT &amp;amp; CITATIONS&lt;/b&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=1.2;fontSize=18;spacing=10;align=left;verticalAlign=top;spacingLeft=22;spacingTop=14;fontSize=20;" tooltip="">
+          <mxGeometry x="32" y="790" width="1216" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="consumer" parent="1" vertex="1" value="&lt;b&gt;Chat API / RoutedTaskExecutor → modelresolver → 模型&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;来源引用 · context_budget_report（检索分配） · context_report（最终预检）&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf4ff;strokeColor=#92acd1;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/api/chat_runtime.go; research-assistant/backend/internal/scheduler/executor.go">
+          <mxGeometry x="56" y="844" width="1168" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="extract-validation" edge="1" parent="1" source="extract" target="validate" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="validated-write" edge="1" parent="1" source="validate" target="memory" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="stored-cases" edge="1" parent="1" source="memory" target="consolidate" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0;exitY=0.5;entryX=1;entryY=0.5;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=6 4;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="428" y="356" />
+              <mxPoint x="428" y="498" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="case-review" edge="1" parent="1" source="consolidate" target="human" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="review-write" edge="1" parent="1" source="human" target="memory" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=6 4;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="412" y="640" />
+              <mxPoint x="412" y="376" />
+              <mxPoint x="464" y="376" />
+              <mxPoint x="464" y="356" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="store-recall" edge="1" parent="1" source="memory" target="retrieve" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="848" y="356" />
+              <mxPoint x="848" y="220" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="session-recall" edge="1" parent="1" source="session" target="retrieve" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=6 4;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="wiki-projection" edge="1" parent="1" source="memory" target="wiki" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=6 4;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="document-wiki" edge="1" parent="1" source="documents" target="wiki" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0.5;exitY=0;entryX=0.5;entryY=1;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=6 4;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="wiki-budget" edge="1" parent="1" source="wiki" target="budget" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0.5;entryY=1;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=6 4;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="848" y="498" />
+              <mxPoint x="848" y="430" />
+              <mxPoint x="1064" y="430" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="document-budget" edge="1" parent="1" source="documents" target="budget" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0.5;entryY=1;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=6 4;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="864" y="640" />
+              <mxPoint x="864" y="430" />
+              <mxPoint x="1064" y="430" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="retrieve-budget" edge="1" parent="1" source="retrieve" target="budget" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="budget-material" edge="1" parent="1" source="budget" target="material" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="material-check" edge="1" parent="1" source="material" target="preflight" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="checked-output" edge="1" parent="1" source="preflight" target="output" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1064" y="756" />
+              <mxPoint x="640" y="756" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="note" parent="1" vertex="1" value="资料以普通数据块传入；关闭或 shadow 可回滚。原文校验不等于开放语义真实性验证。" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;text;align=left;fontSize=16;fontColor=#475569;" tooltip="">
+          <mxGeometry x="32" y="954" width="1216" height="40" as="geometry" />
+        </mxCell>
       </root>
     </mxGraphModel>
   </diagram>

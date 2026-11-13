@@ -10,7 +10,8 @@
 |---|---|---|---|
 | 系统架构图 | [architecture.drawio](diagrams/architecture.drawio) | [architecture.svg](diagrams/architecture.svg) | 客户端、桌面外壳、React 工作台、Go 后端、Agent、沙箱 Provider、记忆与持久化、外部依赖 |
 | 运行流程图 | [runtime-flow.drawio](diagrams/runtime-flow.drawio) | [runtime-flow.svg](diagrams/runtime-flow.svg) | 从研究目标到计划、审阅、调度、沙箱执行、Artifact、记忆与 SSE 的完整时序 |
-| Agent 执行流程图 | [agent-execution-flow.drawio](diagrams/agent-execution-flow.drawio) | [agent-execution-flow.svg](diagrams/agent-execution-flow.svg) | RoutedTaskExecutor 的 Agent 路由、记忆注入、工具调用、沙箱执行与证据/搜索子循环 |
+| Agent 架构图 | [agent-execution-flow.drawio](diagrams/agent-execution-flow.drawio) | [agent-execution-flow.svg](diagrams/agent-execution-flow.svg) | 内置 runner 与领域循环、自定义 AgentProfile、上下文绑定、模型/工具/沙箱执行与结果验收 |
+| 记忆架构图 | [memory-system.drawio](diagrams/memory-system.drawio) | [memory-system.svg](diagrams/memory-system.svg) | 写入校验、受审案例、会话与知识投影、检索预算、资料块与模型预检 |
 
 ### Archify 交互式图
 
@@ -28,6 +29,8 @@
 ![运行流程图](diagrams/runtime-flow.svg)
 
 ![Agent 执行流程图](diagrams/agent-execution-flow.svg)
+
+![记忆架构图](diagrams/memory-system.svg)
 
 ## 项目状态
 
@@ -64,6 +67,9 @@
 | [记忆系统实现对照](improvement-2026-11-01/MEMORY-IMPLEMENTATION.md) | 设计 vs 实际实现、已实现范围、回滚开关与安全边界 |
 | [记忆系统测试报告](improvement-2026-11-01/MEMORY-TEST-REPORT.md) | 容器内测试、长对话/长任务 E2E 与真实 LLM 验证 |
 | [上下文系统审计](audit/context-system-audit-2026-11-01.md) | 现有上下文/记忆能力的逐项审计与差距 |
+| [上下文与记忆系统评估（2026-11-12）](review/2026-11-12-context-memory-review.md) | 当前源码能力、9 个包的容器回归、资料注入/摘要保真/检索/预算/归纳问题，以及真实任务对照评测与改进顺序 |
+| [上下文与记忆改进实施记录](design/2026-11-12-context-memory-implementation.md) | CM-01～06 增量：资料边界、原文摘要校验、检索校准、共享预算、待审案例汇编、冻结 A/B/C 试测及真实长任务收益边界 |
+| [上下文与记忆容器实测](test/2026-11-13-context-memory-container.md) | 现有容器热更新、25 项真实接口断言、真实摘要与调度、文档页顶事实修复、默认模型配置及跨重启验证 |
 | [论文知识 Wiki（Paper Wiki）](design/2026-11-02-paper-wiki-memory.md) | 设计稿 v1.1（W0–W3/W2.5 已实现，见 [实现对照](improvement-2026-11-02/IMPLEMENTATION.md) 与 [测试报告](improvement-2026-11-02/TEST-REPORT.md)）：PaperPage / Point / Link 的科研记忆视图与交叉索引 |
 | [Paper Wiki 评审](review/2026-11-02-paper-wiki-memory-review.md) | 对 Paper Wiki v1.0 的评审与修订建议 |
 | [记忆系统压力测试方案](test/2026-11-03-memory-stress-test-plan.md) | **已执行**：长任务 / 长论文 / 交叉论文三条战线的 166 条压力用例、四套剧本、指标与验收门槛，以及代码级风险登记（附 [CSV 用例表](test/2026-11-03-memory-stress-test-cases.csv)；实测见 [压力测试报告](../../reports/memory-stress-2026-11-03-stress-2026-11-03-r1/REPORT.md)） |

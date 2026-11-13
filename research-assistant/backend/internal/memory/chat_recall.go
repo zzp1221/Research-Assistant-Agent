@@ -97,7 +97,7 @@ func (s *ChatStore) ContextForQuery(ownerID, projectID, sessionID, text string, 
 }
 
 // RecallForQuery retrieves original sources without changing the active model window.
-func (s *ChatStore) RecallForQuery(ownerID, projectID, sessionID, text string, recallBudget int) Context {
+func (s *ChatStore) RecallForQuery(ownerID, projectID, sessionID, text string, recallBudget int, excludeMessageIDs ...string) Context {
 	if recallBudget <= 0 {
 		return Context{}
 	}
@@ -105,8 +105,12 @@ func (s *ChatStore) RecallForQuery(ownerID, projectID, sessionID, text string, r
 	defer s.mu.RUnlock()
 	q := Query{OwnerID: ownerID, ProjectID: projectID, SessionID: sessionID}
 	visible := map[string]struct{}{}
+	excluded := map[string]bool{}
+	for _, id := range excludeMessageIDs {
+		excluded[id] = true
+	}
 	for id, rec := range s.chunks {
-		if matchQuery(rec, q) {
+		if matchQuery(rec, q) && !excluded[rec.Source.Ref] {
 			visible[id] = struct{}{}
 		}
 	}
@@ -120,7 +124,7 @@ func (s *ChatStore) RecallForQuery(ownerID, projectID, sessionID, text string, r
 	if session, ok := s.data[sessionID]; ok && session.OwnerID == ownerID && session.ProjectID == projectID {
 		state := map[string]ChatTurn{}
 		for _, turn := range session.Turns {
-			if turn.Role == "user" {
+			if turn.Role == "user" && !excluded[turn.ID] {
 				if role := researchRole(turn.Content); role != "" {
 					state[role] = turn
 				}
