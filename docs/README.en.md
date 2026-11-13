@@ -10,7 +10,8 @@ This directory holds cross-module architecture diagrams, design documents, audit
 |---|---|---|---|
 | System architecture | [architecture.drawio](diagrams/architecture.drawio) | [architecture.svg](diagrams/architecture.svg) | Clients, desktop shell, React workbench, Go backend, agents, sandbox providers, memory/persistence, external dependencies |
 | Runtime flow | [runtime-flow.drawio](diagrams/runtime-flow.drawio) | [runtime-flow.svg](diagrams/runtime-flow.svg) | End-to-end sequence from research goal to plan, review, scheduling, sandbox execution, artifacts, memory, and SSE |
-| Agent execution flow | [agent-execution-flow.drawio](diagrams/agent-execution-flow.drawio) | [agent-execution-flow.svg](diagrams/agent-execution-flow.svg) | RoutedTaskExecutor routing, memory injection, tool calls, sandbox execution, and evidence/search sub-loops |
+| Agent architecture | [agent-execution-flow.drawio](diagrams/agent-execution-flow.drawio) | [agent-execution-flow.svg](diagrams/agent-execution-flow.svg) | Built-in runners and domain loops, custom AgentProfile, context binding, model/tool/sandbox execution, and result acceptance |
+| Memory architecture | [memory-system.drawio](diagrams/memory-system.drawio) | [memory-system.svg](diagrams/memory-system.svg) | Validated writes, reviewed cases, sessions and knowledge projections, retrieval budgets, materials, and model preflight |
 
 ### Archify interactive diagrams
 
@@ -28,6 +29,8 @@ Both are self-contained HTML files (inline SVG/styles/scripts) that open directl
 ![Runtime flow](diagrams/runtime-flow.svg)
 
 ![Agent execution flow](diagrams/agent-execution-flow.svg)
+
+![Memory architecture](diagrams/memory-system.svg)
 
 ## Project status
 
@@ -57,6 +60,9 @@ Both are self-contained HTML files (inline SVG/styles/scripts) that open directl
 | [Memory implementation report](improvement-2026-11-01/MEMORY-IMPLEMENTATION.md) | Design vs actual implementation, implemented scope, rollback switches, security boundaries |
 | [Memory test report](improvement-2026-11-01/MEMORY-TEST-REPORT.md) | Container tests, long-conversation/task E2E, and real-LLM verification |
 | [Context-system audit](audit/context-system-audit-2026-11-01.md) | Item-by-item audit and gaps in existing context/memory capabilities |
+| [Context and memory system review (2026-11-12, Chinese)](review/2026-11-12-context-memory-review.md) | Current implementation, container regression across nine packages, injection/summary/retrieval/budget/consolidation findings, and a controlled task-evaluation plan |
+| [Context and memory implementation (2026-11-12, Chinese)](design/2026-11-12-context-memory-implementation.md) | Source-data boundaries, extractive summary checks, calibrated retrieval, shared budgets, pending case compilations, frozen A/B/C pilot and limits of long-task evidence |
+| [Context and memory container acceptance (2026-11-13, Chinese)](test/2026-11-13-context-memory-container.md) | Container hot update, 25 live API assertions, real compaction/scheduling, page-margin evidence fix, default-model configuration and restart verification |
 | [Paper knowledge wiki (Paper Wiki)](design/2026-11-02-paper-wiki-memory.md) | **Design draft v1.1, not implemented**: PaperPage / Point / Link research-memory view and cross-index |
 | [Paper Wiki review](review/2026-11-02-paper-wiki-memory-review.md) | Review and revision recommendations for Paper Wiki v1.0 |
 

@@ -48,3 +48,29 @@ func TestRoutedTaskExecutorInjectsCoreMemory(t *testing.T) {
 		t.Fatal("expected memory refs")
 	}
 }
+
+func TestRoutedRetrievalUsesOwnerBudgetOnNextCall(t *testing.T) {
+	settings, _ := memory.NewSettingsStore("")
+	runner := &memoryCaptureRunner{}
+	executor := NewRoutedTaskExecutor(runner, runner, runner)
+	executor.General = runner
+	executor.SetMemory(memory.NewMemoryStore())
+	executor.MemorySettings = settings
+	plan := &models.PlanGraph{ID: "p-budget", OwnerID: "budget-owner"}
+	for _, tokens := range []int{137, 741} {
+		value := memory.DefaultSettings()
+		value.RetrievedBudgetTokens = tokens
+		if err := settings.Put(plan.OwnerID, value); err != nil {
+			t.Fatal(err)
+		}
+		task := &models.TaskNode{ID: "t-budget", Type: "general", AssignedTo: "general_agent", Description: "work"}
+		result, err := executor.ExecuteTask(context.Background(), plan, task)
+		if err != nil {
+			t.Fatal(err)
+		}
+		budget, ok := result.Metadata["context_budget_report"].(memory.ContextBudget)
+		if !ok || budget.ConfiguredRetrieved != tokens || budget.Retrieved != tokens {
+			t.Fatalf("owner setting ignored: %#v", result.Metadata)
+		}
+	}
+}

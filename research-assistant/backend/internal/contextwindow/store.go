@@ -34,6 +34,7 @@ type CompactionRecord struct {
 	UsageEstimated bool             `json:"usage_estimated,omitempty"`
 	CostUSD        *float64         `json:"cost_usd,omitempty"`
 	ErrorCode      string           `json:"error_code,omitempty"`
+	Validation     string           `json:"validation,omitempty"`
 	At             time.Time        `json:"at"`
 }
 type State struct {
@@ -46,6 +47,9 @@ type State struct {
 	Window           []responses.Item   `json:"window,omitempty"`
 	Summary          json.RawMessage    `json:"summary,omitempty"`
 	SummaryThrough   int                `json:"summary_through,omitempty"`
+	SummaryGrounding string             `json:"summary_grounding,omitempty"`
+	MaterialHash     string             `json:"material_hash,omitempty"`
+	MaterialReports  []MaterialReport   `json:"material_reports,omitempty"`
 	LastInputHash    string             `json:"last_input_hash,omitempty"`
 	LastText         string             `json:"last_text,omitempty"`
 	LastFinishReason string             `json:"last_finish_reason,omitempty"`

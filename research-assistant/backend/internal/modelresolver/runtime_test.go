@@ -333,7 +333,7 @@ func TestTextSummaryValidatedOnceAndKeepsFrozenRequestAndLatestFeedback(t *testi
 					if valid && len(material.Items) > 0 {
 						id = material.Items[0].ID
 					}
-					text = fmt.Sprintf(`{"version":"context.summary/v1","goal":"continue","constraints":[],"facts":[],"decisions":[],"attempts":[{"action":"failed repair","outcome":"test failed","source_ids":[%q]}],"hypotheses":[],"open_questions":[],"next_steps":[],"artifact_refs":[]}`, id)
+					text = fmt.Sprintf(`{"version":"context.summary/v1","goal":"historical context","constraints":[],"facts":[],"decisions":[],"attempts":[{"action":"failed repair","outcome":"test failed","source_ids":[%q]}],"hypotheses":[],"open_questions":[],"next_steps":[],"artifact_refs":[]}`, id)
 				} else {
 					generations++
 					joined := ""
@@ -354,7 +354,7 @@ func TestTextSummaryValidatedOnceAndKeepsFrozenRequestAndLatestFeedback(t *testi
 			})
 			call.Profile.APIFormat = modelprofile.APIChat
 			call.Profile.CompactionMode = modelprofile.CompactionText
-			input := []oaichat.Message{{Role: "system", Text: "authoritative instructions"}, {Role: "user", Text: "FROZEN split=80/20"}, {Role: "assistant", Text: "OLD attempt " + strings.Repeat("研", 2250)}, {Role: "user", Text: "OLD feedback " + strings.Repeat("研", 2250)}, {Role: "assistant", Text: "LATEST runnable patch"}, {Role: "user", Text: "CURRENT request"}}
+			input := []oaichat.Message{{Role: "system", Text: "authoritative instructions"}, {Role: "user", Text: "FROZEN split=80/20"}, {Role: "assistant", Text: "failed repair\ntest failed\nOLD attempt " + strings.Repeat("研", 2250)}, {Role: "user", Text: "OLD feedback " + strings.Repeat("研", 2250)}, {Role: "assistant", Text: "LATEST runnable patch"}, {Role: "user", Text: "CURRENT request"}}
 			response, err := r.CompleteManaged(ctx, call, input, oaichat.Options{})
 			if err != nil || response.Content != "answer" || summaries != 1 || generations != 1 {
 				t.Fatalf("summary flow: %#v %v %d/%d", response, err, summaries, generations)
@@ -412,7 +412,7 @@ func TestTextSummaryRecoveryChecksEverySummarizedSource(t *testing.T) {
 					for _, message := range request.Messages {
 						joined += message.Content
 					}
-					if got := strings.Contains(joined, "original repair history"); got != (history == "unchanged") {
+					if got := strings.Contains(joined, "[derived historical working summary;"); got != (history == "unchanged") {
 						t.Errorf("summary reused across incompatible source history: %s", joined)
 					}
 				}
@@ -420,7 +420,7 @@ func TestTextSummaryRecoveryChecksEverySummarizedSource(t *testing.T) {
 			})
 			call.Profile.APIFormat = modelprofile.APIChat
 			call.Profile.CompactionMode = modelprofile.CompactionText
-			input := []oaichat.Message{{Role: "user", Text: "FROZEN split=80/20"}, {Role: "assistant", Text: strings.Repeat("研", 2250)}, {Role: "user", Text: strings.Repeat("研", 2250)}, {Role: "assistant", Text: "LATEST patch"}, {Role: "user", Text: "CURRENT request"}}
+			input := []oaichat.Message{{Role: "user", Text: "FROZEN split=80/20"}, {Role: "assistant", Text: "original repair history\n" + strings.Repeat("研", 2250)}, {Role: "user", Text: strings.Repeat("研", 2250)}, {Role: "assistant", Text: "LATEST patch"}, {Role: "user", Text: "CURRENT request"}}
 			if _, err := r.CompleteManaged(ctx, call, input, oaichat.Options{}); err == nil {
 				t.Fatal("expected generation failure after committed summary")
 			}

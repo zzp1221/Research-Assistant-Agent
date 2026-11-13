@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
-"""Generate the three project diagrams as editable draw.io files and SVG previews.
+"""Generate editable draw.io diagrams and matching SVG previews.
 
-The layout data is intentionally declarative: edit the architecture(),
-runtime_flow() and agent_flow() functions, then run this script. The SVG
-renderer uses orthogonal routing so the preview stays readable without a
-draw.io installation.
+README overviews use overview_diagrams.py for shared explicit geometry.
+The detailed runtime flow retains its existing declarative layout below.
+Pass diagram IDs to regenerate selected views, or omit them for all four.
 """
 from __future__ import annotations
 
+import argparse
 import html
 from pathlib import Path
+
+if __package__:
+    from .overview_diagrams import architecture, agent_flow, memory_system
+    from .overview_diagrams import drawio as overview_drawio, svg as overview_svg
+else:
+    from overview_diagrams import architecture, agent_flow, memory_system
+    from overview_diagrams import drawio as overview_drawio, svg as overview_svg
 
 OUT = Path(__file__).resolve().parent
 
@@ -40,129 +47,6 @@ def e(i, frm, to, label="", dashed=False, from_side="", to_side=""):
         "fromSide": from_side,
         "toSide": to_side,
     }
-
-
-def architecture():
-    nodes = [
-        n("T", "Research Assistant Agent — System Architecture", 40, 16, 1680, 40, TITLE),
-
-        # Clients
-        n("G-CLIENT", "Clients", 40, 78, 360, 170, GROUP),
-        n("U1", "Researcher / Desktop user", 60, 116, 320, 38),
-        n("U2", "Web Browser", 60, 164, 150, 38),
-        n("U3", "API / CLI client", 230, 164, 150, 38),
-
-        # Desktop shell
-        n("G-DESK", "Windows Desktop (MyGo 0.7.4)", 40, 268, 360, 262, GROUP),
-        n("D1", "MyGo window (WebView2)", 60, 306, 320, 38),
-        n("D2", "bridge (mygo.Bind)", 60, 354, 150, 36),
-        n("D3", "supervisor\n(Job Object)", 230, 354, 150, 36),
-        n("D4", "loopback proxy (SSE)", 60, 400, 150, 36),
-        n("D5", "settings + DPAPI", 230, 400, 150, 36),
-        n("D6", "updater · diagnostics · tray", 60, 446, 320, 36),
-
-        # Frontend
-        n("G-FE", "React Workbench", 40, 550, 360, 190, GROUP),
-        n("F1", "Chat · DAG · PDF · Literature\nPlans · Review · Cost · Memory · Settings", 60, 588, 320, 52),
-        n("F2", "SSE event client", 60, 652, 150, 36),
-        n("F3", "desktop bridge", 230, 652, 150, 36),
-
-        # Backend
-        n("G-BE", "Go Backend — API, cognition, governance, scheduling, execution", 440, 78, 760, 780, GROUP),
-        n("G-API", "API layer", 460, 116, 720, 96, GROUP),
-        n("A1", "Gin API · auth · CORS", 480, 150, 220, 40),
-        n("A2", "Uploads · documents", 720, 150, 220, 40),
-        n("A3", "SSE tickets · events", 960, 150, 200, 40),
-
-        n("G-COG", "Cognition & governance", 460, 230, 720, 230, GROUP),
-        n("C1", "Intent Router", 480, 266, 160, 40),
-        n("C2", "Complexity Router L0–L4", 660, 266, 180, 40),
-        n("C3", "Planner + DAG Validator", 860, 266, 300, 40),
-        n("C4", "Revision Store + Review Gate", 480, 326, 300, 40),
-        n("C5", "Plan Store (snapshot + JSONL)", 800, 326, 360, 40),
-        n("C6", "Budget · Usage · Audit", 480, 386, 680, 40),
-
-        n("G-SCH", "Scheduling & execution", 460, 478, 720, 230, GROUP),
-        n("S1", "Scheduler (lease · retry · cancel · budget)", 480, 514, 340, 40),
-        n("S2", "Runtime Gate (approval)", 840, 514, 320, 40),
-        n("S3", "RoutedTaskExecutor", 480, 574, 220, 40),
-        n("S4", "AgentProfile + PromptVersion", 720, 574, 220, 40),
-        n("S5", "Memory injection\n(core / retrieved)", 960, 574, 200, 40),
-        n("S6", "ToolInvoker (native / HTTP / MCP)", 480, 634, 340, 40),
-        n("S7", "MemorySink + PlanFinalizer", 840, 634, 320, 40),
-
-        # Agents
-        n("G-AG", "Specialized agents (12 roles, routed by assigned_to)", 440, 886, 760, 196, GROUP),
-        n("AG1", "Chat / General", 460, 922, 170, 38, AGENT),
-        n("AG2", "Librarian", 650, 922, 170, 38, AGENT),
-        n("AG3", "Benchmark", 840, 922, 170, 38, AGENT),
-        n("AG4", "Coder", 1030, 922, 150, 38, AGENT),
-        n("AG5", "Research Coding", 460, 970, 170, 38, AGENT),
-        n("AG6", "Data", 650, 970, 170, 38, AGENT),
-        n("AG7", "AutoResearch", 840, 970, 170, 38, AGENT),
-        n("AG8", "Experiment Research", 1030, 970, 150, 38, AGENT),
-        n("AG9", "Ablation ToT", 460, 1018, 170, 38, AGENT),
-        n("AG10", "Paper Debug", 650, 1018, 170, 38, AGENT),
-        n("AG11", "Visual Verifier", 840, 1018, 170, 38, AGENT),
-        n("AG12", "Answer", 1030, 1018, 150, 38, AGENT),
-
-        # Sandbox
-        n("G-SB", "Sandbox service — control plane + execution plane", 440, 1110, 760, 180, GROUP),
-        n("SB1", "gateway (auth + proxy)", 460, 1148, 220, 46, SECURITY),
-        n("SB2", "executor (privileged)", 700, 1148, 220, 46, SECURITY),
-        n("SB3", "Provider: docker · native\nvm · remote", 940, 1148, 240, 46),
-        n("SB4", "gateway has no Docker socket; executor is unpublished", 460, 1214, 720, 30, NOTE),
-
-        # External
-        n("G-EXT", "External dependencies", 1240, 78, 480, 280, GROUP),
-        n("E1", "LLM provider — OpenAI-compatible (DeepSeek default)", 1260, 116, 440, 44, EXTERNAL),
-        n("E2", "Research Optimizer — Python + SQLite", 1260, 172, 440, 44, EXTERNAL),
-        n("E3", "Literature sources\narXiv · OpenAlex · Crossref · PubMed · S2 · DBLP", 1260, 228, 440, 44, EXTERNAL),
-        n("E4", "Docker daemon · WSL2 · OpenSandbox", 1260, 284, 440, 44, EXTERNAL),
-
-        # Persistent state
-        n("G-STORE", "Persistent state", 1240, 390, 480, 380, GROUP),
-        n("P1", "Plan + revision store", 1260, 426, 440, 40, STORE),
-        n("P2", "Memory store (JSONL + BM25 + snapshots)", 1260, 478, 440, 40, STORE),
-        n("P3", "Upload / document store", 1260, 530, 440, 40, STORE),
-        n("P4", "Literature library", 1260, 582, 440, 40, STORE),
-        n("P5", "Budget / usage / audit", 1260, 634, 440, 40, STORE),
-        n("P6", "Artifact / blob store", 1260, 686, 440, 40, STORE),
-
-        n("G-DSTATE", "Desktop local state", 1240, 800, 480, 160, GROUP),
-        n("P7", "settings.json · secrets.dat (DPAPI)", 1260, 836, 440, 36, STORE),
-        n("P8", "runtimes · workspaces · logs · crash dumps", 1260, 886, 440, 36, STORE),
-
-        n("NOTE", "Runtime permission (confirm_important / full_access) gates image pulls, dependency installs, downloads, GPU and network.\nSandbox capabilities are negotiated per provider; missing capabilities return blocked + missing_requirements, never silent mock success.", 440, 1320, 1280, 70, NOTE),
-    ]
-    edges = [
-        e("e1", "U1", "D1", "launch", from_side="right", to_side="left"),
-        e("e2", "U2", "F1", "HTTPS", from_side="right", to_side="left"),
-        e("e3", "U3", "A1", "REST / CLI", from_side="right", to_side="left"),
-        e("e4", "D1", "D4", "loads", from_side="bottom", to_side="top"),
-        e("e5", "D4", "F1", "same-origin", from_side="right", to_side="left"),
-        e("e6", "F1", "A1", "REST", from_side="right", to_side="left"),
-        e("e7", "F2", "A3", "SSE", from_side="right", to_side="left", dashed=True),
-        e("e9", "A1", "C1", "intent", from_side="bottom", to_side="top"),
-        e("e10", "C1", "C2", "classify", from_side="right", to_side="left"),
-        e("e11", "C2", "C3", "route", from_side="right", to_side="left"),
-        e("e12", "C3", "C4", "PlanGraph", from_side="bottom", to_side="top"),
-        e("e13", "C4", "C5", "save / revision", from_side="right", to_side="left"),
-        e("e14", "C5", "S1", "execute", from_side="bottom", to_side="top"),
-        e("e15", "S1", "S3", "dispatch", from_side="bottom", to_side="top"),
-        e("e16", "S3", "S4", "resolve profile", from_side="right", to_side="left"),
-        e("e17", "S4", "S5", "inject", from_side="right", to_side="left"),
-        e("e18", "S5", "G-AG", "invoke", from_side="bottom", to_side="top"),
-        e("e19", "G-AG", "S6", "tools", from_side="left", to_side="bottom"),
-        e("e20", "G-AG", "SB1", "sandbox client", from_side="bottom", to_side="top"),
-        e("e21", "SB1", "SB2", "proxy /api/v1", from_side="right", to_side="left"),
-        e("e22", "SB2", "SB3", "provider", from_side="right", to_side="left"),
-        e("e23", "SB3", "S7", "stdout / metrics / artifacts", from_side="right", to_side="bottom", dashed=True),
-        e("e24", "S7", "F2", "events", from_side="right", to_side="right", dashed=True),
-        e("e29", "G-AG", "E1", "LLM calls", from_side="right", to_side="left"),
-        e("e35", "S7", "P1", "persist outcome", from_side="right", to_side="left", dashed=True),
-    ]
-    return {"id": "architecture", "name": "System Architecture", "width": 1760, "height": 1420, "nodes": nodes, "edges": edges}
 
 
 def runtime_flow():
@@ -277,138 +161,9 @@ def runtime_flow():
     return {"id": "runtime-flow", "name": "Runtime Flow", "width": 1760, "height": 990, "nodes": nodes, "edges": edges}
 
 
-def agent_flow():
-    nodes = [
-        n("T", "Agent Execution Flow — routing, memory, tools, sandbox and evidence", 40, 16, 1680, 40, TITLE),
-        n("START", "Scheduler TaskNode\n(type · assigned_to · allowed_tools · inputs)", 660, 80, 440, 58),
-        n("ROUTER", "RoutedTaskExecutor\nresolve runner", 660, 172, 440, 52),
-        n("PROFILE", "AgentProfile = PromptVersion + ModelProfile\n+ ToolAllowlist + MaxSteps", 660, 258, 440, 56),
-        n("MEMORY", "Memory injection: core_memory + retrieved_memory + memory_refs", 660, 336, 440, 46),
-        n("DEC", "Agent type?", 770, 414, 220, 80, DECISION),
-
-        n("G-A", "Specialized agents", 40, 540, 1680, 300, GROUP),
-        n("AG1", "Chat / General", 60, 578, 380, 38, AGENT),
-        n("AG2", "Librarian", 460, 578, 380, 38, AGENT),
-        n("AG3", "Benchmark", 860, 578, 380, 38, AGENT),
-        n("AG4", "Coder", 1260, 578, 440, 38, AGENT),
-        n("AG5", "Research Coding", 60, 626, 380, 38, AGENT),
-        n("AG6", "Data", 460, 626, 380, 38, AGENT),
-        n("AG7", "AutoResearch", 860, 626, 380, 38, AGENT),
-        n("AG8", "Experiment Research", 1260, 626, 440, 38, AGENT),
-        n("AG9", "Ablation ToT", 60, 674, 380, 38, AGENT),
-        n("AG10", "Paper Debug", 460, 674, 380, 38, AGENT),
-        n("AG11", "Visual Verifier", 860, 674, 380, 38, AGENT),
-        n("AG12", "Answer", 1260, 674, 440, 38, AGENT),
-        n("G-NOTE", "Every agent gets a bounded prompt, a frozen model profile and an explicit tool allowlist. No agent executes user code directly.", 60, 730, 1640, 34, NOTE),
-
-        n("TOOL", "ToolInvoker\nschema · grant · approval · ToolCallRecord", 660, 880, 440, 56, SECURITY),
-        n("SB", "Sandbox Client → gateway → executor → provider (docker / native / vm / remote)", 500, 976, 760, 50),
-        n("ART", "Artifact builder\n(non-empty · typed · producer-bound)", 660, 1064, 440, 50),
-        n("VALID", "Artifact validation\nunique producer / contract", 660, 1152, 440, 50),
-        n("STORE", "PlanStore + Event Bus + SSE", 660, 1240, 440, 46, STORE),
-        n("TERM", "Task terminal status\ncompleted / failed / canceled", 660, 1324, 440, 46),
-
-        n("G-CLM", "Claim Evidence loop", 40, 880, 380, 260, GROUP),
-        n("C1", "Freeze claim rubric", 60, 916, 340, 36),
-        n("C2", "Collect evidence inventory", 60, 962, 340, 36),
-        n("C3", "LLM adjudication per criterion", 60, 1008, 340, 36),
-        n("C4", "Verdict graph + coverage", 60, 1054, 340, 36),
-
-        n("G-AUTO", "AutoResearch loop", 1340, 880, 380, 260, GROUP),
-        n("R1", "Freeze ResearchSpec", 1360, 916, 340, 36),
-        n("R2", "Run baseline", 1360, 962, 340, 36),
-        n("R3", "Propose candidate patch", 1360, 1008, 340, 36),
-        n("R4", "Evaluate candidate", 1360, 1054, 340, 36),
-        n("R5", "Keep / Reject + rollback", 1360, 1100, 340, 36),
-        n("R6", "Hidden holdout validation", 1360, 1146, 340, 36),
-
-        n("NOTE", "Artifacts that are empty, have duplicate producers or violate their contract fail the task.\nSandbox capability gaps return blocked + missing_requirements; visual verification failure is advisory and never fabricates completed.", 440, 1400, 1280, 70, NOTE),
-    ]
-    edges = [
-        e("a1", "START", "ROUTER", "", from_side="bottom", to_side="top"),
-        e("a2", "ROUTER", "PROFILE", "resolve", from_side="bottom", to_side="top"),
-        e("a3", "PROFILE", "MEMORY", "inject", from_side="bottom", to_side="top"),
-        e("a4", "MEMORY", "DEC", "", from_side="bottom", to_side="top"),
-        e("a5", "DEC", "G-A", "route", from_side="bottom", to_side="top"),
-        e("a6", "G-A", "TOOL", "tool call", from_side="bottom", to_side="top"),
-        e("a7", "G-A", "SB", "sandbox call", from_side="bottom", to_side="top"),
-        e("a8", "TOOL", "SB", "approved execution", from_side="bottom", to_side="top", dashed=True),
-        e("a9", "SB", "ART", "stdout / metrics / files", from_side="bottom", to_side="top"),
-        e("a10", "ART", "VALID", "", from_side="bottom", to_side="top"),
-        e("a11", "VALID", "STORE", "", from_side="bottom", to_side="top"),
-        e("a12", "STORE", "TERM", "", from_side="bottom", to_side="top"),
-        e("a13", "AG2", "C1", "claim rubric", from_side="left", to_side="top"),
-        e("a14", "C1", "C2", "", from_side="bottom", to_side="top"),
-        e("a15", "C2", "C3", "", from_side="bottom", to_side="top"),
-        e("a16", "C3", "C4", "", from_side="bottom", to_side="top"),
-        e("a17", "C4", "ART", "graph", from_side="right", to_side="left", dashed=True),
-        e("a18", "AG7", "R1", "AutoResearch", from_side="right", to_side="top"),
-        e("a19", "R1", "R2", "", from_side="bottom", to_side="top"),
-        e("a20", "R2", "R3", "", from_side="bottom", to_side="top"),
-        e("a21", "R3", "R4", "", from_side="bottom", to_side="top"),
-        e("a22", "R4", "R5", "", from_side="bottom", to_side="top"),
-        e("a23", "R5", "R3", "reject", from_side="left", to_side="left", dashed=True),
-        e("a24", "R5", "R6", "keep", from_side="bottom", to_side="top"),
-        e("a25", "R6", "ART", "validation", from_side="left", to_side="right", dashed=True),
-    ]
-    return {"id": "agent-execution-flow", "name": "Agent Execution Flow", "width": 1760, "height": 1500, "nodes": nodes, "edges": edges}
-
-
-
-def memory_system():
-    nodes = [
-        n("T", "Agent Memory & Paper Wiki — System Architecture", 40, 16, 1680, 40, TITLE),
-
-        n("G-UI", "Interfaces", 40, 90, 320, 380, GROUP),
-        n("U1", "Researcher / Desktop user", 60, 130, 280, 42),
-        n("U2", "Chat & Plan UI", 60, 190, 280, 42),
-        n("U3", "MemoryPanel / PaperWikiPanel", 60, 250, 280, 42),
-        n("U4", "Citations & review actions", 60, 310, 280, 42, NOTE),
-
-        n("G-CORE", "Go backend — memory, retrieval, extraction and Paper Wiki", 390, 90, 860, 700, GROUP),
-        n("C1", "Memory & Wiki API\n/api/memories · /api/wiki", 410, 130, 260, 46),
-        n("C2", "Retrieval pipeline\nBM25 + entity + RRF/MMR", 410, 210, 260, 46),
-        n("C3", "Budget & render\ncore / retrieved / wiki", 410, 290, 260, 46),
-        n("C4", "Prompt assembly\ncore_memory · retrieved_memory · wiki_context", 410, 370, 260, 46),
-        n("C5", "ChatAgent / RoutedTaskExecutor\ninject + record", 410, 450, 260, 46),
-        n("C6", "Deterministic extractors\nRecordPlan / Task / Trial / Document", 720, 130, 250, 46),
-        n("C7", "LLM summarizer (W3)\nTLDR · method · limitation", 720, 210, 250, 46),
-        n("C8", "Link builder (W2/W2.5)\nentities · OpenAlex · PDF refs", 720, 290, 250, 46),
-        n("C9", "Consolidator\nADD/UPDATE/DELETE/NOOP · TTL", 720, 370, 250, 46),
-        n("NOTE1", "Memory is data, never instructions. Every write is owner-scoped, redacted, hidden-benchmark filtered and injection-scanned.", 410, 530, 800, 48, NOTE),
-
-        n("G-STORE", "Owner-scoped persistence", 1290, 90, 430, 700, GROUP),
-        n("S1", "Memory FileStore\nmemory.wal.jsonl + memory.snapshot.json + lock", 1310, 130, 390, 58, STORE),
-        n("S2", "ChatSessionStore + per-owner settings\nturns · summary · switches", 1310, 220, 390, 52, STORE),
-        n("S3", "Paper Wiki store\npapers.jsonl + papers.snapshot.json + aliases.json", 1310, 310, 390, 58, STORE),
-        n("S4", "DocumentStore + Literature library\nPDF text/sections · DOI/arXiv records", 1310, 400, 390, 58, STORE),
-        n("NOTE2", "PaperPage is a rebuildable projection; Point and Link are memory.Record views. Deleting data/wiki never loses points, links or review decisions.", 1310, 500, 390, 80, NOTE),
-    ]
-    edges = [
-        e("m1", "U1", "U2", "chat / task", from_side="bottom", to_side="top"),
-        e("m2", "U2", "C1", "REST / SSE", from_side="right", to_side="left"),
-        e("m3", "U3", "C1", "CRUD / review", from_side="right", to_side="left"),
-        e("m4", "C1", "C2", "retrieve", from_side="bottom", to_side="top"),
-        e("m5", "C2", "C3", "scored records", from_side="bottom", to_side="top"),
-        e("m6", "C3", "C4", "bounded context", from_side="bottom", to_side="top"),
-        e("m7", "C4", "C5", "inject", from_side="bottom", to_side="top"),
-        e("m8", "C5", "C6", "record plan/task/trial", from_side="right", to_side="left"),
-        e("m9", "C5", "C7", "paper_parse", from_side="right", to_side="left"),
-        e("m10", "C5", "C8", "build links", from_side="right", to_side="left"),
-        e("m11", "C5", "C9", "background", from_side="right", to_side="left"),
-        e("m12", "C2", "S1", "records + index", from_side="right", to_side="left"),
-        e("m13", "C6", "S1", "Put", from_side="right", to_side="left"),
-        e("m14", "C7", "S1", "wiki_tldr / points", from_side="right", to_side="left"),
-        e("m15", "C8", "S1", "wiki_link records", from_side="right", to_side="left"),
-        e("m16", "C9", "S1", "merge / TTL", from_side="right", to_side="left"),
-        e("m17", "C8", "S3", "PaperPage / links", from_side="right", to_side="left"),
-        e("m18", "C1", "S3", "papers / points", from_side="right", to_side="left"),
-        e("m19", "S3", "S1", "rebuild", dashed=True, from_side="left", to_side="left"),
-        e("m20", "C8", "S4", "PDF refs / DOI", from_side="right", to_side="left"),
-    ]
-    return {"id": "memory-system", "name": "Memory System Architecture", "width": 1760, "height": 920, "nodes": nodes, "edges": edges}
-
 def drawio_xml(diagram):
+    if diagram.get("format") == "overview":
+        return overview_drawio(diagram)
     cells = ['<mxCell id="0" />', '<mxCell id="1" parent="0" />']
     for node in diagram["nodes"]:
         cells.append(
@@ -556,6 +311,8 @@ def route_points(a, b, edge, nodes=None, width=1760, height=1500):
 
 
 def svg(diagram):
+    if diagram.get("format") == "overview":
+        return overview_svg(diagram)
     width, height = diagram["width"], diagram["height"]
     parts = [
         '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d">' % (width, height, width, height),
@@ -610,8 +367,17 @@ def svg(diagram):
 
 
 def main():
-    for factory in (architecture, runtime_flow, agent_flow, memory_system):
-        diagram = factory()
+    factories = {"architecture": architecture, "runtime-flow": runtime_flow,
+                 "agent-execution-flow": agent_flow, "memory-system": memory_system}
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("diagrams", nargs="*", metavar="DIAGRAM",
+                        help="diagram IDs; default: all four")
+    selected = parser.parse_args().diagrams or list(factories)
+    unknown = set(selected)-factories.keys()
+    if unknown:
+        parser.error("unknown diagrams: "+", ".join(sorted(unknown)))
+    for name in selected:
+        diagram = factories[name]()
         (OUT / (diagram["id"] + ".drawio")).write_text(drawio_xml(diagram), encoding="utf-8", newline="\n")
         (OUT / (diagram["id"] + ".svg")).write_text(svg(diagram), encoding="utf-8", newline="\n")
         print("wrote", diagram["id"] + ".drawio", diagram["id"] + ".svg")

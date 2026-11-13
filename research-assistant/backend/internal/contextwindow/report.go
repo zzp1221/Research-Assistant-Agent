@@ -14,6 +14,7 @@ type Report struct {
 	StateRef       string            `json:"state_ref,omitempty"`
 	Observation    Observation       `json:"input_observation"`
 	LastCompaction *CompactionRecord `json:"last_compaction,omitempty"`
+	Materials      []MaterialReport  `json:"materials,omitempty"`
 }
 type RequestCounts struct {
 	Generation int `json:"generation"`
