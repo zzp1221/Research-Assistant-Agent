@@ -40,6 +40,8 @@ PDF.js 主库精确固定 `6.5.438`；`@react-pdf-viewer/core` 使用仓库内�
 
 桌面 staging 的完整 dist 共 282 个文件，使用真实 `go:embed` 核对各文件 SHA-256，并确认 `.mjs` 由嵌入服务返回 JavaScript MIME。本轮 `mygo build -skip-installer -skip-build-command .` 已成功生成 21,349,888 字节的 `desktop/build/mygo/windows-amd64/ResearchAssistant.exe`，没有启动 UI 或修改用户安装；安装包和最终产品运行验收仍待完成。
 
+PR 的 Windows CI 暴露宿主 MIME 注册差异：同一 `.mjs` 在该 runner 被识别为 `text/plain`。桌面 proxy 现对 `.js/.mjs` 显式返回 JavaScript MIME、`.wasm` 返回 `application/wasm`；回归主动把宿主 MIME 映射改为纯文本，确认真实 handler 的 GET/HEAD、Range、类型及文件内容仍正确。该补充修复的远程结果以 PR 检查为准。
+
 生产依赖审计已不再报告旧 PDF.js，但仍有 13 项其他历史依赖问题，其中 6 high、0 critical。没有据此宣称整个依赖树无漏洞；通用审计仍为 informational，本轮 PDF 专项检查为阻断门禁。
 
 ### 2.3 SEC-03：用真实证据决定隔离能力
