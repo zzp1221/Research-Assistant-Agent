@@ -198,7 +198,7 @@ See [backend.env.example](backend.env.example) and [docker-compose.yml](docker-c
 | `INTENT_LLM_CONFIDENCE_THRESHOLD` / `INTENT_CLIENT_TIMEOUT_SECONDS` | Confidence threshold and per-call timeout |
 | `SANDBOX_URL` / `SANDBOX_API_TOKEN` | Sandbox URL and Bearer token; gateway/executor fail closed |
 | `SANDBOX_PROVIDER` | `auto` / `docker` / `native` / `vm` / `remote` |
-| `SANDBOX_DEFAULT_IMAGE` / `SANDBOX_IMAGE_ALLOWLIST` | Default runtime image and allowed image prefixes |
+| `SANDBOX_DEFAULT_IMAGE` / `SANDBOX_IMAGE_ALLOWLIST` | Default runtime image and exact allowed tag/digest references; prefix authorization is unsupported |
 | `PLAN_STORE_PATH` | Base path for plan snapshots (`<path>.d`) and the append-only JSONL index/event log |
 | `REVISION_STORE_PATH` | Immutable revision storage; defaults to `<PLAN_STORE_PATH>.revisions.json` |
 | `UPLOAD_ROOT` / `UPLOAD_MAX_MB` | Upload directory and per-file limit |

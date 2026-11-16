@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Cpu, Download, FolderOpen, HardDrive, RefreshCw, Shield } from 'lucide-react';
-import type { SandboxCapabilities } from '../../contracts/api';
+import type { SandboxCapabilities, SandboxProbeReport } from '../../contracts/api';
 import type { DesktopRuntimeStatus, DesktopUpdateStatus } from '../../contracts/desktop';
 import { getSandboxCapabilities } from '../../services/api/researchAssistantApi';
 import { getDesktopMetrics, type DesktopMetrics } from '../../services/desktopMetrics';
@@ -16,6 +16,23 @@ const providers = [
   { id: 'native', label: '本机运行（无需 Docker）' },
   { id: 'docker', label: 'Docker 容器' },
 ];
+
+const requiredIsolationProbes = new Set([
+  'python_stdlib', 'multiprocessing', 'workspace_write', 'process_identity',
+  'workspace_escape', 'network_connect', 'network_online', 'job_cleanup',
+]);
+
+// The success banner must not promote stale or incomplete server reports.
+function isVerifiedIsolationReport(probe: SandboxProbeReport): boolean {
+  const cases = probe.cases ?? [];
+  return probe.appcontainer_ok === true
+    && probe.version === 'native.isolation-probe/v2'
+    && probe.runner === 'appcontainer'
+    && Boolean(probe.environment_key?.trim())
+    && cases.length === requiredIsolationProbes.size
+    && new Set(cases.map((item) => item.name)).size === requiredIsolationProbes.size
+    && cases.every((item) => requiredIsolationProbes.has(item.name) && item.status === 'pass' && item.passed === true);
+}
 
 /** Read-only runtime capability panel plus a local provider preference. */
 export function RuntimePanel({ onClose }: RuntimePanelProps) {
@@ -38,6 +55,7 @@ export function RuntimePanel({ onClose }: RuntimePanelProps) {
     if (typeof window === 'undefined') return 'auto';
     return window.localStorage.getItem('ra.sandbox.provider') ?? 'auto';
   });
+  const isolationVerified = capabilities?.probe ? isVerifiedIsolationReport(capabilities.probe) : false;
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -276,16 +294,18 @@ export function RuntimePanel({ onClose }: RuntimePanelProps) {
 
       {capabilities?.probe && (
         <section className="mb-4 border border-line bg-surface p-3">
-          <h3 className="mb-2 flex items-center gap-1 text-[12px] font-semibold text-ink"><Shield className="h-3.5 w-3.5" /> AppContainer 兼容性探针</h3>
-          <p className={capabilities.probe.appcontainer_ok ? 'text-[12px] text-ok' : 'text-[12px] text-warn'}>
-            {capabilities.probe.appcontainer_ok ? '全部通过：可以使用 AppContainer' : '未通过：自动降级到 lowil（兼容模式）'}
+          <h3 className="mb-2 flex items-center gap-1 text-[12px] font-semibold text-ink"><Shield className="h-3.5 w-3.5" /> AppContainer 隔离验证</h3>
+          <p className={isolationVerified ? 'text-[12px] text-ok' : 'text-[12px] text-warn'}>
+            {isolationVerified ? '全部通过：可以使用 AppContainer' : '隔离未获验证：要求强隔离或断网的任务将被阻断'}
           </p>
+          {typeof capabilities.probe.attempted === 'number' && <p className="mt-1 text-[11px] text-ink-soft">已执行 {capabilities.probe.attempted} 项，通过 {capabilities.probe.passed ?? 0} 项，失败 {capabilities.probe.failed ?? 0} 项，错误 {capabilities.probe.errors ?? 0} 项，无法判定 {capabilities.probe.inconclusive ?? 0} 项</p>}
           {capabilities.probe.reason && <p className="mt-1 text-[11px] text-ink-soft">{capabilities.probe.reason}</p>}
           <ul className="mt-2 space-y-1 text-[11px] text-ink-soft">
             {(capabilities.probe.cases ?? []).map((item) => (
               <li key={item.name} className="flex items-center gap-1">
-                <span className={item.passed ? 'text-ok' : 'text-proof'}>{item.passed ? '✓' : '✕'}</span>
+                <span className={item.status === 'pass' ? 'text-ok' : 'text-proof'}>{item.status === 'pass' ? '✓' : item.status === 'inconclusive' ? '?' : '✕'}</span>
                 <span>{item.name}</span>
+                <span>{item.status === 'pass' ? '通过' : item.status === 'fail' ? '失败' : item.status === 'error' ? '错误' : item.status === 'inconclusive' ? '无法判定' : '待重新验证'}</span>
                 {item.security ? <span className="text-ink-soft">（安全项）</span> : null}
                 {item.detail && !item.passed ? <span className="truncate text-ink-soft">— {item.detail}</span> : null}
               </li>

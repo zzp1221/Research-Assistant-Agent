@@ -12,6 +12,10 @@ import (
 
 func TestPrepareRuntimeRecordsImagePullFailure(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/capabilities" {
+			_, _ = w.Write([]byte(`{"provider":"docker","images":true}`))
+			return
+		}
 		http.Error(w, `{"error":"image_pull_failed: registry unavailable"}`, http.StatusBadGateway)
 	}))
 	defer server.Close()

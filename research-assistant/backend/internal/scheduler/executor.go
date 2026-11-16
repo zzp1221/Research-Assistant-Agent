@@ -218,6 +218,11 @@ func (e *RoutedTaskExecutor) ExecuteTask(ctx context.Context, plan *models.PlanG
 		revision = plan.CurrentRevision
 	}
 	runtimeTask.Metadata["plan_revision"] = revision
+	if imageArtifact, trusted := planner.TrustedArtifact(plan, "runtime_image"); trusted {
+		if provenance, ok := imageArtifact.Metadata["runtime_image_provenance"].(string); ok {
+			runtimeTask.Metadata["runtime_image_provenance"] = provenance
+		}
+	}
 	defer func() {
 		if executionResult == nil {
 			return
@@ -755,7 +760,7 @@ func buildArtifacts(node *models.TaskNode, runtimeTask *models.Task) []models.Ar
 	artifacts := make([]models.Artifact, 0, len(node.OutputArtifacts))
 	for _, key := range node.OutputArtifacts {
 		value, artifactType := resolveArtifactPayload(key, runtimeTask)
-		artifacts = append(artifacts, models.Artifact{
+		artifact := models.Artifact{
 			Key:            key,
 			Type:           artifactType,
 			Kind:           artifactKindFor(key),
@@ -771,7 +776,13 @@ func buildArtifacts(node *models.TaskNode, runtimeTask *models.Task) []models.Ar
 				"result_error": runtimeTask.Error,
 			},
 			CreatedAt: time.Now(),
-		})
+		}
+		if key == "runtime_image" || key == "image_digest" {
+			if provenance, ok := runtimeTask.Metadata["runtime_image_provenance"].(string); ok {
+				artifact.Metadata["runtime_image_provenance"] = provenance
+			}
+		}
+		artifacts = append(artifacts, artifact)
 	}
 	return artifacts
 }

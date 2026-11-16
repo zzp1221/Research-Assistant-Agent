@@ -2,20 +2,42 @@ package vm
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"docker-sandbox/internal/engine"
 )
 
+func TestMain(m *testing.M) {
+	if os.Getenv("RA_VM_TEST_FIXTURE") == "1" {
+		fmt.Println("ARGV:" + strings.Join(os.Args[1:], " "))
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
 func TestProviderExecWithFakeWSL(t *testing.T) {
 	dir := t.TempDir()
-	script := filepath.Join(dir, "fake-wsl.sh")
-	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf 'ARGV:%s\\n' \"$*\"\n"), 0o755); err != nil {
+	script := filepath.Join(dir, "fake-wsl")
+	if runtime.GOOS == "windows" {
+		script += ".exe"
+	}
+	self, err := os.Executable()
+	if err != nil {
 		t.Fatal(err)
 	}
+	data, err := os.ReadFile(self)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(script, data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("RA_VM_TEST_FIXTURE", "1")
 	workspace := filepath.Join(dir, "workspace")
 	provider := NewProviderWithConfig(context.Background(), Config{
 		Detection:                Detection{Available: true, DefaultDistribution: "TestDistro"},
@@ -40,7 +62,11 @@ func TestProviderExecWithFakeWSL(t *testing.T) {
 	if result.ExitCode != 0 {
 		t.Fatalf("exit = %d stderr=%s", result.ExitCode, result.Stderr)
 	}
-	for _, want := range []string{"ARGV:", "-d TestDistro", "--cd " + workspace, "python3 --version"} {
+	workspaceWSL, err := ToWSLPath(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"ARGV:", "-d TestDistro", "--cd " + workspaceWSL, "python3 --version"} {
 		if !strings.Contains(result.Stdout, want) {
 			t.Fatalf("stdout %q missing %q", result.Stdout, want)
 		}

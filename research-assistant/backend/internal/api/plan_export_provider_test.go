@@ -55,3 +55,23 @@ func TestBuildPlanBundleDockerRequiresImageDigest(t *testing.T) {
 		t.Fatalf("docker bundle should require image digest: %#v", bundle.Manifest.Missing)
 	}
 }
+
+func TestBuildPlanBundlePreservesImageProvenance(t *testing.T) {
+	plan := &models.PlanGraph{
+		ID: "p-source", CurrentRevision: 1, UpdatedAt: time.Now(),
+		EnvironmentManifest: &models.EnvironmentManifest{
+			Image: "docker.io/library/python:3.11-bullseye", ImageDigest: "sha256:manifest",
+			ImageResolved: "mirror.example/library/python:3.11-bullseye", ImageRepoDigest: "mirror.example/library/python@sha256:manifest",
+			ImageID: "sha256:config", ImageDigestSource: "repository_manifest", ImagePlatform: "linux/amd64",
+			SandboxProvider: "docker", Status: "ready",
+		},
+	}
+	bundle, err := buildPlanBundle(plan, nil, exportLimits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := bundle.Manifest.Environment
+	if env.ImageResolved != plan.EnvironmentManifest.ImageResolved || env.ImageRepoDigest != plan.EnvironmentManifest.ImageRepoDigest || env.ImageID != "sha256:config" || env.ImageDigestSource != "repository_manifest" || env.ImagePlatform != "linux/amd64" {
+		t.Fatalf("export lost execution source: %#v", env)
+	}
+}

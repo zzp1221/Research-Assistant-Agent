@@ -133,14 +133,15 @@ Compose 将同一个镜像拆成两个角色：
 | `SANDBOX_RUNTIME` | 空 | 指定容器 runtime（如 `runsc`，需宿主已安装） |
 | `SANDBOX_ALLOWED_RUNTIMES` | `runc,runsc,nvidia` | runtime 允许列表 |
 | `SANDBOX_WORKSPACE_ROOTS` | `/tmp` | 允许挂载的工作区根目录（按 `filepath.SplitList` 解析） |
-| `SANDBOX_IMAGE_ALLOWLIST` | 空 | 允许的镜像前缀，逗号分隔；为空表示不限制 |
+| `SANDBOX_IMAGE_ALLOWLIST` | Python 3.9/3.11 bullseye 的规范引用 | 精确 tag/digest 引用，逗号分隔；未设置使用内置集合，显式空值或无效规则拒绝；不支持前缀 |
 | `SANDBOX_CONTAINER_USER` | 空 | 容器内运行用户 |
 | `SANDBOX_READ_ONLY_ROOT` | `false` | 根文件系统只读（`strict` 强制开启） |
-| `SANDBOX_REGISTRY_MIRROR` | 空 | 拉取镜像时使用的 registry mirror |
+| `SANDBOX_REGISTRY_MIRROR` | 空 | 可信 Docker Hub 映射 `registry[:port][/prefix]`，不含 URL scheme；其他域名不按镜像后缀放行 |
 | `SANDBOX_PIP_CACHE_DIR` | 空 | 跨沙箱共享的 pip cache 目录 |
 | `SANDBOX_TTL_MINUTES` | `120` | 沙箱最长存活时间，超时由 reaper 回收 |
 | `SANDBOX_REAPER_INTERVAL_SECONDS` | `300` | reaper 扫描间隔（最小 10 秒） |
-| `SANDBOX_WINDOWS_RUNNER` | `auto` | native Windows runner：`auto` / `appcontainer` / `lowil` / `raw` |
+| `SANDBOX_WINDOWS_RUNNER` | `auto` | native Windows runner：`auto` / `appcontainer` / `lowil`；强隔离须通过真实探针 |
+| `SANDBOX_PROBE_NETWORK_ADDRESS` | 空 | 自有受控 TCP 端点 `host:port`；无在线正向对照时网络项不确定，需要 OS 断网的任务阻断 |
 | `SANDBOX_DEFAULT_PYTHON` | 空 | native Provider 默认 Python 版本 |
 | `SANDBOX_MEMORY_MB` / `SANDBOX_CPU_CORES` / `SANDBOX_MAX_PROCESSES` | 0 | native 资源限制（0 表示使用默认） |
 | `OPEN_SANDBOX_URL` | 空 | OpenSandbox 服务地址 |
@@ -170,6 +171,8 @@ SANDBOX_API_TOKEN=dev-token ./bin/sandbox
 ```
 
 ## 安全边界
+
+Windows 环境白名单、探针重测、旧运行时缓存与能力阻断的升级步骤见 [原生运行时安全迁移说明](../../docs/security-native-runtime-migration-2026-11-16.md)。本轮实测兼容性限制见该文档，不能把测试通过理解为当前宿主的 AppContainer 八项全部可用。
 
 - 只有内部 executor 挂载 Docker socket；gateway 不持有 socket，也不挂载宿主工作区。executor 仍等价于较高宿主机权限，只应通过内部网络访问。
 - 默认限制 CPU、内存、PID、capability、镜像与挂载路径，并强制租户/任务标签，但不等同于强多租户隔离。

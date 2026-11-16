@@ -198,7 +198,7 @@ Windows 开发者优先使用桌面客户端（`../desktop`）或 Docker Compose
 | `INTENT_LLM_CONFIDENCE_THRESHOLD` / `INTENT_CLIENT_TIMEOUT_SECONDS` | 模型结果置信度阈值与单次调用超时 |
 | `SANDBOX_URL` / `SANDBOX_API_TOKEN` | 沙箱地址与 Bearer Token；gateway/executor 均 fail-closed |
 | `SANDBOX_PROVIDER` | `auto` / `docker` / `native` / `vm` / `remote` |
-| `SANDBOX_DEFAULT_IMAGE` / `SANDBOX_IMAGE_ALLOWLIST` | 运行时默认镜像与允许的镜像前缀 |
+| `SANDBOX_DEFAULT_IMAGE` / `SANDBOX_IMAGE_ALLOWLIST` | 运行时默认镜像与精确允许的 tag/digest 引用；不支持名称前缀授权 |
 | `PLAN_STORE_PATH` | 计划快照目录（`<path>.d`）与 append-only JSONL 索引/事件日志的基准路径 |
 | `REVISION_STORE_PATH` | 不可变 revision 存储；默认 `<PLAN_STORE_PATH>.revisions.json` |
 | `UPLOAD_ROOT` / `UPLOAD_MAX_MB` | 上传目录与单文件大小限制 |

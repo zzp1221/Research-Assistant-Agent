@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"sort"
@@ -90,7 +89,7 @@ func (s *SandboxClient) ExecCommandV2(ctx context.Context, sandboxID string, com
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("执行命令失败 (Status %d): %s", resp.StatusCode, string(body))
+		return nil, sandboxResponseError(resp.StatusCode, body, "执行命令失败")
 	}
 	var res PythonRunResponse
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {

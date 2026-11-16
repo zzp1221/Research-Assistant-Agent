@@ -29,8 +29,11 @@ const (
 )
 
 type NativeDockerEngine struct {
-	mu         sync.RWMutex
-	mountPaths map[string]string // 记录容器 ID 到宿主机挂载路径的映射
+	mu            sync.RWMutex
+	mountPaths    map[string]string // 记录容器 ID 到宿主机挂载路径的映射
+	imageMu       sync.Mutex
+	images        map[string]ImageInfo                             // authorized logical/transport refs -> immutable local image
+	commandOutput func(context.Context, ...string) ([]byte, error) // injectable Docker boundary for deterministic tests
 }
 
 type streamChunk struct {
@@ -50,6 +53,7 @@ type DockerHealth struct {
 func NewNativeDockerEngine() *NativeDockerEngine {
 	return &NativeDockerEngine{
 		mountPaths: make(map[string]string),
+		images:     make(map[string]ImageInfo),
 	}
 }
 
@@ -118,22 +122,16 @@ func (e *NativeDockerEngine) GetType() string {
 }
 
 func (e *NativeDockerEngine) Create(ctx context.Context, options CreateOptions) (string, error) {
-	image := rewriteImageWithRegistryMirror(options.Image)
-	if err := e.enforceImageLimit(ctx, image, options.Limits.MaxImageBytes); err != nil {
+	// Validate the logical source and trusted transport before any Docker call.
+	// In particular an image-limit inspect or a failed local create must never
+	// cause an unauthorized image to be pulled or sent to a fallback provider.
+	args, err := secureDockerRunArgs(options.Image, options.Labels, options)
+	if err != nil {
 		return "", err
 	}
 	networkMode, networkErr := EffectiveNetworkMode(options.NetworkMode)
 	if networkErr != nil {
 		return "", networkErr
-	}
-	if networkMode == NetworkNone {
-		if err := e.ensureOfflineNetwork(ctx); err != nil {
-			return "", err
-		}
-	}
-	args, err := secureDockerRunArgs(image, options.Labels, options)
-	if err != nil {
-		return "", err
 	}
 	if gpuRequest := dockerGPURequest(); gpuRequest != "" {
 		args = append(args, "--gpus", gpuRequest)
@@ -153,10 +151,23 @@ func (e *NativeDockerEngine) Create(ctx context.Context, options CreateOptions) 
 			args = append(args, "-v", fmt.Sprintf("%s:/root/.cache/pip", cacheDir))
 		}
 	}
-	args = append(args, "--", image, "sleep", "infinity")
+	info, err := e.EnsureImage(ctx, options.Image)
+	if err != nil {
+		return "", err
+	}
+	if options.Limits.MaxImageBytes > 0 && info.SizeBytes > options.Limits.MaxImageBytes {
+		return "", fmt.Errorf("sandbox image %q is %d bytes, exceeding max_image_bytes=%d", info.Image, info.SizeBytes, options.Limits.MaxImageBytes)
+	}
+	if networkMode == NetworkNone {
+		if err := e.ensureOfflineNetwork(ctx); err != nil {
+			return "", err
+		}
+	}
+	// The inspected config ID is immutable, including when a mutable tag was
+	// prepared earlier. Never let docker run implicitly pull/re-resolve it.
+	args = append(args, "--pull=never", "--", info.ImageID, "sleep", "infinity")
 	fmt.Printf("[NativeDocker] Executing: docker %s\n", strings.Join(args, " "))
-	cmd := exec.CommandContext(ctx, dockerCommand(), args...)
-	output, err := cmd.CombinedOutput()
+	output, err := e.runDockerOutput(ctx, args...)
 	if err != nil {
 		return "", fmt.Errorf("Docker run failed: %v, output: %s", err, string(output))
 	}
@@ -170,6 +181,13 @@ func (e *NativeDockerEngine) Create(ctx context.Context, options CreateOptions) 
 		e.mu.Unlock()
 	}
 	return containerID, nil
+}
+
+func (e *NativeDockerEngine) runDockerOutput(ctx context.Context, args ...string) ([]byte, error) {
+	if e.commandOutput != nil {
+		return e.commandOutput(ctx, args...)
+	}
+	return exec.CommandContext(ctx, dockerCommand(), args...).CombinedOutput()
 }
 
 func extractContainerIDFromDockerRunOutput(raw string) string {
@@ -221,29 +239,6 @@ func (e *NativeDockerEngine) ensureOfflineNetwork(ctx context.Context) error {
 			return nil
 		}
 		return fmt.Errorf("create sandbox offline network %q: %v (%s)", name, createErr, message)
-	}
-	return nil
-}
-
-// enforceImageLimit rejects an image whose size exceeds MaxImageBytes before
-// any container is created.
-func (e *NativeDockerEngine) enforceImageLimit(ctx context.Context, image string, maxBytes int64) error {
-	if maxBytes <= 0 {
-		return nil
-	}
-	checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	output, err := exec.CommandContext(checkCtx, dockerCommand(), "image", "inspect", "--format", "{{.Size}}", image).Output()
-	if err != nil {
-		// A missing image is handled by the ensure-image step; do not mask it.
-		return nil
-	}
-	size, parseErr := strconv.ParseInt(strings.TrimSpace(string(output)), 10, 64)
-	if parseErr != nil {
-		return nil
-	}
-	if size > maxBytes {
-		return fmt.Errorf("sandbox image %q is %d bytes, exceeding max_image_bytes=%d", image, size, maxBytes)
 	}
 	return nil
 }
@@ -353,32 +348,19 @@ func parseDockerBytes(raw string) (int64, error) {
 	return 0, fmt.Errorf("unknown byte unit in %q", raw)
 }
 
-// rewriteImageWithRegistryMirror prefixes docker.io images with the configured
-// mirror (for example docker.m.daocloud.io) so a deployment without direct
-// Docker Hub access can still pull runtime images. Images that already carry an
-// explicit registry host are left untouched.
+// rewriteImageWithRegistryMirror is a side-effect-free compatibility helper.
+// Callers performing Docker operations must use authorizeDockerImage so parse
+// or policy errors cannot be lost. Only the configured mapping is trusted.
 func rewriteImageWithRegistryMirror(image string) string {
-	image = strings.TrimSpace(image)
-	mirror := strings.TrimSpace(os.Getenv("SANDBOX_REGISTRY_MIRROR"))
-	if image == "" || mirror == "" {
-		return image
+	policy, err := loadImagePolicy()
+	if err != nil {
+		return ""
 	}
-	mirror = strings.TrimPrefix(mirror, "https://")
-	mirror = strings.TrimPrefix(mirror, "http://")
-	mirror = strings.TrimSuffix(mirror, "/")
-	if mirror == "" || strings.HasPrefix(image, mirror+"/") {
-		return image
+	authorized, err := policy.authorize(image)
+	if err != nil {
+		return ""
 	}
-	if strings.Contains(image, "/") {
-		first := strings.Split(image, "/")[0]
-		if strings.Contains(first, ".") || strings.Contains(first, ":") || first == "localhost" {
-			// Already an explicit registry host; do not rewrite.
-			return image
-		}
-		return mirror + "/" + image
-	}
-	// Bare docker.io image such as "python:3.11-bullseye".
-	return mirror + "/library/" + image
+	return authorized.resolved.named.String()
 }
 
 func (e *NativeDockerEngine) validateSandboxContainer(ctx context.Context, id string) error {

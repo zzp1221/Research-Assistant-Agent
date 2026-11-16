@@ -1266,12 +1266,24 @@ export interface SandboxProbeCase {
   security: boolean;
   passed: boolean;
   detail?: string;
+  status?: 'pass' | 'fail' | 'error' | 'inconclusive';
+  expected?: string;
+  profile?: 'offline' | 'online';
 }
 
 export interface SandboxProbeReport {
   cases?: SandboxProbeCase[];
   appcontainer_ok?: boolean;
   reason?: string;
+  version?: string;
+  environment_key?: string;
+  runner?: string;
+  os?: string;
+  attempted?: number;
+  passed?: number;
+  failed?: number;
+  errors?: number;
+  inconclusive?: number;
 }
 
 export interface SandboxCapabilities {
@@ -1302,6 +1314,11 @@ export interface EnvironmentManifestView {
   network_enforced?: 'os' | 'none' | string;
   image?: string;
   image_digest?: string;
+  image_resolved?: string;
+  image_repo_digest?: string;
+  image_id?: string;
+  image_digest_source?: string;
+  image_platform?: string;
   python_version?: string;
   status?: string;
 }

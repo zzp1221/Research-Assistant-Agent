@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -144,6 +145,9 @@ func (a *ResearchCodingAgent) executePaperCodeTask(ctx context.Context, task *mo
 
 	for runNumber := 1; runNumber <= paperDebugMaxRuns; runNumber++ {
 		attempt, runErr := a.runPaperCodeOnce(ctx, runtimeSession, workspacePath, entryRelative, runCommand)
+		if isSandboxCapabilityError(runErr) {
+			return failPaperCodeDebugTask(task, workspacePath, backups, &report, runErr)
+		}
 		attempt.Run = runNumber
 		report.Runs = append(report.Runs, attempt)
 		if runErr == nil {
@@ -214,12 +218,13 @@ func (a *ResearchCodingAgent) runPaperCodeOnce(ctx context.Context, runtimeSessi
 	})
 	after, fingerprintErr := paperDebugSourceFingerprint(workspacePath)
 	if fingerprintErr != nil {
-		attempt.Error = fingerprintErr.Error()
-		return attempt, fingerprintErr
+		err := errors.Join(fingerprintErr, runErr)
+		attempt.Error = err.Error()
+		return attempt, err
 	}
 	attempt.SourceFingerprintAfter = after
 	if before != after {
-		err := fmt.Errorf("paper repository source changed during execution outside the approved patch step")
+		err := errors.Join(fmt.Errorf("paper repository source changed during execution outside the approved patch step"), runErr)
 		attempt.Error = err.Error()
 		return attempt, err
 	}
@@ -553,6 +558,9 @@ func failPaperCodeDebugTask(task *models.Task, workspacePath string, backups map
 		}
 	}
 	report.Status = "failed"
+	if isSandboxCapabilityError(failure) {
+		report.Status = "blocked"
+	}
 	report.Summary = failure.Error()
 	if fingerprint, err := paperDebugSourceFingerprint(workspacePath); err == nil {
 		report.FinalSourceFingerprint = fingerprint

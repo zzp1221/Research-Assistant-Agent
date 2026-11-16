@@ -4,6 +4,24 @@
 
 ## 最近验证
 
+### 2026-11-16 安全整改专项
+
+原始审阅基线 `d4d2af1`，以下为提交前工作树的本地证据，提交及远程 CI 状态以关联 PR 为准；Windows、Go 1.27.3、Node 24.14.0、真实 Chrome。原始问题与关闭标准见 [修复方案](defect-remediation-2026-11-15-security.md)，实施细节和完整 27 项对照见 [安全整改实施记录](defect-remediation-2026-11-16-security-results.md)，升级行为见 [原生运行时迁移](security-native-runtime-migration-2026-11-16.md) 和 [镜像规则迁移](security-image-policy-migration-2026-11-16.md)。
+
+| 范围 | 本轮结论 |
+|---|---|
+| 研究进程环境 | 双真实 runner 的合成凭据隔离、私有环境、备用 exec、流式命令及 uv/build hook 回归通过；两种 runner 的 CPython、numpy 2.2.6/matplotlib 3.10.8、子进程/中文路径和工作区 PNG 绘图实测通过（106.605s） |
+| 隔离探针 | native 最终普通/race/vet 通过（66.961s / 87.123s）；真实身份、文件边界、Job、可信启动、缓存及副本生命周期有证据；同一可达 IP 的离线 TCP 10013/在线成功；临时目录权限收紧/进程池仍不确定，强隔离请求保持阻断 |
+| sandbox 全量 | 最终 Windows：112 顶层测试通过、5 opt-in 跳过、0失败；Linux：94 通过、3 Docker opt-in 跳过、0失败，vet通过；两端均5个测试包通过，独立专项实测不以skip替代 |
+| 镜像授权与能力契约 | 精确授权/blocked 定点测试、race、vet 通过；真实 Docker digest/tag 漂移/可信 registry 拉取执行通过（11.093s）；研究循环保持能力错误与恢复/取消语义；Linux backend 全量 947 顶层测试通过、18 条件跳过、0失败 |
+| PDF | PDF.js 6.5.438；23 Node + 513 组件测试、10 条真实 Chrome PDF 用例、build/lint/bundle/安全检查通过；本轮 CVE 旧引擎排除，仍有 13 个其他生产依赖审计问题（6 high / 0 critical） |
+| 桌面与构建 | staging 282 文件 go:embed/hash/MIME、desktop 全套 test/vet、真实 MyGo exe 构建通过；浏览器阻断非部署源 HTTP 仍成功渲染所测 PDF；exe UI、安装包与整机完全断网待验 |
+| CI | 增加 Windows 真进程夹具、环境/探针/镜像/blocked、真实 Docker digest/tag 漂移、浏览器 PDF 及嵌入资源门禁；本地 YAML 检查通过，远程结果以关联 PR 为准 |
+
+完整发布验收仍未关闭。两项 Windows VM 夹具已改用明确 detection 与跨平台 Go 可执行夹具，VM 包通过；源 runtime ACL 竞态改为独立文件副本并经真实并发反例验证。共享 AppContainer SID、标准库兼容、远端内容固定及最终交付等保留边界详见实施记录；本地日志位于 `reports/security-remediation-2026-11-16/`。以下为此前各轮历史验证，不能替代本轮修复证据。
+
+### 既有验证记录
+
 - 日期：2026-11-09（Asia/Shanghai）
 - 代码状态：`feature/workbennch` 分支实现，基线 `e6bfb26`；2026-11-10 整理为 GitHub PR，此前 MyGo 桌面验证作为历史记录保留
 - 环境：Windows 本机（Go 1.27.3、Node 24.14.0、Chrome）+ `golang:1.27.3-bookworm` 隔离容器；静态前端预览与独立真实 API/模型服务

@@ -1,0 +1,44 @@
+{
+  "name": "@react-pdf-viewer/core",
+  "version": "3.12.0",
+  "description": "Maintained PDF.js 6 compatibility build of react-pdf-viewer core 3.12",
+  "license": "https://react-pdf-viewer.dev/license",
+  "author": {
+    "name": "Nguyen Huu Phuoc",
+    "email": "me@phuoc.ng",
+    "url": "https://twitter.com/nghuuphuoc"
+  },
+  "homepage": "https://react-pdf-viewer.dev",
+  "keywords": [
+    "react",
+    "react.js",
+    "pdf",
+    "pdf.js",
+    "pdf viewer"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/react-pdf-viewer/react-pdf-viewer",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/react-pdf-viewer/react-pdf-viewer/issues"
+  },
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib/cjs/*.*",
+    "lib/styles/*.*",
+    "lib/index.d.ts",
+    "lib/index.js"
+  ],
+  "peerDependencies": {
+    "pdfjs-dist": "6.5.438",
+    "react": ">=16.8.0",
+    "react-dom": ">=16.8.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "ea84015146e8c5d4c78d7f10df2fba84567ef4aa"
+}

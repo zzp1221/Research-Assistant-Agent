@@ -20,14 +20,22 @@ func TranslateCwd(workspaceRoot, logical string) (string, error) {
 	if logical == "" || logical == "/workspace" {
 		return workspaceRoot, nil
 	}
+	if strings.ContainsAny(logical, "\\:\x00") {
+		return "", fmt.Errorf("working directory must be a logical workspace path")
+	}
+	for _, component := range strings.Split(logical, "/") {
+		if component == ".." {
+			return "", fmt.Errorf("working directory must not traverse outside the workspace")
+		}
+	}
 	if strings.HasPrefix(logical, "/workspace/") {
 		rel := strings.TrimPrefix(logical, "/workspace/")
-		return filepath.Join(workspaceRoot, filepath.FromSlash(rel)), nil
+		return containedEnvironmentPath(workspaceRoot, filepath.Join(workspaceRoot, filepath.FromSlash(rel)))
 	}
-	if filepath.IsAbs(logical) {
+	if filepath.IsAbs(logical) || strings.HasPrefix(logical, "/") {
 		return "", fmt.Errorf("path %q is outside the workspace", logical)
 	}
-	return filepath.Join(workspaceRoot, filepath.FromSlash(logical)), nil
+	return containedEnvironmentPath(workspaceRoot, filepath.Join(workspaceRoot, filepath.FromSlash(logical)))
 }
 
 // TranslateArgv maps logical python interpreters and /workspace paths to the
@@ -54,16 +62,29 @@ func TranslateCommand(workspaceRoot, venvPython string, command engine.Command) 
 	if command.Shell {
 		return engine.Command{}, ErrUnsupportedPOSIXShell
 	}
+	env, err := validateTaskEnvironment(command.Env)
+	if err != nil {
+		return engine.Command{}, err
+	}
+	if pythonPath, ok := env["PYTHONPATH"]; ok {
+		env["PYTHONPATH"], err = translatePythonPath(workspaceRoot, pythonPath)
+		if err != nil {
+			return engine.Command{}, err
+		}
+	}
 	cwd, err := TranslateCwd(workspaceRoot, command.Cwd)
 	if err != nil {
 		return engine.Command{}, err
 	}
 	out := command
+	out.Env = env
 	out.Cwd = cwd
 	out.Argv = TranslateArgv(workspaceRoot, venvPython, command.Argv)
 	if len(out.Env) > 0 {
-		env := make(map[string]string, len(out.Env))
 		for key, value := range out.Env {
+			if key == "PYTHONPATH" {
+				continue
+			}
 			if value == "/workspace" {
 				value = workspaceRoot
 			} else if strings.HasPrefix(value, "/workspace/") {
@@ -71,7 +92,6 @@ func TranslateCommand(workspaceRoot, venvPython string, command engine.Command) 
 			}
 			env[key] = value
 		}
-		out.Env = env
 	}
 	return out, nil
 }

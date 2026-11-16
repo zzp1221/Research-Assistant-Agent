@@ -87,6 +87,10 @@ Both are self-contained HTML files (inline SVG/styles/scripts) that open directl
 
 ### Defects and remediation
 
+- [Security remediation implementation record (2026-11-16, Chinese)](defect-remediation-2026-11-16-security-results.md): code and targeted regressions implemented; maps all 27 acceptance cases to evidence and records outstanding Windows compatibility and deployment validation.
+- [Security boundaries and PDF dependency remediation plan (2026-11-15, Chinese)](defect-remediation-2026-11-15-security.md): original risks, repair steps and closure criteria; full release acceptance remains open.
+- [Native runtime security migration (2026-11-16, Chinese)](security-native-runtime-migration-2026-11-16.md): environment allowlists, controlled network probes, capability blocking, cache migration and measured limitations.
+- [Exact image authorization migration (2026-11-16, Chinese)](security-image-policy-migration-2026-11-16.md): exact tag/digest rules, trusted mirrors, content pins and migration from prefix rules.
 - [Scheduler waiting states, failure propagation, and partial outcomes — repair report (2026-11-11, Chinese)](defect-remediation-2026-11-11-scheduler-results.md): implemented fixes plus backend, race, frontend and online acceptance evidence for approval waits, terminal-state races, persistent block reasons, and partial-outcome contracts.
 - [Scheduler waiting states, failure propagation, and partial outcomes — plan (2026-11-11, Chinese)](defect-remediation-2026-11-11-scheduler.md): implemented (v1.1); original problems, repair boundaries, state contracts and acceptance-case design.
 - [Defect remediation (2026-10-25)](defect-remediation-2026-10-25.md): D1–D10 "why fix / what was wrong / how to fix", with rollout order and acceptance checklist.

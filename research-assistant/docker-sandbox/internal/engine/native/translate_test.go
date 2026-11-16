@@ -39,3 +39,18 @@ func TestTranslateCommandRejectsPOSIXShell(t *testing.T) {
 		t.Fatalf("err = %v, want ErrUnsupportedPOSIXShell", err)
 	}
 }
+
+func TestTranslateCommandRejectsWorkspaceEscapeAndEnvironmentOverrides(t *testing.T) {
+	root := t.TempDir()
+	for _, cwd := range []string{"/workspace/../../outside", "../outside", "C:relative", `\outside`, "/other"} {
+		if _, err := TranslateCommand(root, "python", engine.Command{Argv: []string{"python"}, Cwd: cwd}); err == nil {
+			t.Errorf("accepted unsafe working directory %q", cwd)
+		}
+	}
+	if _, err := TranslateCommand(root, "python", engine.Command{Argv: []string{"python"}, Env: map[string]string{"path": root}}); err == nil {
+		t.Fatal("task PATH override was accepted during translation")
+	}
+	if _, err := TranslateCommand(root, "python", engine.Command{Argv: []string{"python"}, Env: map[string]string{"PYTHONPATH": "/workspace/../secret"}}); err == nil {
+		t.Fatal("task Python path escaped during translation")
+	}
+}

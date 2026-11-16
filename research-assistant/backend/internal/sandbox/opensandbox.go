@@ -169,7 +169,7 @@ func (s *SandboxClient) CreatePersistentSandboxWithOptions(ctx context.Context, 
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("沙箱服务返回错误 (Status %d): %s", resp.StatusCode, string(body))
+		return "", sandboxCreateError(resp.StatusCode, body)
 	}
 
 	var res SandboxCreateResponse
@@ -260,7 +260,7 @@ func (s *SandboxClient) RunPythonCode(ctx context.Context, sandboxID string, cod
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("沙箱执行失败 (Status %d): %s", resp.StatusCode, string(body))
+		return nil, sandboxResponseError(resp.StatusCode, body, "沙箱执行失败")
 	}
 
 	var res PythonRunResponse
@@ -293,7 +293,7 @@ func (s *SandboxClient) ExecCommand(ctx context.Context, sandboxID string, cmd [
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("执行命令失败 (Status %d): %s", resp.StatusCode, string(body))
+		return nil, sandboxResponseError(resp.StatusCode, body, "执行命令失败")
 	}
 
 	var res PythonRunResponse
@@ -325,7 +325,7 @@ func (s *SandboxClient) streamExecution(ctx context.Context, sandboxID string, s
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("stream execution failed (Status %d): %s", resp.StatusCode, string(body))
+		return nil, sandboxResponseError(resp.StatusCode, body, "stream execution failed")
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -386,10 +386,15 @@ type SandboxCapabilities struct {
 }
 
 type SandboxImageInfo struct {
-	Image     string `json:"image"`
-	Digest    string `json:"digest"`
-	SizeBytes int64  `json:"size_bytes"`
-	Pulled    bool   `json:"pulled"`
+	Image         string `json:"image"`
+	ResolvedImage string `json:"resolved_image,omitempty"`
+	Digest        string `json:"digest"`
+	DigestSource  string `json:"digest_source,omitempty"`
+	RepoDigest    string `json:"repo_digest,omitempty"`
+	ImageID       string `json:"image_id,omitempty"`
+	Platform      string `json:"platform,omitempty"`
+	SizeBytes     int64  `json:"size_bytes"`
+	Pulled        bool   `json:"pulled"`
 }
 
 func (s *SandboxClient) Capabilities(ctx context.Context) (*SandboxCapabilities, error) {
