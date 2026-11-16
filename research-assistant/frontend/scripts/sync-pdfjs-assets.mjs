@@ -10,15 +10,16 @@ const root = path.resolve(here, '..');
 const source = path.join(root, 'node_modules', 'pdfjs-dist');
 const target = path.join(root, 'public', 'pdfjs');
 
-const files = [
-  ['build/pdf.worker.min.js', 'pdf.worker.min.js'],
-];
-const directories = ['cmaps', 'standard_fonts'];
-
 if (!fs.existsSync(source)) {
   console.error('[pdfjs] node_modules/pdfjs-dist is missing; run npm ci first');
   process.exit(1);
 }
+
+const { version } = JSON.parse(fs.readFileSync(path.join(source, 'package.json'), 'utf8'));
+const files = [
+  ['build/pdf.worker.min.mjs', `${version}/pdf.worker.min.mjs`],
+];
+const directories = ['cmaps', 'standard_fonts', 'wasm'];
 
 function copyDirectory(from, to) {
   fs.mkdirSync(to, { recursive: true });
@@ -33,6 +34,8 @@ function copyDirectory(from, to) {
   }
 }
 
+// Remove obsolete workers on every build so deployments cannot mix engines.
+fs.rmSync(target, { recursive: true, force: true });
 fs.mkdirSync(target, { recursive: true });
 for (const [from, to] of files) {
   const fromPath = path.join(source, from);
@@ -40,6 +43,7 @@ for (const [from, to] of files) {
     console.error(`[pdfjs] missing ${from}`);
     process.exit(1);
   }
+  fs.mkdirSync(path.dirname(path.join(target, to)), { recursive: true });
   fs.copyFileSync(fromPath, path.join(target, to));
 }
 for (const directory of directories) {
@@ -51,4 +55,5 @@ for (const directory of directories) {
   fs.rmSync(path.join(target, directory), { recursive: true, force: true });
   copyDirectory(fromPath, path.join(target, directory));
 }
-console.log('[pdfjs] synced worker, cmaps and standard fonts into public/pdfjs');
+fs.writeFileSync(path.join(target, 'manifest.json'), JSON.stringify({ version, isEvalSupported: false, worker: `${version}/pdf.worker.min.mjs` }) + '\n');
+console.log(`[pdfjs] synced ${version} worker, cmaps, standard fonts and wasm into public/pdfjs`);

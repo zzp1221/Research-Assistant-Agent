@@ -133,14 +133,15 @@ Execute a command (argv contract):
 | `SANDBOX_RUNTIME` | empty | Container runtime (e.g. `runsc`, must be installed on the host) |
 | `SANDBOX_ALLOWED_RUNTIMES` | `runc,runsc,nvidia` | Allowed runtimes |
 | `SANDBOX_WORKSPACE_ROOTS` | `/tmp` | Allowed workspace roots for mounts (`filepath.SplitList`) |
-| `SANDBOX_IMAGE_ALLOWLIST` | empty | Allowed image prefixes, comma-separated; empty means unrestricted |
+| `SANDBOX_IMAGE_ALLOWLIST` | Canonical Python 3.9/3.11 bullseye references | Exact comma-separated tag/digest references; unset uses built-in defaults, explicitly empty/invalid rules fail closed; no prefixes |
 | `SANDBOX_CONTAINER_USER` | empty | Container user |
 | `SANDBOX_READ_ONLY_ROOT` | `false` | Read-only rootfs (`strict` forces it on) |
-| `SANDBOX_REGISTRY_MIRROR` | empty | Registry mirror for image pulls |
+| `SANDBOX_REGISTRY_MIRROR` | empty | Trusted Docker Hub mapping `registry[:port][/prefix]`, without a URL scheme; arbitrary registry suffix matches are rejected |
 | `SANDBOX_PIP_CACHE_DIR` | empty | Shared pip cache directory |
 | `SANDBOX_TTL_MINUTES` | `120` | Maximum sandbox lifetime; reaper cleans up after expiry |
 | `SANDBOX_REAPER_INTERVAL_SECONDS` | `300` | Reaper interval (minimum 10 s) |
-| `SANDBOX_WINDOWS_RUNNER` | `auto` | Native Windows runner: `auto` / `appcontainer` / `lowil` / `raw` |
+| `SANDBOX_WINDOWS_RUNNER` | `auto` | Native Windows runner: `auto` / `appcontainer` / `lowil`; strong isolation requires real probe evidence |
+| `SANDBOX_PROBE_NETWORK_ADDRESS` | empty | Operator-controlled TCP endpoint `host:port`; without an online positive control, network results remain inconclusive and OS-offline tasks are blocked |
 | `SANDBOX_DEFAULT_PYTHON` | empty | Default Python version for the native provider |
 | `SANDBOX_MEMORY_MB` / `SANDBOX_CPU_CORES` / `SANDBOX_MAX_PROCESSES` | 0 | Native resource limits (0 = defaults) |
 | `OPEN_SANDBOX_URL` | empty | OpenSandbox service URL |
@@ -170,6 +171,8 @@ Or use the project script:
 ```
 
 ## Security boundaries
+
+See the [native runtime security migration guide](../../docs/security-native-runtime-migration-2026-11-16.md) (Chinese) for environment allowlists, fresh probes, old runtime caches and capability blocking. Passing regression tests does not mean all eight AppContainer capabilities are available on this host; the guide records the compatibility limits.
 
 - Only the internal executor mounts the Docker socket; the gateway holds no socket and no host workspace. The executor still has high host privileges and should only be reachable on the internal network.
 - CPU, memory, PID, capabilities, images, and mount paths are limited by default, and tenant/task labels are enforced, but this is not strong multi-tenant isolation.

@@ -5,7 +5,7 @@ package native
 const (
 	AppContainerOfflineProfile  = "ResearchAssistant.Sandbox"
 	AppContainerOnlineProfile   = "ResearchAssistant.Sandbox.Online"
-	InternetClientCapabilitySID = "S-1-15-2-1"
+	InternetClientCapabilitySID = "S-1-15-3-1"
 )
 
 // AppContainerProfileName selects the profile for a command.

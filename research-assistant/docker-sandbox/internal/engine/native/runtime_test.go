@@ -21,18 +21,8 @@ func TestEnvHashIsOrderIndependent(t *testing.T) {
 
 func TestEnsureRuntimeUsesFakeUVAndReusesVenv(t *testing.T) {
 	dir := t.TempDir()
-	logPath := filepath.Join(dir, "uv.log")
-	uvPath := filepath.Join(dir, "uv")
-	script := "#!/bin/sh\necho \"$@\" >> \"$UV_LOG\"\n" +
-		"case \"$1\" in\n" +
-		"  python) exit 0 ;;\n" +
-		"  venv) mkdir -p \"$2/bin\" && : > \"$2/bin/python\" ; exit 0 ;;\n" +
-		"  pip) if [ \"$2\" = \"freeze\" ]; then echo 'numpy==1.0'; fi; exit 0 ;;\n" +
-		"esac\n"
-	if err := os.WriteFile(uvPath, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("UV_LOG", logPath)
+	logPath := filepath.Join(dir, "runtimes", ".ra-build", "uv.log")
+	uvPath := fixtureUV(t)
 	manager := NewRuntimeManager(uvPath, filepath.Join(dir, "runtimes"), filepath.Join(dir, "venvs"), filepath.Join(dir, "logs"))
 	first, err := manager.EnsureRuntime(context.Background(), "3.11", []string{"numpy", "torch"})
 	if err != nil {

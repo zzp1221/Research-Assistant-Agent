@@ -119,6 +119,12 @@ npm run preview      # 预览生产构建
 
 Docker 构建使用 `Dockerfile`：Node 22 构建后由 Nginx 提供静态资源，并把 `/api/` 反向代理到 `backend:8080`。Nginx 模板 `nginx.conf.template` 在容器启动时用 envsubst 注入 `API_AUTH_TOKEN`，浏览器不持有该 Token；`client_max_body_size 33m` 与后端默认 32 MiB 上传上限对齐。桌面/单文件模式由 Go 后端或 MyGo 内嵌 `dist`。
 
+### PDF 引擎安全与升级
+
+PDF 解析使用锁定的 PDF.js 6.5.438；原阅读器插件通过[本地 core 兼容包](vendor/react-pdf-viewer-core/README.md)接入现代 TextLayer，未保留 PDF.js 3 的解析器或 worker。应用与兼容包均强制 `isEvalSupported: false`。安装依赖不需要忽略 peer dependency 检查；Node 需满足引擎声明（至少 22.13）。
+
+每次构建会清除旧 PDF 静态资源，重新同步同版 `.mjs` worker、cMaps、字体和 wasm。worker 地址包含引擎版本，Web、离线和桌面内嵌部署必须整体替换该次 `dist`，不能混用旧 worker。运行 `npm run build` 后用 `npm run check:pdf-security` 检查单一引擎、CVE-2024-4367 修复范围、worker 版本和内容 hash；升级引擎时同时复核兼容包并运行 PDF 浏览器测试。
+
 ## 测试
 
 ```bash

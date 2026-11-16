@@ -6,12 +6,14 @@ import (
 )
 
 func TestRewriteImageWithRegistryMirror(t *testing.T) {
+	t.Setenv("SANDBOX_IMAGE_ALLOWLIST", "python:3.11-bullseye,python:3.11,ghcr.io/org/image:tag")
 	t.Setenv("SANDBOX_REGISTRY_MIRROR", "docker.m.daocloud.io")
 	cases := map[string]string{
 		"python:3.11-bullseye":                     "docker.m.daocloud.io/library/python:3.11-bullseye",
 		"library/python:3.11":                      "docker.m.daocloud.io/library/python:3.11",
 		"docker.m.daocloud.io/library/python:3.11": "docker.m.daocloud.io/library/python:3.11",
 		"ghcr.io/org/image:tag":                    "ghcr.io/org/image:tag",
+		"docker.io/library/python:3.11":            "docker.m.daocloud.io/library/python:3.11",
 	}
 	for input, expected := range cases {
 		if got := rewriteImageWithRegistryMirror(input); got != expected {
@@ -20,9 +22,10 @@ func TestRewriteImageWithRegistryMirror(t *testing.T) {
 	}
 }
 
-func TestRewriteImageWithoutMirrorIsIdentity(t *testing.T) {
+func TestRewriteImageWithoutMirrorNormalizesSource(t *testing.T) {
+	t.Setenv("SANDBOX_IMAGE_ALLOWLIST", "python:3.11-bullseye")
 	t.Setenv("SANDBOX_REGISTRY_MIRROR", "")
-	if got := rewriteImageWithRegistryMirror("python:3.11-bullseye"); got != "python:3.11-bullseye" {
+	if got := rewriteImageWithRegistryMirror("python:3.11-bullseye"); got != "docker.io/library/python:3.11-bullseye" {
 		t.Fatalf("unexpected rewrite: %s", got)
 	}
 }

@@ -3,11 +3,13 @@ package engine
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestSecureDockerRunArgsApplyResourceAndPrivilegeLimits(t *testing.T) {
+	setSandboxTestImagePolicy(t)
 	t.Setenv("SANDBOX_CPU_LIMIT", "1.5")
 	t.Setenv("SANDBOX_MEMORY_LIMIT", "2g")
 	t.Setenv("SANDBOX_PIDS_LIMIT", "128")
@@ -39,13 +41,24 @@ func TestSecureDockerRunArgsApplyResourceAndPrivilegeLimits(t *testing.T) {
 }
 
 func TestSandboxImageAllowlist(t *testing.T) {
-	t.Setenv("SANDBOX_IMAGE_ALLOWLIST", "python:3.11,registry.example/research/")
+	t.Setenv("SANDBOX_IMAGE_ALLOWLIST", "python:3.11-slim,registry.example/research/runtime:stable")
+	t.Setenv("SANDBOX_REGISTRY_MIRROR", "")
 	if _, err := secureDockerRunArgs("python:3.11-slim", nil); err != nil {
 		t.Fatalf("expected allowlisted image: %v", err)
 	}
 	if _, err := secureDockerRunArgs("ubuntu:latest", nil); err == nil {
 		t.Fatal("expected image outside allowlist to be rejected")
 	}
+	t.Setenv("SANDBOX_IMAGE_ALLOWLIST", "python:3.11")
+	if _, err := secureDockerRunArgs("python:3.11-slim", nil); err == nil {
+		t.Fatal("a tag prefix must not authorize a different tag")
+	}
+}
+
+func setSandboxTestImagePolicy(t *testing.T) {
+	t.Helper()
+	t.Setenv("SANDBOX_IMAGE_ALLOWLIST", "python:3.11-slim")
+	t.Setenv("SANDBOX_REGISTRY_MIRROR", "")
 }
 
 func TestNormalizeDockerMountPathRejectsOutsideWorkspaceRoots(t *testing.T) {
@@ -59,7 +72,11 @@ func TestNormalizeDockerMountPathRejectsOutsideWorkspaceRoots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if normalized, err := normalizeDockerMountPath(inside); err != nil || normalized != filepath.Clean(expectedInside) {
+	expectedInside = filepath.Clean(expectedInside)
+	if runtime.GOOS == "windows" {
+		expectedInside = filepath.ToSlash(expectedInside)
+	}
+	if normalized, err := normalizeDockerMountPath(inside); err != nil || normalized != expectedInside {
 		t.Fatalf("expected workspace path to be accepted, got %q, %v", normalized, err)
 	}
 	if _, err := normalizeDockerMountPath(filepath.Dir(root)); err == nil {

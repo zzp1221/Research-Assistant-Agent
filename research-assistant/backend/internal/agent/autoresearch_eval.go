@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -36,10 +37,10 @@ func (a *ResearchCodingAgent) evaluateAutoResearchWithCommandRuns(ctx context.Co
 		commandResult, _, err := a.runAutoResearchCommand(ctx, runtimeSession, command)
 		result.Guards = append(result.Guards, commandResult)
 		if integrityErr := verifyAutoResearchSpecFiles(workspacePath, spec); integrityErr != nil {
-			return result, integrityErr
+			return result, errors.Join(integrityErr, err)
 		}
 		if integrityErr := verifyAutoResearchImmutableFingerprint(workspacePath, spec.EditableFiles, spec.FrozenWorkspace); integrityErr != nil {
-			return result, integrityErr
+			return result, errors.Join(integrityErr, err)
 		}
 		if err != nil {
 			return result, fmt.Errorf("guard command failed: %w", err)
@@ -66,10 +67,10 @@ func (a *ResearchCodingAgent) evaluateAutoResearchWithCommandRuns(ctx context.Co
 func (a *ResearchCodingAgent) evaluateAutoResearchMetricCommand(ctx context.Context, runtimeSession, workspacePath string, spec models.ResearchSpec, command []string) (models.ResearchCommandResult, float64, error) {
 	evalResult, stdout, err := a.runAutoResearchCommand(ctx, runtimeSession, command)
 	if integrityErr := verifyAutoResearchSpecFiles(workspacePath, spec); integrityErr != nil {
-		return evalResult, 0, integrityErr
+		return evalResult, 0, errors.Join(integrityErr, err)
 	}
 	if integrityErr := verifyAutoResearchImmutableFingerprint(workspacePath, spec.EditableFiles, spec.FrozenWorkspace); integrityErr != nil {
-		return evalResult, 0, integrityErr
+		return evalResult, 0, errors.Join(integrityErr, err)
 	}
 	if err != nil {
 		return evalResult, 0, err

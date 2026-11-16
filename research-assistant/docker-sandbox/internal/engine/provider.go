@@ -27,6 +27,9 @@ type ProbeCase struct {
 	Security bool   `json:"security"`
 	Passed   bool   `json:"passed"`
 	Detail   string `json:"detail,omitempty"`
+	Status   string `json:"status"`
+	Expected string `json:"expected"`
+	Profile  string `json:"profile,omitempty"`
 }
 
 // ProbeReport is the persisted AppContainer go/no-go report.
@@ -34,6 +37,15 @@ type ProbeReport struct {
 	Cases          []ProbeCase `json:"cases"`
 	AppContainerOK bool        `json:"appcontainer_ok"`
 	Reason         string      `json:"reason,omitempty"`
+	Version        string      `json:"version"`
+	EnvironmentKey string      `json:"environment_key,omitempty"`
+	Runner         string      `json:"runner,omitempty"`
+	OS             string      `json:"os,omitempty"`
+	Attempted      int         `json:"attempted"`
+	Passed         int         `json:"passed"`
+	Failed         int         `json:"failed"`
+	Errors         int         `json:"errors"`
+	Inconclusive   int         `json:"inconclusive"`
 }
 
 // ProviderCapabilities is the honest capability matrix shown in the UI.

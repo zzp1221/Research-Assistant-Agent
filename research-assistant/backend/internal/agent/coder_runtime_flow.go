@@ -11,6 +11,7 @@ import (
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/prompts"
 	"research-assistant-backend/internal/recovery"
+	"research-assistant-backend/internal/sandbox"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -18,7 +19,7 @@ import (
 func (a *CoderAgent) prepareRuntime(ctx context.Context, task *models.Task) error {
 	logToContext(ctx, "[%s] Preparing runtime for %s", a.Name, task.Name)
 
-	if existing := chooseNonEmpty(extractTaskInputLike(task, "runtime_session"), extractTaskInputLike(task, "runtime_env"), extractTaskInputLike(task, "prepared_runtime")); strings.HasPrefix(existing, "dk-") || strings.HasPrefix(existing, "os-") {
+	if existing := chooseNonEmpty(extractTaskInputLike(task, "runtime_session"), extractTaskInputLike(task, "runtime_env"), extractTaskInputLike(task, "prepared_runtime")); isSandboxSessionID(existing) {
 		task.Result = existing
 		logToContext(ctx, "[%s] Reusing existing runtime: %s", a.Name, existing)
 		if task.Metadata == nil {
@@ -46,10 +47,29 @@ func (a *CoderAgent) prepareRuntime(ctx context.Context, task *models.Task) erro
 	if runtimeReason != "" {
 		logToContext(ctx, "[%s] Runtime image selected from repository metadata: %s (%s)", a.Name, sandboxImage, runtimeReason)
 	}
-	// Image preflight: every execution chain ensures the image exists (and is
-	// allowlisted) before creating a container. This turns the previous opaque
-	// "Unable to find image" 500 into an actionable missing requirement.
-	if info, ensureErr := a.Sandbox.EnsureImage(ctx, sandboxImage); ensureErr != nil {
+	// Only the service's capabilities decide whether OCI image preparation
+	// applies. Task inputs/metadata cannot turn off Docker authorization.
+	caps, capsErr := a.Sandbox.Capabilities(ctx)
+	if capsErr != nil {
+		task.Status = models.StatusFailed
+		task.Error = fmt.Sprintf("runtime capabilities lookup failed: %v", capsErr)
+		return capsErr
+	}
+	usesImages := caps.Images || (!strings.EqualFold(caps.Provider, "native") && !strings.EqualFold(caps.Provider, "vm"))
+	if !usesImages {
+		spec, _ := runtimeSpecFromTask(task)
+		if strings.TrimSpace(spec.BaseImage) != "" || strings.TrimSpace(spec.ImageDigest) != "" || strings.TrimSpace(extractTaskInputLike(task, "runtime_image")) != "" {
+			err := &sandbox.CapabilityError{Message: "sandbox_capability: selected provider cannot satisfy an OCI image requirement", MissingRequirements: []models.MissingRequirement{{
+				Kind: "sandbox_capability", Name: "image", Detail: "所选 provider 不支持任务指定的 OCI 镜像或 digest", Remediation: "改用支持镜像的 provider，或为原生运行时明确移除镜像要求。",
+			}}}
+			applySandboxCapabilityBlock(task, err)
+			return err
+		}
+		sandboxImage, runtimeReason = "", caps.Provider+" runtime"
+		if task.Metadata != nil {
+			delete(task.Metadata, "runtime_image_provenance")
+		}
+	} else if info, ensureErr := a.Sandbox.EnsureImage(ctx, sandboxImage); ensureErr != nil {
 		task.Status = models.StatusFailed
 		task.Error = fmt.Sprintf("runtime image preparation failed: %v", ensureErr)
 		if task.Metadata == nil {
@@ -64,11 +84,15 @@ func (a *CoderAgent) prepareRuntime(ctx context.Context, task *models.Task) erro
 		logToContext(ctx, "[%s] image preflight failed for %s: %v", a.Name, sandboxImage, ensureErr)
 		return ensureErr
 	} else if info != nil {
-		if task.Metadata == nil {
-			task.Metadata = map[string]any{}
+		if spec, specErr := runtimeSpecFromTask(task); specErr == nil {
+			if digestErr := validateFrozenImageDigest(spec, info); digestErr != nil {
+				task.Status = models.StatusFailed
+				task.Error = digestErr.Error()
+				return digestErr
+			}
 		}
-		task.Metadata["runtime_image_digest"] = info.Digest
-		task.Metadata["runtime_image_size_bytes"] = info.SizeBytes
+		recordRuntimeImageProvenance(task, info)
+		sandboxImage = info.Image
 	}
 	sandboxOptions := sandboxOptionsForTask(task)
 	sandboxID, err := a.Sandbox.CreatePersistentSandboxWithOptions(ctx, sandboxIdentityForTask(task), sandboxImage, mountPath, sandboxOptions)
@@ -88,10 +112,16 @@ func (a *CoderAgent) prepareRuntime(ctx context.Context, task *models.Task) erro
 	}
 	task.Metadata["runtime_image"] = sandboxImage
 	task.Metadata["runtime_image_reason"] = runtimeReason
-	task.Metadata["artifact_values"] = buildArtifactValueMap(task, map[string]string{
+	artifactValues := buildArtifactValueMap(task, map[string]string{
 		"runtime_session": sandboxID,
 		"runtime_image":   sandboxImage,
 	})
+	if !usesImages {
+		// An explicit empty value prevents generic artifact inference from
+		// relabelling the native session ID as an image or digest.
+		artifactValues["runtime_image"], artifactValues["image_digest"] = "", ""
+	}
+	task.Metadata["artifact_values"] = artifactValues
 	task.Status = models.StatusCompleted
 	return nil
 }
@@ -248,6 +278,9 @@ func (a *CoderAgent) installDependencies(ctx context.Context, task *models.Task)
 				continue
 			}
 			if applyErr != nil {
+				if applySandboxCapabilityBlock(task, applyErr) {
+					return applyErr
+				}
 				logToContext(ctx, "[%s] ReAct repair plan apply failed, fallback to rules: %v", a.Name, applyErr)
 			} else {
 				logToContext(ctx, "[%s] ReAct repair returned no effective change, fallback to rules.", a.Name)
@@ -378,7 +411,7 @@ func (a *CoderAgent) applyRuleBasedDependencyFallback(ctx context.Context, task 
 		targetImage := choosePythonUpgradeImage(errText)
 		nextRuntimeSession, err := a.recreateSandboxForDependencies(ctx, task, runtimeSession, mountPath, targetImage)
 		if err != nil {
-			return dependencies, runtimeSession, false, "", fmt.Errorf("%s; additionally failed to create upgraded sandbox %q: %v", errText, targetImage, err)
+			return dependencies, runtimeSession, false, "", fmt.Errorf("%s; additionally failed to create upgraded sandbox %q: %w", errText, targetImage, err)
 		}
 		return dependencies, nextRuntimeSession, true, "upgrade python sandbox after Requires-Python mismatch", nil
 	}

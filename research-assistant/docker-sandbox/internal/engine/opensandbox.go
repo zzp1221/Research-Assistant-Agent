@@ -39,8 +39,14 @@ func (e *OpenSandboxEngine) GetType() string {
 }
 
 func (e *OpenSandboxEngine) Create(ctx context.Context, image string, mountPath string) (string, error) {
+	// Fallback and explicit remote execution must not turn a local policy
+	// rejection into an unvalidated request to another execution service.
+	authorized, err := AuthorizeImage(image)
+	if err != nil {
+		return "", err
+	}
 	reqBody := map[string]interface{}{
-		"image": map[string]string{"uri": image},
+		"image": map[string]string{"uri": authorized},
 		"resourceLimits": map[string]string{
 			"cpu":    "1000m",
 			"memory": "1Gi",
@@ -51,7 +57,12 @@ func (e *OpenSandboxEngine) Create(ctx context.Context, image string, mountPath 
 	// but we'll ignore it for now or implement as needed.
 	payload, _ := json.Marshal(reqBody)
 
-	resp, err := e.httpClient.Post(e.BaseURL+"/v1/sandboxes", "application/json", bytes.NewBuffer(payload))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, e.BaseURL+"/v1/sandboxes", bytes.NewBuffer(payload))
+	if err != nil {
+		return "", err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	resp, err := e.httpClient.Do(request)
 	if err != nil {
 		return "", err
 	}

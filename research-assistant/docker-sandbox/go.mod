@@ -3,7 +3,9 @@ module docker-sandbox
 go 1.27.3
 
 require (
+	github.com/distribution/reference v0.6.0
 	github.com/gin-gonic/gin v1.12.0
+	github.com/opencontainers/go-digest v1.0.0
 	golang.org/x/sys v0.48.0
 )
 

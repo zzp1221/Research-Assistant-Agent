@@ -127,6 +127,12 @@ func (a *ResearchCodingAgent) executeAutoResearchValidation(ctx context.Context,
 				break
 			}
 			evaluation, evalErr := a.evaluateAutoResearchWithCommand(ctx, runtimeSession, workspacePath, spec, validationCommand)
+			if isSandboxCapabilityError(evalErr) {
+				if restoreErr := restoreAutoResearchWorkspace(workspacePath, spec.EditableFiles, immutableSnapshots, protectedSnapshots, candidateSnapshots); restoreErr != nil {
+					evalErr = fmt.Errorf("%w; restore blocked validation: %v", evalErr, restoreErr)
+				}
+				return failResearchCodingTask(task, evalErr)
+			}
 			run.GuardResults = evaluation.Guards
 			run.EvalResult = evaluation.Eval
 			if !legacyEvaluationSet {

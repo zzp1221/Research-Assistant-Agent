@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "dev": "vite",
@@ -19,10 +19,11 @@
     "test:a11y": "playwright test test/e2e/a11y.spec.ts",
     "test:visual": "playwright test --config playwright.visual.config.ts",
     "sync:pdfjs": "node scripts/sync-pdfjs-assets.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:pdf-security": "node scripts/check-pdf-security.mjs"
   },
   "dependencies": {
-    "@react-pdf-viewer/core": "^3.12.0",
+    "@react-pdf-viewer/core": "file:vendor/react-pdf-viewer-core",
     "@react-pdf-viewer/default-layout": "^3.12.0",
     "@react-pdf-viewer/highlight": "^3.12.0",
     "@tailwindcss/typography": "^0.5.20",
@@ -31,7 +32,7 @@
     "axios": "^1.13.6",
     "lucide-react": "^0.577.0",
     "mygo-runtime": "^0.7.4",
-    "pdfjs-dist": "^3.11.174",
+    "pdfjs-dist": "6.5.438",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",

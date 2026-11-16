@@ -126,8 +126,32 @@ func (m *RuntimeManager) EnsureRuntimeWithProgress(ctx context.Context, pythonVe
 }
 
 func (m *RuntimeManager) runUV(ctx context.Context, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, m.UVPath, args...)
-	cmd.Env = append(os.Environ(), "UV_PYTHON_INSTALL_DIR="+filepath.Join(m.RuntimeRoot, "python"))
+	// Resolve the trusted configured executable before constructing an empty
+	// child environment. Build hooks must not inherit the control service's
+	// credentials, proxy configuration or user-level Python/uv settings.
+	uvPath, err := exec.LookPath(m.UVPath)
+	if err != nil {
+		return "", err
+	}
+	uvPath, err = filepath.Abs(uvPath)
+	if err != nil {
+		return "", err
+	}
+	root, err := filepath.Abs(m.RuntimeRoot)
+	if err != nil {
+		return "", err
+	}
+	buildRoot := filepath.Join(root, ".ra-build")
+	if err := os.MkdirAll(buildRoot, 0o700); err != nil {
+		return "", err
+	}
+	env, err := installationEnvironment(buildRoot, root)
+	if err != nil {
+		return "", err
+	}
+	cmd := exec.CommandContext(ctx, uvPath, args...)
+	cmd.Dir = buildRoot
+	cmd.Env = env
 	output, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(output)), err
 }

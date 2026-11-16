@@ -126,6 +126,12 @@ func (a *CoderAgent) imagePrepare(ctx context.Context, task *models.Task) error 
 		task.Error = err.Error()
 		return nil
 	}
+	if err := validateFrozenImageDigest(spec, info); err != nil {
+		task.Status = models.StatusFailed
+		task.Error = err.Error()
+		return nil
+	}
+	recordRuntimeImageProvenance(task, info)
 	task.Result = info.Image
 	if task.Metadata == nil {
 		task.Metadata = map[string]any{}
@@ -174,6 +180,9 @@ func (a *CoderAgent) runtimeValidate(ctx context.Context, task *models.Task) err
 		}
 	}
 	if execErr != nil || response == nil || response.ExitCode != 0 {
+		if applySandboxCapabilityBlock(task, execErr) {
+			return execErr
+		}
 		detail := "runtime validation command failed"
 		if execErr != nil {
 			detail = execErr.Error()
@@ -286,6 +295,7 @@ func (a *CoderAgent) runtimeValidate(ctx context.Context, task *models.Task) err
 		FinishedAt:      &finished,
 		Status:          "ready",
 	}
+	applyRuntimeImageProvenance(task, &manifest)
 	if len(missing) > 0 {
 		manifest.Status = "blocked"
 		manifest.Missing = missing
@@ -307,6 +317,52 @@ func (a *CoderAgent) runtimeValidate(ctx context.Context, task *models.Task) err
 	}
 	task.Status = models.StatusCompleted
 	return nil
+}
+
+func validateFrozenImageDigest(spec models.ReproductionRuntimeSpec, info *sandbox.SandboxImageInfo) error {
+	if info == nil {
+		return fmt.Errorf("runtime image preparation returned no metadata")
+	}
+	if expected := strings.TrimSpace(spec.ImageDigest); expected != "" && expected != info.Digest {
+		return fmt.Errorf("image_digest_mismatch: prepared image differs from the frozen runtime digest")
+	}
+	return nil
+}
+
+func recordRuntimeImageProvenance(task *models.Task, info *sandbox.SandboxImageInfo) {
+	if task == nil || info == nil {
+		return
+	}
+	if task.Metadata == nil {
+		task.Metadata = map[string]any{}
+	}
+	raw, _ := json.Marshal(info)
+	task.Metadata["runtime_image_provenance"] = string(raw)
+	task.Metadata["runtime_image_digest"] = info.Digest
+	task.Metadata["runtime_image_size_bytes"] = info.SizeBytes
+}
+
+func applyRuntimeImageProvenance(task *models.Task, manifest *models.EnvironmentManifest) {
+	if task == nil || task.Metadata == nil || manifest == nil {
+		return
+	}
+	raw, _ := task.Metadata["runtime_image_provenance"].(string)
+	var info sandbox.SandboxImageInfo
+	if json.Unmarshal([]byte(raw), &info) != nil || info.Image == "" || info.Digest == "" {
+		return
+	}
+	// Do not attach provenance from another runtime if an explicitly bound
+	// image/digest disagrees with the trusted upstream image artifact.
+	if manifest.Image != "" && manifest.Image != info.Image || manifest.ImageDigest != "" && manifest.ImageDigest != info.Digest {
+		return
+	}
+	manifest.Image = info.Image
+	manifest.ImageDigest = info.Digest
+	manifest.ImageResolved = info.ResolvedImage
+	manifest.ImageRepoDigest = info.RepoDigest
+	manifest.ImageID = info.ImageID
+	manifest.ImageDigestSource = info.DigestSource
+	manifest.ImagePlatform = info.Platform
 }
 
 // pythonDependencyCheck is the structured result of one distribution probe.

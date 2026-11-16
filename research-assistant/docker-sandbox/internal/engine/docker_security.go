@@ -15,8 +15,8 @@ func secureDockerRunArgs(image string, labels map[string]string, options ...Crea
 	if image == "" {
 		return nil, fmt.Errorf("sandbox image is empty")
 	}
-	if !sandboxImageAllowed(image) {
-		return nil, fmt.Errorf("sandbox image %q is not in SANDBOX_IMAGE_ALLOWLIST", image)
+	if _, err := authorizeDockerImage(image); err != nil {
+		return nil, err
 	}
 	var opts CreateOptions
 	if len(options) > 0 {
@@ -100,26 +100,8 @@ func containsCommaSeparated(raw, want string) bool {
 }
 
 func sandboxImageAllowed(image string) bool {
-	raw := strings.TrimSpace(os.Getenv("SANDBOX_IMAGE_ALLOWLIST"))
-	if raw == "" {
-		return true
-	}
-	for _, prefix := range strings.Split(raw, ",") {
-		prefix = strings.TrimSpace(prefix)
-		if prefix == "" {
-			continue
-		}
-		if strings.HasPrefix(image, prefix) {
-			return true
-		}
-		// A registry mirror prefixes the logical image (for example
-		// docker.m.daocloud.io/library/python:3.11-bullseye); the allowlist
-		// entry still matches the logical suffix.
-		if strings.HasSuffix(image, "/"+prefix) {
-			return true
-		}
-	}
-	return false
+	_, err := authorizeDockerImage(image)
+	return err == nil
 }
 
 func allowedSandboxMountRoots() []string {

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -22,13 +23,15 @@ import (
 )
 
 type rawLaunch struct {
-	Argv     []string
-	Cwd      string
-	Env      map[string]string
-	Stdin    string
-	Token    windows.Token
-	Security *securityCapabilities
-	Limits   engine.Limits
+	Argv            []string
+	Cwd             string
+	Env             map[string]string
+	EnvironmentRoot string
+	Interpreter     string
+	Stdin           string
+	Token           windows.Token
+	Security        *securityCapabilities
+	Limits          engine.Limits
 }
 
 type rawProcess struct {
@@ -41,6 +44,17 @@ type rawProcess struct {
 }
 
 func startRawProcess(launch rawLaunch) (*rawProcess, error) {
+	if len(launch.Argv) == 0 || !filepath.IsAbs(launch.Argv[0]) {
+		return nil, fmt.Errorf("native process executable must be an absolute path")
+	}
+	root := launch.EnvironmentRoot
+	if root == "" {
+		root = launch.Cwd
+	}
+	env, err := researchEnvironment(root, launch.Interpreter, launch.Env)
+	if err != nil {
+		return nil, err
+	}
 	stdoutRead, stdoutWrite, err := inheritablePipe()
 	if err != nil {
 		return nil, err
@@ -51,16 +65,22 @@ func startRawProcess(launch rawLaunch) (*rawProcess, error) {
 		_ = stdoutWrite.Close()
 		return nil, err
 	}
-	var stdinRead, stdinWrite *os.File
-	if launch.Stdin != "" {
-		stdinRead, stdinWrite, err = inheritablePipe()
-		if err != nil {
-			_ = stdoutRead.Close()
-			_ = stdoutWrite.Close()
-			_ = stderrRead.Close()
-			_ = stderrWrite.Close()
-			return nil, err
+	// Even an empty stdin needs a valid inherited read handle. Python's
+	// subprocess module queries all standard handles before spawning children.
+	stdinRead, stdinWrite, err := os.Pipe()
+	if err == nil {
+		err = windows.SetHandleInformation(windows.Handle(stdinRead.Fd()), windows.HANDLE_FLAG_INHERIT, windows.HANDLE_FLAG_INHERIT)
+	}
+	if err != nil {
+		_ = stdoutRead.Close()
+		_ = stdoutWrite.Close()
+		_ = stderrRead.Close()
+		_ = stderrWrite.Close()
+		if stdinRead != nil {
+			_ = stdinRead.Close()
+			_ = stdinWrite.Close()
 		}
+		return nil, err
 	}
 	cleanup := func() {
 		_ = stdoutRead.Close()
@@ -87,7 +107,7 @@ func startRawProcess(launch rawLaunch) (*rawProcess, error) {
 			return nil, err
 		}
 	}
-	envBlock, err := buildEnvironmentBlock(append(os.Environ(), EnvPairs(launch.Env)...))
+	envBlock, err := buildEnvironmentBlock(env)
 	if err != nil {
 		cleanup()
 		return nil, err
@@ -118,7 +138,7 @@ func startRawProcess(launch rawLaunch) (*rawProcess, error) {
 		siEx.ProcThreadAttributeList = attributes.List()
 	}
 	var processInfo windows.ProcessInformation
-	flags := uint32(windows.CREATE_SUSPENDED | windows.CREATE_UNICODE_ENVIRONMENT | windows.EXTENDED_STARTUPINFO_PRESENT)
+	flags := uint32(windows.CREATE_SUSPENDED | windows.CREATE_UNICODE_ENVIRONMENT | windows.EXTENDED_STARTUPINFO_PRESENT | windows.CREATE_NO_WINDOW)
 	startup := (*windows.StartupInfo)(unsafe.Pointer(&siEx))
 	if launch.Token != 0 {
 		err = windows.CreateProcessAsUser(launch.Token, nil, commandLine, nil, nil, true, flags, &envBlock[0], cwdPtr, startup, &processInfo)
@@ -240,6 +260,8 @@ func runRawProcess(ctx context.Context, spec runSpec, launch rawLaunch) (*engine
 	launch.Argv = spec.Argv
 	launch.Cwd = spec.Cwd
 	launch.Env = spec.Env
+	launch.EnvironmentRoot = spec.EnvironmentRoot
+	launch.Interpreter = spec.Interpreter
 	launch.Stdin = spec.Stdin
 	launch.Limits = spec.Limits
 	if spec.Timeout > 0 {
@@ -251,7 +273,33 @@ func runRawProcess(ctx context.Context, spec runSpec, launch rawLaunch) (*engine
 	if err != nil {
 		return nil, err
 	}
+	if launch.Security != nil {
+		if appContainer, err := processIsAppContainer(process.process); err != nil || !appContainer {
+			_ = windows.TerminateJobObject(process.job, 1)
+			process.close()
+			return nil, fmt.Errorf("native process did not receive an AppContainer token")
+		}
+	}
 	defer process.close()
+	// Observe exit/cancellation while stdout/stderr are being drained. Waiting
+	// for EOF first deadlocks when a silent child keeps its pipe open.
+	waitDone := make(chan struct{})
+	go func() {
+		_, _ = windows.WaitForSingleObject(process.process, windows.INFINITE)
+		close(waitDone)
+	}()
+	monitorDone := make(chan struct{})
+	go func() {
+		defer close(monitorDone)
+		select {
+		case <-ctx.Done():
+			_ = windows.TerminateJobObject(process.job, 1)
+			<-waitDone
+		case <-waitDone:
+			// A child may outlive its original parent and keep a pipe open.
+			_ = windows.TerminateJobObject(process.job, 1)
+		}
+	}()
 	var stdout, stderr bytes.Buffer
 	var wg sync.WaitGroup
 	chunks := make(chan streamChunk, 64)
@@ -293,17 +341,7 @@ func runRawProcess(ctx context.Context, spec runSpec, launch rawLaunch) (*engine
 		}
 		_ = spec.Emit(engine.Event{Type: "chunk", Stream: chunk.stream, Message: message})
 	}
-	waitDone := make(chan struct{})
-	go func() {
-		_, _ = windows.WaitForSingleObject(process.process, windows.INFINITE)
-		close(waitDone)
-	}()
-	select {
-	case <-ctx.Done():
-		_ = windows.TerminateJobObject(process.job, 1)
-		<-waitDone
-	case <-waitDone:
-	}
+	<-monitorDone
 	var exitCode uint32
 	_ = windows.GetExitCodeProcess(process.process, &exitCode)
 	result := &engine.Result{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: int(exitCode)}

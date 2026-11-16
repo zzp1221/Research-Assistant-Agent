@@ -9,7 +9,7 @@ func TestAppContainerProfileName(t *testing.T) {
 	if got := AppContainerProfileName(true); got != AppContainerOnlineProfile {
 		t.Fatalf("online = %q", got)
 	}
-	if InternetClientCapabilitySID != "S-1-15-2-1" {
+	if InternetClientCapabilitySID != "S-1-15-3-1" {
 		t.Fatalf("capability sid = %q", InternetClientCapabilitySID)
 	}
 }

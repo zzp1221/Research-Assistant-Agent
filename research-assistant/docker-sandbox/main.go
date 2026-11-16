@@ -120,9 +120,16 @@ func NewSandboxService(cfg Config) *SandboxService {
 		if service.nativeProvider != nil && !service.dkEngine.Health(context.Background()).Available {
 			service.provider = "native"
 		}
+	case "docker":
+		// Keep the default Docker provider; its image policy is checked below.
 	default:
 		service.providerError = fmt.Sprintf("unknown SANDBOX_PROVIDER %q", requested)
 		log.Printf("[Sandbox] %s", service.providerError)
+	}
+	if service.providerError == "" && (service.provider == "docker" || service.provider == "remote") {
+		if err := engine.ValidateImagePolicy(); err != nil {
+			service.providerError = err.Error()
+		}
 	}
 	return service
 }
@@ -450,6 +457,16 @@ func (s *SandboxService) CreateSandbox(c *gin.Context) {
 	if req.Image == "" {
 		req.Image = "python:3.9-bullseye"
 	}
+	if s.providerError != "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": s.providerError})
+		return
+	}
+	if s.provider != "native" && s.provider != "vm" {
+		if _, err := engine.AuthorizeImage(req.Image); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
 	labels, err := sandboxLabels(req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -472,6 +489,9 @@ func (s *SandboxService) CreateSandbox(c *gin.Context) {
 			NetworkMode: networkMode, PythonVer: req.Runtime,
 		})
 		if err != nil {
+			if writeSandboxCapabilityError(c, err, s.provider) {
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -495,6 +515,14 @@ func (s *SandboxService) CreateSandbox(c *gin.Context) {
 		return
 	}
 	dockerErr := err
+	// A transport fallback must not hide a failed authorization, digest check,
+	// or lost immutable pin by asking another service to resolve the input.
+	for _, code := range []string{"image_not_allowed", "image_policy_invalid", "image_digest_mismatch", "image_pin_unavailable"} {
+		if strings.Contains(dockerErr.Error(), code) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": dockerErr.Error()})
+			return
+		}
+	}
 
 	log.Printf("[Warning] Native Docker failed: %v", dockerErr)
 
@@ -894,7 +922,7 @@ func (s *SandboxService) EnsureImage(c *gin.Context) {
 	info, err := s.dkEngine.EnsureImage(c.Request.Context(), req.Image)
 	if err != nil {
 		status := http.StatusBadGateway
-		if strings.Contains(err.Error(), "image_not_allowed") {
+		if strings.Contains(err.Error(), "image_not_allowed") || strings.Contains(err.Error(), "image_policy_invalid") {
 			status = http.StatusBadRequest
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
@@ -951,6 +979,9 @@ func (s *SandboxService) ExecutePython(c *gin.Context) {
 	}
 
 	if err != nil {
+		if writeSandboxCapabilityError(c, err, s.provider) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -996,6 +1027,25 @@ func (s *SandboxService) ExecutePythonStream(c *gin.Context) {
 	ctx, cancel := s.executionContext(c.Request.Context(), containerID)
 	defer cancel()
 	switch {
+	case strings.HasPrefix(id, "nt-"):
+		if s.nativeProvider == nil {
+			writeStreamError(c.Writer, flushWriter, fmt.Errorf("native provider is unavailable"))
+			return
+		}
+		result, execErr := s.nativeProvider.Exec(ctx, id, engine.Command{Argv: []string{"python", "-c", req.Code}, Cwd: "/workspace"}, func(event engine.Event) error {
+			if event.Type == "chunk" {
+				return emit(engine.ExecutionStreamEvent{Type: "chunk", Stream: event.Stream, Message: event.Message})
+			}
+			return nil
+		})
+		if execErr != nil {
+			if !c.Writer.Written() && writeSandboxCapabilityError(c, execErr, "native") {
+				return
+			}
+			writeStreamError(c.Writer, flushWriter, execErr)
+			return
+		}
+		_ = emit(engine.ExecutionStreamEvent{Type: "final", Response: resultToExecutionResponse(result)})
 	case strings.HasPrefix(id, "dk-"):
 		res, err := s.dkEngine.ExecutePythonStream(ctx, containerID, req.Code, emit)
 		if err != nil {
@@ -1086,6 +1136,9 @@ func (s *SandboxService) ExecuteCommand(c *gin.Context) {
 	}
 
 	if err != nil {
+		if writeSandboxCapabilityError(c, err, s.provider) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -1149,6 +1202,9 @@ func (s *SandboxService) ExecuteCommandStream(c *gin.Context) {
 			return nil
 		})
 		if execErr != nil {
+			if !c.Writer.Written() && writeSandboxCapabilityError(c, execErr, "native") {
+				return
+			}
 			writeStreamError(c.Writer, flushWriter, execErr)
 			return
 		}
@@ -1250,6 +1306,9 @@ func runEngine() {
 		EnableFallback: enableFallback,
 		ListenAddr:     listenAddr,
 	})
+	if strings.Contains(svc.providerError, "image_policy_invalid") {
+		log.Fatalf("invalid sandbox image policy: %s", svc.providerError)
+	}
 
 	r := gin.Default()
 	api := r.Group("/api/v1", sandboxAuthMiddleware())

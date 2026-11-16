@@ -259,6 +259,12 @@ func (a *ResearchCodingAgent) executeAutoResearchRun(ctx context.Context, task *
 		}
 
 		evaluation, evalErr := a.evaluateAutoResearchCandidate(runCtx, runtimeSession, workspacePath, spec)
+		if isSandboxCapabilityError(evalErr) {
+			if restoreErr := restoreAutoResearchWorkspace(workspacePath, spec.EditableFiles, immutableSnapshots, protectedSnapshots, bestSnapshots); restoreErr != nil {
+				evalErr = errors.Join(evalErr, fmt.Errorf("restore blocked candidate: %w", restoreErr))
+			}
+			return failAutoResearchRun(task, &ledger, evalErr)
+		}
 		trial.GuardResults = evaluation.Guards
 		trial.EvalResult = evaluation.Eval
 		trial.EvalResults = evaluation.Evals

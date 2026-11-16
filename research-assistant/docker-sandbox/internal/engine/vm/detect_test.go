@@ -45,12 +45,14 @@ func TestDecodeWSLOutputUTF16(t *testing.T) {
 }
 
 func TestProviderCapabilitiesAndExplicitFailure(t *testing.T) {
-	provider := NewProvider(context.Background())
+	// Use an explicit negative observation instead of depending on whether
+	// the developer or CI machine has a WSL distribution installed.
+	provider := NewProviderWithConfig(context.Background(), Config{Detection: Detection{Reason: "test fixture: unavailable"}})
 	caps, err := provider.Capabilities(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if caps.Provider != "vm" || caps.Isolation != "vm" || !caps.Images || caps.NetworkEnforced != "os" {
+	if caps.Provider != "vm" || caps.Isolation != "vm" || caps.Images || caps.NetworkEnforced != "os" {
 		t.Fatalf("caps = %#v", caps)
 	}
 	if !strings.Contains(strings.Join(caps.Notes, " "), "WSL2") {

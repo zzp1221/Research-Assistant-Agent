@@ -62,6 +62,10 @@ func cleanAutoResearchStrings(values []string) []string {
 
 func failAutoResearchRun(task *models.Task, ledger *models.ResearchTrialLedger, failure error) error {
 	if ledger != nil {
+		if isSandboxCapabilityError(failure) {
+			ledger.Status = "blocked"
+			ledger.StopReason = "sandbox_capability"
+		}
 		if ledger.FinishedAt.IsZero() {
 			ledger.FinishedAt = time.Now().UTC()
 		}

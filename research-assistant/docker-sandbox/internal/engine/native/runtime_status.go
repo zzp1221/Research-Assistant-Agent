@@ -36,6 +36,8 @@ func (p *Provider) RuntimeStatus(context.Context) (RuntimeStatus, error) {
 // InstallRuntime ensures a CPython runtime/venv exists and returns the updated
 // cache status. The actual download is delegated to uv.
 func (p *Provider) InstallRuntime(ctx context.Context, pythonVersion string) (RuntimeStatus, error) {
+	p.runtimeMu.RLock()
+	defer p.runtimeMu.RUnlock()
 	p.installMu.Lock()
 	p.installing = true
 	p.installStage = "starting"

@@ -42,7 +42,8 @@ services:
       - SANDBOX_RUNTIME=${SANDBOX_RUNTIME:-}
       - SANDBOX_ALLOWED_RUNTIMES=${SANDBOX_ALLOWED_RUNTIMES:-runc,runsc,nvidia}
       - SANDBOX_WORKSPACE_ROOTS=/tmp
-      - SANDBOX_IMAGE_ALLOWLIST=${SANDBOX_IMAGE_ALLOWLIST:-python:3.9-bullseye,python:3.11-bullseye}
+      # Exact references; an explicitly empty value is rejected by the executor.
+      - SANDBOX_IMAGE_ALLOWLIST=${SANDBOX_IMAGE_ALLOWLIST-docker.io/library/python:3.9-bullseye,docker.io/library/python:3.11-bullseye}
       - SANDBOX_REGISTRY_MIRROR=${SANDBOX_REGISTRY_MIRROR:-}
       - SANDBOX_TTL_MINUTES=${SANDBOX_TTL_MINUTES:-120}
       - SANDBOX_REAPER_INTERVAL_SECONDS=${SANDBOX_REAPER_INTERVAL_SECONDS:-300}
