@@ -199,7 +199,7 @@ func (s *Scheduler) markTaskStarted(planID, taskID string, guards ...dispatchGua
 		return "", "", 0, err
 	}
 
-	s.publishAndStore(planID, models.PlanEvent{
+	if err := s.publishAndStore(planID, models.PlanEvent{
 		PlanID:      planID,
 		EventType:   "task_started",
 		TaskID:      taskID,
@@ -207,7 +207,9 @@ func (s *Scheduler) markTaskStarted(planID, taskID string, guards ...dispatchGua
 		ExecutionID: executionID,
 		Payload:     map[string]any{"lease_owner": leaseOwner, "execution_epoch": executionEpoch},
 		Timestamp:   now,
-	})
+	}); err != nil {
+		return "", "", 0, err
+	}
 	return executionID, leaseOwner, executionEpoch, nil
 }
 
@@ -344,14 +346,16 @@ func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner st
 		if result.ToolCall.Status != models.ToolCallCompleted {
 			eventType = "tool_call_failed"
 		}
-		s.publishAndStore(planID, models.PlanEvent{
+		if err := s.publishAndStore(planID, models.PlanEvent{
 			PlanID:     planID,
 			TaskID:     taskID,
 			EventType:  eventType,
 			TaskStatus: string(models.StatusCompleted),
 			Payload:    map[string]any{"tool_call": result.ToolCall},
 			Timestamp:  now,
-		})
+		}); err != nil {
+			return err
+		}
 	}
 
 	if len(result.Artifacts) > 0 {
@@ -359,7 +363,7 @@ func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner st
 		for _, artifact := range result.Artifacts {
 			keys = append(keys, artifact.Key)
 		}
-		s.publishAndStore(planID, models.PlanEvent{
+		if err := s.publishAndStore(planID, models.PlanEvent{
 			PlanID:    planID,
 			EventType: "artifact_created",
 			TaskID:    taskID,
@@ -368,10 +372,12 @@ func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner st
 				"artifacts":     summarizeArtifacts(result.Artifacts),
 			},
 			Timestamp: now,
-		})
+		}); err != nil {
+			return err
+		}
 	}
 
-	s.publishAndStore(planID, models.PlanEvent{
+	if err := s.publishAndStore(planID, models.PlanEvent{
 		PlanID:      planID,
 		EventType:   "task_completed",
 		TaskID:      taskID,
@@ -386,20 +392,24 @@ func (s *Scheduler) markTaskCompleted(planID, taskID, executionID, leaseOwner st
 			"image_blob_ref":  result.ImageBlobRef,
 		},
 		Timestamp: now,
-	})
+	}); err != nil {
+		return err
+	}
 	if result.Verification != nil {
 		eventType := "verification_completed"
 		if result.Verification.Status != models.VerificationPass && result.Verification.Status != models.VerificationSkipped {
 			eventType = "verification_failed"
 		}
-		s.publishAndStore(planID, models.PlanEvent{
+		if err := s.publishAndStore(planID, models.PlanEvent{
 			PlanID:     planID,
 			EventType:  eventType,
 			TaskID:     taskID,
 			TaskStatus: string(models.StatusCompleted),
 			Payload:    verificationEventPayload(result.Verification),
 			Timestamp:  now,
-		})
+		}); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -650,7 +660,9 @@ func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner strin
 		return false, err
 	}
 	for _, event := range propagationEvents {
-		s.publishAndStore(planID, event)
+		if err := s.publishAndStore(planID, event); err != nil {
+			return false, err
+		}
 	}
 
 	if result.ToolCall != nil {
@@ -658,17 +670,21 @@ func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner strin
 		if result.ToolCall.Status == models.ToolCallRejected {
 			eventType = "tool_call_rejected"
 		}
-		s.publishAndStore(planID, models.PlanEvent{
+		if err := s.publishAndStore(planID, models.PlanEvent{
 			PlanID:     planID,
 			TaskID:     taskID,
 			EventType:  eventType,
 			TaskStatus: string(models.StatusFailed),
 			Payload:    map[string]any{"tool_call": result.ToolCall},
 			Timestamp:  now,
-		})
+		}); err != nil {
+			return false, err
+		}
 	}
 	if retrying {
-		s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "task_retrying", TaskID: taskID, TaskStatus: string(models.StatusPending), ExecutionID: executionID, Payload: map[string]any{"error": result.Error}, Timestamp: now})
+		if err := s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "task_retrying", TaskID: taskID, TaskStatus: string(models.StatusPending), ExecutionID: executionID, Payload: map[string]any{"error": result.Error}, Timestamp: now}); err != nil {
+			return false, err
+		}
 		return true, nil
 	}
 	eventType := "task_failed"
@@ -677,7 +693,7 @@ func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner strin
 		eventType = "task_blocked"
 		taskStatus = models.StatusBlocked
 	}
-	s.publishAndStore(planID, models.PlanEvent{
+	if err := s.publishAndStore(planID, models.PlanEvent{
 		PlanID:      planID,
 		EventType:   eventType,
 		TaskID:      taskID,
@@ -690,7 +706,9 @@ func (s *Scheduler) markTaskFailed(planID, taskID, executionID, leaseOwner strin
 			"block_info":           nodeBlockInfo,
 		},
 		Timestamp: now,
-	})
+	}); err != nil {
+		return false, err
+	}
 	return false, nil
 }
 
@@ -816,19 +834,25 @@ func (s *Scheduler) finishPlanTerminal(planID string, status models.TaskStatus, 
 		s.completeTerminalOnce(context.Background(), planID)
 		return
 	}
+	unlockTerminal := s.lockTerminalCommit(planID)
+	defer unlockTerminal()
+	if !s.claimTerminalCommit(planID) {
+		return
+	}
 	// Publish the committed status and run the terminal side effects through the
 	// same one-shot claim the reconciliation loop uses.
 	eventType := "plan_failed"
 	if status == models.StatusCanceled {
 		eventType = "plan_canceled"
 	}
-	s.publishAndStore(planID, models.PlanEvent{
+	if err := s.publishAndStore(planID, models.PlanEvent{
 		PlanID:    planID,
 		EventType: eventType,
 		Payload:   map[string]any{"reason": reason},
 		Timestamp: now,
-	})
-	s.claimTerminalCommit(planID)
+	}); err != nil {
+		return
+	}
 	s.cleanupPlanSandboxes(context.Background(), planID)
 	s.recordTerminalMetrics(planID)
 	s.notifyProgress()

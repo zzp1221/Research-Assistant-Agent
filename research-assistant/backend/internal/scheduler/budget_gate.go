@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -85,7 +84,7 @@ func (s *Scheduler) postTaskBudgetCheck(planID string) {
 func (s *Scheduler) applyBudgetTrigger(plan *models.PlanGraph, trigger, status string) (bool, error) {
 	planID := plan.ID
 	policy := plan.Budget.BudgetPolicyOrDefault()
-	_ = s.store.UpdatePlan(planID, func(current *models.PlanGraph) error {
+	if err := s.store.UpdatePlan(planID, func(current *models.PlanGraph) error {
 		current.Usage.BudgetStatus = status
 		if trigger == "warning" && !containsString(current.Usage.BudgetWarnings, "80%") {
 			current.Usage.BudgetWarnings = append(current.Usage.BudgetWarnings, "80%")
@@ -94,14 +93,16 @@ func (s *Scheduler) applyBudgetTrigger(plan *models.PlanGraph, trigger, status s
 			current.Usage.BudgetWarnings = append(current.Usage.BudgetWarnings, "100%")
 		}
 		return nil
-	})
+	}); err != nil {
+		return true, err
+	}
 	if trigger == "warning" {
 		alreadyWarned := containsString(plan.Usage.BudgetWarnings, "80%")
 		if alreadyWarned {
 			return false, nil
 		}
 		metrics.RecordBudgetWarning(policy)
-		s.publishAndStore(planID, models.PlanEvent{
+		if err := s.publishAndStore(planID, models.PlanEvent{
 			PlanID:    planID,
 			EventType: "budget_warning",
 			Payload: map[string]any{
@@ -113,7 +114,9 @@ func (s *Scheduler) applyBudgetTrigger(plan *models.PlanGraph, trigger, status s
 				"max_tokens": plan.Budget.MaxTokens,
 			},
 			Timestamp: time.Now(),
-		})
+		}); err != nil {
+			return false, err
+		}
 		if s.budget != nil {
 			s.budget.RecordAlert(budget.Alert{OwnerID: plan.OwnerID, PlanID: planID, Kind: "warning", Scope: "plan", Policy: policy, Message: "plan budget reached 80%", SpentUSD: plan.Usage.LLMCostUSD, LimitUSD: plan.Budget.MaxCostUSD})
 		}
@@ -123,7 +126,7 @@ func (s *Scheduler) applyBudgetTrigger(plan *models.PlanGraph, trigger, status s
 	// only happens after a human resumes a paused plan, which is itself an
 	// explicit decision to retry, so a fresh event is intentional.
 	metrics.RecordBudgetExceeded(policy)
-	s.publishAndStore(planID, models.PlanEvent{
+	if err := s.publishAndStore(planID, models.PlanEvent{
 		PlanID:    planID,
 		EventType: "budget_exceeded",
 		Payload: map[string]any{
@@ -135,7 +138,9 @@ func (s *Scheduler) applyBudgetTrigger(plan *models.PlanGraph, trigger, status s
 			"message":    "budget exceeded before task dispatch",
 		},
 		Timestamp: time.Now(),
-	})
+	}); err != nil {
+		return false, err
+	}
 	if s.budget != nil {
 		s.budget.RecordAlert(budget.Alert{OwnerID: plan.OwnerID, PlanID: planID, Kind: "exceeded", Scope: "plan", Policy: policy, Message: "plan budget exceeded", SpentUSD: plan.Usage.LLMCostUSD, LimitUSD: plan.Budget.MaxCostUSD})
 	}
@@ -147,7 +152,7 @@ func (s *Scheduler) applyBudgetTrigger(plan *models.PlanGraph, trigger, status s
 	}
 	if policy == "hard" {
 		if err := s.CancelPlan(planID, "budget exceeded"); err != nil {
-			log.Printf("scheduler: budget cancel failed for %s: %v", planID, err)
+			return true, err
 		}
 		return true, fmt.Errorf("budget exceeded")
 	}
@@ -164,7 +169,9 @@ func (s *Scheduler) applyBudgetTrigger(plan *models.PlanGraph, trigger, status s
 	}); err != nil {
 		return true, err
 	}
-	s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "plan_paused", Payload: map[string]any{"reason": "budget_exceeded", "policy": policy}, Timestamp: now})
+	if err := s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "plan_paused", Payload: map[string]any{"reason": "budget_exceeded", "policy": policy}, Timestamp: now}); err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -270,16 +277,20 @@ func (s *Scheduler) handleUserBudgetExceeded(plan *models.PlanGraph, cause error
 		}
 	}
 	metrics.RecordBudgetExceeded(policy)
-	s.publishAndStore(plan.ID, models.PlanEvent{PlanID: plan.ID, EventType: "budget_exceeded", Payload: map[string]any{"scope": "user", "policy": policy, "message": cause.Error()}, Timestamp: time.Now()})
+	if err := s.publishAndStore(plan.ID, models.PlanEvent{PlanID: plan.ID, EventType: "budget_exceeded", Payload: map[string]any{"scope": "user", "policy": policy, "message": cause.Error()}, Timestamp: time.Now()}); err != nil {
+		return
+	}
 	if s.budget != nil {
 		s.budget.RecordAlert(budget.Alert{OwnerID: plan.OwnerID, PlanID: plan.ID, Kind: "exceeded", Scope: "user", Policy: policy, Message: cause.Error()})
 	}
 	if policy == "hard" {
-		_ = s.CancelPlan(plan.ID, "user budget exceeded")
+		if err := s.CancelPlan(plan.ID, "user budget exceeded"); err != nil {
+			s.recordEventPersistenceFailure(plan.ID, err)
+		}
 		return
 	}
 	now := time.Now()
-	_ = s.store.UpdatePlan(plan.ID, func(current *models.PlanGraph) error {
+	if err := s.store.UpdatePlan(plan.ID, func(current *models.PlanGraph) error {
 		if current.Status == models.StatusCanceled || current.Status == models.StatusCompleted || current.Status == models.StatusFailed {
 			return nil
 		}
@@ -288,8 +299,13 @@ func (s *Scheduler) handleUserBudgetExceeded(plan *models.PlanGraph, cause error
 		current.Usage.BudgetStatus = "exceeded"
 		current.UpdatedAt = now
 		return nil
-	})
-	s.publishAndStore(plan.ID, models.PlanEvent{PlanID: plan.ID, EventType: "plan_paused", Payload: map[string]any{"reason": "budget_exceeded", "scope": "user", "policy": policy}, Timestamp: now})
+	}); err != nil {
+		s.recordEventPersistenceFailure(plan.ID, err)
+		return
+	}
+	if err := s.publishAndStore(plan.ID, models.PlanEvent{PlanID: plan.ID, EventType: "plan_paused", Payload: map[string]any{"reason": "budget_exceeded", "scope": "user", "policy": policy}, Timestamp: now}); err != nil {
+		return
+	}
 }
 
 // settleTaskBudget converts one reservation into a settled ledger entry.

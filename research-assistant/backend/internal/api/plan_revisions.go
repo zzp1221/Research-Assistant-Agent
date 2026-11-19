@@ -10,6 +10,7 @@ import (
 
 	"research-assistant-backend/internal/models"
 	"research-assistant-backend/internal/revision"
+	"research-assistant-backend/internal/store"
 
 	"github.com/gin-gonic/gin"
 )
@@ -90,12 +91,20 @@ func (r *planRuntime) listRevisions(c *gin.Context) {
 		return
 	}
 	if _, err := r.ensureInitialRevision(plan); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "revision_store_unavailable"})
 		return
 	}
 	includeGraph := strings.EqualFold(c.Query("include_graph"), "true")
 	list, err := r.revisionStore().List(plan.ID, includeGraph)
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "revision_store_unavailable"})
 		return
 	}
@@ -131,11 +140,19 @@ func (r *planRuntime) getRevision(c *gin.Context) {
 		return
 	}
 	if _, err := r.ensureInitialRevision(plan); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "revision_store_unavailable"})
 		return
 	}
 	rev, err := r.revisionStore().Get(plan.ID, number)
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusNotFound, gin.H{"error": "revision not found", "code": "revision_not_found"})
 		return
 	}
@@ -166,6 +183,10 @@ func (r *planRuntime) createRevision(c *gin.Context) {
 	}
 	var payload createRevisionPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid revision payload", "code": "invalid_revision"})
 		return
 	}
@@ -187,7 +208,10 @@ func (r *planRuntime) createRevision(c *gin.Context) {
 	// Everything below acts on a plan re-read while holding the lock; the
 	// snapshot from authorizedPlan only decided ownership.
 	if fresh, err := r.store.GetPlan(plan.ID); err != nil || fresh == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "plan not found", "code": "plan_not_found"})
+		if err == nil {
+			err = store.ErrPlanNotFound
+		}
+		respondPlanStoreError(c, err)
 		return
 	} else {
 		plan = fresh
@@ -202,6 +226,10 @@ func (r *planRuntime) createRevision(c *gin.Context) {
 	// Lazy migration happens under the lock so two editors cannot both create
 	// revision 1, and from a freshly read plan so the initial snapshot is real.
 	if _, err := r.ensureInitialRevision(plan); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "revision_store_unavailable"})
 		return
 	}
@@ -252,6 +280,10 @@ func (r *planRuntime) createRevision(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		respondRevisionMutationError(c, err)
 		return
 	}
@@ -269,11 +301,19 @@ func (r *planRuntime) createRevision(c *gin.Context) {
 		Timestamp: now,
 	}
 	if err := r.persistAndPublishPlanEvent(plan.ID, event); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		respondEventPersistFailure(c, err)
 		return
 	}
 	recordAuditEvent("plan_revision_created", actor, plan.ID, map[string]any{"revision": created.Revision, "parent_revision": created.ParentRevision})
-	updated, _ := r.store.GetPlan(plan.ID)
+	updated, err := r.store.GetPlan(plan.ID)
+	if err != nil {
+		respondPlanStoreError(c, err)
+		return
+	}
 	draft := summarizePlan(updated)
 	c.JSON(http.StatusOK, gin.H{"revision": summarizeRevision(created), "plan": draft})
 }
@@ -392,11 +432,19 @@ func (r *planRuntime) validateRevision(c *gin.Context) {
 		return
 	}
 	if _, err := r.ensureInitialRevision(plan); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "revision_store_unavailable"})
 		return
 	}
 	rev, err := r.revisionStore().Get(plan.ID, number)
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusNotFound, gin.H{"error": "revision not found", "code": "revision_not_found"})
 		return
 	}
@@ -432,18 +480,29 @@ func (r *planRuntime) reviewRevision(c *gin.Context, approve bool) {
 	defer unlock()
 
 	if fresh, err := r.store.GetPlan(plan.ID); err != nil || fresh == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "plan not found", "code": "plan_not_found"})
+		if err == nil {
+			err = store.ErrPlanNotFound
+		}
+		respondPlanStoreError(c, err)
 		return
 	} else {
 		plan = fresh
 	}
 	store := r.revisionStore()
 	if _, err := store.Latest(plan.ID); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		if !errors.Is(err, revision.ErrNotFound) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "revision_store_unavailable"})
 			return
 		}
 		if _, err := r.ensureInitialRevision(plan); err != nil {
+			if r.respondSealedPlanStoreError(c, err) {
+				return
+			}
+
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "revision_store_unavailable"})
 			return
 		}
@@ -501,6 +560,10 @@ func (r *planRuntime) reviewRevision(c *gin.Context, approve bool) {
 		return nil
 	})
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		respondRevisionMutationError(c, err)
 		return
 	}
@@ -512,6 +575,10 @@ func (r *planRuntime) reviewRevision(c *gin.Context, approve bool) {
 		Timestamp: now,
 	}
 	if err := r.persistAndPublishPlanEvent(plan.ID, event); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		respondEventPersistFailure(c, err)
 		return
 	}
@@ -549,7 +616,10 @@ func (r *planRuntime) executeRevision(c *gin.Context) {
 	defer unlock()
 
 	if fresh, err := r.store.GetPlan(plan.ID); err != nil || fresh == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "plan not found", "code": "plan_not_found"})
+		if err == nil {
+			err = store.ErrPlanNotFound
+		}
+		respondPlanStoreError(c, err)
 		return
 	} else {
 		plan = fresh
@@ -566,6 +636,10 @@ func (r *planRuntime) executeRevision(c *gin.Context) {
 	store := r.revisionStore()
 	rev, err := store.Get(plan.ID, number)
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		if errors.Is(err, revision.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "revision not found", "code": "revision_not_found"})
 			return
@@ -659,11 +733,19 @@ func (r *planRuntime) executeRevision(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		respondRevisionMutationError(c, err)
 		return
 	}
 	actor := resolveUserID(c)
 	if err := r.launchPlan(plan.ID, trigger, actor); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		respondPlanLaunchError(c, err)
 		return
 	}
@@ -675,6 +757,10 @@ func (r *planRuntime) executeRevision(c *gin.Context) {
 		Timestamp: now,
 	}
 	if err := r.persistAndPublishPlanEvent(plan.ID, event); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		respondEventPersistFailure(c, err)
 		return
 	}
@@ -738,16 +824,28 @@ func (r *planRuntime) getPlanDiff(c *gin.Context) {
 		return
 	}
 	if _, err := r.ensureInitialRevision(plan); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "revision_store_unavailable"})
 		return
 	}
 	fromRev, err := r.revisionStore().Get(plan.ID, from)
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusNotFound, gin.H{"error": "from revision not found", "code": "revision_not_found"})
 		return
 	}
 	toRev, err := r.revisionStore().Get(plan.ID, to)
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusNotFound, gin.H{"error": "to revision not found", "code": "revision_not_found"})
 		return
 	}

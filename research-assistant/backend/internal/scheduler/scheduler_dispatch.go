@@ -60,6 +60,9 @@ func (s *Scheduler) findReadyNodes(plan *models.PlanGraph, availableSlots int) [
 
 func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*models.TaskNode) error {
 	for _, task := range ready {
+		if err := s.persistenceError(planID); err != nil {
+			return err
+		}
 		// The global slot bounds concurrent task execution across plans so one
 		// user cannot occupy every CPU/sandbox slot. When saturated the caller
 		// simply loops again after a wake-up.
@@ -120,12 +123,14 @@ func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*m
 			// Wake the scheduler and free the global slot on every exit path.
 			defer s.notifyProgress()
 			defer s.releaseGlobalSlot()
-			defer s.touchActivity(planID)
 			defer s.releaseTaskReservation(planID, taskID)
 
 			plan, err := s.store.GetPlan(planID)
 			if err != nil {
 				log.Printf("scheduler: failed to load plan %s for task %s: %v", planID, taskID, err)
+				return
+			}
+			if err := s.persistenceError(planID); err != nil {
 				return
 			}
 			currentTask := getNodeByID(plan, taskID)
@@ -193,6 +198,11 @@ func (s *Scheduler) runReadyNodes(ctx context.Context, planID string, ready []*m
 				return
 			}
 			if transitionErr != nil {
+				if isPersistenceFailure(transitionErr) {
+					s.recordEventPersistenceFailure(planID, transitionErr)
+					log.Printf("scheduler: result persistence failed for %s: %v", taskID, transitionErr)
+					return
+				}
 				// A completion that fails artifact/protocol validation is a real
 				// task failure, not a stale result.
 				log.Printf("scheduler: result transition failed for %s: %v", taskID, transitionErr)
@@ -259,8 +269,14 @@ func applyTaskUsage(task *models.TaskNode, plan *models.PlanGraph, taskUsage *mo
 
 func (s *Scheduler) forwardTaskLogs(planID, taskID string, logChannel <-chan string, done chan<- struct{}) {
 	defer close(done)
+	failed := false
 	for line := range logChannel {
-		s.publishAndStore(planID, models.PlanEvent{
+		// Keep draining after an error so the executor can observe cancellation
+		// and close the channel without blocking on an abandoned log consumer.
+		if failed {
+			continue
+		}
+		if err := s.publishAndStore(planID, models.PlanEvent{
 			PlanID:     planID,
 			EventType:  "task_log",
 			TaskID:     taskID,
@@ -269,6 +285,8 @@ func (s *Scheduler) forwardTaskLogs(planID, taskID string, logChannel <-chan str
 				"message": line,
 			},
 			Timestamp: time.Now(),
-		})
+		}); err != nil {
+			failed = true
+		}
 	}
 }

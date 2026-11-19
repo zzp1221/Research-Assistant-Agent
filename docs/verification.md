@@ -4,6 +4,14 @@
 
 ## 最近验证
 
+### 2026-11-19：计划存储隔离与提交一致性
+
+- 代码：基线 `d4d2af1a5fda67fbd027f5d1e5cfe9116ace20fa` 上的工作区修复；覆盖 store、scheduler/API 调用链及 Windows store CI 门禁。
+- 已验证：Windows store 全包与 vet、API 全包及相关调用链测试；Linux 后端全包、六包 race、全后端 vet 与构建通过。实际计数、跳过项和测试映射见[验收报告](defect-remediation-2026-11-19-plan-store-results.md)。
+- 已知边界：Windows scheduler 有 5 项 Git 启动、revision 和符号链接失败，同环境原基线逐项复现；Linux 一次全量曾遇文献检索公网依赖测试暂态失败，保留日志，基线/新版定向及最终全量复跑通过。不能称所有平台所有轮次均无失败。
+- 交付：修复源码与二进制已 cp 至 `research-assistant-backend-1`，创建/修改及删除后两次重启 smoke 通过。仅更新现有容器，未重建 Docker 镜像。
+- 本轮不覆盖前端、真实付费模型科研任务、机器断电、长期浸泡或多进程共享写入。HTTP `/api/health` 未接入计划存储 `Health()`，计划 API 与调度器另有内部闸门。
+
 ### 2026-11-16 安全整改专项
 
 原始审阅基线 `d4d2af1`，以下为提交前工作树的本地证据，提交及远程 CI 状态以关联 PR 为准；Windows、Go 1.27.3、Node 24.14.0、真实 Chrome。原始问题与关闭标准见 [修复方案](defect-remediation-2026-11-15-security.md)，实施细节和完整 27 项对照见 [安全整改实施记录](defect-remediation-2026-11-16-security-results.md)，升级行为见 [原生运行时迁移](security-native-runtime-migration-2026-11-16.md) 和 [镜像规则迁移](security-image-policy-migration-2026-11-16.md)。

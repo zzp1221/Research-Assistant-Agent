@@ -72,15 +72,27 @@ func (r *planRuntime) createQuestion(c *gin.Context) {
 	}
 	var payload createQuestionPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid question payload", "code": "invalid_question"})
 		return
 	}
 	question, err := buildQuestion(plan, payload, resolveUserID(c))
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "invalid_question"})
 		return
 	}
 	if err := r.storeQuestion(plan.ID, question, true); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "question_conflict"})
 		return
 	}
@@ -180,6 +192,10 @@ func (r *planRuntime) answerQuestion(c *gin.Context) {
 	}
 	var payload answerQuestionPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid answer payload", "code": "invalid_answer"})
 		return
 	}
@@ -256,11 +272,19 @@ func (r *planRuntime) answerQuestion(c *gin.Context) {
 		current.UpdatedAt = now
 		return nil
 	}); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "question_not_answerable"})
 		return
 	}
 	for _, recoveryEvent := range recoveryEvents {
 		if err := r.persistAndPublishPlanEvent(plan.ID, recoveryEvent); err != nil {
+			if r.respondSealedPlanStoreError(c, err) {
+				return
+			}
+
 			respondEventPersistFailure(c, err)
 			return
 		}
@@ -280,6 +304,10 @@ func (r *planRuntime) answerQuestion(c *gin.Context) {
 		Timestamp: now,
 	}
 	if err := r.persistAndPublishPlanEvent(plan.ID, event); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		respondEventPersistFailure(c, err)
 		return
 	}

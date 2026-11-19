@@ -43,16 +43,25 @@ func (s *Scheduler) ExecutePlan(ctx context.Context, planID string) error {
 	}); err != nil {
 		return err
 	}
-	s.publishAndStore(planID, models.PlanEvent{
+	// Only an accepted new run clears a previous run's transient event error.
+	// A recovery-required store rejects the update above, so it cannot be reset
+	// by attempting another execution.
+	s.clearPersistenceError(planID)
+	if err := s.publishAndStore(planID, models.PlanEvent{
 		PlanID:    planID,
 		EventType: "plan_started",
 		Timestamp: time.Now(),
-	})
+	}); err != nil {
+		return err
+	}
 	metrics.Default().AddGauge("active_plans", 1, nil)
 	s.touchActivity(planID)
 
 executionLoop:
 	for {
+		if err := s.persistenceError(planID); err != nil {
+			return err
+		}
 		select {
 		case <-ctx.Done():
 			if plan, err := s.store.GetPlan(planID); err == nil && plan.Status == models.StatusCanceled {
@@ -68,7 +77,9 @@ executionLoop:
 		}
 		// Approval waits use an independent budget and never consume the plan
 		// execution duration budget.
-		s.syncApprovalWaitWindow(planID)
+		if err := s.syncApprovalWaitWindow(planID); err != nil {
+			return err
+		}
 		if expired, expireErr := s.expireApprovalActions(planID); expireErr != nil {
 			return expireErr
 		} else if expired {
@@ -139,7 +150,9 @@ executionLoop:
 			return err
 		}
 		for _, event := range readyEvents {
-			s.publishAndStore(planID, event)
+			if err := s.publishAndStore(planID, event); err != nil {
+				return err
+			}
 		}
 		plan, err = s.store.GetPlan(planID)
 		if err != nil {
@@ -158,7 +171,7 @@ executionLoop:
 			}
 			switch outcome {
 			case reconcileTerminal:
-				return nil
+				return s.persistenceError(planID)
 			case reconcileContinue:
 				// Runnable work exists but was not dispatchable (for example the
 				// global slots are saturated). Wait for a wake-up instead of
@@ -173,6 +186,9 @@ executionLoop:
 		if err := s.runReadyNodes(ctx, planID, ready); err != nil {
 			if errors.Is(err, ErrPlanCanceled) {
 				return nil
+			}
+			if isPersistenceFailure(err) {
+				return err
 			}
 			s.finishPlanTerminal(planID, models.StatusFailed, err.Error())
 			return err
@@ -273,6 +289,9 @@ func (s *Scheduler) ExecuteTask(ctx context.Context, planID, taskID string) (*mo
 	}
 	s.settleTaskBudget(planID, taskID, result.Usage)
 	if _, _, transitionErr := s.applyTaskResult(planID, taskID, executionID, leaseOwner, executionEpoch, result, execErr, false); transitionErr != nil {
+		if isPersistenceFailure(transitionErr) {
+			return result, transitionErr
+		}
 		// A non-stale protocol/validation error still means this execution is over.
 		// Committing the real failure releases the lease and records the reason;
 		// only a stale execution keeps its result discarded.

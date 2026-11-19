@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"research-assistant-backend/internal/models"
+	"research-assistant-backend/internal/store"
 
 	"github.com/gin-gonic/gin"
 )
@@ -21,6 +22,10 @@ var errPlanAlreadyRunning = errors.New("plan is already running")
 // because the caller must not be told the run started when its stream record is
 // missing.
 func respondPlanLaunchError(c *gin.Context, err error) {
+	if isPlanStoreFailure(err) {
+		respondPlanStoreError(c, err)
+		return
+	}
 	if errors.Is(err, errPlanAlreadyRunning) {
 		c.JSON(http.StatusConflict, gin.H{"error": "plan is already running", "code": "plan_already_running", "remediation": errorRemediation("plan_already_running")})
 		return
@@ -74,7 +79,12 @@ func (r *planRuntime) launchPlan(planID, trigger, actor string) error {
 	// The revision is read before the event is written so the event names the
 	// snapshot the run is about to execute.
 	currentRevision := 0
-	if current, err := r.store.GetPlan(planID); err == nil && current != nil {
+	current, err := r.store.GetPlan(planID)
+	if err != nil {
+		cleanupFailure()
+		return err
+	}
+	if current != nil {
 		currentRevision = current.CurrentRevision
 	}
 	payload := map[string]any{"actor": actor}
@@ -115,6 +125,10 @@ func (r *planRuntime) pausePlan(c *gin.Context) {
 	}
 	actor := resolveUserID(c)
 	if err := r.scheduler.PausePlan(plan.ID, actor); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "plan_not_pausable"})
 		return
 	}
@@ -129,6 +143,10 @@ func (r *planRuntime) resumePlan(c *gin.Context) {
 	}
 	actor := resolveUserID(c)
 	if err := r.scheduler.ResumePlan(plan.ID, actor); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "plan_not_resumable"})
 		return
 	}
@@ -156,7 +174,10 @@ func (r *planRuntime) runFromNode(c *gin.Context) {
 	// The ownership check above only decided access; the state that gets rewound
 	// is re-read under the lock.
 	if fresh, err := r.store.GetPlan(plan.ID); err != nil || fresh == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "plan not found", "code": "plan_not_found"})
+		if err == nil {
+			err = store.ErrPlanNotFound
+		}
+		respondPlanStoreError(c, err)
 		return
 	} else {
 		plan = fresh
@@ -183,18 +204,30 @@ func (r *planRuntime) runFromNode(c *gin.Context) {
 		return
 	}
 	if err := r.scheduler.ResetFromNode(plan.ID, taskID); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "rewind_failed"})
 		return
 	}
 	// Rewinding mutates the live graph; bind it to the latest immutable
 	// revision before starting so the run keeps a verifiable snapshot.
 	if _, err := r.bindLatestRevision(plan.ID); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot bind plan revision", "code": "revision_bind_failed"})
 		return
 	}
 	actor := resolveUserID(c)
 	recordAuditEvent("plan_rewound", actor, plan.ID, map[string]any{"task_id": taskID})
 	if err := r.launchPlan(plan.ID, "manual", actor); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		respondPlanLaunchError(c, err)
 		return
 	}

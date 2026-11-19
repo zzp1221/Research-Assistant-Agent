@@ -37,6 +37,10 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 	}
 	var payload runtimeDecisionPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -189,6 +193,10 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 		decided = action
 		return nil
 	}); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		if errors.Is(err, errApprovalExpired) {
 			c.JSON(http.StatusConflict, gin.H{
 				"error": "approval window has expired; create a new plan or rerun it",
@@ -201,6 +209,10 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 	}
 	for _, recoveryEvent := range recoveryEvents {
 		if err := r.persistAndPublishPlanEvent(plan.ID, recoveryEvent); err != nil {
+			if r.respondSealedPlanStoreError(c, err) {
+				return
+			}
+
 			respondEventPersistFailure(c, err)
 			return
 		}
@@ -218,6 +230,10 @@ func (r *planRuntime) decideRuntimeAction(c *gin.Context) {
 		Timestamp: now,
 	}
 	if err := r.persistAndPublishPlanEvent(plan.ID, event); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		// The decision is stored, but its event is not. Report the failure
 		// instead of answering 200 for a change clients cannot replay, and do
 		// not start or cancel a run on the strength of a half-recorded decision.

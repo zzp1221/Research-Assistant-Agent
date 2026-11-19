@@ -7,7 +7,11 @@ import (
 	"time"
 )
 
-func (s *Scheduler) publishAndStore(planID string, event models.PlanEvent) {
+// publishAndStore persists an event before publishing it. A persistence error
+// is returned and neither the live bus nor the activity watchdog is touched;
+// otherwise consumers could advance their cursor for an event that cannot be
+// replayed after reconnect.
+func (s *Scheduler) publishAndStore(planID string, event models.PlanEvent) error {
 	if event.Timestamp.IsZero() {
 		event.Timestamp = time.Now()
 	}
@@ -30,7 +34,11 @@ func (s *Scheduler) publishAndStore(planID string, event models.PlanEvent) {
 		}
 	}
 	if event.TraceID == "" || event.Revision == 0 {
-		if plan, err := s.store.GetPlan(planID); err == nil && plan != nil {
+		plan, err := s.store.GetPlan(planID)
+		if err != nil {
+			return s.recordEventPersistenceFailure(planID, err)
+		}
+		if plan != nil {
 			if event.TraceID == "" {
 				event.TraceID = plan.TraceID
 			}
@@ -46,18 +54,22 @@ func (s *Scheduler) publishAndStore(planID string, event models.PlanEvent) {
 		event.SpanID = "task_" + event.TaskID
 	}
 	stored, storeErr := s.store.AppendEventReturning(planID, event)
-	if storeErr == nil {
-		// Publish the stored copy so live SSE gets the assigned Seq (and thus an
-		// id: line). Without this, reconnects replay events already applied by the
-		// client because lastSeq never advances on live events.
-		published.Seq = stored.Seq
-		published.TraceID = stored.TraceID
-		published.SpanID = stored.SpanID
+	if storeErr != nil {
+		return s.recordEventPersistenceFailure(planID, storeErr)
 	}
+	// Publish the stored copy so live SSE gets the assigned Seq (and thus an
+	// id: line). Without this, reconnects replay events already applied by the
+	// client because lastSeq never advances on live events.
+	published.Seq = stored.Seq
+	published.TraceID = stored.TraceID
+	published.SpanID = stored.SpanID
+	published.PlanID = stored.PlanID
+	published.EventType = stored.EventType
 	s.publisher.Publish(planID, published)
 	// Every persisted event is evidence of forward progress for the stall
 	// watchdog, including task logs from long-running commands.
 	s.touchActivity(planID)
+	return nil
 }
 
 func allSucceeded(plan *models.PlanGraph) bool {

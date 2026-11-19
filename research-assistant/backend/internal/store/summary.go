@@ -72,11 +72,34 @@ func SummarizePlanRecord(plan *models.PlanGraph) PlanSummaryRecord {
 		DurationSec:    duration,
 		CreatedAt:      plan.CreatedAt,
 		UpdatedAt:      plan.UpdatedAt,
-		FinishedAt:     plan.Usage.FinishedAt,
+		FinishedAt:     copySummaryTime(plan.Usage.FinishedAt),
 		Paused:         plan.Paused,
 		RunTrigger:     plan.RunTrigger,
 		Archived:       plan.Archived,
-		Usage:          plan.Usage,
-		Review:         plan.Review,
+		Usage:          copySummaryUsage(plan.Usage),
+		Review:         copySummaryReview(plan.Review),
 	}
+}
+
+func copySummaryTime(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func copySummaryUsage(value models.RunUsage) models.RunUsage {
+	value.StartedAt = copySummaryTime(value.StartedAt)
+	value.FinishedAt = copySummaryTime(value.FinishedAt)
+	value.ApprovalWaitingSince = copySummaryTime(value.ApprovalWaitingSince)
+	if value.BudgetWarnings != nil {
+		value.BudgetWarnings = append([]string{}, value.BudgetWarnings...)
+	}
+	return value
+}
+
+func copySummaryReview(value models.ReviewState) models.ReviewState {
+	value.ReviewedAt = copySummaryTime(value.ReviewedAt)
+	return value
 }

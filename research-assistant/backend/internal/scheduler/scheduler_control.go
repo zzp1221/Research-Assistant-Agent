@@ -61,11 +61,13 @@ func (s *Scheduler) CancelPlanWithActor(planID, reason, actor string) error {
 	}); err != nil {
 		return err
 	}
+	unlockTerminal := s.lockTerminalCommit(planID)
+	defer unlockTerminal()
 	if !s.claimTerminalCommit(planID) {
 		// Another path already published this stop; the status is committed and
 		// the side effects must not run twice.
 		s.notifyProgress()
-		return nil
+		return s.persistenceError(planID)
 	}
 	payload := map[string]any{"reason": reason}
 	if actor != "" {
@@ -74,7 +76,9 @@ func (s *Scheduler) CancelPlanWithActor(planID, reason, actor string) error {
 	if canceledActions > 0 {
 		payload["canceled_runtime_actions"] = canceledActions
 	}
-	s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "plan_canceled", TaskStatus: string(models.StatusCanceled), Payload: payload, Timestamp: now})
+	if err := s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "plan_canceled", TaskStatus: string(models.StatusCanceled), Payload: payload, Timestamp: now}); err != nil {
+		return err
+	}
 	// The normal terminal path records plan memory in scheduler_execute.go; the
 	// cancel path bypasses it, so record the canceled plan here as well. The
 	// memory sink also refreshes the Paper Wiki reproduction/negative point.
@@ -142,9 +146,13 @@ func (s *Scheduler) RetryTask(planID, taskID string) error {
 	}); err != nil {
 		return err
 	}
-	s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "task_retry_requested", TaskID: taskID, TaskStatus: string(models.StatusPending), Timestamp: now})
+	if err := s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "task_retry_requested", TaskID: taskID, TaskStatus: string(models.StatusPending), Timestamp: now}); err != nil {
+		return err
+	}
 	for _, event := range events {
-		s.publishAndStore(planID, event)
+		if err := s.publishAndStore(planID, event); err != nil {
+			return err
+		}
 	}
 	s.notifyProgress()
 	return nil
@@ -172,12 +180,14 @@ func (s *Scheduler) PausePlan(planID, actor string) error {
 		return err
 	}
 	if changed {
-		s.publishAndStore(planID, models.PlanEvent{
+		if err := s.publishAndStore(planID, models.PlanEvent{
 			PlanID:    planID,
 			EventType: "plan_paused",
 			Payload:   map[string]any{"actor": actor},
 			Timestamp: now,
-		})
+		}); err != nil {
+			return err
+		}
 		metrics.Default().Inc("plan_paused_total", nil)
 	}
 	s.notifyProgress()
@@ -205,12 +215,14 @@ func (s *Scheduler) ResumePlan(planID, actor string) error {
 		return err
 	}
 	if changed {
-		s.publishAndStore(planID, models.PlanEvent{
+		if err := s.publishAndStore(planID, models.PlanEvent{
 			PlanID:    planID,
 			EventType: "plan_resumed",
 			Payload:   map[string]any{"actor": actor},
 			Timestamp: now,
-		})
+		}); err != nil {
+			return err
+		}
 	}
 	s.notifyProgress()
 	return nil
@@ -282,13 +294,15 @@ func (s *Scheduler) ResetFromNode(planID, taskID string) error {
 	}); err != nil {
 		return err
 	}
-	s.publishAndStore(planID, models.PlanEvent{
+	if err := s.publishAndStore(planID, models.PlanEvent{
 		PlanID:    planID,
 		EventType: "plan_rewound",
 		TaskID:    taskID,
 		Payload:   map[string]any{"reset_tasks": resetIDs},
 		Timestamp: now,
-	})
+	}); err != nil {
+		return err
+	}
 	s.notifyProgress()
 	return nil
 }
@@ -325,9 +339,13 @@ func (s *Scheduler) ReassignTask(planID, taskID, assignedTo string) error {
 		return err
 	}
 	for _, event := range events {
-		s.publishAndStore(planID, event)
+		if err := s.publishAndStore(planID, event); err != nil {
+			return err
+		}
 	}
 	s.notifyProgress()
-	s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "task_reassigned", TaskID: taskID, TaskStatus: string(models.StatusPending), Payload: map[string]any{"assigned_to": assignedTo}, Timestamp: now})
+	if err := s.publishAndStore(planID, models.PlanEvent{PlanID: planID, EventType: "task_reassigned", TaskID: taskID, TaskStatus: string(models.StatusPending), Payload: map[string]any{"assigned_to": assignedTo}, Timestamp: now}); err != nil {
+		return err
+	}
 	return nil
 }

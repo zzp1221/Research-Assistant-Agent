@@ -99,6 +99,8 @@ func TestPlanRuntimeExecutesStoredGraphAndReplaysEvents(t *testing.T) {
 		}
 	}
 
+	executionEvents := eventBus.Subscribe(created.PlanGraph.ID)
+	defer eventBus.Unsubscribe(created.PlanGraph.ID, executionEvents)
 	executeRequest := httptest.NewRequest(http.MethodPost, "/api/plans/"+created.PlanGraph.ID+"/execute", nil)
 	executeRequest.Header.Set(userIDHeaderName, "runtime-test-user")
 	executeResponse := httptest.NewRecorder()
@@ -107,25 +109,38 @@ func TestPlanRuntimeExecutesStoredGraphAndReplaysEvents(t *testing.T) {
 		t.Fatalf("execute plan status=%d body=%s", executeResponse.Code, executeResponse.Body.String())
 	}
 
-	deadline := time.Now().Add(5 * time.Second)
+	// The terminal snapshot and its event are separate commits. Wait for the
+	// published event, which follows a successful durable append, before checking
+	// replay; observing StatusCompleted alone can precede that append.
+	waitCtx, cancelWait := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelWait()
+waitForTerminalEvent:
 	for {
-		plan, err := planStore.GetPlan(created.PlanGraph.ID)
-		if err != nil {
-			t.Fatalf("get stored plan: %v", err)
-		}
-		if plan.Status == models.StatusCompleted {
-			if plan.Meta.CompletedNodes != len(plan.Nodes) {
-				t.Fatalf("completed nodes=%d total=%d", plan.Meta.CompletedNodes, len(plan.Nodes))
+		select {
+		case event := <-executionEvents:
+			switch event.EventType {
+			case "plan_completed":
+				break waitForTerminalEvent
+			case "plan_failed", "plan_canceled":
+				t.Fatalf("unexpected terminal event: %#v", event)
 			}
-			if len(plan.Artifacts) < len(plan.Nodes) {
-				t.Fatalf("expected task artifacts, got %d for %d nodes", len(plan.Artifacts), len(plan.Nodes))
-			}
-			break
+		case <-waitCtx.Done():
+			plan, err := planStore.GetPlan(created.PlanGraph.ID)
+			t.Fatalf("plan_completed was not published: plan=%#v err=%v", plan, err)
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("plan did not complete, last status=%s", plan.Status)
-		}
-		time.Sleep(20 * time.Millisecond)
+	}
+	plan, err := planStore.GetPlan(created.PlanGraph.ID)
+	if err != nil {
+		t.Fatalf("get stored plan: %v", err)
+	}
+	if plan.Status != models.StatusCompleted {
+		t.Fatalf("terminal event preceded completed plan: status=%s", plan.Status)
+	}
+	if plan.Meta.CompletedNodes != len(plan.Nodes) {
+		t.Fatalf("completed nodes=%d total=%d", plan.Meta.CompletedNodes, len(plan.Nodes))
+	}
+	if len(plan.Artifacts) < len(plan.Nodes) {
+		t.Fatalf("expected task artifacts, got %d for %d nodes", len(plan.Artifacts), len(plan.Nodes))
 	}
 
 	eventsRequest := httptest.NewRequest(http.MethodGet, "/api/plans/"+created.PlanGraph.ID+"/events", nil)

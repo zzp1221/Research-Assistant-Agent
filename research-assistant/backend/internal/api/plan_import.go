@@ -29,6 +29,10 @@ func (r *planRuntime) importPlan(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 8<<20)
 	var payload importPlanPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		respondError(c, http.StatusBadRequest, "invalid_plan_graph", "计划图格式错误", "提供完整 graph")
 		return
 	}
@@ -103,16 +107,24 @@ func (r *planRuntime) importPlan(c *gin.Context) {
 		CreatedBy: userID,
 		Reason:    "imported plan graph",
 	}, 0); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		respondError(c, http.StatusInternalServerError, "revision_store_unavailable", err.Error(), "检查 revision 存储")
 		return
 	} else {
 		plan.CurrentRevision = 1
 	}
 	if err := r.store.SavePlan(plan); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		respondError(c, http.StatusInternalServerError, "plan_store_error", err.Error(), "检查计划存储")
 		return
 	}
-	_ = r.store.AppendEvent(plan.ID, models.PlanEvent{
+	if err := r.persistAndPublishPlanEvent(plan.ID, models.PlanEvent{
 		PlanID:    plan.ID,
 		EventType: "plan_imported",
 		Payload: map[string]any{
@@ -121,7 +133,10 @@ func (r *planRuntime) importPlan(c *gin.Context) {
 			"nodes":      len(plan.Nodes),
 		},
 		Timestamp: now,
-	})
+	}); err != nil {
+		respondAppliedPlanEventFailure(c, plan.ID, err)
+		return
+	}
 	recordAuditEvent("plan_imported", userID, plan.ID, map[string]any{"nodes": len(plan.Nodes)})
 	c.JSON(http.StatusCreated, gin.H{"plan_graph": plan})
 }

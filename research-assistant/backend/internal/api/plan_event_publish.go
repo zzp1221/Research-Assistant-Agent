@@ -25,7 +25,7 @@ func (r *planRuntime) persistAndPublishPlanEvent(planID string, event models.Pla
 	stored, err := r.store.AppendEventReturning(planID, event)
 	if err != nil {
 		log.Printf("plan event persist failed plan_id=%s type=%s: %v", planID, event.EventType, err)
-		return fmt.Errorf("%w: %v", errEventPersistence, err)
+		return fmt.Errorf("%w: %w", errEventPersistence, err)
 	}
 	if r.events != nil {
 		r.events.Publish(planID, stored)

@@ -239,7 +239,7 @@ func (s *Scheduler) prepareRuntimeGate(planID, taskID string) (*models.RuntimeAc
 		if action.Status == models.RuntimeActionApproved {
 			eventType = "runtime_action_resolved"
 		}
-		s.publishAndStore(planID, models.PlanEvent{
+		if err := s.publishAndStore(planID, models.PlanEvent{
 			PlanID:     planID,
 			TaskID:     taskID,
 			EventType:  eventType,
@@ -249,7 +249,9 @@ func (s *Scheduler) prepareRuntimeGate(planID, taskID string) (*models.RuntimeAc
 				"auto_approved": action.AutoApproved,
 			},
 			Timestamp: time.Now(),
-		})
+		}); err != nil {
+			return nil, false, err
+		}
 	}
 	return action, pending, nil
 }

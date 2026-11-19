@@ -96,6 +96,8 @@
 
 ### 缺陷与整改
 
+- [计划存储隔离与提交一致性修复报告（2026-11-19）](defect-remediation-2026-11-19-plan-store-results.md)：已实施；对象隔离、v2 提交与恢复、Windows 故障测试、调用链和 Docker 重启验收，含已知失败与未测边界。
+- [计划存储隔离与提交一致性修复方案（2026-11-19）](defect-remediation-2026-11-19-plan-store.md)：已实施（v1.1）；基线根因、对象所有权、快照/事件提交协议、兼容迁移和验收矩阵。
 - [安全边界与 PDF 依赖整改实施记录（2026-11-16）](defect-remediation-2026-11-16-security-results.md)：代码与专项回归已落地；27 项验收映射、实际测试证据、Windows 兼容/交付待验及剩余边界。
 - [安全边界与 PDF 依赖修复方案（2026-11-15）](defect-remediation-2026-11-15-security.md)：原始风险、修复步骤、分批交付与关闭标准；完整发布验收尚未关闭。
 - [Windows 原生运行时安全迁移（2026-11-16）](security-native-runtime-migration-2026-11-16.md)：环境变量白名单、网络探针配置、能力阻断、旧缓存重建和实测兼容限制。
