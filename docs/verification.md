@@ -4,6 +4,18 @@
 
 ## 最近验证
 
+### 2026-11-19：计划存储隔离与提交一致性
+
+- 代码：基线 `d4d2af1a5fda67fbd027f5d1e5cfe9116ace20fa` 上的工作区修复；覆盖 store、scheduler/API 调用链及 Windows store CI 门禁。
+- 已验证：Windows store 全包与 vet、API 全包及相关调用链测试；Linux 后端全包、六包 race、全后端 vet 与构建通过。实际计数、跳过项和测试映射见[验收报告](defect-remediation-2026-11-19-plan-store-results.md)。
+- 已知边界：Windows scheduler 有 5 项 Git 启动、revision 和符号链接失败，同环境原基线逐项复现；Linux 一次全量曾遇文献检索公网依赖测试暂态失败，保留日志，基线/新版定向及最终全量复跑通过。不能称所有平台所有轮次均无失败。
+- 交付：修复源码与二进制已 cp 至 `research-assistant-backend-1`，创建/修改及删除后两次重启 smoke 通过。仅更新现有容器，未重建 Docker 镜像。
+- 本轮不覆盖前端、真实付费模型科研任务、机器断电、长期浸泡或多进程共享写入。HTTP `/api/health` 未接入计划存储 `Health()`，计划 API 与调度器另有内部闸门。
+
+### 历史验证记录
+
+下列记录保持各自原始日期和范围，不表示在本轮工作区重新执行。
+
 - 日期：2026-11-09（Asia/Shanghai）
 - 代码状态：`feature/workbennch` 分支实现，基线 `e6bfb26`；2026-11-10 整理为 GitHub PR，此前 MyGo 桌面验证作为历史记录保留
 - 环境：Windows 本机（Go 1.27.3、Node 24.14.0、Chrome）+ `golang:1.27.3-bookworm` 隔离容器；静态前端预览与独立真实 API/模型服务

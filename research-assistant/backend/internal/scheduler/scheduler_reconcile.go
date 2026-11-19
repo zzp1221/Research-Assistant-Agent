@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"research-assistant-backend/internal/models"
@@ -22,6 +23,19 @@ func (s *Scheduler) finishExternalTerminal(ctx context.Context, planID string) {
 // It is the single entry point used by reconciliation, external timeouts and the
 // startup compensation scan, so every terminal path shares one one-shot rule.
 func (s *Scheduler) completeTerminalOnce(ctx context.Context, planID string) {
+	unlock := s.lockTerminalCommit(planID)
+	defer unlock()
+	s.completeTerminalOnceLocked(ctx, planID)
+}
+
+func (s *Scheduler) lockTerminalCommit(planID string) func() {
+	value, _ := s.terminalLocks.LoadOrStore(planID, &sync.Mutex{})
+	mu := value.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
+
+func (s *Scheduler) completeTerminalOnceLocked(ctx context.Context, planID string) {
 	if !s.claimTerminalCommit(planID) {
 		return
 	}
@@ -36,8 +50,15 @@ func (s *Scheduler) ReconcileTerminalCommits(ctx context.Context, planID string)
 	if s == nil || s.store == nil {
 		return false
 	}
+	unlock := s.lockTerminalCommit(planID)
+	locked := true
+	defer func() {
+		if locked {
+			unlock()
+		}
+	}()
 	plan, err := s.store.GetPlan(planID)
-	if err != nil || plan == nil || plan.TerminalCommittedAt != nil {
+	if err != nil || plan == nil {
 		return false
 	}
 	switch plan.Status {
@@ -45,14 +66,60 @@ func (s *Scheduler) ReconcileTerminalCommits(ctx context.Context, planID string)
 	default:
 		return false
 	}
+	if plan.TerminalCommittedAt != nil {
+		// The claim precedes the event. A failed append (including an unknown
+		// result followed by restart) must not permanently suppress recovery.
+		history, err := s.store.ListEvents(planID)
+		if err != nil {
+			return false
+		}
+		if hasCurrentTerminalEvent(plan, history) {
+			return false
+		}
+		claimedAt := *plan.TerminalCommittedAt
+		released := false
+		if err := s.store.UpdatePlan(planID, func(current *models.PlanGraph) error {
+			if current.Status == plan.Status && current.TerminalCommittedAt != nil && current.TerminalCommittedAt.Equal(claimedAt) {
+				current.TerminalCommittedAt = nil
+				released = true
+			}
+			return nil
+		}); err != nil || !released {
+			return false
+		}
+	}
 	if plan.Outcome == "" {
 		// A terminal plan without an outcome cannot explain itself; rebuild it
 		// through the normal reconciliation instead of publishing a placeholder.
+		unlock()
+		locked = false
 		_, _ = s.reconcilePlanState(ctx, plan)
 		return true
 	}
-	s.completeTerminalOnce(ctx, planID)
+	s.completeTerminalOnceLocked(ctx, planID)
 	return true
+}
+
+func hasCurrentTerminalEvent(plan *models.PlanGraph, history []models.PlanEvent) bool {
+	eventType := "plan_completed"
+	if plan.Status == models.StatusFailed {
+		eventType = "plan_failed"
+	} else if plan.Status == models.StatusCanceled {
+		eventType = "plan_canceled"
+	}
+	for _, event := range history {
+		if event.EventType != eventType {
+			continue
+		}
+		if plan.Usage.FinishedAt != nil && event.Timestamp.Before(*plan.Usage.FinishedAt) {
+			continue
+		}
+		if plan.Usage.FinishedAt == nil && plan.Usage.StartedAt != nil && event.Timestamp.Before(*plan.Usage.StartedAt) {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // reconcileOutcome is the decision of one terminal-state reconciliation.
@@ -140,7 +207,9 @@ func (s *Scheduler) reconcilePlanState(ctx context.Context, hint *models.PlanGra
 		return reconcileWait, err
 	}
 	for _, event := range events {
-		s.publishAndStore(hint.ID, event)
+		if err := s.publishAndStore(hint.ID, event); err != nil {
+			return 0, err
+		}
 	}
 	// Terminal side effects run exactly once, on the transition that committed
 	// the terminal result. A later wake-up that observes an already-terminal plan
@@ -459,7 +528,6 @@ func (s *Scheduler) finalizeTerminalCommit(ctx context.Context, planID string) {
 	}
 	if latest.Outcome == "" {
 		// Defensive: a terminal plan must always explain itself.
-		plan := latest
 		evaluation := models.PlanFailureEvaluation{
 			Status:        latest.Status,
 			Outcome:       models.OutcomeFailed,
@@ -467,12 +535,19 @@ func (s *Scheduler) finalizeTerminalCommit(ctx context.Context, planID string) {
 			FinishedAt:    time.Now(),
 			EventType:     "plan_failed",
 		}
-		_ = s.store.UpdatePlan(planID, func(current *models.PlanGraph) error {
+		if err := s.store.UpdatePlan(planID, func(current *models.PlanGraph) error {
 			applyPlanEvaluation(current, evaluation)
 			fillMeta(current)
 			return nil
-		})
-		latest = plan
+		}); err != nil {
+			s.recordEventPersistenceFailure(planID, err)
+			return
+		}
+		latest, err = s.store.GetPlan(planID)
+		if err != nil || latest == nil {
+			logPlanFinalize(planID, err)
+			return
+		}
 	}
 	eventType := "plan_completed"
 	if latest.Status == models.StatusFailed {
@@ -481,7 +556,7 @@ func (s *Scheduler) finalizeTerminalCommit(ctx context.Context, planID string) {
 	if latest.Status == models.StatusCanceled {
 		eventType = "plan_canceled"
 	}
-	s.publishAndStore(planID, models.PlanEvent{
+	if err := s.publishAndStore(planID, models.PlanEvent{
 		PlanID:    planID,
 		EventType: eventType,
 		Payload: map[string]any{
@@ -490,7 +565,9 @@ func (s *Scheduler) finalizeTerminalCommit(ctx context.Context, planID string) {
 			"outcome_details": latest.OutcomeDetails,
 		},
 		Timestamp: time.Now(),
-	})
+	}); err != nil {
+		return
+	}
 	if s.memorySink != nil {
 		_ = s.memorySink.RecordPlan(ctx, latest)
 	}

@@ -115,7 +115,7 @@ func (r *planRuntime) deleteSession(c *gin.Context) {
 	}
 	all, err := r.store.ListPlans()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot list plans", "code": "store_unavailable"})
+		respondPlanStoreError(c, err)
 		return
 	}
 	owned := make([]*models.PlanGraph, 0, 8)
@@ -137,7 +137,8 @@ func (r *planRuntime) deleteSession(c *gin.Context) {
 	deleted := make([]string, 0, len(owned))
 	for _, plan := range owned {
 		if err := r.store.DeletePlan(plan.ID); err != nil {
-			continue
+			respondPlanStoreError(c, err)
+			return
 		}
 		_ = r.revisionStore().DeletePlan(plan.ID)
 		r.scheduler.CleanupPlanSandboxes(c.Request.Context(), plan.ID)
@@ -163,11 +164,19 @@ func (r *planRuntime) exportPlan(c *gin.Context) {
 	}
 	format := strings.ToLower(strings.TrimSpace(c.DefaultQuery("format", "md")))
 	baseName := "plan-" + plan.ID
-	events := r.loadPlanEvents(plan.ID)
+	events, err := r.loadPlanEvents(plan.ID)
+	if err != nil {
+		respondPlanStoreError(c, err)
+		return
+	}
 	switch format {
 	case "json":
 		payload, err := marshalRedactedPlan(plan, true)
 		if err != nil {
+			if r.respondSealedPlanStoreError(c, err) {
+				return
+			}
+
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot encode plan", "code": "export_failed"})
 			return
 		}
@@ -193,12 +202,8 @@ func (r *planRuntime) exportPlan(c *gin.Context) {
 	}
 }
 
-func (r *planRuntime) loadPlanEvents(planID string) []models.PlanEvent {
-	events, err := r.store.ListEventsAfter(planID, 0)
-	if err != nil {
-		return nil
-	}
-	return events
+func (r *planRuntime) loadPlanEvents(planID string) ([]models.PlanEvent, error) {
+	return r.store.ListEventsAfter(planID, 0)
 }
 
 func marshalRedactedPlan(plan *models.PlanGraph, indent bool) ([]byte, error) {
@@ -862,9 +867,17 @@ func (w *countingWriter) Write(p []byte) (int, error) {
 }
 
 func (r *planRuntime) writePlanZip(c *gin.Context, plan *models.PlanGraph, filename string) {
-	events := r.loadPlanEvents(plan.ID)
+	events, err := r.loadPlanEvents(plan.ID)
+	if err != nil {
+		respondPlanStoreError(c, err)
+		return
+	}
 	bundle, err := buildPlanBundle(plan, events, exportLimitsFromEnv())
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot build export bundle", "code": "export_failed", "detail": err.Error()})
 		return
 	}
@@ -884,19 +897,35 @@ func (r *planRuntime) writePlanZip(c *gin.Context, plan *models.PlanGraph, filen
 	}
 	for _, file := range bundle.Files {
 		if err := add(file.Path, file.Data); err != nil {
+			if r.respondSealedPlanStoreError(c, err) {
+				return
+			}
+
 			_ = zipWriter.Close()
 			return
 		}
 	}
 	if err := add("manifest.json", bundle.ManifestBytes); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		_ = zipWriter.Close()
 		return
 	}
 	if err := add("checksums.sha256", bundle.Checksums); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		_ = zipWriter.Close()
 		return
 	}
 	if err := zipWriter.Close(); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		return
 	}
 	omittedBytes := int64(0)
@@ -926,9 +955,17 @@ func (r *planRuntime) verifyReproduction(c *gin.Context) {
 	if !ok {
 		return
 	}
-	events := r.loadPlanEvents(plan.ID)
+	events, err := r.loadPlanEvents(plan.ID)
+	if err != nil {
+		respondPlanStoreError(c, err)
+		return
+	}
 	bundle, err := buildPlanBundle(plan, events, exportLimitsFromEnv())
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot build export bundle", "code": "verification_failed", "detail": err.Error()})
 		return
 	}

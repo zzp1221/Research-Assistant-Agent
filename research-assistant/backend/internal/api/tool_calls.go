@@ -56,6 +56,10 @@ func (r *planRuntime) replayToolCall(c *gin.Context) {
 	}
 	def, err := r.toolRegistry.GetToolForOwner(plan.OwnerID, record.ToolID)
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		respondError(c, http.StatusNotFound, "tool_not_found", "工具已不存在", "重新注册工具")
 		return
 	}
@@ -88,6 +92,10 @@ func (r *planRuntime) replayToolCall(c *gin.Context) {
 	if strings.TrimSpace(payload.ApprovalID) == "" {
 		action, err := r.createReplayApproval(plan, record)
 		if err != nil {
+			if r.respondSealedPlanStoreError(c, err) {
+				return
+			}
+
 			respondError(c, http.StatusConflict, "plan_not_replayable", err.Error(), "刷新计划后重试")
 			return
 		}
@@ -125,6 +133,10 @@ func (r *planRuntime) replayToolCall(c *gin.Context) {
 		upsertPlanToolCall(current, &result.Record)
 		return nil
 	}); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		respondError(c, http.StatusInternalServerError, "plan_store_error", err.Error(), "重试或检查计划存储")
 		return
 	}

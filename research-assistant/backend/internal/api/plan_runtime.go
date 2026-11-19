@@ -259,6 +259,7 @@ func RegisterPlanRuntimeRoutes(
 }
 
 func (r *planRuntime) register(apiGroup *gin.RouterGroup) {
+	apiGroup = apiGroup.Group("", r.requireHealthyPlanStore)
 	apiGroup.POST("/plan", r.createPlan)
 	apiGroup.GET("/plans", r.listPlans)
 	apiGroup.DELETE("/plans/:id", r.deletePlan)
@@ -661,18 +662,13 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 			published = true
 			logIdempotency("commit_unknown", userID, handle)
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save plan"})
+			if !r.respondSealedPlanStoreError(c, err) {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save plan"})
+			}
 		}
 		return
 	}
-	if handle != nil {
-		r.idempotency.Complete(handle, idempotentResponse{status: http.StatusOK, body: encoded, contentType: "application/json; charset=utf-8"})
-		published = true
-	}
-	if memStore := MemoryStore(); memStore != nil {
-		_ = memory.RecordPlan(c.Request.Context(), memStore, plan)
-	}
-	_ = r.store.AppendEvent(plan.ID, models.PlanEvent{
+	if err := r.persistAndPublishPlanEvent(plan.ID, models.PlanEvent{
 		PlanID:    plan.ID,
 		EventType: "plan_created",
 		Payload: map[string]any{
@@ -687,7 +683,25 @@ func (r *planRuntime) createPlan(c *gin.Context) {
 			"general_plan_shape": plan.Meta.GeneralPlanShape,
 		},
 		Timestamp: time.Now(),
-	})
+	}); err != nil {
+		response := appliedPlanEventFailure(plan.ID, err)
+		if handle != nil {
+			// The plan is already committed. Retain the key in the non-expiring
+			// uncertain state even when only the event is missing, so a retry
+			// cannot create another plan.
+			r.idempotency.finish(handle, "commit_unknown", plan.ID, response)
+			published = true
+		}
+		writeIdempotentResponse(c, response, false)
+		return
+	}
+	if handle != nil {
+		r.idempotency.Complete(handle, idempotentResponse{status: http.StatusOK, body: encoded, contentType: "application/json; charset=utf-8"})
+		published = true
+	}
+	if memStore := MemoryStore(); memStore != nil {
+		_ = memory.RecordPlan(c.Request.Context(), memStore, plan)
+	}
 
 	metrics.RecordPlanCreated(plan.IntentType)
 	recordAuditEvent("plan_created", userID, plan.ID, map[string]any{
@@ -809,6 +823,9 @@ func (r *planRuntime) getPlan(c *gin.Context) {
 	// deadlines even if no scheduler goroutine is currently iterating it, and a
 	// stop committed before a restart must still get its terminal side effects.
 	plan = r.sweepLazyTimeouts(plan)
+	if r.respondSealedPlanStoreError(c, nil) {
+		return
+	}
 	hydratePlanForResponse(plan)
 	c.JSON(http.StatusOK, gin.H{"plan_graph": plan})
 }
@@ -823,7 +840,7 @@ func (r *planRuntime) deletePlan(c *gin.Context) {
 		return
 	}
 	if err := r.store.DeletePlan(plan.ID); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		respondPlanStoreError(c, err)
 		return
 	}
 	_ = r.revisionStore().DeletePlan(plan.ID)
@@ -834,7 +851,7 @@ func (r *planRuntime) deletePlan(c *gin.Context) {
 func (r *planRuntime) listSessions(c *gin.Context) {
 	all, err := r.store.ListPlans()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondPlanStoreError(c, err)
 		return
 	}
 	items := buildSessionSummaries(c, all)
@@ -902,7 +919,7 @@ func (r *planRuntime) getPlanEvents(c *gin.Context) {
 	afterSeq := parseAfterSeq(c)
 	events, err := r.store.ListEventsAfter(c.Param("id"), afterSeq)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		respondPlanStoreError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"events": events, "after_seq": afterSeq})
@@ -952,7 +969,10 @@ func (r *planRuntime) executePlan(c *gin.Context) {
 	// The ownership check above only decided access; the state acted on here is
 	// re-read under the lock because the scheduler may have moved it since.
 	if fresh, err := r.store.GetPlan(plan.ID); err != nil || fresh == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "plan not found", "code": "plan_not_found"})
+		if err == nil {
+			err = store.ErrPlanNotFound
+		}
+		respondPlanStoreError(c, err)
 		return
 	} else {
 		plan = fresh
@@ -998,11 +1018,19 @@ func (r *planRuntime) executePlan(c *gin.Context) {
 	// Bind the live graph to the latest immutable revision before dispatch so a
 	// run can never mix a newer draft with the previous revision stamp.
 	if _, err := r.bindLatestRevision(planID); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot bind plan revision", "code": "revision_bind_failed"})
 		return
 	}
 	actor := resolveUserID(c)
 	if err := r.launchPlan(planID, trigger, actor); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		respondPlanLaunchError(c, err)
 		return
 	}
@@ -1024,6 +1052,10 @@ func (r *planRuntime) cancelPlan(c *gin.Context) {
 	r.mu.Unlock()
 	actor := resolveUserID(c)
 	if err := r.scheduler.CancelPlanWithActor(plan.ID, "canceled by user", actor); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
@@ -1085,15 +1117,22 @@ func (r *planRuntime) approvePlan(c *gin.Context) {
 		}
 		return fmt.Errorf("plan cannot be approved from status %s", current.Status)
 	}); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
-	_ = r.store.AppendEvent(plan.ID, models.PlanEvent{
+	if err := r.persistAndPublishPlanEvent(plan.ID, models.PlanEvent{
 		PlanID:    plan.ID,
 		EventType: "plan_approved",
 		Payload:   map[string]any{"actor": userID},
 		Timestamp: now,
-	})
+	}); err != nil {
+		respondAppliedPlanEventFailure(c, plan.ID, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "Plan approved", "plan_id": plan.ID})
 }
 
@@ -1111,6 +1150,10 @@ func (r *planRuntime) retryTask(c *gin.Context) {
 		return
 	}
 	if err := r.scheduler.RetryTask(plan.ID, c.Param("taskId")); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
@@ -1134,10 +1177,18 @@ func (r *planRuntime) reassignTask(c *gin.Context) {
 		AssignedTo string `json:"assigned_to" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&payload); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	if err := r.scheduler.ReassignTask(plan.ID, c.Param("taskId"), payload.AssignedTo); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
@@ -1318,7 +1369,11 @@ func (r *planRuntime) streamPlanEvents(c *gin.Context) {
 	replayUnseen := func() bool {
 		history, err := r.store.ListEventsAfter(planID, lastSeq)
 		if err != nil {
-			writePlanSSE(c, "error", gin.H{"error": err.Error()})
+			if !c.Writer.Written() {
+				respondPlanStoreError(c, err)
+			} else {
+				writePlanSSE(c, "error", gin.H{"error": "plan store is unavailable; reconnect after recovery", "code": "store_unavailable"})
+			}
 			return false
 		}
 		// The durable log is the single authority for what the client sees.
@@ -1404,7 +1459,11 @@ func (r *planRuntime) streamPlanEvents(c *gin.Context) {
 func (r *planRuntime) authorizedPlan(c *gin.Context) (*models.PlanGraph, bool) {
 	plan, err := r.store.GetPlan(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "plan not found"})
+		respondPlanStoreError(c, err)
+		return nil, false
+	}
+	if plan == nil {
+		respondPlanStoreError(c, store.ErrPlanNotFound)
 		return nil, false
 	}
 	// Ownership is mandatory: a plan without an owner is not readable by any

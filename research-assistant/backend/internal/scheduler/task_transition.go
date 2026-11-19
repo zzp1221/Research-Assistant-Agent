@@ -227,7 +227,9 @@ func (s *Scheduler) applyTaskWaiting(planID, taskID, executionID, leaseOwner str
 		return false, err
 	}
 	for _, event := range events {
-		s.publishAndStore(planID, event)
+		if err := s.publishAndStore(planID, event); err != nil {
+			return false, err
+		}
 	}
 	return transitioned, nil
 }
@@ -314,7 +316,9 @@ func (s *Scheduler) applyQuestionWaiting(planID, taskID, executionID, leaseOwner
 		return err
 	}
 	for _, event := range events {
-		s.publishAndStore(planID, event)
+		if err := s.publishAndStore(planID, event); err != nil {
+			return err
+		}
 	}
 	return nil
 }

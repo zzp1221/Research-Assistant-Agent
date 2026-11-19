@@ -186,6 +186,10 @@ func (r *planRuntime) putBudget(c *gin.Context) {
 	userID := resolveUserID(c)
 	var payload budgetPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid budget payload", "code": "invalid_budget"})
 		return
 	}
@@ -203,6 +207,10 @@ func (r *planRuntime) putBudget(c *gin.Context) {
 	}
 	budget, err := r.budget.SetBudget(userID, period, *payload.LimitUSD, payload.Policy)
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "invalid_budget"})
 		return
 	}

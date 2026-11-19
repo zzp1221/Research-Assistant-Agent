@@ -81,7 +81,7 @@ func (r *planRuntime) listApprovals(c *gin.Context) {
 	}
 	plans, err := r.store.ListPlans()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "store_unavailable"})
+		respondPlanStoreError(c, err)
 		return
 	}
 	now := time.Now().UTC()
@@ -231,6 +231,10 @@ func (r *planRuntime) bulkApprovals(c *gin.Context) {
 	userID := resolveUserID(c)
 	var payload bulkApprovalPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid bulk payload", "code": "invalid_bulk"})
 		return
 	}
@@ -260,7 +264,7 @@ func (r *planRuntime) bulkApprovals(c *gin.Context) {
 	found := make([]resolved, 0, len(payload.IDs))
 	plans, err := r.store.ListPlans()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "store_unavailable"})
+		respondPlanStoreError(c, err)
 		return
 	}
 	index := map[string]*models.PlanGraph{}
@@ -297,6 +301,10 @@ func (r *planRuntime) bulkApprovals(c *gin.Context) {
 	decided := make([]string, 0, len(found))
 	for _, item := range found {
 		if err := r.applyBulkDecision(item.planID, item.actionID, decision, userID, payload.Note, now); err != nil {
+			if r.respondSealedPlanStoreError(c, err) {
+				return
+			}
+
 			if errors.Is(err, errEventPersistence) {
 				respondEventPersistFailure(c, err)
 				return

@@ -75,6 +75,13 @@ type Scheduler struct {
 	activityMu    sync.Mutex
 	lastActivity  map[string]time.Time
 	stallNotified map[string]time.Time
+	// Persistence failures in asynchronous log/result producers stop the run
+	// before it can dispatch another task.
+	persistenceMu     sync.Mutex
+	persistenceErrors map[string]error
+	// terminalLocks keeps recovery from treating an in-flight terminal claim as
+	// an interrupted one before its event append has had a chance to finish.
+	terminalLocks sync.Map
 	// budget is the owner cost ledger. It is optional; nil disables user-budget
 	// reservations while plan-level RunBudget limits still apply.
 	budget       *budget.Manager
@@ -242,6 +249,7 @@ func (s *Scheduler) claimTerminalCommit(planID string) bool {
 		return nil
 	}); err != nil {
 		log.Printf("scheduler: claim terminal commit for %s failed: %v", planID, err)
+		s.recordEventPersistenceFailure(planID, err)
 		return false
 	}
 	return claimed
@@ -293,7 +301,7 @@ func (s *Scheduler) checkPlanStall(ctx context.Context, plan *models.PlanGraph) 
 			running = append(running, node.ID)
 		}
 	}
-	s.publishAndStore(plan.ID, models.PlanEvent{
+	if err := s.publishAndStore(plan.ID, models.PlanEvent{
 		PlanID:    plan.ID,
 		EventType: "plan_stalled",
 		Payload: map[string]any{
@@ -302,7 +310,9 @@ func (s *Scheduler) checkPlanStall(ctx context.Context, plan *models.PlanGraph) 
 			"running_tasks":          running,
 		},
 		Timestamp: now,
-	})
+	}); err != nil {
+		return
+	}
 	metrics.Default().Inc("plan_stalled_total", nil)
 }
 

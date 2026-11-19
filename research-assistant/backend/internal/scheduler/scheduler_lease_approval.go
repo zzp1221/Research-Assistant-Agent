@@ -66,7 +66,9 @@ func (s *Scheduler) expireStaleLeases(planID string) error {
 		return err
 	}
 	for _, event := range events {
-		s.publishAndStore(planID, event)
+		if err := s.publishAndStore(planID, event); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -123,8 +125,8 @@ func budgetExceeded(plan *models.PlanGraph) bool {
 
 // syncApprovalWaitWindow keeps RunUsage.ApprovalWaitingSince in sync with the
 // actual awaiting-approval state so the execution budget can be paused.
-func (s *Scheduler) syncApprovalWaitWindow(planID string) {
-	_ = s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
+func (s *Scheduler) syncApprovalWaitWindow(planID string) error {
+	return s.store.UpdatePlan(planID, func(plan *models.PlanGraph) error {
 		now := time.Now()
 		waiting := hasAwaitingApproval(plan)
 		if waiting && plan.Usage.ApprovalWaitingSince == nil {
@@ -229,7 +231,9 @@ func (s *Scheduler) expireApprovalActions(planID string) (bool, error) {
 		return false, err
 	}
 	for _, event := range events {
-		s.publishAndStore(planID, event)
+		if err := s.publishAndStore(planID, event); err != nil {
+			return false, err
+		}
 	}
 	// The sweep commits the state and the events only. The terminal event,
 	// sandbox cleanup, budget release, memory record and callback belong to the
@@ -259,7 +263,7 @@ func (s *Scheduler) ExpireApprovalsNow(planID string) (bool, error) {
 }
 
 func (s *Scheduler) publishDiscardedResult(planID, taskID, executionID, leaseOwner string) {
-	s.publishAndStore(planID, models.PlanEvent{
+	if err := s.publishAndStore(planID, models.PlanEvent{
 		PlanID:      planID,
 		EventType:   "task_result_discarded",
 		TaskID:      taskID,
@@ -269,5 +273,7 @@ func (s *Scheduler) publishDiscardedResult(planID, taskID, executionID, leaseOwn
 			"lease_owner": leaseOwner,
 		},
 		Timestamp: time.Now(),
-	})
+	}); err != nil {
+		return
+	}
 }

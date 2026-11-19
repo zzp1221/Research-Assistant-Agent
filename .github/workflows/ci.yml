@@ -41,6 +41,13 @@ jobs:
         working-directory: research-assistant/backend
         run: go test -race ./internal/scheduler ./internal/api ./internal/store ./internal/metrics ./internal/usage ./internal/audit
 
+      - name: Windows plan store regression tests
+        if: runner.os == 'Windows'
+        working-directory: research-assistant/backend
+        run: |
+          go test -count=1 ./internal/store
+          go vet ./internal/store
+
       - name: Security regression tests
         if: runner.os == 'Linux'
         working-directory: research-assistant/backend

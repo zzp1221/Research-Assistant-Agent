@@ -109,6 +109,10 @@ func isPlanNotFoundError(err error) bool {
 // conflict errors keep their stable code and payload so the review panel can
 // explain the reason instead of showing a generic store error.
 func respondRevisionMutationError(c *gin.Context, err error) {
+	if isPlanStoreFailure(err) {
+		respondPlanStoreError(c, err)
+		return
+	}
 	var guard *revisionGuardError
 	if errors.As(err, &guard) {
 		payload := gin.H{"error": guard.message, "code": guard.code}
@@ -148,6 +152,10 @@ func respondRevisionMutationError(c *gin.Context, err error) {
 // Callers that already mutated the plan or revision add what did apply through
 // respondRevisionMutationError's guard payload or an explicit message.
 func respondEventPersistFailure(c *gin.Context, err error) {
+	if isPlanStoreFailure(err) {
+		respondPlanStoreError(c, err)
+		return
+	}
 	c.JSON(http.StatusInternalServerError, gin.H{
 		"error": "the change was applied but its event could not be persisted; refresh the plan before retrying: " + err.Error(),
 		"code":  "event_persist_failed",

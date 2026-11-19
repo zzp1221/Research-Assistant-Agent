@@ -290,14 +290,14 @@ func (r *planRuntime) listPlans(c *gin.Context) {
 	if source, ok := r.store.(store.PlanSummarySource); ok {
 		items, err := source.ListPlanSummaries()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot list plans", "code": "store_unavailable"})
+			respondPlanStoreError(c, err)
 			return
 		}
 		records = items
 	} else {
 		plans, err := r.store.ListPlans()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot list plans", "code": "store_unavailable"})
+			respondPlanStoreError(c, err)
 			return
 		}
 		records = make([]store.PlanSummaryRecord, 0, len(plans))
@@ -362,6 +362,10 @@ func (r *planRuntime) listProjects(c *gin.Context) {
 		strings.EqualFold(strings.TrimSpace(c.Query("archived")), "all")
 	projects, err := r.projects.List(userID, includeArchived)
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot list projects", "code": "store_unavailable"})
 		return
 	}
@@ -372,6 +376,10 @@ func (r *planRuntime) createProject(c *gin.Context) {
 	userID := resolveUserID(c)
 	var payload projectPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project payload", "code": "invalid_project"})
 		return
 	}
@@ -385,6 +393,10 @@ func (r *planRuntime) createProject(c *gin.Context) {
 	}
 	created, err := r.projects.Create(userID, name, description)
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		status := http.StatusBadRequest
 		if strings.Contains(err.Error(), "already exists") {
 			status = http.StatusConflict
@@ -400,6 +412,10 @@ func (r *planRuntime) updateProject(c *gin.Context) {
 	userID := resolveUserID(c)
 	var payload projectPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project payload", "code": "invalid_project"})
 		return
 	}
@@ -409,6 +425,10 @@ func (r *planRuntime) updateProject(c *gin.Context) {
 		Archived:    payload.Archived,
 	})
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		if err == project.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "project not found", "code": "project_not_found"})
 			return
@@ -424,11 +444,19 @@ func (r *planRuntime) deleteProject(c *gin.Context) {
 	userID := resolveUserID(c)
 	projectID := strings.TrimSpace(c.Param("id"))
 	if _, err := r.projects.Get(userID, projectID); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusNotFound, gin.H{"error": "project not found", "code": "project_not_found"})
 		return
 	}
 	count, err := r.countPlansInProject(userID, projectID)
 	if err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot inspect project plans", "code": "store_unavailable"})
 		return
 	}
@@ -441,6 +469,10 @@ func (r *planRuntime) deleteProject(c *gin.Context) {
 		return
 	}
 	if err := r.projects.Delete(userID, projectID); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusNotFound, gin.H{"error": "project not found", "code": "project_not_found"})
 		return
 	}
@@ -497,6 +529,10 @@ func (r *planRuntime) patchPlan(c *gin.Context) {
 	}
 	var payload planPatchPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid plan payload", "code": "invalid_plan"})
 		return
 	}
@@ -506,6 +542,10 @@ func (r *planRuntime) patchPlan(c *gin.Context) {
 		projectID = strings.TrimSpace(*payload.ProjectID)
 		if projectID != "" {
 			if _, err := r.projects.Get(userID, projectID); err != nil {
+				if r.respondSealedPlanStoreError(c, err) {
+					return
+				}
+
 				c.JSON(http.StatusBadRequest, gin.H{"error": "project not found", "code": "project_not_found"})
 				return
 			}
@@ -521,6 +561,10 @@ func (r *planRuntime) patchPlan(c *gin.Context) {
 	}
 	if payload.Budget != nil {
 		if err := validatePlanBudgetPatch(payload.Budget); err != nil {
+			if r.respondSealedPlanStoreError(c, err) {
+				return
+			}
+
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "invalid_budget"})
 			return
 		}
@@ -574,6 +618,10 @@ func (r *planRuntime) patchPlan(c *gin.Context) {
 		current.UpdatedAt = now
 		return nil
 	}); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusNotFound, gin.H{"error": "plan not found", "code": "plan_not_found"})
 		return
 	}
@@ -599,7 +647,7 @@ func (r *planRuntime) patchPlan(c *gin.Context) {
 	}
 	updated, err := r.store.GetPlan(plan.ID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "plan not found", "code": "plan_not_found"})
+		respondPlanStoreError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"plan": summarizePlan(updated)})
@@ -668,16 +716,23 @@ func (r *planRuntime) duplicatePlan(c *gin.Context) {
 		duplicate.CurrentRevision = created.Revision
 	}
 	if err := r.store.SavePlan(duplicate); err != nil {
+		if r.respondSealedPlanStoreError(c, err) {
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot save duplicated plan", "code": "duplicate_failed"})
 		return
 	}
 	recordAuditEvent("plan_duplicated", userID, duplicate.ID, map[string]any{"source_plan_id": plan.ID})
-	_ = r.store.AppendEvent(duplicate.ID, models.PlanEvent{
+	if err := r.persistAndPublishPlanEvent(duplicate.ID, models.PlanEvent{
 		PlanID:    duplicate.ID,
 		EventType: "plan_duplicated",
 		Payload:   map[string]any{"source_plan_id": plan.ID, "actor": userID},
 		Timestamp: now,
-	})
+	}); err != nil {
+		respondAppliedPlanEventFailure(c, duplicate.ID, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"plan": summarizePlan(duplicate)})
 }
 

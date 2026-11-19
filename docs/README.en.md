@@ -81,6 +81,8 @@ Both are self-contained HTML files (inline SVG/styles/scripts) that open directl
 
 ### Defects and remediation
 
+- [Plan store isolation and commit consistency — implementation report (2026-11-19, Chinese)](defect-remediation-2026-11-19-plan-store-results.md): **Implemented**; isolation, v2 persistence and recovery, Windows fault tests, caller integration, and Docker restart verification, with known failures and test limits.
+- [Plan store isolation and commit consistency — repair plan (2026-11-19, Chinese)](defect-remediation-2026-11-19-plan-store.md): **Implemented (v1.1)**; baseline findings, object ownership, snapshot/event commit protocol, legacy migration, and acceptance matrix.
 - [Scheduler waiting states, failure propagation, and partial outcomes — repair report (2026-11-11, Chinese)](defect-remediation-2026-11-11-scheduler-results.md): implemented fixes plus backend, race, frontend and online acceptance evidence for approval waits, terminal-state races, persistent block reasons, and partial-outcome contracts.
 - [Scheduler waiting states, failure propagation, and partial outcomes — plan (2026-11-11, Chinese)](defect-remediation-2026-11-11-scheduler.md): implemented (v1.1); original problems, repair boundaries, state contracts and acceptance-case design.
 - [Defect remediation (2026-10-25)](defect-remediation-2026-10-25.md): D1–D10 "why fix / what was wrong / how to fix", with rollout order and acceptance checklist.

@@ -165,7 +165,9 @@ func (s *Scheduler) expireQuestions(planID string) (bool, error) {
 		return false, err
 	}
 	for _, event := range events {
-		s.publishAndStore(planID, event)
+		if err := s.publishAndStore(planID, event); err != nil {
+			return false, err
+		}
 	}
 	return expiredTerminal, nil
 }

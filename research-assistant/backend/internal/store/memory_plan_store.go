@@ -1,36 +1,46 @@
 package store
 
 import (
-	"encoding/json"
 	"fmt"
-	"research-assistant-backend/internal/models"
+	"math"
+	"strings"
 	"sync"
+
+	"research-assistant-backend/internal/models"
 )
 
 // MemoryPlanStore is the first-phase in-memory implementation of PlanStore.
 type MemoryPlanStore struct {
-	mu     sync.RWMutex
-	plans  map[string]*models.PlanGraph
-	events map[string][]models.PlanEvent
+	mu        sync.RWMutex
+	plans     map[string]*models.PlanGraph
+	events    map[string][]models.PlanEvent
+	seqFloors map[string]int64
 }
 
 func NewMemoryPlanStore() *MemoryPlanStore {
 	return &MemoryPlanStore{
-		plans:  map[string]*models.PlanGraph{},
-		events: map[string][]models.PlanEvent{},
+		plans:     map[string]*models.PlanGraph{},
+		events:    map[string][]models.PlanEvent{},
+		seqFloors: map[string]int64{},
 	}
 }
 
 func (s *MemoryPlanStore) SavePlan(plan *models.PlanGraph) error {
-	if plan == nil {
-		return fmt.Errorf("plan is nil")
+	if plan == nil || strings.TrimSpace(plan.ID) == "" {
+		return fmt.Errorf("plan is nil or has empty id")
 	}
-
+	cloned, err := clonePlanGraph(plan)
+	if err != nil {
+		return err
+	}
+	if err := validateJSONValue(cloned); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.plans[plan.ID] = clonePlanGraph(plan)
-	if _, ok := s.events[plan.ID]; !ok {
-		s.events[plan.ID] = []models.PlanEvent{}
+	s.plans[cloned.ID] = cloned
+	if _, ok := s.events[cloned.ID]; !ok {
+		s.events[cloned.ID] = []models.PlanEvent{}
 	}
 	return nil
 }
@@ -38,26 +48,28 @@ func (s *MemoryPlanStore) SavePlan(plan *models.PlanGraph) error {
 func (s *MemoryPlanStore) GetPlan(planID string) (*models.PlanGraph, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
 	plan, ok := s.plans[planID]
 	if !ok {
-		return nil, fmt.Errorf("plan not found: %s", planID)
+		return nil, fmt.Errorf("%w: %s", ErrPlanNotFound, planID)
 	}
-	return clonePlanGraph(plan), nil
+	return clonePlanGraph(plan)
 }
 
 func (s *MemoryPlanStore) ListPlans() ([]*models.PlanGraph, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
 	plans := make([]*models.PlanGraph, 0, len(s.plans))
 	for _, plan := range s.plans {
-		plans = append(plans, clonePlanGraph(plan))
+		cloned, err := clonePlanGraph(plan)
+		if err != nil {
+			return nil, err
+		}
+		plans = append(plans, cloned)
 	}
 	return plans, nil
 }
 
-// ListPlanSummaries returns lightweight projections without cloning graphs.
+// ListPlanSummaries returns lightweight, independently owned projections.
 func (s *MemoryPlanStore) ListPlanSummaries() ([]PlanSummaryRecord, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -69,20 +81,35 @@ func (s *MemoryPlanStore) ListPlanSummaries() ([]PlanSummaryRecord, error) {
 }
 
 func (s *MemoryPlanStore) UpdatePlan(planID string, update func(*models.PlanGraph) error) error {
+	if update == nil {
+		return fmt.Errorf("plan update callback is nil")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	plan, ok := s.plans[planID]
 	if !ok {
-		return fmt.Errorf("plan not found: %s", planID)
+		return fmt.Errorf("%w: %s", ErrPlanNotFound, planID)
 	}
-
-	working := clonePlanGraph(plan)
+	working, err := clonePlanGraph(plan)
+	if err != nil {
+		return err
+	}
 	if err := update(working); err != nil {
 		return err
 	}
-
-	s.plans[planID] = working
+	if working.ID != planID {
+		return fmt.Errorf("plan update cannot change id")
+	}
+	// The callback can retain working or insert caller-owned maps and slices.
+	// A second copy is the object whose ownership transfers to this store.
+	candidate, err := clonePlanGraph(working)
+	if err != nil {
+		return err
+	}
+	if err := validateJSONValue(candidate); err != nil {
+		return err
+	}
+	s.plans[planID] = candidate
 	return nil
 }
 
@@ -94,213 +121,74 @@ func (s *MemoryPlanStore) AppendEvent(planID string, event models.PlanEvent) err
 func (s *MemoryPlanStore) AppendEventReturning(planID string, event models.PlanEvent) (models.PlanEvent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	if _, ok := s.plans[planID]; !ok {
-		return models.PlanEvent{}, fmt.Errorf("plan not found: %s", planID)
+		return models.PlanEvent{}, fmt.Errorf("%w: %s", ErrPlanNotFound, planID)
 	}
-	cloned := clonePlanEvent(event)
-	if cloned.Seq <= 0 {
-		cloned.Seq = int64(len(s.events[planID]) + 1)
+	if event.PlanID != planID {
+		return models.PlanEvent{}, fmt.Errorf("event plan id does not match %s", planID)
+	}
+	cloned, err := clonePlanEvent(event)
+	if err != nil {
+		return models.PlanEvent{}, err
+	}
+	maximum := s.seqFloors[planID]
+	for _, stored := range s.events[planID] {
+		if stored.Seq > maximum {
+			maximum = stored.Seq
+		}
+	}
+	if cloned.Seq < 0 || cloned.Seq > 0 && cloned.Seq <= maximum {
+		return models.PlanEvent{}, fmt.Errorf("event seq must increase beyond %d", maximum)
+	}
+	if cloned.Seq == 0 {
+		if maximum == math.MaxInt64 {
+			return models.PlanEvent{}, fmt.Errorf("event seq exhausted")
+		}
+		cloned.Seq = maximum + 1
+	}
+	if err := validateJSONValue(cloned); err != nil {
+		return models.PlanEvent{}, err
+	}
+	returned, err := clonePlanEvent(cloned)
+	if err != nil {
+		return models.PlanEvent{}, err
 	}
 	s.events[planID] = append(s.events[planID], cloned)
-	return clonePlanEvent(cloned), nil
+	s.seqFloors[planID] = cloned.Seq
+	return returned, nil
 }
 
 func (s *MemoryPlanStore) ListEventsAfter(planID string, afterSeq int64) ([]models.PlanEvent, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
 	if _, ok := s.plans[planID]; !ok {
-		return nil, fmt.Errorf("plan not found: %s", planID)
+		return nil, fmt.Errorf("%w: %s", ErrPlanNotFound, planID)
 	}
 	out := make([]models.PlanEvent, 0)
 	for _, event := range s.events[planID] {
 		if event.Seq <= afterSeq {
 			continue
 		}
-		out = append(out, clonePlanEvent(event))
+		cloned, err := clonePlanEvent(event)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, cloned)
 	}
 	return out, nil
 }
 
 func (s *MemoryPlanStore) ListEvents(planID string) ([]models.PlanEvent, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if _, ok := s.plans[planID]; !ok {
-		return nil, fmt.Errorf("plan not found: %s", planID)
-	}
-
-	events := s.events[planID]
-	out := make([]models.PlanEvent, 0, len(events))
-	for _, event := range events {
-		out = append(out, clonePlanEvent(event))
-	}
-	return out, nil
+	return s.ListEventsAfter(planID, math.MinInt64)
 }
 
 func (s *MemoryPlanStore) DeletePlan(planID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.plans[planID]; !ok {
-		return fmt.Errorf("plan not found: %s", planID)
+		return fmt.Errorf("%w: %s", ErrPlanNotFound, planID)
 	}
 	delete(s.plans, planID)
 	delete(s.events, planID)
 	return nil
-}
-
-func clonePlanGraph(plan *models.PlanGraph) *models.PlanGraph {
-	if plan == nil {
-		return nil
-	}
-
-	cloned := *plan
-	if plan.Approval.ApprovedAt != nil {
-		approvedAt := *plan.Approval.ApprovedAt
-		cloned.Approval.ApprovedAt = &approvedAt
-	}
-	if plan.Usage.StartedAt != nil {
-		startedAt := *plan.Usage.StartedAt
-		cloned.Usage.StartedAt = &startedAt
-	}
-	if plan.Usage.FinishedAt != nil {
-		finishedAt := *plan.Usage.FinishedAt
-		cloned.Usage.FinishedAt = &finishedAt
-	}
-	if plan.Usage.ApprovalWaitingSince != nil {
-		waitingSince := *plan.Usage.ApprovalWaitingSince
-		cloned.Usage.ApprovalWaitingSince = &waitingSince
-	}
-	if plan.TerminalCommittedAt != nil {
-		committedAt := *plan.TerminalCommittedAt
-		cloned.TerminalCommittedAt = &committedAt
-	}
-	cloned.Nodes = make([]*models.TaskNode, 0, len(plan.Nodes))
-	for _, node := range plan.Nodes {
-		if node == nil {
-			cloned.Nodes = append(cloned.Nodes, nil)
-			continue
-		}
-		nodeCopy := *node
-		nodeCopy.Recovery = cloneTyped(node.Recovery)
-		nodeCopy.Failure = cloneTyped(node.Failure)
-		nodeCopy.ReplanProposal = cloneTyped(node.ReplanProposal)
-		nodeCopy.BlockInfo = cloneTyped(node.BlockInfo)
-		if node.Optional != nil {
-			optional := *node.Optional
-			nodeCopy.Optional = &optional
-		}
-		if node.OptionalDependencies != nil {
-			nodeCopy.OptionalDependencies = append([]string(nil), node.OptionalDependencies...)
-		}
-		if node.NextAttemptAt != nil {
-			next := *node.NextAttemptAt
-			nodeCopy.NextAttemptAt = &next
-		}
-		if node.LeaseExpiresAt != nil {
-			leaseExpiresAt := *node.LeaseExpiresAt
-			nodeCopy.LeaseExpiresAt = &leaseExpiresAt
-		}
-		if node.StartedAt != nil {
-			startedAt := *node.StartedAt
-			nodeCopy.StartedAt = &startedAt
-		}
-		if node.FinishedAt != nil {
-			finishedAt := *node.FinishedAt
-			nodeCopy.FinishedAt = &finishedAt
-		}
-		nodeCopy.Contract.InputArtifacts = append([]string(nil), node.Contract.InputArtifacts...)
-		nodeCopy.Contract.OutputArtifacts = append([]string(nil), node.Contract.OutputArtifacts...)
-		if node.Contract.AllowedTools != nil {
-			nodeCopy.Contract.AllowedTools = append([]string{}, node.Contract.AllowedTools...)
-		}
-		if node.Dependencies != nil {
-			nodeCopy.Dependencies = append([]string(nil), node.Dependencies...)
-		}
-		if node.RequiredArtifacts != nil {
-			nodeCopy.RequiredArtifacts = append([]string(nil), node.RequiredArtifacts...)
-		}
-		if node.OutputArtifacts != nil {
-			nodeCopy.OutputArtifacts = append([]string(nil), node.OutputArtifacts...)
-		}
-		if node.Inputs != nil {
-			nodeCopy.Inputs = cloneStringAnyMap(node.Inputs)
-		}
-		if node.Metadata != nil {
-			nodeCopy.Metadata = cloneStringAnyMap(node.Metadata)
-		}
-		cloned.Nodes = append(cloned.Nodes, &nodeCopy)
-	}
-
-	cloned.Edges = make([]*models.TaskEdge, 0, len(plan.Edges))
-	for _, edge := range plan.Edges {
-		if edge == nil {
-			cloned.Edges = append(cloned.Edges, nil)
-			continue
-		}
-		edgeCopy := *edge
-		cloned.Edges = append(cloned.Edges, &edgeCopy)
-	}
-
-	if plan.Context != nil {
-		contextCopy := *plan.Context
-		if plan.Context.MemoryRefs != nil {
-			contextCopy.MemoryRefs = append([]string(nil), plan.Context.MemoryRefs...)
-		}
-		cloned.Context = &contextCopy
-	}
-	if plan.Meta.MemoryRefs != nil {
-		cloned.Meta.MemoryRefs = append([]string(nil), plan.Meta.MemoryRefs...)
-	}
-	if plan.Acceptance != nil {
-		acceptance := *plan.Acceptance
-		if plan.Acceptance.Goals != nil {
-			acceptance.Goals = cloneTyped(plan.Acceptance.Goals)
-		}
-		if plan.Acceptance.RequiredArtifacts != nil {
-			acceptance.RequiredArtifacts = append([]string(nil), plan.Acceptance.RequiredArtifacts...)
-		}
-		if plan.Acceptance.RequiredTaskIDs != nil {
-			acceptance.RequiredTaskIDs = append([]string(nil), plan.Acceptance.RequiredTaskIDs...)
-		}
-		cloned.Acceptance = &acceptance
-	}
-	cloned.OutcomeDetails = cloneTyped(plan.OutcomeDetails)
-
-	cloned.Artifacts = make(map[string]models.Artifact, len(plan.Artifacts))
-	cloned.RuntimeActions = cloneTyped(plan.RuntimeActions)
-	cloned.ToolCalls = cloneTyped(plan.ToolCalls)
-	for k, v := range plan.Artifacts {
-		artifactCopy := v
-		if v.Metadata != nil {
-			artifactCopy.Metadata = cloneStringAnyMap(v.Metadata)
-		}
-		cloned.Artifacts[k] = artifactCopy
-	}
-
-	return &cloned
-}
-
-func cloneTyped[T any](in T) T {
-	raw, _ := json.Marshal(in)
-	var out T
-	_ = json.Unmarshal(raw, &out)
-	return out
-}
-
-func clonePlanEvent(event models.PlanEvent) models.PlanEvent {
-	cloned := event
-	if event.Payload != nil {
-		cloned.Payload = cloneStringAnyMap(event.Payload)
-	}
-	return cloned
-}
-
-func cloneStringAnyMap(in map[string]any) map[string]any {
-	out := make(map[string]any, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
 }
