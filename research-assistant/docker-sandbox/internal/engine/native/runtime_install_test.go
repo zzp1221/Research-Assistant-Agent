@@ -2,31 +2,13 @@ package native
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestInstallRuntimeWithFakeUV(t *testing.T) {
 	dir := t.TempDir()
-	uv := filepath.Join(dir, "fake-uv.sh")
-	script := "#!/bin/sh\n" +
-		"case \"$1\" in\n" +
-		"  python) exit 0 ;;\n" +
-		"  venv)\n" +
-		"    shift\n" +
-		"    mkdir -p \"$1/bin\"\n" +
-		"    printf '#!/bin/sh\\n' > \"$1/bin/python\"\n" +
-		"    chmod +x \"$1/bin/python\"\n" +
-		"    ;;\n" +
-		"  pip)\n" +
-		"    if [ \"$2\" = \"freeze\" ]; then echo 'six==1.0'; fi\n" +
-		"    ;;\n" +
-		"esac\n" +
-		"exit 0\n"
-	if err := os.WriteFile(uv, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	uv := fixtureUV(t)
 	manager := NewRuntimeManager(uv, filepath.Join(dir, "runtimes"), filepath.Join(dir, "venvs"), filepath.Join(dir, "logs"))
 	provider := &Provider{runtimes: manager, sessions: map[string]*nativeSession{}}
 	status, err := provider.InstallRuntime(context.Background(), "3.11")
@@ -42,24 +24,7 @@ func TestInstallRuntimeWithFakeUV(t *testing.T) {
 }
 func TestEnsureRuntimeProgressStages(t *testing.T) {
 	dir := t.TempDir()
-	uv := filepath.Join(dir, "fake-uv.sh")
-	script := "#!/bin/sh\n" +
-		"case \"$1\" in\n" +
-		"  python) exit 0 ;;\n" +
-		"  venv)\n" +
-		"    shift\n" +
-		"    mkdir -p \"$1/bin\"\n" +
-		"    printf '#!/bin/sh\\n' > \"$1/bin/python\"\n" +
-		"    chmod +x \"$1/bin/python\"\n" +
-		"    ;;\n" +
-		"  pip)\n" +
-		"    if [ \"$2\" = \"freeze\" ]; then echo 'six==1.0'; fi\n" +
-		"    ;;\n" +
-		"esac\n" +
-		"exit 0\n"
-	if err := os.WriteFile(uv, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	uv := fixtureUV(t)
 	manager := NewRuntimeManager(uv, filepath.Join(dir, "runtimes"), filepath.Join(dir, "venvs"), filepath.Join(dir, "logs"))
 	stages := []string{}
 	_, err := manager.EnsureRuntimeWithProgress(context.Background(), "3.11", []string{"six==1.0"}, func(stage string) {

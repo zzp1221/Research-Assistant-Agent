@@ -438,7 +438,8 @@ func TestAcceptanceProjectExperienceAndSettings(t *testing.T) {
 	for n := 0; n < 5; n++ {
 		r := testRecord("o", fmt.Sprintf("episode %d", n), "条件 batch=128 导致 OOM；恢复用 batch=16。")
 		r.Kind = KindEpisode
-		r.Scope = Scope{OwnerID: "o", ProjectID: "rag", PlanID: fmt.Sprint(n)}
+		r.Scope = Scope{OwnerID: "o", ProjectID: "rag"}
+		r.Refs = []SourceRef{{PlanID: fmt.Sprint(n)}}
 		r.CreatedAt = time.Now().Add(-10 * 24 * time.Hour)
 		r.UpdatedAt = r.CreatedAt
 		_, _, _ = s.PutBatch(ctx, []Record{r})
@@ -448,7 +449,7 @@ func TestAcceptanceProjectExperienceAndSettings(t *testing.T) {
 		t.Fatal("retention settings ineffective", report, err)
 	}
 	all, _, _ := s.List(ctx, Query{OwnerID: "o", Statuses: []Status{StatusPending}, Kinds: []Kind{KindReflection}})
-	if len(all) != 1 || all[0].Scope.PlanID != "" || !strings.Contains(all[0].Content, "batch=16") || len(all[0].DerivedFrom) != 3 {
+	if len(all) != 1 || all[0].Scope.PlanID != "" || !strings.Contains(all[0].Content, "batch=16") || len(all[0].DerivedFrom) != 7 {
 		t.Fatal("reflection lost conditions or project scope", all)
 	}
 	v.Mode = "invalid"

@@ -6,6 +6,7 @@ import (
 )
 
 func TestDefaultNetworkIsNone(t *testing.T) {
+	setSandboxTestImagePolicy(t)
 	t.Setenv("SANDBOX_NETWORK_MODE", "")
 	args, err := secureDockerRunArgs("python:3.11-slim", nil)
 	if err != nil {
@@ -21,6 +22,7 @@ func TestDefaultNetworkIsNone(t *testing.T) {
 }
 
 func TestBridgeNetworkRequiresExplicitRequestAndPolicy(t *testing.T) {
+	setSandboxTestImagePolicy(t)
 	t.Setenv("SANDBOX_NETWORK_MODE", "")
 	t.Setenv("SANDBOX_ALLOW_NETWORK", "true")
 	args, err := secureDockerRunArgs("python:3.11-slim", nil, CreateOptions{NetworkMode: NetworkBridge})
@@ -37,12 +39,14 @@ func TestBridgeNetworkRequiresExplicitRequestAndPolicy(t *testing.T) {
 }
 
 func TestUnsupportedNetworkModeRejected(t *testing.T) {
+	setSandboxTestImagePolicy(t)
 	if _, err := secureDockerRunArgs("python:3.11-slim", nil, CreateOptions{NetworkMode: "host"}); err == nil {
 		t.Fatal("host network must not be accepted")
 	}
 }
 
 func TestDiskLimitAddsTmpfsOnlyWithoutHostMount(t *testing.T) {
+	setSandboxTestImagePolicy(t)
 	args, err := secureDockerRunArgs("python:3.11-slim", nil, CreateOptions{Limits: Limits{MaxDiskGB: 2}})
 	if err != nil {
 		t.Fatal(err)
@@ -61,6 +65,7 @@ func TestDiskLimitAddsTmpfsOnlyWithoutHostMount(t *testing.T) {
 }
 
 func TestRuntimeAllowlist(t *testing.T) {
+	setSandboxTestImagePolicy(t)
 	t.Setenv("SANDBOX_ALLOWED_RUNTIMES", "runc,runsc")
 	args, err := secureDockerRunArgs("python:3.11-slim", nil, CreateOptions{Runtime: "runsc"})
 	if err != nil {
@@ -98,6 +103,7 @@ func TestParseDockerBytes(t *testing.T) {
 }
 
 func TestStrictSecurityProfileAppliesNonRootReadOnly(t *testing.T) {
+	setSandboxTestImagePolicy(t)
 	t.Setenv("SANDBOX_SECURITY_PROFILE", "strict")
 	t.Setenv("SANDBOX_CONTAINER_USER", "")
 	t.Setenv("SANDBOX_READ_ONLY_ROOT", "")

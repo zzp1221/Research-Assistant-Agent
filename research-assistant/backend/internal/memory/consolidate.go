@@ -2,11 +2,14 @@ package memory
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"research-assistant-backend/internal/models"
 )
 
 // ConsolidationReport summarizes one consolidation pass.
@@ -73,11 +76,10 @@ func (c *Consolidator) RunOnce(ctx context.Context, ownerID string) (Consolidati
 				}
 			}
 		}
-		if (rec.Kind == KindEpisode || rec.Kind == KindNegative) && (rec.Status == StatusActive || rec.Status == StatusArchived) && rec.Trust != TrustUntrusted {
-			key := rec.Scope.OwnerID + "|" + rec.Scope.ProjectID
-			if rec.Scope.ProjectID == "" {
-				key += "|" + rec.Scope.SessionID + "|" + rec.Scope.PlanID + "|" + rec.Scope.AgentID
-			}
+		if (rec.Kind == KindEpisode || rec.Kind == KindNegative || rec.Kind == KindProcedure) && (rec.Status == StatusActive || rec.Status == StatusArchived || (rec.Kind == KindProcedure && rec.Status == StatusPending)) && rec.Trust != TrustUntrusted {
+			// Never broaden a session/plan/agent record into project visibility.
+			scopeKey, _ := json.Marshal(rec.Scope)
+			key := string(scopeKey)
 			groups[key] = append(groups[key], rec)
 		}
 	}
@@ -85,40 +87,133 @@ func (c *Consolidator) RunOnce(ctx context.Context, ownerID string) (Consolidati
 		if len(items) < 5 {
 			continue
 		}
-		sort.Slice(items, func(i, j int) bool { return items[i].UpdatedAt.After(items[j].UpdatedAt) })
-		derived := make([]string, 0, 3)
-		titles := make([]string, 0, 3)
-		for _, item := range items {
-			if len(derived) >= 3 {
-				break
+		sort.Slice(items, func(i, j int) bool {
+			if items[i].UpdatedAt.Equal(items[j].UpdatedAt) {
+				return items[i].ID < items[j].ID
 			}
-			derived = append(derived, item.ID)
-			titles = append(titles, truncateRunes(item.Title, 60))
-		}
+			return items[i].UpdatedAt.After(items[j].UpdatedAt)
+		})
+		// Keep contrasting outcomes before filling with recent cases. This is a
+		// reviewable case compilation, never an automatically inferred method.
+		chosen := selectReflectionCases(items, 8)
+		derived := make([]string, 0, len(chosen))
+		titles := make([]string, 0, 3)
 		scope := items[0].Scope
-		if scope.ProjectID != "" {
-			scope = Scope{OwnerID: ownerID, ProjectID: scope.ProjectID}
-		}
 		var content strings.Builder
 		var refs []SourceRef
-		for _, item := range items[:3] {
-			fmt.Fprintf(&content, "条件与经验 [%s]：%s\n", item.ID, truncateRunes(item.Content, 600))
+		content.WriteString("案例汇编（待审）：下列条件、动作与结果来自原始记录；未知条件保持未知，不据此宣称通用方法。成功与失败必须分别核对环境、协议和原始证据。\n")
+		cases := make([]ReflectionCase, 0, len(chosen))
+		independent := map[string]bool{}
+		for _, item := range chosen {
+			derived = append(derived, item.ID)
+			if len(titles) < 3 {
+				titles = append(titles, truncateRunes(item.Title, 60))
+			}
+			entry := reflectionCase(item)
+			cases = append(cases, entry)
+			if entry.IndependentExecution != "" {
+				independent[entry.IndependentExecution] = true
+			}
+			encoded, _ := json.Marshal(entry)
+			fmt.Fprintf(&content, "%s\n", encoded)
 			refs = append(refs, item.Refs...)
 		}
+		// References live at the top level to respect bounded metadata depth.
+		caseMetadata := make([]map[string]any, 0, len(cases))
+		for _, entry := range cases {
+			caseMetadata = append(caseMetadata, map[string]any{"memory_id": entry.MemoryID, "problem": entry.Problem, "action": entry.Action, "environment_hash": entry.Environment, "protocol_hash": entry.Protocol, "outcome": entry.Outcome, "independent_execution": entry.IndependentExecution})
+		}
+		evidence := map[string]any{"mode": "case_compilation", "cases": caseMetadata, "independent_executions": len(independent), "generalization": "not_established", "source_records": len(items), "omitted_records": len(items) - len(chosen)}
 		reflection := Record{
-			ID: "mem-reflection-" + strings.ReplaceAll(key, "|", "-"), Kind: KindReflection, Scope: scope,
-			Title:   "经验归纳：" + strings.Join(titles, "；"),
+			ID: "mem-reflection-" + ContentHash(KindReflection, scope, key, "case_compilation")[7:], Kind: KindReflection, Scope: scope,
+			Title:   "案例汇编：" + strings.Join(titles, "；"),
 			Content: content.String(), Refs: refs,
-			Tags: []string{"reflection", "consolidated"}, DerivedFrom: derived,
-			Source:   Source{Type: "consolidation", Ref: key, CreatedAt: now},
-			Evidence: Evidence{Class: "llm_inference", Confidence: 0.6}, Validity: Validity{RecordedAt: now},
+			Tags: []string{"reflection", "consolidated", "case_compilation"}, DerivedFrom: derived,
+			Attributes: map[string]any{"reflection_evidence": evidence},
+			Source:     Source{Type: "consolidation", Ref: key, CreatedAt: now},
+			Evidence:   Evidence{Class: "deterministic_compilation", Confidence: 0.6}, Validity: Validity{RecordedAt: now},
 			Importance: 7, Confidence: 0.6, Trust: TrustInferred, Sensitivity: "private", Status: StatusPending,
 		}
-		if _, err := c.store.Put(ctx, reflection); err == nil {
-			report.Reflections++
+		if existing, err := c.store.Get(ctx, ownerID, reflection.ID); err == nil && existing.Content == reflection.Content {
+			continue
 		}
+		if _, err := c.store.Put(ctx, reflection); err != nil {
+			return report, fmt.Errorf("persist reflection: %w", err)
+		}
+		report.Reflections++
 	}
 	return report, nil
+}
+
+// ReflectionCase keeps unknown coordinates explicit. Independent evidence is
+// counted only when an actual execution identity and original artifacts exist.
+type ReflectionCase struct {
+	MemoryID             string      `json:"memory_id"`
+	Problem              string      `json:"problem"`
+	Action               string      `json:"action"`
+	Environment          string      `json:"environment_hash"`
+	Protocol             string      `json:"protocol_hash"`
+	Outcome              string      `json:"outcome"`
+	IndependentExecution string      `json:"independent_execution,omitempty"`
+	Quote                string      `json:"quote"`
+	QuoteTruncated       bool        `json:"quote_truncated"`
+	Refs                 []SourceRef `json:"refs,omitempty"`
+}
+
+func reflectionCase(rec Record) ReflectionCase {
+	field := func(key string) string {
+		if value, ok := rec.Attributes[key].(string); ok && strings.TrimSpace(value) != "" {
+			return value
+		}
+		return "unknown"
+	}
+	result := ReflectionCase{MemoryID: rec.ID, Problem: field("problem"), Action: field("action"), Environment: field("environment_hash"), Protocol: field("protocol_hash"), Outcome: field("outcome"), Quote: truncateRunes(rec.Content, 400), QuoteTruncated: len([]rune(rec.Content)) > 400, Refs: rec.Refs}
+	if rec.Source.Type == "action_ledger" && rec.Evidence.Class == "execution_derived" {
+		var action models.ActionLedgerEntry
+		if start := strings.Index(rec.Content, "{"); start >= 0 && json.Unmarshal([]byte(rec.Content[start:]), &action) == nil {
+			result.Action = action.Action
+			result.Problem = "before_state=" + action.BeforeStateHash
+			result.Environment, result.Protocol = action.EnvironmentHash, action.ProtocolHash
+			if action.Verified && action.Kind == "repair" && action.ExecutionID != "" && action.BeforeStateHash != "" && action.AfterStateHash != "" && action.BeforeStateHash != action.AfterStateHash && len(action.BeforeEvidence) > 0 && len(action.AfterEvidence) > 0 && len(action.ArtifactRefs) > 0 {
+				result.IndependentExecution = action.ExecutionID
+				result.Outcome = "verified_single_case"
+			}
+		}
+	}
+	if rec.Kind == KindNegative {
+		result.Outcome = "negative"
+	}
+	if rec.Evidence.Class == "execution_derived" && rec.Trust == TrustVerified && field("execution_id") != "unknown" {
+		for _, ref := range rec.Refs {
+			if ref.ArtifactRef != "" {
+				result.IndependentExecution = field("execution_id")
+				break
+			}
+		}
+	}
+	return result
+}
+
+func selectReflectionCases(items []Record, limit int) []Record {
+	chosen := make([]Record, 0, min(limit, len(items)))
+	used := map[string]bool{}
+	conditions := map[string]bool{}
+	// Keep one case from every explicit condition/outcome combination first.
+	for _, item := range items {
+		entry := reflectionCase(item)
+		key := entry.Problem + "|" + entry.Action + "|" + entry.Environment + "|" + entry.Protocol + "|" + entry.Outcome
+		if conditions[key] || len(chosen) >= limit {
+			continue
+		}
+		conditions[key], used[item.ID] = true, true
+		chosen = append(chosen, item)
+	}
+	for _, item := range items {
+		if !used[item.ID] && len(chosen) < limit {
+			chosen = append(chosen, item)
+		}
+	}
+	return chosen
 }
 
 func retentionDaysFor(kind Kind) int {

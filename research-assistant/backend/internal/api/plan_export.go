@@ -56,13 +56,18 @@ type bundleOmittedEntry struct {
 }
 
 type bundleEnvironment struct {
-	Image           string `json:"image,omitempty"`
-	ImageDigest     string `json:"image_digest,omitempty"`
-	SandboxProvider string `json:"sandbox_provider,omitempty"`
-	Isolation       string `json:"isolation,omitempty"`
-	RuntimeHash     string `json:"runtime_hash,omitempty"`
-	BaseOS          string `json:"base_os,omitempty"`
-	NetworkEnforced string `json:"network_enforced,omitempty"`
+	Image             string `json:"image,omitempty"`
+	ImageDigest       string `json:"image_digest,omitempty"`
+	ImageResolved     string `json:"image_resolved,omitempty"`
+	ImageRepoDigest   string `json:"image_repo_digest,omitempty"`
+	ImageID           string `json:"image_id,omitempty"`
+	ImageDigestSource string `json:"image_digest_source,omitempty"`
+	ImagePlatform     string `json:"image_platform,omitempty"`
+	SandboxProvider   string `json:"sandbox_provider,omitempty"`
+	Isolation         string `json:"isolation,omitempty"`
+	RuntimeHash       string `json:"runtime_hash,omitempty"`
+	BaseOS            string `json:"base_os,omitempty"`
+	NetworkEnforced   string `json:"network_enforced,omitempty"`
 }
 
 type bundleManifest struct {
@@ -523,6 +528,8 @@ func buildPlanBundle(plan *models.PlanGraph, events []models.PlanEvent, limits e
 
 	manifest.Environment = bundleEnvironment{
 		Image: env.Image, ImageDigest: env.ImageDigest,
+		ImageResolved: env.ImageResolved, ImageRepoDigest: env.ImageRepoDigest,
+		ImageID: env.ImageID, ImageDigestSource: env.ImageDigestSource, ImagePlatform: env.ImagePlatform,
 		SandboxProvider: env.SandboxProvider, Isolation: env.Isolation,
 		RuntimeHash: env.RuntimeHash, BaseOS: env.BaseOS, NetworkEnforced: env.NetworkEnforced,
 	}

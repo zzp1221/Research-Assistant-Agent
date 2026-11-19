@@ -1,104 +1,150 @@
-<mxfile host="app.diagrams.net" modified="2026-11-02T00:00:00.000Z" agent="research-assistant" version="24.7.17" type="device">
-  <diagram id="architecture" name="System Architecture">
-    <mxGraphModel dx="1760" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1760" pageHeight="1420" math="0" shadow="0">
+<mxfile host="app.diagrams.net" agent="research-assistant" version="24.7.17" type="device">
+  <diagram id="architecture" name="系统架构 / SYSTEM ARCHITECTURE">
+    <mxGraphModel grid="1" gridSize="8" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="1072" background="#ffffff" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="T" value="Research Assistant Agent — System Architecture" style="text;html=1;fontSize=20;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="40" y="16" width="1680" height="40" as="geometry" /></mxCell>
-        <mxCell id="G-CLIENT" value="Clients" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="40" y="78" width="360" height="170" as="geometry" /></mxCell>
-        <mxCell id="U1" value="Researcher / Desktop user" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="116" width="320" height="38" as="geometry" /></mxCell>
-        <mxCell id="U2" value="Web Browser" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="164" width="150" height="38" as="geometry" /></mxCell>
-        <mxCell id="U3" value="API / CLI client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="230" y="164" width="150" height="38" as="geometry" /></mxCell>
-        <mxCell id="G-DESK" value="Windows Desktop (MyGo 0.7.4)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="40" y="268" width="360" height="262" as="geometry" /></mxCell>
-        <mxCell id="D1" value="MyGo window (WebView2)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="306" width="320" height="38" as="geometry" /></mxCell>
-        <mxCell id="D2" value="bridge (mygo.Bind)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="354" width="150" height="36" as="geometry" /></mxCell>
-        <mxCell id="D3" value="supervisor&#10;(Job Object)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="230" y="354" width="150" height="36" as="geometry" /></mxCell>
-        <mxCell id="D4" value="loopback proxy (SSE)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="400" width="150" height="36" as="geometry" /></mxCell>
-        <mxCell id="D5" value="settings + DPAPI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="230" y="400" width="150" height="36" as="geometry" /></mxCell>
-        <mxCell id="D6" value="updater · diagnostics · tray" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="446" width="320" height="36" as="geometry" /></mxCell>
-        <mxCell id="G-FE" value="React Workbench" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="40" y="550" width="360" height="190" as="geometry" /></mxCell>
-        <mxCell id="F1" value="Chat · DAG · PDF · Literature&#10;Plans · Review · Cost · Memory · Settings" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="588" width="320" height="52" as="geometry" /></mxCell>
-        <mxCell id="F2" value="SSE event client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="652" width="150" height="36" as="geometry" /></mxCell>
-        <mxCell id="F3" value="desktop bridge" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="230" y="652" width="150" height="36" as="geometry" /></mxCell>
-        <mxCell id="G-BE" value="Go Backend — API, cognition, governance, scheduling, execution" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="440" y="78" width="760" height="780" as="geometry" /></mxCell>
-        <mxCell id="G-API" value="API layer" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="460" y="116" width="720" height="96" as="geometry" /></mxCell>
-        <mxCell id="A1" value="Gin API · auth · CORS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="480" y="150" width="220" height="40" as="geometry" /></mxCell>
-        <mxCell id="A2" value="Uploads · documents" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="720" y="150" width="220" height="40" as="geometry" /></mxCell>
-        <mxCell id="A3" value="SSE tickets · events" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="960" y="150" width="200" height="40" as="geometry" /></mxCell>
-        <mxCell id="G-COG" value="Cognition &amp; governance" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="460" y="230" width="720" height="230" as="geometry" /></mxCell>
-        <mxCell id="C1" value="Intent Router" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="480" y="266" width="160" height="40" as="geometry" /></mxCell>
-        <mxCell id="C2" value="Complexity Router L0–L4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="660" y="266" width="180" height="40" as="geometry" /></mxCell>
-        <mxCell id="C3" value="Planner + DAG Validator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="860" y="266" width="300" height="40" as="geometry" /></mxCell>
-        <mxCell id="C4" value="Revision Store + Review Gate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="480" y="326" width="300" height="40" as="geometry" /></mxCell>
-        <mxCell id="C5" value="Plan Store (snapshot + JSONL)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="800" y="326" width="360" height="40" as="geometry" /></mxCell>
-        <mxCell id="C6" value="Budget · Usage · Audit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="480" y="386" width="680" height="40" as="geometry" /></mxCell>
-        <mxCell id="G-SCH" value="Scheduling &amp; execution" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="460" y="478" width="720" height="230" as="geometry" /></mxCell>
-        <mxCell id="S1" value="Scheduler (lease · retry · cancel · budget)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="480" y="514" width="340" height="40" as="geometry" /></mxCell>
-        <mxCell id="S2" value="Runtime Gate (approval)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="840" y="514" width="320" height="40" as="geometry" /></mxCell>
-        <mxCell id="S3" value="RoutedTaskExecutor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="480" y="574" width="220" height="40" as="geometry" /></mxCell>
-        <mxCell id="S4" value="AgentProfile + PromptVersion" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="720" y="574" width="220" height="40" as="geometry" /></mxCell>
-        <mxCell id="S5" value="Memory injection&#10;(core / retrieved)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="960" y="574" width="200" height="40" as="geometry" /></mxCell>
-        <mxCell id="S6" value="ToolInvoker (native / HTTP / MCP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="480" y="634" width="340" height="40" as="geometry" /></mxCell>
-        <mxCell id="S7" value="MemorySink + PlanFinalizer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="840" y="634" width="320" height="40" as="geometry" /></mxCell>
-        <mxCell id="G-AG" value="Specialized agents (12 roles, routed by assigned_to)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="440" y="886" width="760" height="196" as="geometry" /></mxCell>
-        <mxCell id="AG1" value="Chat / General" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="460" y="922" width="170" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG2" value="Librarian" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="650" y="922" width="170" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG3" value="Benchmark" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="840" y="922" width="170" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG4" value="Coder" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1030" y="922" width="150" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG5" value="Research Coding" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="460" y="970" width="170" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG6" value="Data" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="650" y="970" width="170" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG7" value="AutoResearch" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="840" y="970" width="170" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG8" value="Experiment Research" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1030" y="970" width="150" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG9" value="Ablation ToT" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="460" y="1018" width="170" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG10" value="Paper Debug" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="650" y="1018" width="170" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG11" value="Visual Verifier" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="840" y="1018" width="170" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG12" value="Answer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1030" y="1018" width="150" height="38" as="geometry" /></mxCell>
-        <mxCell id="G-SB" value="Sandbox service — control plane + execution plane" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="440" y="1110" width="760" height="180" as="geometry" /></mxCell>
-        <mxCell id="SB1" value="gateway (auth + proxy)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;" vertex="1" parent="1"><mxGeometry x="460" y="1148" width="220" height="46" as="geometry" /></mxCell>
-        <mxCell id="SB2" value="executor (privileged)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;" vertex="1" parent="1"><mxGeometry x="700" y="1148" width="220" height="46" as="geometry" /></mxCell>
-        <mxCell id="SB3" value="Provider: docker · native&#10;vm · remote" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="940" y="1148" width="240" height="46" as="geometry" /></mxCell>
-        <mxCell id="SB4" value="gateway has no Docker socket; executor is unpublished" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="460" y="1214" width="720" height="30" as="geometry" /></mxCell>
-        <mxCell id="G-EXT" value="External dependencies" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="1240" y="78" width="480" height="280" as="geometry" /></mxCell>
-        <mxCell id="E1" value="LLM provider — OpenAI-compatible (DeepSeek default)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1260" y="116" width="440" height="44" as="geometry" /></mxCell>
-        <mxCell id="E2" value="Research Optimizer — Python + SQLite" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1260" y="172" width="440" height="44" as="geometry" /></mxCell>
-        <mxCell id="E3" value="Literature sources&#10;arXiv · OpenAlex · Crossref · PubMed · S2 · DBLP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1260" y="228" width="440" height="44" as="geometry" /></mxCell>
-        <mxCell id="E4" value="Docker daemon · WSL2 · OpenSandbox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1260" y="284" width="440" height="44" as="geometry" /></mxCell>
-        <mxCell id="G-STORE" value="Persistent state" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="1240" y="390" width="480" height="380" as="geometry" /></mxCell>
-        <mxCell id="P1" value="Plan + revision store" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1260" y="426" width="440" height="40" as="geometry" /></mxCell>
-        <mxCell id="P2" value="Memory store (JSONL + BM25 + snapshots)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1260" y="478" width="440" height="40" as="geometry" /></mxCell>
-        <mxCell id="P3" value="Upload / document store" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1260" y="530" width="440" height="40" as="geometry" /></mxCell>
-        <mxCell id="P4" value="Literature library" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1260" y="582" width="440" height="40" as="geometry" /></mxCell>
-        <mxCell id="P5" value="Budget / usage / audit" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1260" y="634" width="440" height="40" as="geometry" /></mxCell>
-        <mxCell id="P6" value="Artifact / blob store" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1260" y="686" width="440" height="40" as="geometry" /></mxCell>
-        <mxCell id="G-DSTATE" value="Desktop local state" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="1240" y="800" width="480" height="160" as="geometry" /></mxCell>
-        <mxCell id="P7" value="settings.json · secrets.dat (DPAPI)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1260" y="836" width="440" height="36" as="geometry" /></mxCell>
-        <mxCell id="P8" value="runtimes · workspaces · logs · crash dumps" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1260" y="886" width="440" height="36" as="geometry" /></mxCell>
-        <mxCell id="NOTE" value="Runtime permission (confirm_important / full_access) gates image pulls, dependency installs, downloads, GPU and network.&#10;Sandbox capabilities are negotiated per provider; missing capabilities return blocked + missing_requirements, never silent mock success." style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="440" y="1320" width="1280" height="70" as="geometry" /></mxCell>
-        <mxCell id="e1" value="launch" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="U1" target="D1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e2" value="HTTPS" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="U2" target="F1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e3" value="REST / CLI" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="U3" target="A1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e4" value="loads" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="D1" target="D4"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e5" value="same-origin" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="D4" target="F1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e6" value="REST" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="F1" target="A1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e7" value="SSE" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;dashed=1;fontSize=11;" edge="1" parent="1" source="F2" target="A3"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e9" value="intent" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="A1" target="C1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e10" value="classify" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="C1" target="C2"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e11" value="route" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="C2" target="C3"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e12" value="PlanGraph" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="C3" target="C4"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e13" value="save / revision" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="C4" target="C5"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e14" value="execute" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="C5" target="S1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e15" value="dispatch" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="S1" target="S3"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e16" value="resolve profile" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="S3" target="S4"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e17" value="inject" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="S4" target="S5"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e18" value="invoke" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="S5" target="G-AG"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e19" value="tools" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="G-AG" target="S6"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e20" value="sandbox client" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="G-AG" target="SB1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e21" value="proxy /api/v1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="SB1" target="SB2"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e22" value="provider" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="SB2" target="SB3"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e23" value="stdout / metrics / artifacts" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;dashed=1;fontSize=11;" edge="1" parent="1" source="SB3" target="S7"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e24" value="events" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;dashed=1;fontSize=11;" edge="1" parent="1" source="S7" target="F2"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e29" value="LLM calls" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;" edge="1" parent="1" source="G-AG" target="E1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="e35" value="persist outcome" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;dashed=1;fontSize=11;" edge="1" parent="1" source="S7" target="P1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="title" parent="1" vertex="1" value="系统架构 / SYSTEM ARCHITECTURE" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;text;align=left;fontSize=28;fontStyle=1;" tooltip="">
+          <mxGeometry x="32" y="24" width="1216" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" vertex="1" value="研究目标 → 可审阅计划 → 隔离执行 → 可验证结果" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;text;align=left;fontSize=18;fontColor=#64748b;" tooltip="">
+          <mxGeometry x="32" y="68" width="1216" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="clients" parent="1" vertex="1" value="&lt;b&gt;01  访问入口 / CLIENTS&lt;/b&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=1.2;fontSize=18;spacing=10;align=left;verticalAlign=top;spacingLeft=22;spacingTop=14;fontSize=20;" tooltip="">
+          <mxGeometry x="32" y="112" width="1216" height="138" as="geometry" />
+        </mxCell>
+        <mxCell id="web" parent="1" vertex="1" value="&lt;b&gt;Web 工作台&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;React · DAG · PDF · 文献 · 审批&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf4ff;strokeColor=#92acd1;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/frontend/src">
+          <mxGeometry x="56" y="168" width="352" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="desktop" parent="1" vertex="1" value="&lt;b&gt;Windows 桌面客户端&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;MyGo · supervisor · loopback proxy&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf4ff;strokeColor=#92acd1;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="desktop/shell; desktop/supervisor; desktop/proxy">
+          <mxGeometry x="464" y="168" width="352" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="api-client" parent="1" vertex="1" value="&lt;b&gt;API / CLI&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;REST · 上传 · SSE 事件订阅&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf4ff;strokeColor=#92acd1;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/api">
+          <mxGeometry x="872" y="168" width="352" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="backend" parent="1" vertex="1" value="&lt;b&gt;02  Go 后端 / ORCHESTRATION&lt;/b&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=1.2;fontSize=18;spacing=10;align=left;verticalAlign=top;spacingLeft=22;spacingTop=14;fontSize=20;" tooltip="">
+          <mxGeometry x="32" y="310" width="880" height="454" as="geometry" />
+        </mxCell>
+        <mxCell id="api" parent="1" vertex="1" value="&lt;b&gt;API 接入与资料解析&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;认证 · CORS · 上传 · 文档 · 文献 · SSE&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf4ff;strokeColor=#92acd1;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/api">
+          <mxGeometry x="56" y="366" width="832" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="planner" parent="1" vertex="1" value="&lt;b&gt;意图与任务规划&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;Intent / L0–L4 / DAG 校验&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf4ff;strokeColor=#92acd1;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/planner">
+          <mxGeometry x="56" y="462" width="248" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="review" parent="1" vertex="1" value="&lt;b&gt;版本与计划审阅&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;Revision · Review Gate&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf4ff;strokeColor=#92acd1;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/revision">
+          <mxGeometry x="348" y="462" width="248" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="scheduler" parent="1" vertex="1" value="&lt;b&gt;调度与执行治理&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;租约 · 重试 · 审批 · 预算&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf4ff;strokeColor=#92acd1;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/scheduler">
+          <mxGeometry x="640" y="462" width="248" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="context" parent="1" vertex="1" value="&lt;b&gt;上下文与记忆&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;模型容量 · core / retrieved · Wiki&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f3effb;strokeColor=#b09bcf;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/contextwindow; research-assistant/backend/internal/memory/budget.go">
+          <mxGeometry x="56" y="582" width="384" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="router" parent="1" vertex="1" value="&lt;b&gt;RoutedTaskExecutor&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;输入绑定 · Agent / Profile 路由&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf7f0;strokeColor=#8fbaa0;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/scheduler/executor.go">
+          <mxGeometry x="488" y="582" width="400" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="agents" parent="1" vertex="1" value="&lt;b&gt;专业 Agent + 受控工具&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;研究 · 编码 · 评测 · 验证  /  native · HTTP · MCP&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf7f0;strokeColor=#8fbaa0;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/agent; research-assistant/backend/internal/tools">
+          <mxGeometry x="56" y="690" width="832" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="resources" parent="1" vertex="1" value="&lt;b&gt;03  模型与状态 / RESOURCES&lt;/b&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=1.2;fontSize=18;spacing=10;align=left;verticalAlign=top;spacingLeft=22;spacingTop=14;fontSize=20;" tooltip="">
+          <mxGeometry x="944" y="310" width="304" height="454" as="geometry" />
+        </mxCell>
+        <mxCell id="llm" parent="1" vertex="1" value="&lt;b&gt;模型服务&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;运行期 ModelProfile&lt;br&gt;兼容 API / 能力声明&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f3effb;strokeColor=#b09bcf;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/modelresolver">
+          <mxGeometry x="968" y="366" width="256" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="memory" parent="1" vertex="1" value="&lt;b&gt;研究知识与资料&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;Memory · Paper Wiki&lt;br&gt;文档 · 文献库&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f3effb;strokeColor=#b09bcf;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/memory; research-assistant/backend/internal/wiki">
+          <mxGeometry x="968" y="474" width="256" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="stores" parent="1" vertex="1" value="&lt;b&gt;持久化状态&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;计划 · revision · 预算&lt;br&gt;usage · audit · 文件存储&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#fff5e6;strokeColor=#d7b77d;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/store; research-assistant/backend/internal/budget">
+          <mxGeometry x="968" y="582" width="256" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="optimizer" parent="1" vertex="1" value="&lt;b&gt;研究优化器（可选）&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;Python · 候选排序 · SQLite&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f3effb;strokeColor=#b09bcf;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/research-optimizer">
+          <mxGeometry x="968" y="690" width="256" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="sandbox" parent="1" vertex="1" value="&lt;b&gt;04  沙箱执行与结果 / EXECUTION &amp;amp; EVIDENCE&lt;/b&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=1.2;fontSize=18;spacing=10;align=left;verticalAlign=top;spacingLeft=22;spacingTop=14;fontSize=20;" tooltip="">
+          <mxGeometry x="32" y="824" width="1216" height="156" as="geometry" />
+        </mxCell>
+        <mxCell id="gateway" parent="1" vertex="1" value="&lt;b&gt;Sandbox gateway&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;鉴权与转发 · 无 Docker socket&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#fff0ed;strokeColor=#d3a097;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/docker-sandbox/gateway.go">
+          <mxGeometry x="56" y="884" width="256" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="executor" parent="1" vertex="1" value="&lt;b&gt;Sandbox executor&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;执行面 · 资源与网络限制&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#fff0ed;strokeColor=#d3a097;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/docker-sandbox/internal/engine">
+          <mxGeometry x="356" y="884" width="256" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="provider" parent="1" vertex="1" value="&lt;b&gt;Provider&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;docker / native / vm / remote&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf4ff;strokeColor=#92acd1;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/docker-sandbox/internal/engine">
+          <mxGeometry x="656" y="884" width="256" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="artifacts" parent="1" vertex="1" value="&lt;b&gt;产物与验收&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;Artifact · 环境清单 · 证据图&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#fff5e6;strokeColor=#d7b77d;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/planner/semantic_validation.go">
+          <mxGeometry x="956" y="884" width="268" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="client-api" edge="1" parent="1" source="clients" target="api" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="640" y="280" />
+              <mxPoint x="472" y="280" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="api-plan" edge="1" parent="1" source="api" target="planner" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="472" y="444" />
+              <mxPoint x="180" y="444" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="plan-review" edge="1" parent="1" source="planner" target="review" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="review-schedule" edge="1" parent="1" source="review" target="scheduler" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="schedule-route" edge="1" parent="1" source="scheduler" target="router" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="764" y="558" />
+              <mxPoint x="688" y="558" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="context-route" edge="1" parent="1" source="context" target="router" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="route-agents" edge="1" parent="1" source="router" target="agents" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="688" y="674" />
+              <mxPoint x="472" y="674" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="llm-route" edge="1" parent="1" source="llm" target="router" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0;exitY=0.5;entryX=1;entryY=0.5;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=6 4;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="928" y="406" />
+              <mxPoint x="928" y="618" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="agent-execution" edge="1" parent="1" source="agents" target="sandbox" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="472" y="794" />
+              <mxPoint x="640" y="794" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="gateway-executor" edge="1" parent="1" source="gateway" target="executor" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="executor-provider" edge="1" parent="1" source="executor" target="provider" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="provider-artifacts" edge="1" parent="1" source="provider" target="artifacts" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="note" parent="1" vertex="1" value="事件总线 / SSE 回传工作台；PlanOutcome 区分完成、部分完成、smoke 与阻断。" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;text;align=left;fontSize=16;fontColor=#475569;" tooltip="">
+          <mxGeometry x="32" y="1014" width="1216" height="40" as="geometry" />
+        </mxCell>
       </root>
     </mxGraphModel>
   </diagram>

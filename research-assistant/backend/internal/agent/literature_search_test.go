@@ -38,7 +38,7 @@ func TestLibrarianLiteratureSearchImportsPDFAndRecordsMetadataOnly(t *testing.T)
 	librarian := &LibrarianAgent{Name: "librarian_agent", Literature: client, Library: store}
 	task := &models.Task{
 		ID: "t1", Type: "literature_search", Name: "Search Literature",
-		Inputs:   map[string]any{"query": "graph neural network", "limit": 2},
+		Inputs:   map[string]any{"query": "graph neural network", "limit": 2, "sources": []string{literature.SourceSemanticScholar, literature.SourceArxiv}},
 		Metadata: map[string]any{"tenant_id": "alice"},
 	}
 	if err := librarian.ExecuteTask(context.Background(), task, map[string]any{}); err != nil {

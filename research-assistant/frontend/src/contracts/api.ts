@@ -763,7 +763,7 @@ export interface MemoryCitation {
 }
 
 export interface ContextReport {
-	  http_requests?: { generation: number; compaction: number; counting: number };
+  http_requests?: { generation: number; compaction: number; counting: number };
   profile_id: string;
   profile_revision: number;
   model: string;
@@ -772,10 +772,43 @@ export interface ContextReport {
   compaction_mode: string;
   generation: number;
   input_observation: { tokens?: number; source: string; confidence: string };
+  materials?: {
+    id: string; kind: string; source: string; trust: string; version: string;
+    retention: 'verbatim' | 'retrievable'; tokens: number; selected: boolean;
+  }[];
   last_compaction?: {
     mode: string; status: string; request_attempts: number; latency_ms: number;
-    cost_usd?: number; at: string;
+    cost_usd?: number; at: string; error_code?: string; validation?: string;
   };
+}
+
+export interface MemoryRetrieveReport {
+  owner_records: number;
+  visible_records: number;
+  matched_candidates: number;
+  candidates: number;
+  selected: number;
+  core_tokens: number;
+  retrieved_tokens: number;
+  rank_excluded: number;
+  budget_excluded: number;
+  failure_stage: string;
+  ranking: string;
+  truncated?: number;
+}
+
+export interface MemoryContextBudget {
+  source: string;
+  prompt_limit: number;
+  required_tokens: number;
+  configured_core: number;
+  configured_retrieved: number;
+  core: number;
+  retrieved: number;
+  recall_tokens: number;
+  wiki_tokens: number;
+  document_tokens: number;
+  memory_tokens: number;
 }
 
 export interface ChatResponse {
@@ -788,6 +821,9 @@ export interface ChatResponse {
   retrieved_sources?: MemoryCitation[];
   answer_citations?: MemoryCitation[];
   wiki_citations?: MemoryCitation[];
+  memory_report?: MemoryRetrieveReport;
+  chat_recall_report?: MemoryRetrieveReport;
+  context_budget_report?: MemoryContextBudget;
 }
 
 export interface MemoryRecord {
@@ -1230,12 +1266,24 @@ export interface SandboxProbeCase {
   security: boolean;
   passed: boolean;
   detail?: string;
+  status?: 'pass' | 'fail' | 'error' | 'inconclusive';
+  expected?: string;
+  profile?: 'offline' | 'online';
 }
 
 export interface SandboxProbeReport {
   cases?: SandboxProbeCase[];
   appcontainer_ok?: boolean;
   reason?: string;
+  version?: string;
+  environment_key?: string;
+  runner?: string;
+  os?: string;
+  attempted?: number;
+  passed?: number;
+  failed?: number;
+  errors?: number;
+  inconclusive?: number;
 }
 
 export interface SandboxCapabilities {
@@ -1266,6 +1314,11 @@ export interface EnvironmentManifestView {
   network_enforced?: 'os' | 'none' | string;
   image?: string;
   image_digest?: string;
+  image_resolved?: string;
+  image_repo_digest?: string;
+  image_id?: string;
+  image_digest_source?: string;
+  image_platform?: string;
   python_version?: string;
   status?: string;
 }

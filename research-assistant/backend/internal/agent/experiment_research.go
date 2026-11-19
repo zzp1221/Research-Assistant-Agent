@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -413,6 +414,16 @@ func (a *ResearchCodingAgent) executeExperimentRun(ctx context.Context, task *mo
 
 		result := <-resultChannel
 		inFlight--
+		if isSandboxCapabilityError(result.Err) {
+			cancel()
+			// Stop dispatch and wait for already launched HTTP evaluations to
+			// observe cancellation before reporting the capability block.
+			for inFlight > 0 {
+				<-resultChannel
+				inFlight--
+			}
+			return failExperimentRun(task, ledger, result.Err)
+		}
 		delete(runningSelections, result.Selected.TrialNumber)
 		freeWorkers = append(freeWorkers, result.Selected.Worker)
 		sort.Ints(freeWorkers)
@@ -501,6 +512,10 @@ func (a *ResearchCodingAgent) executeExperimentRun(ctx context.Context, task *mo
 }
 
 func failExperimentRun(task *models.Task, ledger models.ExperimentTrialLedger, err error) error {
+	if isSandboxCapabilityError(err) {
+		ledger.Status, ledger.StopReason = "blocked", "sandbox_capability"
+		ledger.FinishedAt = time.Now().UTC()
+	}
 	payload, _ := json.Marshal(ledger)
 	if task != nil {
 		task.Result, task.StructuredData = string(payload), string(payload)
@@ -745,7 +760,7 @@ func (a *ResearchCodingAgent) evaluateExperimentCandidate(ctx context.Context, r
 	})
 	duration := time.Since(started).Milliseconds()
 	if integrityErr := verifyExperimentFiles(workspacePath, spec.FrozenFiles); integrityErr != nil {
-		return models.ExperimentEvaluation{}, duration, integrityErr
+		return models.ExperimentEvaluation{}, duration, errors.Join(integrityErr, execErr)
 	}
 	if execErr != nil {
 		return models.ExperimentEvaluation{}, duration, execErr
@@ -876,7 +891,13 @@ func (a *ResearchCodingAgent) executeExperimentValidation(ctx context.Context, t
 	for number := 1; number <= spec.ValidationRuns && protectedIntact; number++ {
 		started := time.Now()
 		baselineEvaluation, baselineDuration, baselineErr := a.evaluateExperimentCandidate(ctx, runtimeSession, workspacePath, spec, baseline, true)
+		if isSandboxCapabilityError(baselineErr) {
+			return failResearchCodingTask(task, baselineErr)
+		}
 		candidateEvaluation, candidateDuration, candidateErr := a.evaluateExperimentCandidate(ctx, runtimeSession, workspacePath, spec, best.Candidate, true)
+		if isSandboxCapabilityError(candidateErr) {
+			return failResearchCodingTask(task, candidateErr)
+		}
 		run := models.ExperimentValidationRun{Number: number, Status: "failed", DurationMS: time.Since(started).Milliseconds()}
 		if baselineErr != nil || candidateErr != nil {
 			executionFailed = true

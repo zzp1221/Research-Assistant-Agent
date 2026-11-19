@@ -8,8 +8,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -49,7 +50,18 @@ func (r *windowsRunner) Run(ctx context.Context, spec runSpec) (*engine.Result, 
 	if len(spec.Argv) == 0 {
 		return nil, fmt.Errorf("native command argv is empty")
 	}
-	isolation := SelectIsolation(r.requested, r.currentProbe(), spec.GPURequired)
+	var err error
+	spec, err = prepareProcessSpec(spec)
+	if err != nil {
+		return nil, err
+	}
+	isolation := spec.Isolation
+	if isolation == "" {
+		isolation, err = ResolveIsolation(r.requested, r.currentProbe(), spec.GPURequired)
+		if err != nil {
+			return nil, err
+		}
+	}
 	switch isolation {
 	case IsolationAppContainer:
 		capabilities, err := appContainerCapabilities(spec.NetworkOn)
@@ -65,11 +77,62 @@ func (r *windowsRunner) Run(ctx context.Context, spec runSpec) (*engine.Result, 
 		defer token.Close()
 		return runRawProcess(ctx, spec, rawLaunch{Token: token})
 	default:
-		return runExecProcess(ctx, spec)
+		return nil, fmt.Errorf("unknown native process isolation")
 	}
 }
 
+func prepareProcessSpec(spec runSpec) (runSpec, error) {
+	if len(spec.Argv) == 0 {
+		return spec, fmt.Errorf("native command argv is empty")
+	}
+	if spec.EnvironmentRoot == "" {
+		spec.EnvironmentRoot = spec.Cwd
+	}
+	if !filepath.IsAbs(spec.EnvironmentRoot) {
+		return spec, fmt.Errorf("native process workspace must be absolute")
+	}
+	if _, err := validateTaskEnvironment(spec.Env); err != nil {
+		return spec, err
+	}
+	if filepath.IsAbs(spec.Argv[0]) {
+		return spec, nil
+	}
+	if strings.ContainsAny(spec.Argv[0], "/\\:") {
+		return spec, fmt.Errorf("native process executable must be absolute or a system executable name")
+	}
+	base, err := systemEnvironment()
+	if err != nil {
+		return spec, err
+	}
+	paths := filepath.SplitList(base["PATH"])
+	if spec.Interpreter != "" {
+		if !filepath.IsAbs(spec.Interpreter) {
+			return spec, fmt.Errorf("trusted interpreter must be absolute")
+		}
+		paths = append([]string{filepath.Dir(spec.Interpreter)}, paths...)
+	}
+	name := spec.Argv[0]
+	for _, dir := range paths {
+		candidate := filepath.Join(dir, name)
+		if executable, err := exec.LookPath(candidate); err == nil {
+			spec.Argv = append([]string(nil), spec.Argv...)
+			spec.Argv[0] = executable
+			return spec, nil
+		}
+	}
+	return spec, fmt.Errorf("native executable is absent from the trusted search path")
+}
+
 func runExecProcess(ctx context.Context, spec runSpec) (*engine.Result, error) {
+	var err error
+	spec, err = prepareProcessSpec(spec)
+	if err != nil {
+		return nil, err
+	}
+	env, err := researchEnvironment(spec.EnvironmentRoot, spec.Interpreter, spec.Env)
+	if err != nil {
+		return nil, err
+	}
 	if spec.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, spec.Timeout)
@@ -77,7 +140,7 @@ func runExecProcess(ctx context.Context, spec runSpec) (*engine.Result, error) {
 	}
 	command := exec.CommandContext(ctx, spec.Argv[0], spec.Argv[1:]...)
 	command.Dir = spec.Cwd
-	command.Env = append(os.Environ(), EnvPairs(spec.Env)...)
+	command.Env = env
 	if spec.Stdin != "" {
 		command.Stdin = bytes.NewBufferString(spec.Stdin)
 	}

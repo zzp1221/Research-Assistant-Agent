@@ -38,8 +38,9 @@ func runtimeActionForTask(plan *models.PlanGraph, task *models.TaskNode) (models
 			image = "python:3.11-bullseye"
 		}
 		return models.RuntimeActionImagePull, runtimeActionTitle(plan, "拉取运行时镜像", "拉取论文运行时镜像"), map[string]any{
-			"image":    image,
-			"registry": imageRegistry(image),
+			"image":                 image,
+			"registry":              imageRegistry(image),
+			"expected_image_digest": spec.ImageDigest,
 		}, "medium", true
 	case "install_dependencies":
 		deps := dependencySpecForPlan(plan, spec)

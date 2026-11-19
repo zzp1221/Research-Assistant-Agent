@@ -12,16 +12,21 @@ import (
 var ErrUnsupportedPlatform = errors.New("native sandbox is only supported on windows")
 
 type runSpec struct {
-	Argv        []string
-	Cwd         string
-	Env         map[string]string
-	Stdin       string
-	MaxOutputKB int
-	Timeout     time.Duration
-	Limits      engine.Limits
-	GPURequired bool
-	NetworkOn   bool
-	Emit        func(engine.Event) error
+	Argv []string
+	Cwd  string
+	Env  map[string]string
+	// EnvironmentRoot and Interpreter are trusted session fields, never task
+	// environment overrides. Isolation freezes the session's selected runner.
+	EnvironmentRoot string
+	Interpreter     string
+	Isolation       string
+	Stdin           string
+	MaxOutputKB     int
+	Timeout         time.Duration
+	Limits          engine.Limits
+	GPURequired     bool
+	NetworkOn       bool
+	Emit            func(engine.Event) error
 }
 
 type commandRunner interface {

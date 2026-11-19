@@ -1,128 +1,127 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1760" height="1500" viewBox="0 0 1760 1500">
-<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#495057"/></marker></defs>
-<rect width="100%" height="100%" fill="#ffffff"/>
-<rect data-node-id="G-A" x="40" y="540" width="1680" height="300" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.2"/>
-<text x="52" y="562" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#343a40">Specialized agents</text>
-<rect data-node-id="G-CLM" x="40" y="880" width="380" height="260" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.2"/>
-<text x="52" y="902" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#343a40">Claim Evidence loop</text>
-<rect data-node-id="G-AUTO" x="1340" y="880" width="380" height="260" fill="#f8f9fa" stroke="#adb5bd" stroke-width="1.2"/>
-<text x="1352" y="902" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="700" fill="#343a40">AutoResearch loop</text>
-<polyline points="880.0,138.0 880.0,172.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<polyline points="880.0,224.0 880.0,258.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<text x="880.0" y="237.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">resolve</text>
-<polyline points="880.0,314.0 880.0,336.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<text x="880.0" y="321.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">inject</text>
-<polyline points="880.0,382.0 880.0,414.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<polyline points="880.0,494.0 880.0,540.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<text x="880.0" y="513.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">route</text>
-<polyline points="880.0,840.0 880.0,880.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<text x="880.0" y="856.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">tool call</text>
-<polyline points="880.0,840.0 650.0,840.0 650.0,980.0 880.0,980.0 880.0,976.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<text x="765.0" y="836.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">sandbox call</text>
-<polyline points="880.0,936.0 880.0,976.0" fill="none" stroke="#495057" stroke-width="1.3" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
-<text x="880.0" y="952.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">approved execution</text>
-<polyline points="880.0,1026.0 880.0,1064.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<text x="880.0" y="1041.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">stdout / metrics / files</text>
-<polyline points="880.0,1114.0 880.0,1152.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<polyline points="880.0,1202.0 880.0,1240.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<polyline points="880.0,1286.0 880.0,1324.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<polyline points="460.0,597.0 460.0,600.0 450.0,600.0 450.0,720.0 50.0,720.0 50.0,920.0 230.0,920.0 230.0,916.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<text x="250.0" y="716.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">claim rubric</text>
-<polyline points="230.0,952.0 230.0,962.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<polyline points="230.0,998.0 230.0,1008.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<polyline points="230.0,1044.0 230.0,1054.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<polyline points="400.0,1072.0 400.0,1090.0 660.0,1090.0 660.0,1089.0" fill="none" stroke="#495057" stroke-width="1.3" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
-<text x="530.0" y="1086.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">graph</text>
-<polyline points="1240.0,645.0 1240.0,640.0 1250.0,640.0 1250.0,720.0 1710.0,720.0 1710.0,920.0 1530.0,920.0 1530.0,916.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<text x="1480.0" y="716.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">AutoResearch</text>
-<polyline points="1530.0,952.0 1530.0,962.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<polyline points="1530.0,998.0 1530.0,1008.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<polyline points="1530.0,1044.0 1530.0,1054.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<polyline points="1530.0,1090.0 1530.0,1100.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<polyline points="1360.0,1118.0 1360.0,1120.0 1350.0,1120.0 1350.0,1030.0 1360.0,1030.0 1360.0,1026.0" fill="none" stroke="#495057" stroke-width="1.3" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
-<text x="1350.0" y="1071.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">reject</text>
-<polyline points="1530.0,1136.0 1530.0,1146.0" fill="none" stroke="#495057" stroke-width="1.3" marker-end="url(#arrow)"/>
-<text x="1530.0" y="1137.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">keep</text>
-<polyline points="1360.0,1164.0 1360.0,1160.0 1110.0,1160.0 1110.0,1090.0 1100.0,1090.0 1100.0,1089.0" fill="none" stroke="#495057" stroke-width="1.3" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
-<text x="1235.0" y="1156.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="10.5" fill="#495057" paint-order="stroke" stroke="#ffffff" stroke-width="4">validation</text>
-<rect data-node-id="T" x="40" y="16" width="1680" height="40" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="T" x="880" y="43" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="20" font-weight="700" fill="#212529">Agent Execution Flow — routing, memory, tools, sandbox and evidence</text>
-<rect data-node-id="START" x="660" y="80" width="440" height="58" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="START" x="880" y="102.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Scheduler TaskNode</text>
-<text data-node-id="START" x="880" y="117.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">(type · assigned_to · allowed_tools · inputs)</text>
-<rect data-node-id="ROUTER" x="660" y="172" width="440" height="52" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="ROUTER" x="880" y="191.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">RoutedTaskExecutor</text>
-<text data-node-id="ROUTER" x="880" y="206.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">resolve runner</text>
-<rect data-node-id="PROFILE" x="660" y="258" width="440" height="56" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="PROFILE" x="880" y="279.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">AgentProfile = PromptVersion + ModelProfile</text>
-<text data-node-id="PROFILE" x="880" y="294.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">+ ToolAllowlist + MaxSteps</text>
-<rect data-node-id="MEMORY" x="660" y="336" width="440" height="46" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="MEMORY" x="880" y="359.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Memory injection: core_memory + retrieved_memory + memory_refs</text>
-<polygon data-node-id="DEC" points="880,414 990,454 880,494 770,454" fill="#fff2cc" stroke="#d6b656" stroke-width="1.2"/>
-<text data-node-id="DEC" x="880" y="454.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Agent type?</text>
-<rect data-node-id="AG1" x="60" y="578" width="380" height="38" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
-<text data-node-id="AG1" x="250" y="597.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Chat / General</text>
-<rect data-node-id="AG2" x="460" y="578" width="380" height="38" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
-<text data-node-id="AG2" x="650" y="597.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Librarian</text>
-<rect data-node-id="AG3" x="860" y="578" width="380" height="38" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
-<text data-node-id="AG3" x="1050" y="597.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Benchmark</text>
-<rect data-node-id="AG4" x="1260" y="578" width="440" height="38" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
-<text data-node-id="AG4" x="1480" y="597.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Coder</text>
-<rect data-node-id="AG5" x="60" y="626" width="380" height="38" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
-<text data-node-id="AG5" x="250" y="645.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Research Coding</text>
-<rect data-node-id="AG6" x="460" y="626" width="380" height="38" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
-<text data-node-id="AG6" x="650" y="645.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Data</text>
-<rect data-node-id="AG7" x="860" y="626" width="380" height="38" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
-<text data-node-id="AG7" x="1050" y="645.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">AutoResearch</text>
-<rect data-node-id="AG8" x="1260" y="626" width="440" height="38" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
-<text data-node-id="AG8" x="1480" y="645.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Experiment Research</text>
-<rect data-node-id="AG9" x="60" y="674" width="380" height="38" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
-<text data-node-id="AG9" x="250" y="693.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Ablation ToT</text>
-<rect data-node-id="AG10" x="460" y="674" width="380" height="38" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
-<text data-node-id="AG10" x="650" y="693.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Paper Debug</text>
-<rect data-node-id="AG11" x="860" y="674" width="380" height="38" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
-<text data-node-id="AG11" x="1050" y="693.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Visual Verifier</text>
-<rect data-node-id="AG12" x="1260" y="674" width="440" height="38" rx="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.2"/>
-<text data-node-id="AG12" x="1480" y="693.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Answer</text>
-<rect data-node-id="G-NOTE" x="60" y="730" width="1640" height="34" rx="8" fill="#fff2cc" stroke="#d6b656" stroke-width="1.2"/>
-<text data-node-id="G-NOTE" x="880" y="747.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Every agent gets a bounded prompt, a frozen model profile and an explicit tool allowlist. No agent executes user code directly.</text>
-<rect data-node-id="TOOL" x="660" y="880" width="440" height="56" rx="8" fill="#f8cecc" stroke="#b85450" stroke-width="1.2"/>
-<text data-node-id="TOOL" x="880" y="901.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">ToolInvoker</text>
-<text data-node-id="TOOL" x="880" y="916.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">schema · grant · approval · ToolCallRecord</text>
-<rect data-node-id="SB" x="500" y="976" width="760" height="50" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="SB" x="880" y="1001.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Sandbox Client → gateway → executor → provider (docker / native / vm / remote)</text>
-<rect data-node-id="ART" x="660" y="1064" width="440" height="50" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="ART" x="880" y="1082.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Artifact builder</text>
-<text data-node-id="ART" x="880" y="1097.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">(non-empty · typed · producer-bound)</text>
-<rect data-node-id="VALID" x="660" y="1152" width="440" height="50" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="VALID" x="880" y="1170.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Artifact validation</text>
-<text data-node-id="VALID" x="880" y="1185.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">unique producer / contract</text>
-<rect data-node-id="STORE" x="660" y="1240" width="440" height="46" rx="8" fill="#ffe6cc" stroke="#d79b00" stroke-width="1.2"/>
-<text data-node-id="STORE" x="880" y="1263.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">PlanStore + Event Bus + SSE</text>
-<rect data-node-id="TERM" x="660" y="1324" width="440" height="46" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="TERM" x="880" y="1340.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Task terminal status</text>
-<text data-node-id="TERM" x="880" y="1355.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">completed / failed / canceled</text>
-<rect data-node-id="C1" x="60" y="916" width="340" height="36" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="C1" x="230" y="934.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Freeze claim rubric</text>
-<rect data-node-id="C2" x="60" y="962" width="340" height="36" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="C2" x="230" y="980.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Collect evidence inventory</text>
-<rect data-node-id="C3" x="60" y="1008" width="340" height="36" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="C3" x="230" y="1026.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">LLM adjudication per criterion</text>
-<rect data-node-id="C4" x="60" y="1054" width="340" height="36" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="C4" x="230" y="1072.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Verdict graph + coverage</text>
-<rect data-node-id="R1" x="1360" y="916" width="340" height="36" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="R1" x="1530" y="934.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Freeze ResearchSpec</text>
-<rect data-node-id="R2" x="1360" y="962" width="340" height="36" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="R2" x="1530" y="980.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Run baseline</text>
-<rect data-node-id="R3" x="1360" y="1008" width="340" height="36" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="R3" x="1530" y="1026.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Propose candidate patch</text>
-<rect data-node-id="R4" x="1360" y="1054" width="340" height="36" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="R4" x="1530" y="1072.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Evaluate candidate</text>
-<rect data-node-id="R5" x="1360" y="1100" width="340" height="36" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="R5" x="1530" y="1118.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Keep / Reject + rollback</text>
-<rect data-node-id="R6" x="1360" y="1146" width="340" height="36" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.2"/>
-<text data-node-id="R6" x="1530" y="1164.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Hidden holdout validation</text>
-<rect data-node-id="NOTE" x="440" y="1400" width="1280" height="70" rx="8" fill="#fff2cc" stroke="#d6b656" stroke-width="1.2"/>
-<text data-node-id="NOTE" x="1080" y="1428.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Artifacts that are empty, have duplicate producers or violate their contract fail the task.</text>
-<text data-node-id="NOTE" x="1080" y="1443.0" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#212529">Sandbox capability gaps return blocked + missing_requirements; visual verification failure is advisory and never fabricates completed.</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1200" viewBox="0 0 1280 1200" role="img" aria-labelledby="diagram-title diagram-description">
+  <title id="diagram-title">Agent 架构 / AGENT EXECUTION</title>
+  <desc id="diagram-description">专业分工 · 受控工具 · 真实执行 · 以证据决定结果。内置 runner 承载各领域循环；运行期审批、分类恢复与共享恢复额度贯穿执行过程。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0 0 L8 4 L0 8 Z" fill="#64748b" />
+    </marker>
+  </defs>
+  <rect width="1280" height="1200" fill="#ffffff" />
+  <text x="32" y="44" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="28" font-weight="700" fill="#1e293b" text-anchor="start" dominant-baseline="middle">Agent 架构 / AGENT EXECUTION</text>
+  <text x="32" y="82" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="18" font-weight="400" fill="#64748b" text-anchor="start" dominant-baseline="middle">专业分工 · 受控工具 · 真实执行 · 以证据决定结果</text>
+  <g data-node-id="prepare" data-source="">
+    <rect x="32" y="112" width="1216" height="148" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2" />
+    <text x="54" y="140" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="20" font-weight="700" fill="#1e293b" text-anchor="start" dominant-baseline="middle">01  任务准备 / DISPATCH</text>
+  </g>
+  <g data-node-id="agents" data-source="">
+    <rect x="32" y="320" width="1216" height="340" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2" />
+    <text x="54" y="348" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="20" font-weight="700" fill="#1e293b" text-anchor="start" dominant-baseline="middle">02  专业 Agent 与可扩展执行器 / AGENTS</text>
+  </g>
+  <g data-node-id="runtime" data-source="">
+    <rect x="32" y="724" width="1216" height="174" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2" />
+    <text x="54" y="752" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="20" font-weight="700" fill="#1e293b" text-anchor="start" dominant-baseline="middle">03  模型、工具与隔离执行 / RUNTIME</text>
+  </g>
+  <g data-node-id="results" data-source="">
+    <rect x="32" y="958" width="1216" height="150" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2" />
+    <text x="54" y="986" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="20" font-weight="700" fill="#1e293b" text-anchor="start" dominant-baseline="middle">04  结果与回传 / ACCEPTANCE</text>
+  </g>
+  <polyline points="408,204 464,204" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" data-edge-id="task-binding" />
+  <polyline points="816,204 872,204" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" data-edge-id="binding-router" />
+  <polyline points="1048,236 1048,292 640,292 640,320" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" data-edge-id="dispatch-agent" />
+  <polyline points="640,660 640,724" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" data-edge-id="agent-runtime" />
+  <polyline points="408,830 464,830" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="6 4" data-edge-id="model-tool" />
+  <polyline points="816,830 872,830" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="6 4" data-edge-id="tool-sandbox" />
+  <polyline points="640,898 640,958" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" data-edge-id="runtime-results" />
+  <polyline points="408,1051 464,1051" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" data-edge-id="artifact-outcome" />
+  <polyline points="816,1051 872,1051" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)" data-edge-id="outcome-events" />
+  <g data-node-id="task" data-source="research-assistant/backend/internal/scheduler/scheduler.go">
+    <title>research-assistant/backend/internal/scheduler/scheduler.go</title>
+    <rect x="56" y="172" width="352" height="64" rx="8" fill="#edf4ff" stroke="#92acd1" stroke-width="1.2" />
+    <text x="232.0" y="195.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="18" font-weight="700" fill="#1e293b" text-anchor="middle" dominant-baseline="middle">Scheduler / TaskNode</text>
+    <text x="232.0" y="218.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">type · assigned_to · inputs · contract</text>
+  </g>
+  <g data-node-id="binding" data-source="research-assistant/backend/internal/scheduler/executor.go">
+    <title>research-assistant/backend/internal/scheduler/executor.go</title>
+    <rect x="464" y="172" width="352" height="64" rx="8" fill="#f3effb" stroke="#b09bcf" stroke-width="1.2" />
+    <text x="640.0" y="195.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="18" font-weight="700" fill="#1e293b" text-anchor="middle" dominant-baseline="middle">输入绑定与上下文</text>
+    <text x="640.0" y="218.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">InputBindings · 记忆 · Wiki · 模型预算</text>
+  </g>
+  <g data-node-id="router" data-source="research-assistant/backend/internal/scheduler/executor.go">
+    <title>research-assistant/backend/internal/scheduler/executor.go</title>
+    <rect x="872" y="172" width="352" height="64" rx="8" fill="#edf7f0" stroke="#8fbaa0" stroke-width="1.2" />
+    <text x="1048.0" y="195.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="18" font-weight="700" fill="#1e293b" text-anchor="middle" dominant-baseline="middle">RoutedTaskExecutor</text>
+    <text x="1048.0" y="218.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">内置 runner 或 profile:&lt;id&gt;</text>
+  </g>
+  <g data-node-id="research" data-source="research-assistant/backend/internal/agent/chat.go; research-assistant/backend/internal/agent/librarian.go; research-assistant/backend/internal/agent/answer.go">
+    <title>research-assistant/backend/internal/agent/chat.go; research-assistant/backend/internal/agent/librarian.go; research-assistant/backend/internal/agent/answer.go</title>
+    <rect x="56" y="380" width="352" height="142" rx="8" fill="#edf7f0" stroke="#8fbaa0" stroke-width="1.2" />
+    <text x="232.0" y="419.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="18" font-weight="700" fill="#1e293b" text-anchor="middle" dominant-baseline="middle">资料与回答</text>
+    <text x="232.0" y="442.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">Chat / General</text>
+    <text x="232.0" y="465.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">Librarian · Answer</text>
+    <text x="232.0" y="488.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">检索 · 论文解析 · 回答与引用</text>
+  </g>
+  <g data-node-id="coding" data-source="research-assistant/backend/internal/agent/research_coding_agent.go; research-assistant/backend/internal/agent/autoresearch.go">
+    <title>research-assistant/backend/internal/agent/research_coding_agent.go; research-assistant/backend/internal/agent/autoresearch.go</title>
+    <rect x="464" y="380" width="352" height="142" rx="8" fill="#edf7f0" stroke="#8fbaa0" stroke-width="1.2" />
+    <text x="640.0" y="419.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="18" font-weight="700" fill="#1e293b" text-anchor="middle" dominant-baseline="middle">编码与研究</text>
+    <text x="640.0" y="442.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">Coder · Research Coding</text>
+    <text x="640.0" y="465.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">AutoResearch / Experiment / Paper Debug</text>
+    <text x="640.0" y="488.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">运行时 · 补丁 · 实验循环</text>
+  </g>
+  <g data-node-id="evaluation" data-source="research-assistant/backend/internal/agent/benchmark_agent.go; research-assistant/backend/internal/agent/data.go; research-assistant/backend/internal/agent/visual_verifier.go">
+    <title>research-assistant/backend/internal/agent/benchmark_agent.go; research-assistant/backend/internal/agent/data.go; research-assistant/backend/internal/agent/visual_verifier.go</title>
+    <rect x="872" y="380" width="352" height="142" rx="8" fill="#edf7f0" stroke="#8fbaa0" stroke-width="1.2" />
+    <text x="1048.0" y="419.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="18" font-weight="700" fill="#1e293b" text-anchor="middle" dominant-baseline="middle">评测与验证</text>
+    <text x="1048.0" y="442.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">Benchmark · Data</text>
+    <text x="1048.0" y="465.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">Ablation ToT · Visual Verifier</text>
+    <text x="1048.0" y="488.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">冻结契约 · 指标重算 · 证据验收</text>
+  </g>
+  <g data-node-id="profile" data-source="research-assistant/backend/internal/agentprofile/runner.go; research-assistant/backend/internal/agentprofile">
+    <title>research-assistant/backend/internal/agentprofile/runner.go; research-assistant/backend/internal/agentprofile</title>
+    <rect x="56" y="562" width="1168" height="84" rx="8" fill="#f3effb" stroke="#b09bcf" stroke-width="1.2" />
+    <text x="640.0" y="584.0" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="18" font-weight="700" fill="#1e293b" text-anchor="middle" dominant-baseline="middle">自定义 AgentProfile</text>
+    <text x="640.0" y="607.0" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">PromptVersion + ModelProfile + ToolAllowlist + MaxSteps</text>
+    <text x="640.0" y="630.0" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">可选 tool_loop：原生工具调用 · 检查点恢复 · 显式步数上限</text>
+  </g>
+  <g data-node-id="model" data-source="research-assistant/backend/internal/modelresolver">
+    <title>research-assistant/backend/internal/modelresolver</title>
+    <rect x="56" y="786" width="352" height="88" rx="8" fill="#f3effb" stroke="#b09bcf" stroke-width="1.2" />
+    <text x="232.0" y="810.0" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="18" font-weight="700" fill="#1e293b" text-anchor="middle" dominant-baseline="middle">模型调用 / modelresolver</text>
+    <text x="232.0" y="833.0" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">动态 Profile · 上下文预检</text>
+    <text x="232.0" y="856.0" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">能力声明 · 输出与费用约束</text>
+  </g>
+  <g data-node-id="tools" data-source="research-assistant/backend/internal/tools">
+    <title>research-assistant/backend/internal/tools</title>
+    <rect x="464" y="786" width="352" height="88" rx="8" fill="#fff0ed" stroke="#d3a097" stroke-width="1.2" />
+    <text x="640.0" y="810.0" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="18" font-weight="700" fill="#1e293b" text-anchor="middle" dominant-baseline="middle">ToolInvoker</text>
+    <text x="640.0" y="833.0" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">Schema · allowlist / grant · 审批</text>
+    <text x="640.0" y="856.0" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">native / HTTP / MCP · 调用审计</text>
+  </g>
+  <g data-node-id="sandbox" data-source="research-assistant/backend/internal/sandbox; research-assistant/docker-sandbox/internal/engine">
+    <title>research-assistant/backend/internal/sandbox; research-assistant/docker-sandbox/internal/engine</title>
+    <rect x="872" y="786" width="352" height="88" rx="8" fill="#fff0ed" stroke="#d3a097" stroke-width="1.2" />
+    <text x="1048.0" y="810.0" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="18" font-weight="700" fill="#1e293b" text-anchor="middle" dominant-baseline="middle">Sandbox Client</text>
+    <text x="1048.0" y="833.0" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">gateway → executor → Provider</text>
+    <text x="1048.0" y="856.0" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">真实代码执行 · 日志 · 文件</text>
+  </g>
+  <g data-node-id="artifacts" data-source="research-assistant/backend/internal/scheduler">
+    <title>research-assistant/backend/internal/scheduler</title>
+    <rect x="56" y="1018" width="352" height="66" rx="8" fill="#fff5e6" stroke="#d7b77d" stroke-width="1.2" />
+    <text x="232.0" y="1042.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="18" font-weight="700" fill="#1e293b" text-anchor="middle" dominant-baseline="middle">产物与数值校验</text>
+    <text x="232.0" y="1065.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">类型 · producer · 契约 · 执行来源</text>
+  </g>
+  <g data-node-id="outcome" data-source="research-assistant/backend/internal/planner/semantic_validation.go">
+    <title>research-assistant/backend/internal/planner/semantic_validation.go</title>
+    <rect x="464" y="1018" width="352" height="66" rx="8" fill="#fff5e6" stroke="#d7b77d" stroke-width="1.2" />
+    <text x="640.0" y="1042.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="18" font-weight="700" fill="#1e293b" text-anchor="middle" dominant-baseline="middle">PlanFinalizer / Outcome</text>
+    <text x="640.0" y="1065.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">完成 / partial / smoke / blocked</text>
+  </g>
+  <g data-node-id="events" data-source="research-assistant/backend/internal/scheduler; research-assistant/backend/internal/api">
+    <title>research-assistant/backend/internal/scheduler; research-assistant/backend/internal/api</title>
+    <rect x="872" y="1018" width="352" height="66" rx="8" fill="#fff5e6" stroke="#d7b77d" stroke-width="1.2" />
+    <text x="1048.0" y="1042.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="18" font-weight="700" fill="#1e293b" text-anchor="middle" dominant-baseline="middle">状态持久化与工作台</text>
+    <text x="1048.0" y="1065.5" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="middle" dominant-baseline="middle">Plan Store · MemorySink · SSE</text>
+  </g>
+  <line x1="32" y1="1132" x2="1248" y2="1132" stroke="#e2e8f0" />
+  <text x="32" y="1160" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="start" dominant-baseline="middle">内置 runner 承载各领域循环；运行期审批、分类恢复与共享恢复额度贯穿执行过程。</text>
 </svg>

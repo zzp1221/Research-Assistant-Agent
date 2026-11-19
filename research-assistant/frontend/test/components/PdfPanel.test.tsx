@@ -6,6 +6,7 @@ import type { DocumentInfoResponse } from '../../src/contracts/api';
 
 type ViewerProps = {
   fileUrl: string;
+  transformGetDocumentParams?: (options: Record<string, unknown>) => Record<string, unknown>;
   plugins: Array<{ install?: (functions: unknown) => void; uninstall?: () => void }>;
   defaultScale?: number;
   initialPage?: number;
@@ -91,7 +92,9 @@ describe('PdfPanel', () => {
     );
 
     expect(screen.getByText('共 3 页')).toBeInTheDocument();
-    expect(screen.getByTestId('pdf-worker')).toHaveAttribute('data-worker-url', '/pdfjs/pdf.worker.min.js');
+    expect(screen.getByTestId('pdf-worker')).toHaveAttribute('data-worker-url', '/pdfjs/6.5.438/pdf.worker.min.mjs');
+    const params = latestViewer().transformGetDocumentParams?.({ isEvalSupported: true, url: 'blob:test' });
+    expect(params).toMatchObject({ isEvalSupported: false, cMapUrl: '/pdfjs/cmaps/', standardFontDataUrl: '/pdfjs/standard_fonts/', wasmUrl: '/pdfjs/wasm/' });
     await user.click(screen.getByRole('button', { name: '全文翻译' }));
     expect(screen.getByText('开始全文翻译')).toBeInTheDocument();
   });

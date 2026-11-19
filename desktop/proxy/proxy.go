@@ -79,6 +79,14 @@ func serveStatic(w http.ResponseWriter, r *http.Request, static fs.FS, assetPath
 		http.NotFound(w, r)
 		return
 	}
+	// Windows MIME registrations vary by machine. Module workers and streaming
+	// WebAssembly require these media types independently of host associations.
+	switch strings.ToLower(path.Ext(assetPath)) {
+	case ".js", ".mjs":
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	case ".wasm":
+		w.Header().Set("Content-Type", "application/wasm")
+	}
 	http.ServeContent(w, r, assetPath, time.Time{}, bytes.NewReader(data))
 }
 

@@ -119,6 +119,12 @@ Bridge methods cover onboarding, runtime settings/install/cleanup, model connect
 
 The Docker build uses `Dockerfile`: Node 22 builds the app, then nginx serves static assets and proxies `/api/` to `backend:8080`. `nginx.conf.template` injects `API_AUTH_TOKEN` with envsubst at container start, so browsers never hold the token; `client_max_body_size 33m` matches the backend's 32 MiB upload limit. Desktop/single-file mode embeds `dist` in the Go backend or MyGo app.
 
+### PDF engine security and upgrades
+
+PDF parsing uses pinned PDF.js 6.5.438. The existing reader plugins use a [local core compatibility package](vendor/react-pdf-viewer-core/README.md) for the modern TextLayer; no PDF.js 3 parser or worker is retained. Both the application and adapter force `isEvalSupported: false`. Installation does not bypass peer dependency validation; Node must satisfy the engine requirement (at least 22.13).
+
+Each build removes obsolete PDF assets and copies the matching `.mjs` worker, cMaps, fonts, and wasm. The worker URL includes the engine version. Web, offline, and desktop builds must deploy the complete `dist` together. After building, run `npm run check:pdf-security` to verify the single engine, CVE-2024-4367 fixed range, and worker version/hash. Review the adapter and run PDF browser tests whenever upgrading the engine.
+
 ## Tests
 
 ```bash

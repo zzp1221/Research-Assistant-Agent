@@ -71,7 +71,16 @@ type Resolver struct {
 
 // New builds a resolver over store.
 func New(store *modelprofile.Store) *Resolver {
-	return &Resolver{store: store, contexts: contextwindow.NewStore(contextDir()), cache: map[string]*oaichat.Client{}}
+	return NewWithContextStore(store, contextwindow.NewStore(contextDir()))
+}
+
+// NewWithContextStore permits isolated evaluations without process-wide
+// environment overrides or access to a user's durable activity windows.
+func NewWithContextStore(store *modelprofile.Store, contexts *contextwindow.Store) *Resolver {
+	if contexts == nil {
+		contexts = contextwindow.NewStore(contextDir())
+	}
+	return &Resolver{store: store, contexts: contexts, cache: map[string]*oaichat.Client{}}
 }
 
 // Store exposes the backing profile store.

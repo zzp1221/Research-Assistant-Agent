@@ -8,6 +8,7 @@ import type { DocumentInfoResponse, TranslationJob } from '../../contracts/api';
 import { TranslationPanel } from './TranslationPanel';
 import { usePdfPageControl } from './usePdfPageControl';
 import { clampReadingScale, normalizeReadingPage } from './readingStateStorage';
+import { PDF_WORKER_URL } from './pdfEngineAssets';
 
 interface PdfPanelProps {
   readerRef?: RefObject<HTMLDivElement | null>;
@@ -45,18 +46,18 @@ const READER_HINT_KEY = 'ra.pdf.readerHintSeen.v1';
 // The worker, cMaps and standard fonts are shipped from /pdfjs so the viewer
 // never depends on unpkg being reachable. This matters for offline container
 // deployments and for CJK papers that need the character maps.
-const PDF_WORKER_URL = '/pdfjs/pdf.worker.min.js';
 const PDF_CMAP_URL = '/pdfjs/cmaps/';
 const PDF_FONT_URL = '/pdfjs/standard_fonts/';
 
-// pdfjs-dist 3.11 supports standardFontDataUrl at runtime but the bundled
-// @react-pdf-viewer types only declare cMapUrl/cMapPacked.
+// Keep the security option last so caller options cannot enable evaluation.
 const transformGetDocumentParams = (options: PdfJs.GetDocumentParams): PdfJs.GetDocumentParams => ({
   ...options,
   cMapUrl: PDF_CMAP_URL,
   cMapPacked: true,
   standardFontDataUrl: PDF_FONT_URL,
-} as PdfJs.GetDocumentParams & { standardFontDataUrl: string });
+  wasmUrl: '/pdfjs/wasm/',
+  isEvalSupported: false,
+} as PdfJs.GetDocumentParams & { standardFontDataUrl: string; wasmUrl: string; isEvalSupported: boolean });
 
 export function PdfPanel(props: PdfPanelProps) {
   const {

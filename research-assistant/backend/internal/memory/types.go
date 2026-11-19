@@ -283,6 +283,8 @@ type ScoredRecord struct {
 	EntityHit   bool    `json:"entity_hit,omitempty"`
 	RecencyHit  bool    `json:"recency_hit,omitempty"`
 	PinnedBonus bool    `json:"pinned_bonus,omitempty"`
+	Relevance   float64 `json:"normalized_relevance"`
+	MMRScore    float64 `json:"mmr_score"`
 }
 
 // Citation is the user-visible reference for an injected memory. PaperID,
@@ -320,13 +322,18 @@ type Context struct {
 
 // RetrieveReport records how the budget was spent.
 type RetrieveReport struct {
-	OwnerRecords    int `json:"owner_records"`
-	VisibleRecords  int `json:"visible_records"`
-	Candidates      int `json:"candidates"`
-	Selected        int `json:"selected"`
-	CoreTokens      int `json:"core_tokens"`
-	RetrievedTokens int `json:"retrieved_tokens"`
-	Truncated       int `json:"truncated,omitempty"`
+	OwnerRecords      int    `json:"owner_records"`
+	VisibleRecords    int    `json:"visible_records"`
+	Candidates        int    `json:"candidates"`
+	Selected          int    `json:"selected"`
+	CoreTokens        int    `json:"core_tokens"`
+	RetrievedTokens   int    `json:"retrieved_tokens"`
+	Truncated         int    `json:"truncated,omitempty"`
+	MatchedCandidates int    `json:"matched_candidates"`
+	RankExcluded      int    `json:"rank_excluded"`
+	BudgetExcluded    int    `json:"budget_excluded"`
+	FailureStage      string `json:"failure_stage"`
+	Ranking           string `json:"ranking"`
 }
 
 // Stats summarizes one owner's memory store.

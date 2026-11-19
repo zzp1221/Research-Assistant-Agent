@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -96,6 +97,9 @@ func (a *ResearchCodingAgent) executeAdapterPreflight(ctx context.Context, task 
 			} else {
 				report.Reason = "labeled metric preflight and unlabeled inference preflight passed"
 			}
+		}
+		if isSandboxCapabilityError(runErr) {
+			return failResearchCodingTask(task, runErr)
 		}
 		entry := models.BenchmarkAttempt{Attempt: attempt, ExitCode: 0}
 		if runErr == nil {
@@ -359,18 +363,18 @@ func (a *ResearchCodingAgent) runBenchmarkHarness(ctx context.Context, sandboxID
 	})
 	after, fingerprintErr := benchmarkRepositoryFingerprint(workspacePath)
 	if fingerprintErr != nil {
-		return models.BenchmarkHarnessReport{}, fingerprintErr
+		return models.BenchmarkHarnessReport{}, errors.Join(fingerprintErr, execErr)
 	}
 	if before != after {
-		return models.BenchmarkHarnessReport{}, fmt.Errorf("repository files changed outside .research-assistant during benchmark execution")
+		return models.BenchmarkHarnessReport{}, errors.Join(fmt.Errorf("repository files changed outside .research-assistant during benchmark execution"), execErr)
 	}
 	datasetHashAfter, err := benchmarkRegularFileSHA(datasetPath, "benchmark dataset")
 	if err != nil || datasetHashAfter != datasetHashBefore {
-		return models.BenchmarkHarnessReport{}, fmt.Errorf("benchmark dataset changed during execution")
+		return models.BenchmarkHarnessReport{}, errors.Join(fmt.Errorf("benchmark dataset changed during execution"), execErr)
 	}
 	adapterHashAfter, err := benchmarkRegularFileSHA(adapterPath, "benchmark adapter")
 	if err != nil || adapterHashAfter != adapterHashBefore {
-		return models.BenchmarkHarnessReport{}, fmt.Errorf("benchmark adapter changed itself during execution")
+		return models.BenchmarkHarnessReport{}, errors.Join(fmt.Errorf("benchmark adapter changed itself during execution"), execErr)
 	}
 	if execErr != nil {
 		return models.BenchmarkHarnessReport{}, execErr
@@ -430,16 +434,16 @@ func (a *ResearchCodingAgent) runBenchmarkPredictionHarness(ctx context.Context,
 	})
 	repositoryAfter, fingerprintErr := benchmarkRepositoryFingerprint(workspacePath)
 	if fingerprintErr != nil {
-		return models.BenchmarkHarnessReport{}, fingerprintErr
+		return models.BenchmarkHarnessReport{}, errors.Join(fingerprintErr, execErr)
 	}
 	if repositoryBefore != repositoryAfter {
-		return models.BenchmarkHarnessReport{}, fmt.Errorf("repository files changed outside .research-assistant during hidden benchmark execution")
+		return models.BenchmarkHarnessReport{}, errors.Join(fmt.Errorf("repository files changed outside .research-assistant during hidden benchmark execution"), execErr)
 	}
 	if actual, hashErr := benchmarkRegularFileSHA(datasetPath, "hidden benchmark features"); hashErr != nil || actual != datasetHashBefore {
-		return models.BenchmarkHarnessReport{}, fmt.Errorf("hidden benchmark features changed during execution")
+		return models.BenchmarkHarnessReport{}, errors.Join(fmt.Errorf("hidden benchmark features changed during execution"), execErr)
 	}
 	if actual, hashErr := benchmarkRegularFileSHA(adapterPath, "benchmark adapter"); hashErr != nil || actual != adapterHashBefore {
-		return models.BenchmarkHarnessReport{}, fmt.Errorf("benchmark adapter changed itself during hidden execution")
+		return models.BenchmarkHarnessReport{}, errors.Join(fmt.Errorf("benchmark adapter changed itself during hidden execution"), execErr)
 	}
 	if execErr != nil {
 		return models.BenchmarkHarnessReport{}, execErr
@@ -843,7 +847,7 @@ func benchmarkRuntimeSession(task *models.Task) (string, error) {
 		extractTaskInputLike(task, "runtime_session"),
 		extractTaskInputLike(task, "runtime_env"),
 	)
-	if !strings.HasPrefix(runtimeSession, "dk-") && !strings.HasPrefix(runtimeSession, "os-") {
+	if !isSandboxSessionID(runtimeSession) {
 		return "", fmt.Errorf("valid prepared_runtime input is required")
 	}
 	return runtimeSession, nil

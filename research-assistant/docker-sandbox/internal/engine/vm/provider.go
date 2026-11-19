@@ -84,7 +84,7 @@ func (p *Provider) Capabilities(context.Context) (engine.ProviderCapabilities, e
 	return engine.ProviderCapabilities{
 		Provider:        "vm",
 		Isolation:       "vm",
-		Images:          true,
+		Images:          false,
 		NetworkControl:  false,
 		NetworkEnforced: "os",
 		GPU:             true,

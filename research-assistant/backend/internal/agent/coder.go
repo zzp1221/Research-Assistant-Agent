@@ -316,7 +316,12 @@ func filterFrameworkBenchmarkDependencies(task *models.Task, dependencies []stri
 }
 
 // ExecuteTask 使用 Eino Chain 执行任务
-func (a *CoderAgent) ExecuteTask(ctx context.Context, task *models.Task, sharedContext map[string]interface{}) error {
+func (a *CoderAgent) ExecuteTask(ctx context.Context, task *models.Task, sharedContext map[string]interface{}) (executionErr error) {
+	defer func() {
+		if applySandboxCapabilityBlock(task, executionErr) {
+			executionErr = nil
+		}
+	}()
 	if task != nil && task.Type == "resolve_dependencies" {
 		return a.resolveDependenciesTask(ctx, task)
 	}

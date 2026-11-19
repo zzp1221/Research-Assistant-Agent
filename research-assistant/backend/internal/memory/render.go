@@ -35,8 +35,8 @@ func RenderRecord(rec Record) string {
 	if rec.Source.Ref != "" {
 		source += ":" + rec.Source.Ref
 	}
-	return fmt.Sprintf("<memory kind=%q id=%q date=%q trust=%q source=%q>\n%s\n</memory>",
-		string(rec.Kind), rec.ID, date, string(rec.Trust), source, content)
+	return fmt.Sprintf("<memory kind=%q id=%q date=%q trust=%q source=%q version=%q status=%q>\n%s\n</memory>",
+		string(rec.Kind), rec.ID, date, string(rec.Trust), source, fmt.Sprint(rec.Version), string(rec.Status), content)
 }
 
 // RenderRecords renders a list of memory blocks separated by blank lines.

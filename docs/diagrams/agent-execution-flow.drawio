@@ -1,73 +1,101 @@
-<mxfile host="app.diagrams.net" modified="2026-11-02T00:00:00.000Z" agent="research-assistant" version="24.7.17" type="device">
-  <diagram id="agent-execution-flow" name="Agent Execution Flow">
-    <mxGraphModel dx="1760" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1760" pageHeight="1500" math="0" shadow="0">
+<mxfile host="app.diagrams.net" agent="research-assistant" version="24.7.17" type="device">
+  <diagram id="agent-execution-flow" name="Agent 架构 / AGENT EXECUTION">
+    <mxGraphModel grid="1" gridSize="8" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="1200" background="#ffffff" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="T" value="Agent Execution Flow — routing, memory, tools, sandbox and evidence" style="text;html=1;fontSize=20;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="40" y="16" width="1680" height="40" as="geometry" /></mxCell>
-        <mxCell id="START" value="Scheduler TaskNode&#10;(type · assigned_to · allowed_tools · inputs)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="660" y="80" width="440" height="58" as="geometry" /></mxCell>
-        <mxCell id="ROUTER" value="RoutedTaskExecutor&#10;resolve runner" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="660" y="172" width="440" height="52" as="geometry" /></mxCell>
-        <mxCell id="PROFILE" value="AgentProfile = PromptVersion + ModelProfile&#10;+ ToolAllowlist + MaxSteps" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="660" y="258" width="440" height="56" as="geometry" /></mxCell>
-        <mxCell id="MEMORY" value="Memory injection: core_memory + retrieved_memory + memory_refs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="660" y="336" width="440" height="46" as="geometry" /></mxCell>
-        <mxCell id="DEC" value="Agent type?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="1"><mxGeometry x="770" y="414" width="220" height="80" as="geometry" /></mxCell>
-        <mxCell id="G-A" value="Specialized agents" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="40" y="540" width="1680" height="300" as="geometry" /></mxCell>
-        <mxCell id="AG1" value="Chat / General" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="578" width="380" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG2" value="Librarian" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="460" y="578" width="380" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG3" value="Benchmark" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="860" y="578" width="380" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG4" value="Coder" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1260" y="578" width="440" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG5" value="Research Coding" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="626" width="380" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG6" value="Data" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="460" y="626" width="380" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG7" value="AutoResearch" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="860" y="626" width="380" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG8" value="Experiment Research" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1260" y="626" width="440" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG9" value="Ablation ToT" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="674" width="380" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG10" value="Paper Debug" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="460" y="674" width="380" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG11" value="Visual Verifier" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="860" y="674" width="380" height="38" as="geometry" /></mxCell>
-        <mxCell id="AG12" value="Answer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1260" y="674" width="440" height="38" as="geometry" /></mxCell>
-        <mxCell id="G-NOTE" value="Every agent gets a bounded prompt, a frozen model profile and an explicit tool allowlist. No agent executes user code directly." style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="60" y="730" width="1640" height="34" as="geometry" /></mxCell>
-        <mxCell id="TOOL" value="ToolInvoker&#10;schema · grant · approval · ToolCallRecord" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;" vertex="1" parent="1"><mxGeometry x="660" y="880" width="440" height="56" as="geometry" /></mxCell>
-        <mxCell id="SB" value="Sandbox Client → gateway → executor → provider (docker / native / vm / remote)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="500" y="976" width="760" height="50" as="geometry" /></mxCell>
-        <mxCell id="ART" value="Artifact builder&#10;(non-empty · typed · producer-bound)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="660" y="1064" width="440" height="50" as="geometry" /></mxCell>
-        <mxCell id="VALID" value="Artifact validation&#10;unique producer / contract" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="660" y="1152" width="440" height="50" as="geometry" /></mxCell>
-        <mxCell id="STORE" value="PlanStore + Event Bus + SSE" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" vertex="1" parent="1"><mxGeometry x="660" y="1240" width="440" height="46" as="geometry" /></mxCell>
-        <mxCell id="TERM" value="Task terminal status&#10;completed / failed / canceled" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="660" y="1324" width="440" height="46" as="geometry" /></mxCell>
-        <mxCell id="G-CLM" value="Claim Evidence loop" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="40" y="880" width="380" height="260" as="geometry" /></mxCell>
-        <mxCell id="C1" value="Freeze claim rubric" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="916" width="340" height="36" as="geometry" /></mxCell>
-        <mxCell id="C2" value="Collect evidence inventory" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="962" width="340" height="36" as="geometry" /></mxCell>
-        <mxCell id="C3" value="LLM adjudication per criterion" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="1008" width="340" height="36" as="geometry" /></mxCell>
-        <mxCell id="C4" value="Verdict graph + coverage" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="60" y="1054" width="340" height="36" as="geometry" /></mxCell>
-        <mxCell id="G-AUTO" value="AutoResearch loop" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#adb5bd;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1"><mxGeometry x="1340" y="880" width="380" height="260" as="geometry" /></mxCell>
-        <mxCell id="R1" value="Freeze ResearchSpec" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1360" y="916" width="340" height="36" as="geometry" /></mxCell>
-        <mxCell id="R2" value="Run baseline" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1360" y="962" width="340" height="36" as="geometry" /></mxCell>
-        <mxCell id="R3" value="Propose candidate patch" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1360" y="1008" width="340" height="36" as="geometry" /></mxCell>
-        <mxCell id="R4" value="Evaluate candidate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1360" y="1054" width="340" height="36" as="geometry" /></mxCell>
-        <mxCell id="R5" value="Keep / Reject + rollback" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1360" y="1100" width="340" height="36" as="geometry" /></mxCell>
-        <mxCell id="R6" value="Hidden holdout validation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1360" y="1146" width="340" height="36" as="geometry" /></mxCell>
-        <mxCell id="NOTE" value="Artifacts that are empty, have duplicate producers or violate their contract fail the task.&#10;Sandbox capability gaps return blocked + missing_requirements; visual verification failure is advisory and never fabricates completed." style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="440" y="1400" width="1280" height="70" as="geometry" /></mxCell>
-        <mxCell id="a1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="START" target="ROUTER"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a2" value="resolve" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="ROUTER" target="PROFILE"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a3" value="inject" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="PROFILE" target="MEMORY"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="MEMORY" target="DEC"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a5" value="route" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="DEC" target="G-A"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a6" value="tool call" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="G-A" target="TOOL"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a7" value="sandbox call" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="G-A" target="SB"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a8" value="approved execution" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;dashed=1;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="TOOL" target="SB"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a9" value="stdout / metrics / files" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="SB" target="ART"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="ART" target="VALID"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="VALID" target="STORE"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a12" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="STORE" target="TERM"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a13" value="claim rubric" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="AG2" target="C1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a14" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="C1" target="C2"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a15" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="C2" target="C3"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a16" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="C3" target="C4"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a17" value="graph" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;dashed=1;fontSize=11;" edge="1" parent="1" source="C4" target="ART"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a18" value="AutoResearch" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="AG7" target="R1"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a19" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="R1" target="R2"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a20" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="R2" target="R3"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a21" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="R3" target="R4"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a22" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="R4" target="R5"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a23" value="reject" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;dashed=1;fontSize=11;" edge="1" parent="1" source="R5" target="R3"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a24" value="keep" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="R5" target="R6"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="a25" value="validation" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeWidth=1.4;dashed=1;fontSize=11;" edge="1" parent="1" source="R6" target="ART"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="title" parent="1" vertex="1" value="Agent 架构 / AGENT EXECUTION" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;text;align=left;fontSize=28;fontStyle=1;" tooltip="">
+          <mxGeometry x="32" y="24" width="1216" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" vertex="1" value="专业分工 · 受控工具 · 真实执行 · 以证据决定结果" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;text;align=left;fontSize=18;fontColor=#64748b;" tooltip="">
+          <mxGeometry x="32" y="68" width="1216" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="prepare" parent="1" vertex="1" value="&lt;b&gt;01  任务准备 / DISPATCH&lt;/b&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=1.2;fontSize=18;spacing=10;align=left;verticalAlign=top;spacingLeft=22;spacingTop=14;fontSize=20;" tooltip="">
+          <mxGeometry x="32" y="112" width="1216" height="148" as="geometry" />
+        </mxCell>
+        <mxCell id="task" parent="1" vertex="1" value="&lt;b&gt;Scheduler / TaskNode&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;type · assigned_to · inputs · contract&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf4ff;strokeColor=#92acd1;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/scheduler/scheduler.go">
+          <mxGeometry x="56" y="172" width="352" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="binding" parent="1" vertex="1" value="&lt;b&gt;输入绑定与上下文&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;InputBindings · 记忆 · Wiki · 模型预算&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f3effb;strokeColor=#b09bcf;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/scheduler/executor.go">
+          <mxGeometry x="464" y="172" width="352" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="router" parent="1" vertex="1" value="&lt;b&gt;RoutedTaskExecutor&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;内置 runner 或 profile:&amp;lt;id&amp;gt;&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf7f0;strokeColor=#8fbaa0;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/scheduler/executor.go">
+          <mxGeometry x="872" y="172" width="352" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="agents" parent="1" vertex="1" value="&lt;b&gt;02  专业 Agent 与可扩展执行器 / AGENTS&lt;/b&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=1.2;fontSize=18;spacing=10;align=left;verticalAlign=top;spacingLeft=22;spacingTop=14;fontSize=20;" tooltip="">
+          <mxGeometry x="32" y="320" width="1216" height="340" as="geometry" />
+        </mxCell>
+        <mxCell id="research" parent="1" vertex="1" value="&lt;b&gt;资料与回答&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;Chat / General&lt;br&gt;Librarian · Answer&lt;br&gt;检索 · 论文解析 · 回答与引用&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf7f0;strokeColor=#8fbaa0;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/agent/chat.go; research-assistant/backend/internal/agent/librarian.go; research-assistant/backend/internal/agent/answer.go">
+          <mxGeometry x="56" y="380" width="352" height="142" as="geometry" />
+        </mxCell>
+        <mxCell id="coding" parent="1" vertex="1" value="&lt;b&gt;编码与研究&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;Coder · Research Coding&lt;br&gt;AutoResearch / Experiment / Paper Debug&lt;br&gt;运行时 · 补丁 · 实验循环&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf7f0;strokeColor=#8fbaa0;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/agent/research_coding_agent.go; research-assistant/backend/internal/agent/autoresearch.go">
+          <mxGeometry x="464" y="380" width="352" height="142" as="geometry" />
+        </mxCell>
+        <mxCell id="evaluation" parent="1" vertex="1" value="&lt;b&gt;评测与验证&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;Benchmark · Data&lt;br&gt;Ablation ToT · Visual Verifier&lt;br&gt;冻结契约 · 指标重算 · 证据验收&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#edf7f0;strokeColor=#8fbaa0;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/agent/benchmark_agent.go; research-assistant/backend/internal/agent/data.go; research-assistant/backend/internal/agent/visual_verifier.go">
+          <mxGeometry x="872" y="380" width="352" height="142" as="geometry" />
+        </mxCell>
+        <mxCell id="profile" parent="1" vertex="1" value="&lt;b&gt;自定义 AgentProfile&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;PromptVersion + ModelProfile + ToolAllowlist + MaxSteps&lt;br&gt;可选 tool_loop：原生工具调用 · 检查点恢复 · 显式步数上限&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f3effb;strokeColor=#b09bcf;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/agentprofile/runner.go; research-assistant/backend/internal/agentprofile">
+          <mxGeometry x="56" y="562" width="1168" height="84" as="geometry" />
+        </mxCell>
+        <mxCell id="runtime" parent="1" vertex="1" value="&lt;b&gt;03  模型、工具与隔离执行 / RUNTIME&lt;/b&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=1.2;fontSize=18;spacing=10;align=left;verticalAlign=top;spacingLeft=22;spacingTop=14;fontSize=20;" tooltip="">
+          <mxGeometry x="32" y="724" width="1216" height="174" as="geometry" />
+        </mxCell>
+        <mxCell id="model" parent="1" vertex="1" value="&lt;b&gt;模型调用 / modelresolver&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;动态 Profile · 上下文预检&lt;br&gt;能力声明 · 输出与费用约束&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f3effb;strokeColor=#b09bcf;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/modelresolver">
+          <mxGeometry x="56" y="786" width="352" height="88" as="geometry" />
+        </mxCell>
+        <mxCell id="tools" parent="1" vertex="1" value="&lt;b&gt;ToolInvoker&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;Schema · allowlist / grant · 审批&lt;br&gt;native / HTTP / MCP · 调用审计&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#fff0ed;strokeColor=#d3a097;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/tools">
+          <mxGeometry x="464" y="786" width="352" height="88" as="geometry" />
+        </mxCell>
+        <mxCell id="sandbox" parent="1" vertex="1" value="&lt;b&gt;Sandbox Client&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;gateway → executor → Provider&lt;br&gt;真实代码执行 · 日志 · 文件&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#fff0ed;strokeColor=#d3a097;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/sandbox; research-assistant/docker-sandbox/internal/engine">
+          <mxGeometry x="872" y="786" width="352" height="88" as="geometry" />
+        </mxCell>
+        <mxCell id="results" parent="1" vertex="1" value="&lt;b&gt;04  结果与回传 / ACCEPTANCE&lt;/b&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=1.2;fontSize=18;spacing=10;align=left;verticalAlign=top;spacingLeft=22;spacingTop=14;fontSize=20;" tooltip="">
+          <mxGeometry x="32" y="958" width="1216" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="artifacts" parent="1" vertex="1" value="&lt;b&gt;产物与数值校验&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;类型 · producer · 契约 · 执行来源&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#fff5e6;strokeColor=#d7b77d;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/scheduler">
+          <mxGeometry x="56" y="1018" width="352" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="outcome" parent="1" vertex="1" value="&lt;b&gt;PlanFinalizer / Outcome&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;完成 / partial / smoke / blocked&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#fff5e6;strokeColor=#d7b77d;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/planner/semantic_validation.go">
+          <mxGeometry x="464" y="1018" width="352" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="events" parent="1" vertex="1" value="&lt;b&gt;状态持久化与工作台&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:16px&quot;&gt;Plan Store · MemorySink · SSE&lt;/font&gt;" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;rounded=1;arcSize=10;fillColor=#fff5e6;strokeColor=#d7b77d;strokeWidth=1.2;fontSize=18;spacing=10;" tooltip="research-assistant/backend/internal/scheduler; research-assistant/backend/internal/api">
+          <mxGeometry x="872" y="1018" width="352" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="task-binding" edge="1" parent="1" source="task" target="binding" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="binding-router" edge="1" parent="1" source="binding" target="router" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="dispatch-agent" edge="1" parent="1" source="router" target="agents" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1048" y="292" />
+              <mxPoint x="640" y="292" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="agent-runtime" edge="1" parent="1" source="agents" target="runtime" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="model-tool" edge="1" parent="1" source="model" target="tools" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=6 4;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tool-sandbox" edge="1" parent="1" source="tools" target="sandbox" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;dashed=1;dashPattern=6 4;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="runtime-results" edge="1" parent="1" source="runtime" target="results" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="artifact-outcome" edge="1" parent="1" source="artifacts" target="outcome" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="outcome-events" edge="1" parent="1" source="outcome" target="events" style="html=1;noEdgeStyle=1;rounded=0;endArrow=block;endFill=1;strokeColor=#64748b;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="note" parent="1" vertex="1" value="内置 runner 承载各领域循环；运行期审批、分类恢复与共享恢复额度贯穿执行过程。" style="whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontColor=#1e293b;text;align=left;fontSize=16;fontColor=#475569;" tooltip="">
+          <mxGeometry x="32" y="1142" width="1216" height="40" as="geometry" />
+        </mxCell>
       </root>
     </mxGraphModel>
   </diagram>

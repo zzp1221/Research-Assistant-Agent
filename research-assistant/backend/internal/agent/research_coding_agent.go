@@ -109,7 +109,12 @@ func NewResearchCodingAgent(coder *CoderAgent) *ResearchCodingAgent {
 	return agent
 }
 
-func (a *ResearchCodingAgent) ExecuteTask(ctx context.Context, task *models.Task, sharedContext map[string]interface{}) error {
+func (a *ResearchCodingAgent) ExecuteTask(ctx context.Context, task *models.Task, sharedContext map[string]interface{}) (executionErr error) {
+	defer func() {
+		if applySandboxCapabilityBlock(task, executionErr) {
+			executionErr = nil
+		}
+	}()
 	if task == nil {
 		return fmt.Errorf("task is nil")
 	}
@@ -180,6 +185,9 @@ func setResearchCodingArtifacts(task *models.Task, values map[string]string) {
 }
 
 func failResearchCodingTask(task *models.Task, err error) error {
+	if applySandboxCapabilityBlock(task, err) {
+		return err
+	}
 	if task != nil {
 		task.Status = models.StatusFailed
 		task.Error = err.Error()

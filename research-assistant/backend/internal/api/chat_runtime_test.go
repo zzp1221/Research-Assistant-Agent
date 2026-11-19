@@ -96,6 +96,9 @@ func TestChatMultiTurnPersistsHistoryAndInjectsCoreMemory(t *testing.T) {
 	second := fake.calls[1]
 	joined := strings.Builder{}
 	for _, message := range second {
+		if strings.Contains(message.Content, "[core memory]") && message.Role != schema.User {
+			t.Fatalf("memory acquired instruction authority: %s", message.Role)
+		}
 		joined.WriteString(message.Content)
 		joined.WriteString("\n")
 	}

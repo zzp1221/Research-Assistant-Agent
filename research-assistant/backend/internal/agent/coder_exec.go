@@ -93,7 +93,7 @@ func (a *CoderAgent) executeCodeInSandbox(ctx context.Context, task *models.Task
 	runtimeSession := chooseNonEmpty(extractTaskInputLike(task, "prepared_runtime"), extractTaskInputLike(task, "runtime_session"), extractTaskInputLike(task, "runtime_env"))
 	sandboxID := runtimeSession
 	ownsEphemeralSandbox := false
-	if strings.TrimSpace(sandboxID) == "" || (!strings.HasPrefix(sandboxID, "dk-") && !strings.HasPrefix(sandboxID, "os-")) {
+	if !isSandboxSessionID(sandboxID) {
 		if strings.TrimSpace(runtimeSession) != "" {
 			task.Status = models.StatusFailed
 			task.Error = "invalid prepared_runtime artifact: expected sandbox id"
@@ -153,6 +153,9 @@ func (a *CoderAgent) executeCodeInSandbox(ctx context.Context, task *models.Task
 	for {
 		res, err = a.runPythonTaskInSandbox(ctx, sandboxID, workspacePath, codeFilePath, code)
 		if err != nil {
+			if applySandboxCapabilityBlock(task, err) {
+				return err
+			}
 			errText := err.Error()
 			if !executesMountedFile && !codeRepaired {
 				if repairedCode, repaired, repairErr := a.repairGeneratedPythonCodeForRuntimeError(ctx, code, errText); repairErr == nil && repaired {
@@ -191,6 +194,9 @@ func (a *CoderAgent) executeCodeInSandbox(ctx context.Context, task *models.Task
 				logToContext(ctx, "[%s] runtime missing-module recovery %d/%d applied for %s", a.Name, moduleRecoveries, maxModuleRecoveries, extractMissingPythonModule(errText))
 				continue
 			} else if installErr != nil {
+				if applySandboxCapabilityBlock(task, installErr) {
+					return installErr
+				}
 				logToContext(ctx, "[%s] runtime missing-module recovery failed: %v", a.Name, installErr)
 			}
 		}

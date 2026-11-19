@@ -7,58 +7,94 @@ import (
 	"docker-sandbox/internal/engine"
 )
 
-// Isolation levels supported by the native provider.
 const (
 	IsolationAuto         = "auto"
 	IsolationAppContainer = "appcontainer"
 	IsolationLowIL        = "lowil"
 )
 
-// ProbeCase and ProbeReport are shared with the REST capability payload.
 type ProbeCase = engine.ProbeCase
 type ProbeReport = engine.ProbeReport
 
-// EvaluateProbe marks AppContainer usable only when every probe case passes.
-// Compatibility failures degrade to lowil; security failures are go/no-go.
 func EvaluateProbe(cases []ProbeCase) ProbeReport {
-	report := ProbeReport{Cases: cases, AppContainerOK: true}
-	var failures []string
-	for _, item := range cases {
-		if item.Passed {
+	r := ProbeReport{Version: ProbeVersion, Runner: IsolationAppContainer, Cases: append([]ProbeCase(nil), cases...)}
+	required := map[string]ProbeDefinition{}
+	for _, d := range ProbeDefinitions() {
+		required[d.Name] = d
+	}
+	seen := map[string]bool{}
+	var reasons []string
+	for _, c := range cases {
+		d, known := required[c.Name]
+		if !known || seen[c.Name] || c.Expected != d.Expected || c.Profile != d.Profile || c.Security != d.Security || c.Passed != (c.Status == "pass") {
+			reasons = append(reasons, "invalid or duplicate probe result: "+c.Name)
+			r.Errors++
 			continue
 		}
-		report.AppContainerOK = false
-		kind := "compatibility"
-		if item.Security {
-			kind = "security"
+		seen[c.Name] = true
+		r.Attempted++
+		switch c.Status {
+		case "pass":
+			r.Passed++
+		case "fail":
+			r.Failed++
+		case "error":
+			r.Errors++
+		case "inconclusive":
+			r.Inconclusive++
+		default:
+			r.Errors++
 		}
-		failures = append(failures, fmt.Sprintf("%s (%s)", item.Name, kind))
+		if c.Status != "pass" {
+			reasons = append(reasons, c.Name+" ("+c.Status+")")
+		}
 	}
-	if len(failures) > 0 {
-		report.Reason = "probe failed: " + strings.Join(failures, ", ")
+	for _, d := range ProbeDefinitions() {
+		if !seen[d.Name] {
+			reasons = append(reasons, "missing probe: "+d.Name)
+			r.Errors++
+		}
 	}
-	return report
+	r.AppContainerOK = len(reasons) == 0 && r.Passed == len(required) && r.Errors == 0
+	if !r.AppContainerOK {
+		r.Reason = "isolation not verified: " + strings.Join(reasons, "; ")
+	}
+	return r
 }
 
-// SelectIsolation applies the documented policy: an explicit setting wins,
-// GPU tasks force lowil, and auto uses AppContainer only when the probe passed.
+func verifiedProbe(r *ProbeReport) bool {
+	return r != nil && r.Version == ProbeVersion && r.Runner == IsolationAppContainer &&
+		r.EnvironmentKey != "" && r.AppContainerOK && EvaluateProbe(r.Cases).AppContainerOK
+}
+
+// A strong-isolation request needs a complete current report. A proven
+// security failure also blocks auto instead of silently weakening isolation.
+func ResolveIsolation(requested string, report *ProbeReport, gpuRequired bool) (string, error) {
+	requested = NormalizeIsolation(requested)
+	if requested == IsolationLowIL {
+		return IsolationLowIL, nil
+	}
+	if verifiedProbe(report) && !gpuRequired {
+		return IsolationAppContainer, nil
+	}
+	if requested == IsolationAppContainer {
+		return "", fmt.Errorf("sandbox_capability: AppContainer isolation is not verified")
+	}
+	if report != nil {
+		for _, c := range report.Cases {
+			if c.Security && c.Status == "fail" {
+				return "", fmt.Errorf("sandbox_capability: isolation security probe failed: %s", c.Name)
+			}
+		}
+	}
+	return IsolationLowIL, nil
+}
+
 func SelectIsolation(requested string, report *ProbeReport, gpuRequired bool) string {
-	switch strings.ToLower(strings.TrimSpace(requested)) {
-	case IsolationAppContainer:
-		return IsolationAppContainer
-	case IsolationLowIL:
-		return IsolationLowIL
-	}
-	if gpuRequired {
-		return IsolationLowIL
-	}
-	if report != nil && report.AppContainerOK {
-		return IsolationAppContainer
-	}
-	return IsolationLowIL
+	isolation, _ := ResolveIsolation(requested, report, gpuRequired)
+	return isolation
 }
 
-// NormalizeIsolation returns a known isolation value or auto.
 func NormalizeIsolation(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case IsolationAppContainer, IsolationLowIL:

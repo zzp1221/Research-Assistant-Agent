@@ -1,92 +1,151 @@
 package native
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestEvaluateProbe(t *testing.T) {
-	report := EvaluateProbe([]ProbeCase{
-		{Name: "multiprocessing", Passed: true},
-		{Name: "network_connect", Security: true, Passed: true},
-	})
-	if !report.AppContainerOK || report.Reason != "" {
-		t.Fatalf("report = %#v", report)
+func successfulProbe() ProbeReport {
+	var cases []ProbeCase
+	for _, d := range ProbeDefinitions() {
+		cases = append(cases, newProbeCase(d, "pass", "verified"))
 	}
-	failed := EvaluateProbe([]ProbeCase{
-		{Name: "multiprocessing", Passed: false},
-		{Name: "network_connect", Security: true, Passed: false},
-	})
-	if failed.AppContainerOK {
-		t.Fatal("failed probe must not allow appcontainer")
+	r := EvaluateProbe(cases)
+	r.EnvironmentKey = "test-environment"
+	return r
+}
+
+func TestEvaluateProbeRequiresCompleteUnambiguousEvidence(t *testing.T) {
+	good := successfulProbe()
+	if !good.AppContainerOK || good.Passed != len(ProbeDefinitions()) {
+		t.Fatalf("complete report rejected: %#v", good)
 	}
-	if !strings.Contains(failed.Reason, "multiprocessing") || !strings.Contains(failed.Reason, "network_connect") {
-		t.Fatalf("reason = %q", failed.Reason)
+	for _, status := range []string{"fail", "error", "inconclusive", "skipped", "unknown"} {
+		t.Run(status, func(t *testing.T) {
+			cases := append([]ProbeCase(nil), good.Cases...)
+			cases[0].Status, cases[0].Passed = status, false
+			if EvaluateProbe(cases).AppContainerOK {
+				t.Fatal("non-pass status established isolation")
+			}
+		})
 	}
-	if !strings.Contains(failed.Reason, "security") {
-		t.Fatalf("reason should mark security failure: %q", failed.Reason)
+	malformed := [][]ProbeCase{nil, good.Cases[:len(good.Cases)-1], append(append([]ProbeCase(nil), good.Cases...), good.Cases[0])}
+	for _, cases := range malformed {
+		if EvaluateProbe(cases).AppContainerOK {
+			t.Fatal("missing/duplicate evidence accepted")
+		}
+	}
+	for _, mutation := range []func(*ProbeCase){
+		func(c *ProbeCase) { c.Passed = false }, func(c *ProbeCase) { c.Profile = "host" },
+		func(c *ProbeCase) { c.Expected = "anything" }, func(c *ProbeCase) { c.Name = "unknown" },
+	} {
+		cases := append([]ProbeCase(nil), good.Cases...)
+		mutation(&cases[0])
+		if EvaluateProbe(cases).AppContainerOK {
+			t.Fatal("invalid evidence accepted")
+		}
 	}
 }
 
-func TestSelectIsolation(t *testing.T) {
-	pass := &ProbeReport{AppContainerOK: true}
-	fail := &ProbeReport{AppContainerOK: false}
-	cases := []struct {
-		requested string
-		report    *ProbeReport
-		gpu       bool
-		want      string
+func TestProbeDenialCannotBeEstablishedByNetworkFailure(t *testing.T) {
+	d := ProbeDefinition{Name: "network_connect", Security: true, Expected: "deny", Profile: "offline"}
+	for _, winerror := range []int{0, 10060, 10061, 11001} {
+		if c := evaluateObservation(d, probeObservation{Operation: d.Name, Outcome: "error", Winerror: winerror}); c.Status != "inconclusive" {
+			t.Fatalf("environment failure passed: %#v", c)
+		}
+	}
+	if c := evaluateObservation(d, probeObservation{Operation: d.Name, Outcome: "denied", Winerror: 10013}); !c.Passed {
+		t.Fatalf("explicit OS denial rejected: %#v", c)
+	}
+	if c := evaluateObservation(d, probeObservation{Operation: d.Name, Outcome: "success"}); c.Status != "fail" {
+		t.Fatal("forbidden operation success must fail")
+	}
+}
+
+func TestProbeObservationRejectsAmbiguousAndUnknownOutput(t *testing.T) {
+	for _, output := range []string{"", `{"operation":"wrong","outcome":"success"}`, `{"operation":"x","outcome":"passed"}`, "{}\n{}"} {
+		if _, err := parseProbeObservation(output, "x"); err == nil {
+			t.Fatal("invalid output accepted")
+		}
+	}
+}
+
+func TestResolveIsolationHonorsVerifiedEvidenceAndExplicitRequests(t *testing.T) {
+	good := successfulProbe()
+	legacy := good
+	legacy.Version = "v1"
+	bad := cloneProbeReport(good)
+	bad.Cases[4] = newProbeCase(ProbeDefinitions()[4], "fail", "escape")
+	for _, tc := range []struct {
+		request string
+		report  *ProbeReport
+		gpu     bool
+		want    string
+		blocked bool
 	}{
-		{"", pass, false, IsolationAppContainer},
-		{"auto", pass, false, IsolationAppContainer},
-		{"auto", fail, false, IsolationLowIL},
-		{"auto", pass, true, IsolationLowIL},
-		{"appcontainer", fail, false, IsolationAppContainer},
-		{"lowil", pass, false, IsolationLowIL},
-		{"unknown", nil, false, IsolationLowIL},
-	}
-	for _, item := range cases {
-		if got := SelectIsolation(item.requested, item.report, item.gpu); got != item.want {
-			t.Fatalf("SelectIsolation(%q,%v,%v) = %q, want %q", item.requested, item.report, item.gpu, got, item.want)
+		{"auto", &good, false, IsolationAppContainer, false},
+		{"appcontainer", &good, false, IsolationAppContainer, false},
+		{"appcontainer", nil, false, "", true},
+		{"appcontainer", &legacy, false, "", true},
+		{"auto", &bad, false, "", true},
+		{"auto", nil, false, IsolationLowIL, false},
+		{"lowil", &bad, false, IsolationLowIL, false},
+		{"auto", &good, true, IsolationLowIL, false},
+	} {
+		got, err := ResolveIsolation(tc.request, tc.report, tc.gpu)
+		if got != tc.want || (err != nil) != tc.blocked {
+			t.Fatalf("ResolveIsolation(%s): %s %v", tc.request, got, err)
 		}
 	}
 }
 
-func TestProbeDefinitions(t *testing.T) {
-	definitions := ProbeDefinitions()
-	if len(definitions) != 7 {
-		t.Fatalf("len = %d, want 7", len(definitions))
+func TestProbeFingerprintChangesForEnvironmentAndPolicy(t *testing.T) {
+	root := t.TempDir()
+	python := filepath.Join(root, "python.exe")
+	if err := os.WriteFile(python, []byte("interpreter"), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	seen := map[string]bool{}
-	security := 0
-	for _, definition := range definitions {
-		if definition.Name == "" || definition.Python == "" {
-			t.Fatalf("incomplete definition: %#v", definition)
-		}
-		if seen[definition.Name] {
-			t.Fatalf("duplicate name %q", definition.Name)
-		}
-		seen[definition.Name] = true
-		if definition.Security {
-			security++
-		}
+	key, err := ProbeEnvironmentKey(python, "env", "offline")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if security != 3 {
-		t.Fatalf("security cases = %d, want 3", security)
+	for _, mutate := range []func(){
+		func() { _ = os.WriteFile(filepath.Join(root, "pyvenv.cfg"), []byte("new version"), 0o600) },
+		func() { _ = os.WriteFile(python, []byte("new interpreter"), 0o600) },
+		func() {
+			_ = os.MkdirAll(filepath.Join(root, "site-packages"), 0o700)
+			_ = os.WriteFile(filepath.Join(root, "site-packages", "module.py"), []byte("new dependency"), 0o600)
+		},
+	} {
+		mutate()
+		next, err := ProbeEnvironmentKey(python, "env", "offline")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if next == key {
+			t.Fatal("stale environment fingerprint")
+		}
+		key = next
 	}
-	script := ProbeScript(".")
-	if !strings.Contains(script, "multiprocessing") || !strings.Contains(script, "json.dumps") {
-		t.Fatalf("script looks wrong: %s", script)
+	next, err := ProbeEnvironmentKey(python, "env", "online")
+	if err != nil || next == key {
+		t.Fatal("configuration change not fingerprinted")
 	}
 }
+
+func TestProbeScriptDoesNotSelfDeclarePassedOrInstallPackages(t *testing.T) {
+	for _, d := range ProbeDefinitions() {
+		script := ProbeScript(d.Name, "target")
+		if strings.Contains(script, "'passed'") || strings.Contains(script, "pip','install") || strings.Contains(script, "1.1.1.1") {
+			t.Fatal("unsafe or self-grading script")
+		}
+	}
+}
+
 func TestCPUPercent(t *testing.T) {
-	if got := cpuPercent(0); got != 0 {
-		t.Fatalf("cpuPercent(0) = %d", got)
-	}
-	if got := cpuPercent(1); got < 1 || got > 100 {
-		t.Fatalf("cpuPercent(1) = %d", got)
-	}
-	if got := cpuPercent(1000); got != 100 {
-		t.Fatalf("cpuPercent(1000) = %d", got)
+	if cpuPercent(0) != 0 || cpuPercent(1) < 1 || cpuPercent(1000) != 100 {
+		t.Fatal("invalid CPU limits")
 	}
 }

@@ -270,15 +270,44 @@ func chatDocumentPageText(document *documents.Document, page int) (string, bool)
 	}
 	for _, candidate := range document.Pages {
 		if candidate.Number == page {
-			return candidate.Text, true
+			return chatDocumentOriginalPageText(document, page, candidate.Text), true
 		}
 	}
 	// Legacy text layers may omit page numbers. An explicitly numbered sparse
 	// text layer must never substitute page 3 for a missing page 2.
 	if page <= len(document.Pages) && document.Pages[page-1].Number == 0 {
-		return document.Pages[page-1].Text, true
+		return chatDocumentOriginalPageText(document, page, document.Pages[page-1].Text), true
 	}
 	return "", false
+}
+
+// Extraction omits layout headers/footers from the body text used by search.
+// An explicit page reference must also include those original blocks: a line
+// near the page margin may contain a result rather than a running header.
+// Keep the body reading order and restore only blocks absent from that body.
+func chatDocumentOriginalPageText(document *documents.Document, page int, body string) string {
+	var headers, footers []string
+	seen := map[string]bool{}
+	for _, block := range document.Blocks {
+		text := strings.TrimSpace(block.Text)
+		if block.Page != page || text == "" || seen[text] || strings.Contains(body, text) {
+			continue
+		}
+		switch block.Type {
+		case documents.BlockHeader:
+			headers = append(headers, text)
+		case documents.BlockFooter:
+			footers = append(footers, text)
+		default:
+			continue
+		}
+		seen[text] = true
+	}
+	if len(headers) == 0 && len(footers) == 0 {
+		return body
+	}
+	parts := append(headers, body)
+	return strings.Join(append(parts, footers...), "\n")
 }
 
 // chatDocumentNeighborPages returns the pages directly before and after the

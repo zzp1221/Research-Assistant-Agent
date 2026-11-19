@@ -6,5 +6,7 @@ import "context"
 
 // runProbe cannot run outside Windows.
 func runProbe(context.Context, string, string) ProbeReport {
-	return ProbeReport{Reason: "appcontainer probe requires windows"}
+	report := EvaluateProbe(nil)
+	report.Reason = "appcontainer probe requires windows"
+	return report
 }
