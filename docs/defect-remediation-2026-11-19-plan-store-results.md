@@ -129,6 +129,8 @@ Windows scheduler 全包有 161 个顶层通过、5 个失败，见 `windows-sch
 
 首次打包仅包含 backend，缺少兄弟目录中的 claim-evidence/benchmark 夹具，导致两项读取 fixture 失败；补齐仓库已跟踪夹具后，原样全量复跑得到上表结果。缺夹具轮次保留为 `pr-linux-full-missing-fixtures` 日志，不修改业务代码或放宽断言。主分支已为前述文献测试指定 sources，本次集成保留该上游修正。
 
+[PR #8](https://github.com/zzp1221/Research-Assistant-Agent/pull/8) 首轮远程 race 揭示既有 `TestPlanRuntimeExecutesStoredGraphAndReplaysEvents` 只等计划 completed 就立即断言终态事件已写入，撞上计划与事件两次提交之间的窗口。测试现改为执行前订阅事件，以有超时的 channel select 等待已持久化后发布的 `plan_completed`，再执行原计划字段、HTTP 事件和 SSE replay/ID 全部断言；没有增加 sleep 或放宽断言。定向 `go test -race ./internal/api -run '^TestPlanRuntimeExecutesStoredGraphAndReplaysEvents$' -count=20 -json` 20/20 通过，无 DATA RACE，日志为 `pr-api-terminal-race.log`。首轮远程失败日志保留为 `pr-ci-push-linux-go.log`、`pr-ci-pr-linux-go.log`，最终远程检查状态见 PR。
+
 ## 5. 现有数据对照
 
 先停止现有后端并备份完整 `/app/data` 和旧 `/app/api`，随后在独立副本对比基线与修复版本。未用迁移探针直接操作唯一原始数据。
