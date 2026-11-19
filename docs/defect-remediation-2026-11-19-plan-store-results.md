@@ -36,6 +36,7 @@
 
 - JSON 持久化内容相等的 no-op 不写盘，但仍发布独立 candidate，保留内存中的具体类型与空值语义。重新打开后的比较以持久化内容为准。
 - v2 active/tombstone 覆盖旧日志推导的状态；generation 隔离删除重建前后的事件；Seq floor 跨重建不倒退。逻辑删除保留 tombstone，旧事件可能仍在物理日志中。
+- 发布审查补充修复：旧版本可产生 `[0,1]`、`[0,0,1]` 等含无序号事件的数据，不能给旧零 Seq 自动补号，否则会撞上已经发布的正序号。现保留 legacy 的零 Seq、正 Seq 和原顺序；零 Seq 在完整事件列表可见，增量读取仍按旧 cursor 过滤。迁移保留 legacy generation 的原事件组，新追加事件使用 v2 和递增正 Seq。
 - 兼容旧整体 JSON snapshot、旧 append-only、旧 snapshot + log 和 v2 混合恢复。整体 snapshot、含完整 plan 的 append-only 启动时迁移；旧裸 snapshot + marker 路径可按需在首次保存、更新或删除时升级。
 - 完整末行缺换行时补分隔符；截断尾记录修复至最后有效边界；中间损坏、非法 v2 格式和身份冲突明确拒绝，不静默回退复活旧数据。
 - Windows 使用临时文件 Sync + `MoveFileEx(REPLACE_EXISTING | WRITE_THROUGH)`，没有先删旧文件的空窗；Windows 目录 Sync helper 为空。Unix 路径执行 Rename 与父目录 Sync。
@@ -63,7 +64,7 @@
 | EVT-03 | `TestFilePlanStoreProcessDeathAtConfirmedWrite`、`TestFilePlanStoreCommittedEventCloseErrorIsDiagnostic` | 事件确认后中止可恢复；确认后的 Close 错误不反转提交结果 |
 | EVT-04 | `TestPlanStoreEventIsolationAndLifecycleSequence`、`TestFilePlanStoreRejectsSequenceAndIdentityWithoutChanges` | Seq 与 PlanID 校验不改变已提交状态 |
 | DEL-01/02 | `TestFilePlanStoreCommitKnownFailuresAndRetry`、`TestFilePlanStoreTombstoneGenerationAndSequenceFloor` | 删除不复活，重建不继承旧事件，floor 不退 |
-| REC-01 | 既有 `TestFilePlanStoreMigratesLegacyAppendOnlyLog`；新增 `TestFilePlanStoreLegacySnapshotUpdatePreservesEventsOnReopen`、`TestFilePlanStoreLegacyEventOnlySnapshot` | 旧格式迁移/混合恢复及重复重开不丢事件 |
+| REC-01 | 既有 `TestFilePlanStoreMigratesLegacyAppendOnlyLog`；新增 `TestFilePlanStoreLegacySnapshotUpdatePreservesEventsOnReopen`、`TestFilePlanStoreLegacyEventOnlySnapshot`、`TestFilePlanStoreLegacyUnsequencedEventsPreservePositiveCursors` | 旧格式迁移/混合恢复及重复重开不丢事件；3 格式 × 4 种零/正 Seq 组合保留顺序与 cursor，追加后可重开 |
 | REC-02/03 | `TestFilePlanStoreV2AuthorityOverridesLegacyMarkers`、`TestFilePlanStoreRepairsLogTailBeforeNextAppend`、`TestFilePlanStoreRejectsCorruptRecordsWithoutFallback` | v2 权威、尾部修复、中间坏记录拒绝 |
 | REC-04 | `TestFilePlanStoreMigrationFailureReopensWithoutLoss`、`TestFilePlanStoreProcessDeathDuringMigration` | 迁移故障或中止后可重复恢复，无重复事件 |
 | WIN-01 | `TestFilePlanStoreWindowsOccupiedSnapshotPreservesOldState`、`TestFilePlanStoreWindowsReadonlySnapshotFailure`、`TestFilePlanStoreWindowsCaseAndInvalidIdentities` | 占用/只读失败保护旧状态；拒绝大小写碰撞及非法身份 |
@@ -82,7 +83,7 @@ REC-04 没有专项注入 gzip 归档压缩失败；本轮的故障与 kill 测�
 
 | 平台与检查 | 实际命令 | 结果与本地日志 |
 |---|---|---|
-| Windows store | `go test -json -count=1 ./internal/store` | 通过；41 个顶层通过、1 个辅助入口跳过；130 条 pass 事件，见 `windows-store.log/.summary.json` |
+| Windows store | `go test -json -count=1 ./internal/store` | 发布审查补充回归后通过；42 个顶层通过、1 个辅助入口跳过；143 条 pass 事件，见 `windows-store.log/.summary.json` |
 | Windows store vet | `go vet ./internal/store` | exit 0；`windows-store-vet.log/.summary.json` |
 | Windows API | `go test -count=1 -v ./internal/api` | 188 个顶层通过；`windows-api-full.log` |
 | Windows 调用链定向 | API 创建/幂等、`TestPlanStore*` 与 scheduler `TestPersistence*` 等相关测试 | 32 个顶层通过；`windows-callers-targeted.log` |
@@ -112,7 +113,21 @@ Windows scheduler 全包有 161 个顶层通过、5 个失败，见 `windows-sch
 
 对照证据为 `windows-baseline-environment.log/.summary.json` 和 `windows-candidate-environment.log/.summary.json`，两者均为上述 5 项失败。本轮没有放宽旧测试断言。初始交接中的 4 项 Windows 历史失败来自先前环境，本轮以实际的 5 项对照为准。
 
-[CI](../.github/workflows/ci.yml) 已新增 Windows store test/vet gate，并保留原 Linux race 范围。本轮没有远程 CI 运行结果；也没有重跑前端、desktop、docker-sandbox 全量、浏览器 E2E、真实付费模型任务、长期浸泡或性能基准。
+[CI](../.github/workflows/ci.yml) 已新增 Windows store test/vet gate，并保留原 Linux race 范围。原始本地验收没有重跑前端、desktop、docker-sandbox 全量、浏览器 E2E、真实付费模型任务、长期浸泡或性能基准；提交后的远程 CI 状态见关联 PR。
+
+### PR 提交前集成复核
+
+发布前已整合 `origin/master` 的 `12a79ca`（记忆改进及安全/PDF 修复），保留镜像溯源导出、冻结 image digest 与现有安全门禁，再叠加本轮变更。新增零 Seq 兼容修复后，使用独立目录 `/work/pr-integrated` 的实际跟踪源码复跑，没有加入临时 `TestHistorical*` 探针：
+
+| 检查 | 结果 | 证据 |
+|---|---|---|
+| Linux 全后端 `go test -json -count=1 ./...` | 1000 个顶层通过、19 跳过；1353 条 pass 事件，46 个含测试包通过 | `pr-linux-full.log/.summary.json` |
+| 同上六包 `go test -race -json -count=1` | 416 个顶层通过、2 跳过；560 条 pass 事件 | `pr-linux-race.log/.summary.json` |
+| Linux `go vet ./...` | exit 0 | `pr-linux-vet.log/.summary.json` |
+| Windows store 全包与 vet | 42 个顶层通过、1 helper 跳过；143 条 pass 事件，vet exit 0 | `windows-store`、`windows-store-vet` 的日志与 summary |
+| 格式与合并冲突 | 全部 730 个跟踪 Go 文件 gofmt 检查通过；无残留冲突，diff check 通过 | 本机提交前检查 |
+
+首次打包仅包含 backend，缺少兄弟目录中的 claim-evidence/benchmark 夹具，导致两项读取 fixture 失败；补齐仓库已跟踪夹具后，原样全量复跑得到上表结果。缺夹具轮次保留为 `pr-linux-full-missing-fixtures` 日志，不修改业务代码或放宽断言。主分支已为前述文献测试指定 sources，本次集成保留该上游修正。
 
 ## 5. 现有数据对照
 
@@ -150,7 +165,7 @@ Windows scheduler 全包有 161 个顶层通过、5 个失败，见 `windows-sch
 
 启动期间曾遇到原容器异常退出遗留的 memory/wiki PID 1 锁：确认数据卷无活跃 backend 写入者、完成全量备份后，将两个 `.lock` 改名为 `.lock.stale-20261119` 保存。未删业务数据，未修改锁模块；后续启动及两次正常重启均成功。
 
-本次使用 cp 更新现有容器，**未重建 Docker 镜像**。删除并重建容器会重新使用原镜像，需从当前源码重建镜像或再次交付本次产物。该限制与普通 `docker restart` 不同，后者已验收。
+本次使用 cp 更新现有容器，**未重建 Docker 镜像**。本节哈希与 smoke 对应 PR 提交前的原始交付产物；发布审查补充的零 Seq 兼容修复及之后整合的主分支变更，另由 PR 集成测试验证，不能将本节旧产物视为最终 PR 构建。删除并重建容器会重新使用原镜像，需从当前源码重建镜像或再次交付本次产物。该限制与普通 `docker restart` 不同，后者已验收。
 
 ## 7. 备份、回退与剩余边界
 
