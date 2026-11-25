@@ -1,5 +1,5 @@
 import type { OutcomeDetails } from '../../contracts/api';
-import { describeBlockedNode, planOutcomeLabel, summarizePlanOutcome } from '../shared/planOutcome';
+import { describeBlockedNode, summarizePlanOutcome } from '../shared/planOutcome';
 
 /**
  * Small presentational helpers shared by the execution sidebar and history so a
@@ -32,7 +32,7 @@ export interface OutcomeDetailsListProps {
   details?: OutcomeDetails | null;
 }
 
-/** Renders the accepted core goals and the optional work that was lost. */
+/** Explains the server verdict without treating missing evidence as success. */
 export function OutcomeDetailsList({ outcome, outcomeReason, details }: OutcomeDetailsListProps) {
   const summary = summarizePlanOutcome({
     status: '',
@@ -40,44 +40,73 @@ export function OutcomeDetailsList({ outcome, outcomeReason, details }: OutcomeD
     outcome_reason: outcomeReason ?? undefined,
     outcome_details: details ?? undefined,
   });
-  const accepted = (details?.accepted_goals ?? []).filter((goal) => goal.verified);
+  const goals = details?.accepted_goals ?? [];
+  const accepted = goals.filter((goal) => goal.verified === true);
+  const unverified = goals.filter((goal) => goal.verified !== true);
+  const missingArtifacts = details?.missing_artifacts ?? [];
+  const hasDetails = goals.length > 0 || summary.losses.length > 0 || missingArtifacts.length > 0 || summary.limitations.length > 0;
   return (
-    <div className="space-y-1 text-[11px] leading-5 text-ink-soft" data-testid="outcome-details">
-      <p className="font-semibold text-ink-soft">{planOutcomeLabel(outcome) || summary.headline}</p>
-      {summary.detail ? <p>{summary.detail}</p> : null}
+    <div className="space-y-2 break-words text-[11px] leading-5 text-ink-soft [overflow-wrap:anywhere]" data-testid="outcome-details">
+      <p className="font-semibold text-warn">{summary.headline}</p>
+      {outcomeReason?.trim() ? <p>{outcomeReason}</p> : null}
       {accepted.length > 0 ? (
-        <div>
+        <section aria-label="已通过的核心目标">
           <span className="font-semibold">已通过的核心目标</span>
           <ul className="list-disc pl-4">
-            {accepted.map((goal) => (
-              <li key={goal.id}>
+            {accepted.map((goal, index) => (
+              <li key={`${goal.id}-${index}`}>
                 {goal.statement}
                 {goal.evidence_refs && goal.evidence_refs.length > 0 ? '（证据：' + goal.evidence_refs.join('、') + '）' : ''}
               </li>
             ))}
           </ul>
-        </div>
+        </section>
+      ) : null}
+      {unverified.length > 0 ? (
+        <section aria-label="尚未通过验证的核心目标">
+          <span className="font-semibold">尚未通过验证的核心目标</span>
+          <ul className="list-disc pl-4">
+            {unverified.map((goal, index) => (
+              <li key={`${goal.id}-${index}`}>
+                {goal.statement}
+                {goal.reason ? '（原因：' + goal.reason + '）' : ''}
+                {goal.evidence_refs && goal.evidence_refs.length > 0 ? '（待验证的证据引用：' + goal.evidence_refs.join('、') + '）' : ''}
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
       {summary.losses.length > 0 ? (
-        <div>
-          <span className="font-semibold">缺少的可选工作</span>
+        <section aria-label="未完成的可选工作">
+          <span className="font-semibold">未完成的可选工作</span>
           <ul className="list-disc pl-4" data-testid="optional-losses">
-            {summary.losses.map((loss) => (
-              <li key={loss}>{loss}</li>
+            {summary.losses.map((loss, index) => (
+              <li key={`${details?.optional_losses?.[index]?.task_id}-${index}`}>{loss}</li>
             ))}
           </ul>
-        </div>
+        </section>
+      ) : null}
+      {missingArtifacts.length > 0 ? (
+        <section aria-label="缺少或不可信的验收产物">
+          <span className="font-semibold">缺少或不可信的验收产物</span>
+          <ul className="list-disc pl-4">
+            {missingArtifacts.map((artifact, index) => (
+              <li key={`${artifact}-${index}`}>{artifact}</li>
+            ))}
+          </ul>
+        </section>
       ) : null}
       {summary.limitations.length > 0 ? (
-        <div>
+        <section aria-label={summary.limitationsLabel}>
           <span className="font-semibold">{summary.limitationsLabel}</span>
           <ul className="list-disc pl-4">
-            {summary.limitations.map((limitation) => (
-              <li key={limitation}>{limitation}</li>
+            {summary.limitations.map((limitation, index) => (
+              <li key={`${limitation}-${index}`}>{limitation}</li>
             ))}
           </ul>
-        </div>
+        </section>
       ) : null}
+      {!hasDetails ? <p>该计划未提供结构化验收详情</p> : null}
     </div>
   );
 }

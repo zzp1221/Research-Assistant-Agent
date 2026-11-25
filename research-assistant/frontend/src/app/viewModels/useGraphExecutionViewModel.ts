@@ -81,6 +81,7 @@ interface UseGraphExecutionViewModelOptions {
   activePlanId: string | null;
 	activePlanStatus: string | null;
   activePlanOutcome?: string | null;
+  activePlanOutcomeReason?: string | null;
   activePlanOutcomeDetails?: OutcomeDetails | null;
   activePlanMissingRequirements?: MissingRequirement[];
   activePlanRuntimeActions?: RuntimeAction[];
@@ -104,7 +105,7 @@ interface UseGraphExecutionViewModelOptions {
 }
 
 export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOptions) {
-	const { nodes, edges, onNodesChange, onEdgesChange, intentContext, activePlanId, activePlanStatus, activePlanOutcome, activePlanOutcomeDetails, activePlanMissingRequirements, activePlanRuntimeActions, activePlanQuestions, activePlanReviewStatus, activePlanReviewRequired, onAnswerQuestion, onOpenReview, activePlanRuntimePolicyMode, activePlanPlannerSource, activePlanPlannerFallbackReason, activePlanComplexity, activePlanPlanningRoute, activePlanTemplateVariant, activePlanRunTrigger, activePlanVerification, activePlanUsage, onOpenModelSettings, layout, logsEndRef } = options;
+	const { nodes, edges, onNodesChange, onEdgesChange, intentContext, activePlanId, activePlanStatus, activePlanOutcome, activePlanOutcomeReason, activePlanOutcomeDetails, activePlanMissingRequirements, activePlanRuntimeActions, activePlanQuestions, activePlanReviewStatus, activePlanReviewRequired, onAnswerQuestion, onOpenReview, activePlanRuntimePolicyMode, activePlanPlannerSource, activePlanPlannerFallbackReason, activePlanComplexity, activePlanPlanningRoute, activePlanTemplateVariant, activePlanRunTrigger, activePlanVerification, activePlanUsage, onOpenModelSettings, layout, logsEndRef } = options;
   const runtime = useResearchAssistantRuntimeContext();
 
   return useMemo(() => {
@@ -146,6 +147,7 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
       onNodeClick: runtime.actions.onNodeClick,
       intentContext,
       outcome: activePlanOutcome ?? null,
+      outcomeReason: activePlanOutcomeReason ?? null,
       outcomeDetails: activePlanOutcomeDetails ?? null,
       missingRequirements: activePlanMissingRequirements ?? [],
       runtimeActions: activePlanRuntimeActions ?? [],
@@ -258,5 +260,5 @@ export function useGraphExecutionViewModel(options: UseGraphExecutionViewModelOp
       canRunPlan: canRun,
       planIsTerminal: isTerminalPlanStatus(effectivePlanStatus),
     };
-	}, [activePlanId, activePlanStatus, activePlanOutcome, activePlanOutcomeDetails, activePlanMissingRequirements, activePlanRuntimeActions, activePlanQuestions, activePlanReviewStatus, activePlanReviewRequired, onAnswerQuestion, onOpenReview, activePlanRuntimePolicyMode, activePlanPlannerSource, activePlanPlannerFallbackReason, activePlanComplexity, activePlanPlanningRoute, activePlanTemplateVariant, activePlanRunTrigger, activePlanVerification, activePlanUsage, onOpenModelSettings, edges, intentContext, layout.sidebarWidth, logsEndRef, nodes, onEdgesChange, onNodesChange, runtime]);
+	}, [activePlanId, activePlanStatus, activePlanOutcome, activePlanOutcomeReason, activePlanOutcomeDetails, activePlanMissingRequirements, activePlanRuntimeActions, activePlanQuestions, activePlanReviewStatus, activePlanReviewRequired, onAnswerQuestion, onOpenReview, activePlanRuntimePolicyMode, activePlanPlannerSource, activePlanPlannerFallbackReason, activePlanComplexity, activePlanPlanningRoute, activePlanTemplateVariant, activePlanRunTrigger, activePlanVerification, activePlanUsage, onOpenModelSettings, edges, intentContext, layout.sidebarWidth, logsEndRef, nodes, onEdgesChange, onNodesChange, runtime]);
 }

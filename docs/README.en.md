@@ -87,6 +87,8 @@ Both are self-contained HTML files (inline SVG/styles/scripts) that open directl
 
 ### Defects and remediation
 
+- [Partial-outcome explanation implementation and acceptance (2026-11-25, Chinese)](defect-remediation-2026-11-24-partial-outcome-results.md): **Implemented**; code and assets copied into containers, two live browser tests plus 23 unit and 559 component tests passed; real SSE, API restoration with an empty local cache, mobile screenshots, and test limits.
+- [Partial-outcome explanation repair plan (2026-11-24, Chinese)](defect-remediation-2026-11-24-partial-outcome.md): **Implemented (v1.1)**; details and reasons in the main execution graph, goals and evidence, legacy compatibility, integration regressions, and acceptance cases.
 - [Plan store isolation and commit consistency — implementation report (2026-11-19, Chinese)](defect-remediation-2026-11-19-plan-store-results.md): **Implemented**; isolation, v2 persistence and recovery, Windows fault tests, caller integration, and Docker restart verification, with known failures and test limits.
 - [Plan store isolation and commit consistency — repair plan (2026-11-19, Chinese)](defect-remediation-2026-11-19-plan-store.md): **Implemented (v1.1)**; baseline findings, object ownership, snapshot/event commit protocol, legacy migration, and acceptance matrix.
 - [Security remediation implementation record (2026-11-16, Chinese)](defect-remediation-2026-11-16-security-results.md): code and targeted regressions implemented; maps all 27 acceptance cases to evidence and records outstanding Windows compatibility and deployment validation.

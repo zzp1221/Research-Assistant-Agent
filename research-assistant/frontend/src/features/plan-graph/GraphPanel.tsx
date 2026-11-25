@@ -1,3 +1,4 @@
+/* eslint-disable jsx-a11y/no-noninteractive-tabindex -- The scrollable outcome region needs keyboard focus so its full explanation can be read. */
 import { lazy, memo, Suspense, useRef, useState } from 'react';
 import type { Edge, Node, OnEdgesChange, OnNodesChange } from '@xyflow/react';
 import { Ban, ChevronDown, Eye, MessageSquare, MoreHorizontal, Play, RefreshCw, RotateCcw, ShieldCheck, Square, WifiOff, X } from 'lucide-react';
@@ -5,7 +6,7 @@ import type { IntentContext, MissingRequirement, PlanQuestion, RuntimeAction, Ve
 import { describeConnectionState, planBusinessState } from '../../app/hooks/planObservation';
 import type { PlanBusinessState, PlanConnectionState } from '../../app/hooks/planObservation';
 import type { OutcomeDetails } from '../../contracts/api';
-import { summarizePlanOutcome } from '../shared/planOutcome';
+import { OutcomeDetailsList } from '../shared/PlanOutcomeBits';
 import { VerificationBadge } from '../verification/VerificationBadge';
 
 const GraphCanvas = lazy(() => import('./GraphCanvas'));
@@ -18,6 +19,7 @@ interface GraphPanelProps {
   onNodeClick: (_: unknown, node: Node) => void;
   intentContext: IntentContext | null;
   outcome?: string | null;
+  outcomeReason?: string | null;
   /** Explains a terminal outcome: accepted core goals and optional losses. */
   outcomeDetails?: OutcomeDetails | null;
   missingRequirements?: MissingRequirement[];
@@ -254,6 +256,7 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
     onNodeClick,
     intentContext,
     outcome,
+    outcomeReason,
     outcomeDetails,
     missingRequirements,
     runtimeActions,
@@ -290,11 +293,6 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
     connectionDetail,
     onReconnect,
   } = props;
-  const outcomeSummary = summarizePlanOutcome({
-    status: planStatus ?? '',
-    outcome: outcome ?? '',
-    outcome_details: outcomeDetails ?? undefined,
-  });
   const blockingCount = nodes.filter((node) => node.data.status === 'blocked').length;
   const completedCount = nodes.filter((node) => node.data.status === 'completed').length;
   const runningCount = nodes.filter((node) => node.data.status === 'in_progress').length;
@@ -736,32 +734,14 @@ export const GraphPanel = memo(function GraphPanel(props: GraphPanelProps) {
 
       {businessState === 'terminal' && (outcome === 'partial' || outcome === 'blocked' || outcome === 'needs_review') ? (
         <div
-          className="mx-6 mb-2 rounded-xl border border-warn/40 bg-warn-soft px-3 py-2 text-[11px] leading-5 text-ink-soft"
+          className="mx-6 mb-2 max-h-[min(40vh,24rem)] shrink-0 overflow-y-auto rounded-xl border border-warn/40 bg-warn-soft px-3 py-2 text-[11px] leading-5 text-ink-soft"
           data-testid="plan-outcome-details"
           data-outcome={outcome}
+          role="region"
+          aria-label="计划结果说明"
+          tabIndex={0}
         >
-          <p className="font-semibold text-warn">
-            {outcomeSummary.headline}
-            {outcomeSummary.detail ? ' · ' : ''}
-            <span className="font-normal text-ink-soft">{outcomeSummary.detail}</span>
-          </p>
-          {outcomeSummary.losses.length > 0 ? (
-            <ul className="mt-1 list-disc pl-4">
-              {outcomeSummary.losses.map((loss) => (
-                <li key={loss}>{loss}</li>
-              ))}
-            </ul>
-          ) : null}
-          {outcomeSummary.limitations.length > 0 ? (
-            <div className="mt-1">
-              <span className="font-semibold">{outcomeSummary.limitationsLabel}</span>
-              <ul className="list-disc pl-4">
-                {outcomeSummary.limitations.map((limitation) => (
-                  <li key={limitation}>{limitation}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+          <OutcomeDetailsList outcome={outcome} outcomeReason={outcomeReason} details={outcomeDetails} />
         </div>
       ) : null}
 
