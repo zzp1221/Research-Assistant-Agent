@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PropsWithChildren } from 'react';
 import { act, renderHook } from '@testing-library/react';
-import type { Task } from '../../src/contracts/api';
+import type { OutcomeDetails, Task } from '../../src/contracts/api';
 import { ResearchAssistantRuntimeContext } from '../../src/app/context/ResearchAssistantRuntimeContext';
 import type { ResearchAssistantRuntimeContextValue } from '../../src/app/context/ResearchAssistantRuntimeContext';
 import { resolvePlanObservation, useGraphExecutionViewModel } from '../../src/app/viewModels/useGraphExecutionViewModel';
@@ -109,6 +109,84 @@ const renderViewModel = (
     { wrapper },
   );
 };
+
+const renderOutcomeViewModel = (initialDetails: OutcomeDetails | null, initialReason = '核心已通过，指标未完成') => {
+  const runtime = makeRuntimeValue();
+  const wrapper = ({ children }: PropsWithChildren) => (
+    <ResearchAssistantRuntimeContext.Provider value={runtime.value}>{children}</ResearchAssistantRuntimeContext.Provider>
+  );
+  // Every other memo dependency, including arrays, callbacks, ref and runtime
+  // context, must keep its identity when only the reason or details change.
+  const stableOptions = {
+    nodes: [],
+    edges: [],
+    onNodesChange: vi.fn(),
+    onEdgesChange: vi.fn(),
+    intentContext: null,
+    activePlanId: PLAN_ID,
+    activePlanStatus: 'completed',
+    activePlanOutcome: 'partial',
+    activePlanMissingRequirements: [],
+    activePlanRuntimeActions: [],
+    activePlanQuestions: [],
+    onAnswerQuestion: vi.fn(),
+    onOpenReview: vi.fn(),
+    onOpenModelSettings: vi.fn(),
+    layout,
+    logsEndRef: { current: null },
+  };
+  return renderHook(
+    ({ reason, details }: { reason: string | null; details: OutcomeDetails | null }) => useGraphExecutionViewModel({
+      ...stableOptions,
+      activePlanOutcomeReason: reason,
+      activePlanOutcomeDetails: details,
+    }),
+    { wrapper, initialProps: { reason: initialReason as string | null, details: initialDetails } },
+  );
+};
+
+describe('useGraphExecutionViewModel outcome explanation', () => {
+  const details: OutcomeDetails = {
+    accepted_goals: [{ id: 'goal', statement: '核心实验通过', verified: true, evidence_refs: ['report'] }],
+    optional_losses: [{ task_id: 'metric', status: 'failed', reason: 'dataset missing' }],
+    limitations: ['可选指标相关结论不能宣称完整'],
+  };
+
+  it('forwards the active plan reason and the original details object', () => {
+    const { result } = renderOutcomeViewModel(details);
+    expect(result.current.graphPanelProps.outcome).toBe('partial');
+    expect(result.current.graphPanelProps.outcomeReason).toBe('核心已通过，指标未完成');
+    expect(result.current.graphPanelProps.outcomeDetails).toBe(details);
+  });
+
+  it('updates a reason-only change while every other memo dependency stays stable', () => {
+    const { result, rerender } = renderOutcomeViewModel(details, '原结果原因');
+    expect(result.current.graphPanelProps.outcomeReason).toBe('原结果原因');
+    const previousProps = result.current.graphPanelProps;
+
+    rerender({ reason: '新的结果原因', details });
+    expect(result.current.graphPanelProps.outcomeReason).toBe('新的结果原因');
+    expect(result.current.graphPanelProps.outcomeDetails).toBe(details);
+    expect(result.current.graphPanelProps).not.toBe(previousProps);
+
+    rerender({ reason: null, details });
+    expect(result.current.graphPanelProps.outcomeReason).toBeNull();
+    expect(result.current.graphPanelProps.outcomeDetails).toBe(details);
+  });
+
+  it('replaces and clears details without changing the plan identity or reason', () => {
+    const reason = '结果原因保持不变';
+    const { result, rerender } = renderOutcomeViewModel(details, reason);
+    const nextDetails: OutcomeDetails = { ...details, limitations: ['新的结论限制'] };
+    rerender({ reason, details: nextDetails });
+    expect(result.current.graphPanelProps.outcomeDetails).toBe(nextDetails);
+    expect(result.current.graphPanelProps.outcomeReason).toBe(reason);
+
+    rerender({ reason, details: null });
+    expect(result.current.graphPanelProps.outcomeDetails).toBeNull();
+    expect(result.current.graphPanelProps.outcomeReason).toBe(reason);
+  });
+});
 
 describe('resolvePlanObservation', () => {
   it('uses the runtime server status when it belongs to the active plan', () => {

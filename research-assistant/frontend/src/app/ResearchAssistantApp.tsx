@@ -58,6 +58,7 @@ interface ResearchAssistantWorkspaceContentProps {
     activePlanId: string | null;
     activePlanStatus: string | null;
     activePlanOutcome: string | null;
+    activePlanOutcomeReason?: string | null;
     activePlanOutcomeDetails?: OutcomeDetails | null;
     activePlanMissingRequirements: MissingRequirement[];
     activePlanRuntimeActions: RuntimeAction[];
@@ -134,7 +135,8 @@ function ResearchAssistantWorkspaceContent(props: ResearchAssistantWorkspaceCont
     activePlanId: chatFlow.activePlanId,
     activePlanStatus: chatFlow.activePlanStatus,
     activePlanOutcome: chatFlow.activePlanOutcome,
-    activePlanOutcomeDetails: null,
+    activePlanOutcomeReason: chatFlow.activePlanOutcomeReason ?? null,
+    activePlanOutcomeDetails: chatFlow.activePlanOutcomeDetails ?? null,
     activePlanMissingRequirements: chatFlow.activePlanMissingRequirements,
     activePlanRuntimeActions: chatFlow.activePlanRuntimeActions,
     activePlanQuestions: chatFlow.activePlanQuestions ?? [],
@@ -564,6 +566,7 @@ export default function ResearchAssistantApp() {
             activePlanId: chatFlow.activePlanId,
             activePlanStatus: chatFlow.activePlanStatus,
             activePlanOutcome: chatFlow.activePlanGraph?.outcome ?? null,
+            activePlanOutcomeReason: chatFlow.activePlanGraph?.outcome_reason ?? null,
             activePlanOutcomeDetails: chatFlow.activePlanGraph?.outcome_details ?? null,
             activePlanMissingRequirements: chatFlow.activePlanGraph?.missing_requirements ?? [],
             activePlanRuntimeActions: chatFlow.activePlanGraph?.runtime_actions ?? [],
